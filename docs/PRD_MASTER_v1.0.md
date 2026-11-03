@@ -444,7 +444,7 @@ At any point versions can be `PROTECTED`, `MISSING`, `CHANGED`, `RETIRED`, `FAIL
 - [x] ST-07 [DONE 2026-11-03, T11]
 - [x] ST-08 [DONE 2026-11-03, T12]
 - [x] ST-09 [DONE 2026-11-03, T13]
-- [ ] ST-10 [TODO]
+- [x] ST-10 [DONE 2026-11-03, T14]
 - [ ] CHECKPOINT AUDIT B [TODO]
 
 For each task: plan and acceptance criteria first → implement one task → test → report result/defects → update PRD checklist. Never mark implementation DONE from UI mockups or paper design. Before any commit, inspect diff and tests; do not claim any git commit unless actually created and verified.
