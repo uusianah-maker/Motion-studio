@@ -54,6 +54,18 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Opsi B: AI planner/provider dulu, editor & render belakangan.
 - Rekomendasi: A. Pengguna butuh edit & render nyata dulu; AI tanpa editor/render tidak menghasilkan video.
 
+### PC-5: Pivot arsitektur — web app tim + Google Drive (DIBAHAS 2026-11-04, BELUM DIPUTUSKAN)
+- Konteks: owner mau app dipakai **tim** dan di-online-kan; semua file di **Google Drive**, app hanya memproses. Ini mengubah keputusan terkunci PRD §0.1-1/2 (desktop, local-first) → wajib ADR-002 + rencana task baru sebelum coding.
+- Fakta yang sudah dijelaskan ke owner: video tetap harus diunduh sementara ke mesin yang merender; link share Drive tidak cocok untuk proses otomatis (halaman konfirmasi file besar, batas download, tidak bisa list/upload, risiko bocor); akses yang benar = OAuth "Login with Google" oleh app (bukan password, bisa dicabut); Trash bawaan Google Drive auto-hapus 30 hari → bentrok aturan "purge selalu manual", jadi app pakai folder Trash sendiri.
+- Opsi A (rekomendasi): web app + Login Google + Google Shared Drive via API + 1 server render (VPS FFmpeg, cache lokal) + fitur "paste link Drive" untuk import.
+- Opsi B: web app + object storage (Cloudflare R2/S3) + server render (lebih cepat/murah untuk video; backup/export ke Drive).
+- Opsi C: tetap desktop + Google Drive for Desktop (tidak cocok untuk tim).
+- Pertanyaan terbuka ke owner: (1) setuju opsi A? (2) jumlah anggota tim? (3) "publik" = hanya tim yang login atau siapa saja bisa daftar? (4) siap sewa VPS render ± Rp150–500rb/bulan?
+- Langkah owner (tidak bisa dilakukan Claude): buat project Google Cloud, aktifkan Drive API, buat OAuth Client ID (panduan bisa dibuatkan).
+- Dampak ke kode: logika storage (aturan 30 hari, proteksi, purge manual, audit, skema proyek, preflight, larangan AI) dipakai ulang; lapisan file lokal diganti adapter Drive/R2 (perkiraan ±50% reuse).
+- Catatan lingkungan: D: (Portable SSD) ±1,5 TB kosong, C: ±41 GB kosong; Google Drive for Desktop belum terpasang.
+- PC-1 (bentuk app) dan PC-4 (urutan backlog) mengikuti keputusan PC-5.
+
 ## Audit
 ### Checkpoint A (T01–T05): LULUS setelah perbaikan
 - Suite: verify 48 pass / 1 skip (stabil 5x), prototype 56/56. Laporan: `audit/CHECKPOINT_A/CHECKPOINT_A_REPORT.md`.
