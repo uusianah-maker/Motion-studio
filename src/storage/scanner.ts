@@ -2,7 +2,8 @@ import { audit } from './audit.js';
 import { buildIndex } from './deps.js';
 import { type Evaluation, type GcState, evaluateAll, reconcileClocks, syncClocks } from './eligibility.js';
 import { newId } from './ids.js';
-import { type Actor, MEDIA_AREAS, assertAllowed, resolveInArea } from './permissions.js';
+import { guard } from './guard.js';
+import { type Actor, MEDIA_AREAS, resolveInArea } from './permissions.js';
 import { type Registry, hashFile, loadRegistry, verifyVersion } from './registry.js';
 import { journalBusy } from './trash.js';
 import type { Workspace } from './workspace.js';
@@ -29,7 +30,7 @@ export interface ScanReport {
  * - Re-hashes every gate-passing version so a stale integrity flag never yields a candidate.
  */
 export async function scanCandidates(ws: Workspace, opts: { actor: Actor; busy?: ReadonlySet<string> }): Promise<ScanReport> {
-  assertAllowed(opts.actor, 'scan_dry_run');
+  await guard(ws, opts.actor, 'scan_dry_run');
   const op_id = newId('op');
   const at = ws.clock.now();
   const fail = async (errors: string[]): Promise<ScanReport> => {

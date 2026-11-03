@@ -52,8 +52,11 @@ describe('ST-06 Auto Trash', () => {
     });
     expect(m.dependencies_checked.holders).toBe(0);
 
-    const item = (await readAudit(ws, (e) => e.op === 'gc.auto_trash.item'))[0]!;
-    expect(item).toMatchObject({ outcome: 'ok', version_id: old.version_id, old_path: v0.rel_path, new_path: mv.to, checksum: v0.content_hash, op_id: r.op_id });
+    const items = await readAudit(ws, (e) => e.op === 'gc.auto_trash.item');
+    const fields = { version_id: old.version_id, old_path: v0.rel_path, new_path: mv.to, checksum: v0.content_hash, op_id: r.op_id, eligible_since: since + 30 * DAY_MS };
+    expect(items.map((i) => i.phase)).toEqual(['started', 'done']); // logged before AND after the move
+    expect(items[0]).toMatchObject({ outcome: 'info', ...fields });
+    expect(items[1]).toMatchObject({ outcome: 'ok', ...fields });
     expect(await listJournal(ws)).toEqual([]);
   });
 

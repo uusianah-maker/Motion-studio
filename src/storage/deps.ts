@@ -6,7 +6,9 @@ import { isSafeId, newId } from './ids.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { type MediaRef, type ProjectManifest, manifestReferences, validateProjectManifest } from './project.js';
 import { resolveInside } from './paths.js';
-import { type Actor, assertAllowed } from './permissions.js';
+import { guard } from './guard.js';
+import { journalBusy } from './journal.js';
+import type { Actor } from './permissions.js';
 import { type Registry, loadRegistry, saveRegistry } from './registry.js';
 import { META_FILES, type Workspace, listProjectIds, manifestRel, metaPath, readProject, withWorkspaceLock } from './workspace.js';
 
@@ -50,7 +52,8 @@ function validateLeases(x: unknown): LeaseFile {
 export const loadLeases = (ws: Workspace): Promise<LeaseFile> => readJson(metaPath(ws, META_FILES.leases), validateLeases, 'INDEX_INVALID');
 const saveLeases = (ws: Workspace, f: LeaseFile) => writeJsonAtomic(metaPath(ws, META_FILES.leases), validateLeases(f));
 
-function assertUsable(reg: Registry, ref: MediaRef): void {
+function assertUsable(reg: Registry, ref: MediaRef, busy: ReadonlySet<string>): void {
+  if (busy.has(ref.version_id)) throw new StorageError('PRECONDITION', 'Versi media sedang dipindah (operasi belum selesai)', { ...ref });
   const v = reg.versions[ref.version_id];
   if (!v || v.media_id !== ref.media_id) throw new StorageError('PRECONDITION', 'Referensi media tidak dikenal', { ...ref });
   if (v.lifecycle !== 'active') throw new StorageError('PRECONDITION', `Versi media sedang ${v.lifecycle}; pulihkan dulu`, { ...ref });
@@ -59,10 +62,11 @@ function assertUsable(reg: Registry, ref: MediaRef): void {
 
 /** Create a job lease pinning exact versions + hashes (immutable dependency snapshot). */
 export async function createLease(ws: Workspace, input: { job: JobKind; label: string; media: MediaRef[]; actor: Actor }): Promise<Lease> {
-  assertAllowed(input.actor, 'manage_lease');
+  await guard(ws, input.actor, 'manage_lease', { job: input.job });
   return withWorkspaceLock(ws, 'createLease', async () => {
     const reg = await loadRegistry(ws);
-    for (const r of input.media) assertUsable(reg, r);
+    const busy = await journalBusy(ws);
+    for (const r of input.media) assertUsable(reg, r, busy);
     const file = await loadLeases(ws);
     const lease: Lease = {
       lease_id: newId('lease'),
@@ -74,13 +78,23 @@ export async function createLease(ws: Workspace, input: { job: JobKind; label: s
     };
     file.leases.push(lease);
     await saveLeases(ws, file);
+    // A lease holds its versions: reset their clocks right here (review H1/M1), not only on reconcile.
+    let touched = false;
+    for (const r of input.media) {
+      const v = reg.versions[r.version_id]!;
+      if (v.unreferenced_since !== null) {
+        v.unreferenced_since = null;
+        touched = true;
+      }
+    }
+    if (touched) await saveRegistry(ws, reg);
     await audit(ws, { op: 'lease.create', actor: input.actor, outcome: 'ok', lease_id: lease.lease_id, job: lease.job, media: lease.media });
     return lease;
   });
 }
 
 export async function setLeaseStatus(ws: Workspace, input: { lease_id: string; status: LeaseStatus; actor: Actor }): Promise<Lease> {
-  assertAllowed(input.actor, 'manage_lease');
+  await guard(ws, input.actor, 'manage_lease', { lease_id: input.lease_id });
   return withWorkspaceLock(ws, 'setLeaseStatus', async () => {
     const file = await loadLeases(ws);
     const lease = file.leases.find((l) => l.lease_id === input.lease_id);
@@ -93,7 +107,7 @@ export async function setLeaseStatus(ws: Workspace, input: { lease_id: string; s
 
 /** Job finished/failed/cancelled: the lease stops holding its media. */
 export async function releaseLease(ws: Workspace, input: { lease_id: string; outcome: 'completed' | 'failed' | 'cancelled'; actor: Actor }): Promise<void> {
-  assertAllowed(input.actor, 'manage_lease');
+  await guard(ws, input.actor, 'manage_lease', { lease_id: input.lease_id });
   await withWorkspaceLock(ws, 'releaseLease', async () => {
     const file = await loadLeases(ws);
     const i = file.leases.findIndex((l) => l.lease_id === input.lease_id);
@@ -224,7 +238,7 @@ export async function commitProject(
   input: { manifest: ProjectManifest; expected_revision: number; actor: Actor },
   afterCommit?: (reg: Registry) => Promise<void>,
 ): Promise<ProjectManifest> {
-  assertAllowed(input.actor, 'commit_project');
+  await guard(ws, input.actor, 'commit_project');
   const next = validateProjectManifest(input.manifest);
   return withWorkspaceLock(ws, 'commitProject', async () => {
     const current = await readProject(ws, next.project_id);
@@ -233,10 +247,15 @@ export async function commitProject(
     }
     const reg = await loadRegistry(ws);
     const refs = manifestReferences(next);
-    for (const r of refs) assertUsable(reg, r.ref);
+    const busy = await journalBusy(ws);
+    for (const r of refs) assertUsable(reg, r.ref, busy);
     const saved: ProjectManifest = { ...next, revision: current.revision + 1, created_at: current.created_at, updated_at: ws.clock.now() };
     await writeJsonAtomic(await resolveInside(ws.root, manifestRel(next.project_id)), saved);
-    for (const r of refs) reg.versions[r.ref.version_id]!.ever_referenced = true;
+    for (const r of refs) {
+      const v = reg.versions[r.ref.version_id]!;
+      v.ever_referenced = true;
+      v.unreferenced_since = null; // reference resets the clock at commit time (review H1), index-independent
+    }
     await saveRegistry(ws, reg);
     if (afterCommit) await afterCommit(reg);
     await audit(ws, { op: 'project.commit', actor: input.actor, outcome: 'ok', project_id: saved.project_id, revision: saved.revision, status: saved.status, refs: refs.length });

@@ -9,44 +9,10 @@ import { readJson, withFsRetry, writeJsonAtomic } from './jsonStore.js';
 import { resolveCanonical } from './paths.js';
 import { type Actor, MEDIA_AREAS, assertAllowed, isAllowed, resolveInArea } from './permissions.js';
 import { type Registry, type VersionRecord, hashFile, loadRegistry, saveRegistry } from './registry.js';
-import { LAYOUT, META_FILES, type Workspace, withWorkspaceLock } from './workspace.js';
+import { LAYOUT, type Workspace, withWorkspaceLock } from './workspace.js';
 
-// ------------------------------------------------------------------ journal (crash safety, ST-09)
-
-export interface JournalEntry {
-  schema_version: 1;
-  op_id: string;
-  kind: 'trash' | 'restore';
-  version_id: string;
-  from_rel: string;
-  to_rel: string;
-  manifest_rel: string;
-  content_hash: string;
-  started_at: number;
-}
-
-const journalRel = (op_id: string, version_id: string) => `${LAYOUT.meta}/${META_FILES.journal}/${op_id}--${version_id}.json`;
-
-export async function writeJournal(ws: Workspace, e: JournalEntry): Promise<void> {
-  await writeJsonAtomic((await resolveCanonical(ws.root, journalRel(e.op_id, e.version_id), { allowMissing: true })).abs, e);
-}
-export async function clearJournal(ws: Workspace, e: Pick<JournalEntry, 'op_id' | 'version_id'>): Promise<void> {
-  await fsp.rm(path.join(ws.root, LAYOUT.meta, META_FILES.journal, `${e.op_id}--${e.version_id}.json`), { force: true });
-}
-export async function listJournal(ws: Workspace): Promise<{ file: string; entry: JournalEntry | null }[]> {
-  const dir = path.join(ws.root, LAYOUT.meta, META_FILES.journal);
-  const out: { file: string; entry: JournalEntry | null }[] = [];
-  for (const name of (await fsp.readdir(dir)).filter((n) => n.endsWith('.json')).sort()) {
-    const file = path.join(dir, name);
-    const entry = await readJson(file, (x) => x as JournalEntry).catch(() => null);
-    out.push({ file, entry });
-  }
-  return out;
-}
-/** Versions with an unfinished move are busy for every other operation. */
-export async function journalBusy(ws: Workspace): Promise<Set<string>> {
-  return new Set((await listJournal(ws)).map((j) => j.entry?.version_id).filter((x): x is string => !!x));
-}
+export { type JournalEntry, clearJournal, journalBusy, listJournal, writeJournal } from './journal.js';
+import { type JournalEntry, clearJournal, journalBusy, writeJournal } from './journal.js';
 
 // ------------------------------------------------------------------ manifest
 
@@ -165,9 +131,24 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
       const to = await resolveCanonical(ws.root, `${base}/${path.basename(src.rel)}`, { allowMissing: true });
       const manifestRel = `${base}/manifest.json`;
       const journal: JournalEntry = { schema_version: 1, op_id, kind: 'trash', version_id: v.version_id, from_rel: src.rel, to_rel: to.rel, manifest_rel: manifestRel, content_hash: v.content_hash, started_at: now };
+      const record = {
+        media_id: v.media_id,
+        version_id: v.version_id,
+        old_path: src.rel,
+        new_path: to.rel,
+        checksum: v.content_hash,
+        unreferenced_since: v.unreferenced_since,
+        eligible_since: e.eligible_at,
+        dependencies_checked: { index_fingerprint: idx.index.fingerprint, holders: e.holders.length, checked_at: now },
+      };
+      let moved = false;
+      let manifestAbs: string | null = null;
       try {
         await writeJournal(ws, journal);
+        // Logged *before* the move so a crash can never leave an unlogged move (review M4).
+        await audit(ws, { op_id, op: 'gc.auto_trash.item', actor: opts.actor, outcome: 'info', phase: 'started', ...record });
         const renamed = await moveVerified(src.abs, to.abs, v.content_hash);
+        moved = true;
         const manifest: TrashManifest = {
           schema_version: 1,
           op_id,
@@ -181,36 +162,46 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
           trashed_by: opts.actor,
           unreferenced_since: v.unreferenced_since,
           eligible_since: e.eligible_at,
-          dependencies_checked: { index_fingerprint: idx.index.fingerprint, holders: e.holders.length, checked_at: now },
+          dependencies_checked: record.dependencies_checked,
         };
-        await writeJsonAtomic((await resolveCanonical(ws.root, manifestRel, { allowMissing: true })).abs, manifest);
-        v.lifecycle = 'trashed';
-        v.rel_path = to.rel;
-        v.trash = { op_id, trashed_at: now, original_rel_path: src.rel, manifest_rel_path: manifestRel };
-        v.unreferenced_since = null;
-        await saveRegistry(ws, reg);
+        manifestAbs = (await resolveCanonical(ws.root, manifestRel, { allowMissing: true })).abs;
+        await writeJsonAtomic(manifestAbs, manifest);
+        // Change a copy; only adopt it once it is safely persisted (review M2).
+        reg.versions[v.version_id] = {
+          ...v,
+          lifecycle: 'trashed',
+          rel_path: to.rel,
+          trash: { op_id, trashed_at: now, original_rel_path: src.rel, manifest_rel_path: manifestRel },
+          unreferenced_since: null,
+        };
+        try {
+          await saveRegistry(ws, reg);
+        } catch (saveErr) {
+          reg.versions[v.version_id] = v;
+          throw saveErr;
+        }
+        await audit(ws, { op_id, op: 'gc.auto_trash.item', actor: opts.actor, outcome: 'ok', phase: 'done', ...record });
         await clearJournal(ws, journal);
         res.moved.push({ version_id: v.version_id, from: src.rel, to: to.rel, manifest: manifestRel, renamed });
         res.moved_bytes += v.size;
-        await audit(ws, {
-          op_id,
-          op: 'gc.auto_trash.item',
-          actor: opts.actor,
-          outcome: 'ok',
-          media_id: v.media_id,
-          version_id: v.version_id,
-          old_path: src.rel,
-          new_path: to.rel,
-          checksum: v.content_hash,
-          unreferenced_since: manifest.unreferenced_since,
-          eligible_since: manifest.eligible_since,
-          dependencies_checked: manifest.dependencies_checked,
-        });
       } catch (err) {
-        // Journal stays in place when the move may be half-done; recovery (ST-09) resolves it.
         res.ok = false;
         res.errors.push(`${v.version_id}: ${String(err)}`);
-        await audit(ws, { op_id, op: 'gc.auto_trash.item', actor: opts.actor, outcome: 'failed', version_id: v.version_id, error: String(err) });
+        let rolledBack = !moved;
+        if (moved) {
+          // Put the bytes back where the (unchanged) registry says they are.
+          try {
+            await moveVerified(to.abs, src.abs, v.content_hash);
+            await fsp.chmod(src.abs, 0o444).catch(() => undefined);
+            if (manifestAbs) await fsp.rm(manifestAbs, { force: true });
+            rolledBack = true;
+          } catch (rbErr) {
+            res.errors.push(`${v.version_id}: rollback gagal: ${String(rbErr)}`);
+          }
+        }
+        if (rolledBack) await clearJournal(ws, journal).catch(() => undefined); // otherwise journal stays for recovery (ST-09)
+        await audit(ws, { op_id, op: 'gc.auto_trash.item', actor: opts.actor, outcome: 'failed', phase: 'aborted', ...record, error: String(err), rolled_back: rolledBack });
+        break; // never keep moving files after a failure in this run
       }
     }
     await audit(ws, {

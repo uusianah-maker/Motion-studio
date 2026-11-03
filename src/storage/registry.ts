@@ -8,7 +8,8 @@ import { StorageError } from './errors.js';
 import { assertSafeId, isSafeId, newId } from './ids.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { isInside, resolveCanonical, resolveInside } from './paths.js';
-import { type Actor, assertAllowed } from './permissions.js';
+import { guard } from './guard.js';
+import type { Actor } from './permissions.js';
 import { LAYOUT, META_FILES, type Workspace, metaPath, projectRel, readProject, withWorkspaceLock } from './workspace.js';
 
 export const REGISTRY_SCHEMA_VERSION = 1;
@@ -165,10 +166,23 @@ function scopeDir(scope: MediaScope): string {
   return scope.kind === 'shared' ? LAYOUT.sharedMedia : projectRel(scope.project_id, '01_INPUT');
 }
 
-function findByHash(reg: Registry, hash: string, mediaId?: string): VersionRecord | undefined {
-  return Object.values(reg.versions).find(
-    (v) => v.content_hash === hash && v.lifecycle !== 'purged' && (mediaId === undefined || v.media_id === mediaId),
-  );
+const sameScope = (a: MediaScope, b: MediaScope) =>
+  a.kind === b.kind && (a.kind === 'shared' || (b.kind === 'project' && a.project_id === b.project_id));
+
+/**
+ * Duplicate detection (review M5): only *active* versions count, and only when the existing
+ * media is shared or in the same scope (projects never silently depend on another project's input).
+ * Identical bytes sitting in Trash are reported instead of returning an unusable version.
+ */
+function findDuplicate(reg: Registry, hash: string, accept: (v: VersionRecord) => boolean): VersionRecord | undefined {
+  const matches = Object.values(reg.versions).filter((v) => v.content_hash === hash && accept(v));
+  const active = matches.find((v) => v.lifecycle === 'active');
+  if (active) return active;
+  const trashed = matches.find((v) => v.lifecycle === 'trashed');
+  if (trashed) {
+    throw new StorageError('CONFLICT', 'Byte yang sama ada di Trash: pulihkan versi itu, jangan import ulang', { version_id: trashed.version_id });
+  }
+  return undefined;
 }
 
 interface StagedCopy {
@@ -227,7 +241,7 @@ export async function importMedia(
   ws: Workspace,
   input: { sourcePath: string; scope: MediaScope; display_name?: string; actor: Actor },
 ): Promise<ImportResult> {
-  assertAllowed(input.actor, 'import');
+  await guard(ws, input.actor, 'import');
   if (input.scope.kind === 'project') {
     assertSafeId(input.scope.project_id, 'Project ID');
     await readProject(ws, input.scope.project_id); // must exist and be valid
@@ -238,7 +252,10 @@ export async function importMedia(
   try {
     return await withWorkspaceLock(ws, 'importMedia', async () => {
       const reg = await loadRegistry(ws);
-      const dup = findByHash(reg, staged.hash);
+      const dup = findDuplicate(reg, staged.hash, (v) => {
+        const sc = reg.media[v.media_id]!.scope;
+        return sc.kind === 'shared' || sameScope(sc, input.scope);
+      });
       if (dup) {
         await fsp.rm(staged.tmpAbs, { force: true });
         await audit(ws, { op: 'media.import', actor: input.actor, outcome: 'info', duplicate: true, version_id: dup.version_id, content_hash: dup.content_hash });
@@ -272,7 +289,7 @@ export async function addVersion(
   ws: Workspace,
   input: { media_id: string; sourcePath: string; makeCurrent?: boolean; actor: Actor },
 ): Promise<ImportResult> {
-  assertAllowed(input.actor, 'import');
+  await guard(ws, input.actor, 'import');
   const mediaId = assertSafeId(input.media_id, 'Media ID');
   const source = await validateSource(ws, input.sourcePath);
   const before = await loadRegistry(ws);
@@ -285,7 +302,7 @@ export async function addVersion(
       const reg = await loadRegistry(ws);
       const media = reg.media[mediaId];
       if (!media) throw new StorageError('NOT_FOUND', 'Media tidak ditemukan', { media_id: mediaId });
-      const dup = findByHash(reg, staged.hash, mediaId);
+      const dup = findDuplicate(reg, staged.hash, (v) => v.media_id === mediaId);
       if (dup) {
         await audit(ws, { op: 'media.add_version', actor: input.actor, outcome: 'info', duplicate: true, version_id: dup.version_id });
         return { media, version: dup, duplicate: true };
@@ -306,7 +323,7 @@ export async function addVersion(
 }
 
 export async function setCurrentVersion(ws: Workspace, input: { media_id: string; version_id: string; actor: Actor }): Promise<MediaRecord> {
-  assertAllowed(input.actor, 'set_protection');
+  await guard(ws, input.actor, 'set_protection', { version_id: input.version_id });
   return withWorkspaceLock(ws, 'setCurrentVersion', async () => {
     const reg = await loadRegistry(ws);
     const media = reg.media[input.media_id];
@@ -315,6 +332,7 @@ export async function setCurrentVersion(ws: Workspace, input: { media_id: string
     if (v.lifecycle !== 'active' || v.integrity !== 'ok') throw new StorageError('PRECONDITION', 'Versi current harus aktif dan utuh', { version_id: v.version_id });
     const previous = media.current_version_id;
     media.current_version_id = v.version_id;
+    v.unreferenced_since = null; // protection resets the clock immediately, even if the index is invalid
     await saveRegistry(ws, reg);
     await audit(ws, { op: 'media.set_current', actor: input.actor, outcome: 'ok', media_id: media.media_id, previous, now: v.version_id });
     return media;
@@ -325,12 +343,13 @@ export async function setProtection(
   ws: Workspace,
   input: { version_id: string; keep?: boolean; pin?: boolean; legal_hold?: boolean; actor: Actor },
 ): Promise<VersionRecord> {
-  assertAllowed(input.actor, 'set_protection');
+  await guard(ws, input.actor, 'set_protection', { version_id: input.version_id });
   return withWorkspaceLock(ws, 'setProtection', async () => {
     const reg = await loadRegistry(ws);
     const v = reg.versions[input.version_id];
     if (!v) throw new StorageError('NOT_FOUND', 'Versi tidak ditemukan', { version_id: input.version_id });
     for (const k of ['keep', 'pin', 'legal_hold'] as const) if (input[k] !== undefined) v[k] = input[k];
+    if (v.keep || v.pin || v.legal_hold) v.unreferenced_since = null; // reset at the mutation (review H1)
     await saveRegistry(ws, reg);
     await audit(ws, { op: 'media.set_protection', actor: input.actor, outcome: 'ok', version_id: v.version_id, keep: v.keep, pin: v.pin, legal_hold: v.legal_hold });
     return v;
@@ -342,17 +361,25 @@ export interface VerifyResult {
   integrity: Integrity;
   expected_hash: string;
   actual_hash?: string;
+  /** Set when the file could not be read (locked/busy/denied): nothing was recorded. */
+  unverifiable?: string;
+  /** True when the result was persisted to the registry. */
+  recorded: boolean;
 }
 
 /**
  * Re-hash a version's bytes. A mismatch marks it CHANGED (alert, GC-11); the recorded
  * hash is never updated, so timelines are never silently upgraded to new bytes.
+ * Hashing happens outside the lock; the result is only recorded if the version did not
+ * move meanwhile (review L1). Read errors other than "not found" record nothing.
+ * The AI actor may verify but never writes.
  */
-export async function verifyVersion(ws: Workspace, versionId: string): Promise<VerifyResult> {
+export async function verifyVersion(ws: Workspace, versionId: string, actor: Actor | 'system' = 'system'): Promise<VerifyResult> {
   const reg0 = await loadRegistry(ws);
   const v0 = reg0.versions[versionId];
   if (!v0) throw new StorageError('NOT_FOUND', 'Versi tidak ditemukan', { version_id: versionId });
-  if (v0.lifecycle === 'purged') return { version_id: versionId, integrity: v0.integrity, expected_hash: v0.content_hash };
+  const base = { version_id: versionId, expected_hash: v0.content_hash };
+  if (v0.lifecycle === 'purged') return { ...base, integrity: v0.integrity, recorded: false };
   let integrity: Integrity;
   let actual: string | undefined;
   try {
@@ -360,13 +387,17 @@ export async function verifyVersion(ws: Workspace, versionId: string): Promise<V
     actual = (await hashFile(abs)).hash;
     integrity = actual === v0.content_hash ? 'ok' : 'changed';
   } catch (e) {
-    if (e instanceof StorageError && e.code !== 'NOT_FOUND') throw e;
+    const notFound = (e instanceof StorageError && e.code === 'NOT_FOUND') || (e as NodeJS.ErrnoException).code === 'ENOENT';
+    if (!notFound) return { ...base, integrity: v0.integrity, unverifiable: String(e), recorded: false };
     integrity = 'missing';
   }
+  const result = { ...base, integrity, ...(actual ? { actual_hash: actual } : {}) };
+  if (actor === 'ai') return { ...result, recorded: false };
   return withWorkspaceLock(ws, 'verifyVersion', async () => {
     const reg = await loadRegistry(ws);
     const v = reg.versions[versionId];
     if (!v) throw new StorageError('NOT_FOUND', 'Versi tidak ditemukan', { version_id: versionId });
+    if (v.rel_path !== v0.rel_path || v.lifecycle !== v0.lifecycle) return { ...result, recorded: false }; // stale: moved meanwhile
     const prev = v.integrity;
     v.integrity = integrity;
     v.last_verified_at = ws.clock.now();
@@ -374,7 +405,7 @@ export async function verifyVersion(ws: Workspace, versionId: string): Promise<V
     if (integrity !== 'ok' || prev !== 'ok') {
       await audit(ws, {
         op: 'media.verify',
-        actor: 'system',
+        actor,
         outcome: integrity === 'ok' ? 'info' : 'alert',
         version_id: versionId,
         integrity,
@@ -383,6 +414,6 @@ export async function verifyVersion(ws: Workspace, versionId: string): Promise<V
         actual_hash: actual,
       });
     }
-    return { version_id: versionId, integrity, expected_hash: v.content_hash, ...(actual ? { actual_hash: actual } : {}) };
+    return { ...result, recorded: true };
   });
 }

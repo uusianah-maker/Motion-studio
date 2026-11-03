@@ -17,50 +17,66 @@
 
 [1m[7m[36m RUN [39m[27m[22m [36mv2.1.8 [39m[90mD:/VIBECODING/Video motion[39m
 
- [32m✓[39m test/clock.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m test/clock.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 6[2mms[22m[39m
  [32m✓[39m test/service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1004[2mms[22m[39m
-   [33m[2m✓[22m[39m StorageService clock reconciliation[2m > [22mstarts the 30-day clock at the exact moment the last reference/protection disappears [33m686[2mms[22m[39m
-   [33m[2m✓[22m[39m StorageService clock reconciliation[2m > [22ma mutation with an invalid index still reports clocks ok:false (fail closed, no clock writes) [33m317[2mms[22m[39m
- [32m✓[39m test/st01-workspace.test.ts [2m([22m[2m35 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 1550[2mms[22m[39m
- [32m✓[39m test/st02-registry.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 1885[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-02 import[2m > [22mduplicate bytes return the existing version (also under concurrent imports) [33m310[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-02 immutable versions[2m > [22maddVersion creates a new version; old bytes untouched; duplicate of same media is reused [33m319[2mms[22m[39m
- [32m✓[39m test/st01-hardening.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 2066[2mms[22m[39m
-   [33m[2m✓[22m[39m H2/M1/M2/M3 lock safety[2m > [22mH2: many contenders breaking one stale lock never overlap [33m444[2mms[22m[39m
-   [33m[2m✓[22m[39m H2/M1/M2/M3 lock safety[2m > [22matomic write cleans its temp file when the target cannot be written [33m996[2mms[22m[39m
- [32m✓[39m test/st03-deps.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 2211[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-03 reverse index[2m > [22mcollects holders across active, archived, retained snapshot/undo and job leases [33m850[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-03 reverse index[2m > [22mrebuild from manifests is deterministic and independent of deps.json [33m355[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-03 reverse index[2m > [22mfails closed: corrupt manifest, dangling ref, folder without manifest, junction, bad leases [33m336[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-03 commits & leases[2m > [22moptimistic concurrency, unknown/changed refs rejected, AI cannot commit [33m394[2mms[22m[39m
- [32m✓[39m test/st04-eligibility.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 4010[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-02 / GC-03: 29d23h not eligible, 30d eligible (old non-current previously referenced) [33m530[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-04: archived project or retained undo/snapshot keeps it referenced forever [33m552[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-05: a queued/running job lease holds the version; release restarts the clock [33m562[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-06: re-referenced on day 29 resets the clock; not moved on the old schedule [33m621[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mCURRENT, KEEP, PIN and LEGAL_HOLD protect and reset the clock [33m781[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-07 (engine): invalid index → FAILED_AUDIT for everything, clocks untouched, audited [33m369[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mintegrity, lifecycle, busy and path gates [33m328[2mms[22m[39m
- [32m✓[39m test/st06-trash.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 4884[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mGC-03: eligible version moves to Trash with manifest, registry and audit all accurate [33m529[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mGC-10: Trash on the same disk reports freed space = 0 [33m452[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mnever moves: never-used, waiting, current, referenced archived/undo, leased (GC-01/02/04/05) [33m1585[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mGC-07: invalid dependency data → nothing moved, blocked + logged [33m350[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mGC-12: AI cannot trigger Auto Trash; the attempt is audited [33m312[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mre-validates right before moving: changed bytes and hard links are skipped [33m582[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mbusy (live player/project) versions are not moved; rerun is idempotent [33m716[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22ma trashed version cannot be committed into a project until restored [33m356[2mms[22m[39m
- [32m✓[39m test/st05-scanner.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 7175[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22meligible set equals the fixture expectation exactly; nothing is moved [33m1943[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22mbusy versions (import/relink/move/export) are not candidates [33m1614[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22mGC-07: corrupt/incomplete dependency data stops the scan safely with a logged reason [33m1403[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22ma missing candidate file is rejected as unverifiable and flagged missing [33m1042[2mms[22m[39m
-   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22mGC-12 (read side): AI may scan but writes nothing except the audit entry [33m1122[2mms[22m[39m
+   [33m[2m✓[22m[39m StorageService clock reconciliation[2m > [22mstarts the 30-day clock at the exact moment the last reference/protection disappears [33m652[2mms[22m[39m
+   [33m[2m✓[22m[39m StorageService clock reconciliation[2m > [22ma mutation with an invalid index still reports clocks ok:false (fail closed, no clock writes) [33m350[2mms[22m[39m
+ [32m✓[39m test/st01-workspace.test.ts [2m([22m[2m35 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 1657[2mms[22m[39m
+ [32m✓[39m test/st01-hardening.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 2029[2mms[22m[39m
+   [33m[2m✓[22m[39m H2/M1/M2/M3 lock safety[2m > [22mH2: many contenders breaking one stale lock never overlap [33m324[2mms[22m[39m
+   [33m[2m✓[22m[39m H2/M1/M2/M3 lock safety[2m > [22matomic write cleans its temp file when the target cannot be written [33m1006[2mms[22m[39m
+ [32m✓[39m test/st02-registry.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 2193[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-02 immutable versions[2m > [22maddVersion creates a new version; old bytes untouched; duplicate of same media is reused [33m415[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-02 immutable versions[2m > [22msetCurrentVersion and setProtection are user-only and audited [33m305[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-02 immutable versions[2m > [22mGC-11: replaced bytes without a new version → CHANGED alert, recorded hash never updated [33m312[2mms[22m[39m
+ [32m✓[39m test/st03-deps.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 2510[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-03 reverse index[2m > [22mcollects holders across active, archived, retained snapshot/undo and job leases [33m806[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-03 reverse index[2m > [22mrebuild from manifests is deterministic and independent of deps.json [33m442[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-03 reverse index[2m > [22mfails closed: corrupt manifest, dangling ref, folder without manifest, junction, bad leases [33m438[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-03 commits & leases[2m > [22moptimistic concurrency, unknown/changed refs rejected, AI cannot commit [33m508[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-03 commits & leases[2m > [22mlease lifecycle pins exact hashes and stops holding on release [33m312[2mms[22m[39m
+ [32m✓[39m test/st07-restore.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 3150[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-07 restore[2m > [22mrestores to the original path, references work again, eligibility restarts from zero [33m694[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-07 restore[2m > [22mGC-09: occupied destination is never overwritten; user picks alternate or explicit path [33m638[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-07 restore[2m > [22mexplicit destination must stay inside a media area [33m691[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-07 restore[2m > [22mcorrupt or missing Trash file → explicit failure, never claimed as restored [33m561[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-07 restore[2m > [22mrestore is user-only and only for trashed versions [33m565[2mms[22m[39m
+ [32m✓[39m test/st04-eligibility.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 4587[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-02 / GC-03: 29d23h not eligible, 30d eligible (old non-current previously referenced) [33m555[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-04: archived project or retained undo/snapshot keeps it referenced forever [33m672[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-05: a queued/running job lease holds the version; release restarts the clock [33m670[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-06: re-referenced on day 29 resets the clock; not moved on the old schedule [33m718[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mCURRENT, KEEP, PIN and LEGAL_HOLD protect and reset the clock [33m812[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mGC-07 (engine): invalid index → FAILED_AUDIT for everything, clocks untouched, audited [33m522[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-04 eligibility & 30-day clock[2m > [22mintegrity, lifecycle, busy and path gates [33m376[2mms[22m[39m
+ [32m✓[39m test/checkpointB-regressions.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 5580[2mms[22m[39m
+   [33m[2m✓[22m[39m H1: references made while the index is invalid still reset the clock[2m > [22mreviewer scenario: no early trash after a reference during a broken-index window [33m646[2mms[22m[39m
+   [33m[2m✓[22m[39m M1: direct module APIs reset the clock at the mutation point[2m > [22mlease and KEEP via module functions block trash on the old schedule [33m1002[2mms[22m[39m
+   [33m[2m✓[22m[39m M2: failure after the move rolls back and stops the run[2m > [22mregistry write failure → file returns to original path, registry unchanged, journal cleared [33m1876[2mms[22m[39m
+   [33m[2m✓[22m[39m M3: versions with an unfinished move cannot be referenced or leased[2m > [22mjournal-busy version is rejected by commit and createLease [33m444[2mms[22m[39m
+   [33m[2m✓[22m[39m M5: duplicate detection respects lifecycle and scope[2m > [22mbytes in Trash are reported; other-project input is not shared; shared media is reused [33m782[2mms[22m[39m
+   [33m[2m✓[22m[39m L1/L3: verify safety and audited denials[2m > [22mAI verify never writes the registry [33m413[2mms[22m[39m
+   [33m[2m✓[22m[39m L1/L3: verify safety and audited denials[2m > [22mevery denied AI operation leaves an audit entry [33m412[2mms[22m[39m
+ [32m✓[39m test/st06-trash.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 5735[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mGC-03: eligible version moves to Trash with manifest, registry and audit all accurate [33m528[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mGC-10: Trash on the same disk reports freed space = 0 [33m539[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mnever moves: never-used, waiting, current, referenced archived/undo, leased (GC-01/02/04/05) [33m1898[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mGC-07: invalid dependency data → nothing moved, blocked + logged [33m370[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mGC-12: AI cannot trigger Auto Trash; the attempt is audited [33m338[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mre-validates right before moving: changed bytes and hard links are skipped [33m751[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22mbusy (live player/project) versions are not moved; rerun is idempotent [33m868[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-06 Auto Trash[2m > [22ma trashed version cannot be committed into a project until restored [33m440[2mms[22m[39m
+ [32m✓[39m test/st05-scanner.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 9020[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22meligible set equals the fixture expectation exactly; nothing is moved [33m2243[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22mbusy versions (import/relink/move/export) are not candidates [33m1826[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22mGC-07: corrupt/incomplete dependency data stops the scan safely with a logged reason [33m1750[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22ma missing candidate file is rejected as unverifiable and flagged missing [33m1808[2mms[22m[39m
+   [33m[2m✓[22m[39m ST-05 candidate scanner (dry run)[2m > [22mGC-12 (read side): AI may scan but writes nothing except the audit entry [33m1328[2mms[22m[39m
 
-[2m Test Files [22m [1m[32m9 passed[39m[22m[90m (9)[39m
-[2m      Tests [22m [1m[32m86 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (87)[39m
-[2m   Start at [22m 00:12:16
-[2m   Duration [22m 8.76s[2m (transform 909ms, setup 0ms, collect 2.91s, tests 24.79s, environment 2ms, prepare 5.99s)[22m
+[2m Test Files [22m [1m[32m11 passed[39m[22m[90m (11)[39m
+[2m      Tests [22m [1m[32m98 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (99)[39m
+[2m   Start at [22m 00:24:56
+[2m   Duration [22m 11.65s[2m (transform 2.16s, setup 0ms, collect 6.66s, tests 37.47s, environment 4ms, prepare 13.22s)[22m
 
 
 > motion-studio-copilot@0.1.0 build

@@ -17,7 +17,7 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | T08 | ST-04 eligibility engine 30 hari + never-used | DONE | verify: 70 pass/1 skip. Tes GC-01 (never-used 60 hari tetap terlindungi), GC-02 (29h23j tidak eligible), GC-03 (30 hari eligible, level engine), GC-04 (arsip/undo 400 hari), GC-05 (lease menahan; release memulai periode baru), GC-06 (re-reference hari 29 reset), CURRENT/KEEP/PIN/LEGAL_HOLD reset jam, GC-07 level engine (index invalid → FAILED_AUDIT, jam tidak disentuh, diaudit), gate integritas/lifecycle/busy/path | 30 hari = konstanta kode. Semua gate dievaluasi (bukan short-circuit) supaya laporan menjelaskan semua alasan. Jam mulai saat rekonsiliasi pertama setelah referensi hilang (konservatif: tidak pernah lebih awal) | b050c29 |
 | T09 | ST-05 candidate scanner (dry-run) + audit log | DONE | verify: 78 pass/1 skip. Fixture 9 kategori → kandidat persis = {A,B}; file tree tidak berubah (hash seluruh file); byte diubah diam-diam → ditolak CHANGED + flag; file hilang → UNVERIFIABLE + missing; busy dikecualikan; GC-07 berhenti aman + audit 'blocked'; AI scan tidak menulis apa pun selain audit; service: jam mulai tepat saat referensi/proteksi/lease hilang | Ditambah fasad `StorageService` (ADR D1) yang merekonsiliasi jam di lock yang sama setelah tiap mutasi — temuan saat T09: tanpa ini jam baru mulai saat scan berikutnya | 78be3da |
 | T10 | ST-06 Auto Trash engine | DONE | verify: 86 pass/1 skip. Tes GC-03 (pindah + manifest + registry + audit akurat), GC-10 (freed_bytes = 0 di volume sama), GC-01/02/04/05 tidak pernah dipindah (+ current), GC-07 (data dependensi korup → 0 pindah, diaudit), GC-12 (AI ditolak + diaudit), validasi ulang tepat sebelum pindah (byte berubah & hard link di-skip), busy & idempotensi, versi di Trash tidak bisa di-commit | Journal intent ditulis sebelum pindah (dipakai recovery T13). Fallback lintas-drive: copy → verifikasi hash → hapus original. freed_bytes selalu 0 (tidak pernah klaim ruang bebas) | d86fa6c |
-| T11 | ST-07 restore + collision handling | DONE | verify: 91 pass/1 skip. Tes: restore ke path asli (read-only lagi, referensi valid lagi, periode 30 hari baru), GC-09 tujuan terisi tidak ditimpa → conflict + saran / alternate / path eksplisit, tujuan wajib area media, file Trash rusak/hilang → failed (bukan klaim sukses), user-only + diaudit, bukan-trashed ditolak | Pindah tanpa overwrite via link() atomik (EEXIST) lalu unlink; fallback copy eksklusif + cek hash | (lihat git log) |
+| T11 | ST-07 restore + collision handling | DONE | verify: 91 pass/1 skip. Tes: restore ke path asli (read-only lagi, referensi valid lagi, periode 30 hari baru), GC-09 tujuan terisi tidak ditimpa → conflict + saran / alternate / path eksplisit, tujuan wajib area media, file Trash rusak/hilang → failed (bukan klaim sukses), user-only + diaudit, bukan-trashed ditolak | Pindah tanpa overwrite via link() atomik (EEXIST) lalu unlink; fallback copy eksklusif + cek hash | 1dc21aa |
 
 ## Pending Confirmation
 ### PC-0: Konfirmasi sign-off T01
@@ -41,11 +41,22 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Opsi B: owner tentukan angka lain.
 - Rekomendasi: A dulu, kalibrasi setelah pilot.
 
+### PC-3: Lompatan jam sistem
+- Konteks: kalau jam Windows dimajukan (manual/salah sinkron), media lama bisa langsung dianggap lewat 30 hari.
+- Opsi A: deteksi lompatan maju > 2 hari sejak scan terakhir → Auto Trash ditahan sampai user konfirmasi.
+- Opsi B: percaya jam sistem (perilaku sekarang).
+- Rekomendasi: A. Murah, dan cocok dengan prinsip fail-closed.
+
 ## Audit
 ### Checkpoint A (T01–T05): LULUS setelah perbaikan
 - Suite: verify 48 pass / 1 skip (stabil 5x), prototype 56/56. Laporan: `audit/CHECKPOINT_A/CHECKPOINT_A_REPORT.md`.
 - Review independen (subagent): 2 High (alias area via case/8.3; dua penulis saat bobol lock basi), 5 Medium, beberapa Low. Semua High/Medium kode diperbaiki + diberi tes.
 - Dibawa ke task berikutnya: validasi ulang di bawah lock + tolak hard link sebelum move/delete (ST-06 = T10, ST-08 = T12).
+
+### Checkpoint B (T06–T10): LULUS setelah perbaikan
+- Suite: verify 98 pass / 1 skip, prototype 56/56. Laporan: `audit/CHECKPOINT_B/CHECKPOINT_B_REPORT.md`.
+- Review independen: 1 High (jam 30 hari tidak reset bila referensi dibuat saat index invalid → Trash terlalu cepat), 5 Medium, 5 Low. High + semua Medium + L1/L3 diperbaiki dengan tes regresi.
+- Owner (2026-11-04): "jalankan dulu semua end to end, konfirmasi nanti kalau sudah 90%" → lanjut tanpa jeda konfirmasi; PC dikumpulkan di akhir.
 
 ## Bug
 | Bug | Ditemukan di | Status (fixed/open) | Catatan |
@@ -57,6 +68,11 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | `fsp.realpath.native` tidak ada | T05 (test) | fixed | pakai `promisify(fs.realpath.native)` |
 | H1 alias area via case/8.3 | Checkpoint A | fixed | `resolveInArea` + tolak `~<digit>` |
 | H2/M1/M2/M3 lock | Checkpoint A | fixed | token, heartbeat, release berpemilik |
+| Jam tidak reset saat index invalid (H1-B) | Checkpoint B | fixed | reset di titik mutasi |
+| Trash gagal di tengah tanpa rollback (M2-B) | Checkpoint B | fixed | rollback + stop |
+| Dedup import salah scope/Trash (M5-B) | Checkpoint B | fixed | |
+| Orphan file setelah crash import | Checkpoint B | open → T13 | orphan sweep |
+| Lompatan jam sistem (L2-B) | Checkpoint B | open (risiko) | PC-3 |
 | TOCTOU sebelum destruktif, hard link | Checkpoint A | fixed untuk Trash (T10); purge menyusul T12 | `revalidateFile()` |
 | Jam 30 hari baru mulai saat rekonsiliasi berikutnya, bukan saat referensi hilang | T09 (test) | fixed | `StorageService` rekonsiliasi di dalam lock setelah tiap mutasi; tes `service.test.ts` |
 | `<video>` hitam menutupi placeholder | T02 (self-review screenshot) | fixed | tes A04 ditambah |
