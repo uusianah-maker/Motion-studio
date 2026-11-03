@@ -3,6 +3,8 @@ import { type SyncResult, syncClocks } from './eligibility.js';
 import type { Actor } from './permissions.js';
 import type { ProjectManifest } from './project.js';
 import * as registry from './registry.js';
+import * as backup from './backup.js';
+import { executePurge, preparePurge } from './purge.js';
 import { restoreVersion } from './restore.js';
 import { scanCandidates } from './scanner.js';
 import { runAutoTrash } from './trash.js';
@@ -78,5 +80,23 @@ export class StorageService {
   /** Restore + clock sync: a restored, still-unreferenced version starts a brand-new 30-day period. */
   restore(input: Parameters<typeof restoreVersion>[1]) {
     return mutate(this.ws, 'svc.restore', input.actor, () => restoreVersion(this.ws, input));
+  }
+
+  /** Step 1 of manual permanent delete (user only): dialog details + single-use token. */
+  preparePurge(input: Parameters<typeof preparePurge>[1]) {
+    return preparePurge(this.ws, input);
+  }
+
+  /** Step 2: token + typed phrase + fresh locked dependency audit. Never automatic. */
+  executePurge(input: Parameters<typeof executePurge>[1]) {
+    return executePurge(this.ws, input);
+  }
+
+  registerBackupLocation(input: Parameters<typeof backup.registerBackupLocation>[1]) {
+    return backup.registerBackupLocation(this.ws, input);
+  }
+
+  verifyBackupLocation(input: Parameters<typeof backup.verifyBackupLocation>[1]) {
+    return backup.verifyBackupLocation(this.ws, input);
   }
 }
