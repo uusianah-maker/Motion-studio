@@ -1,6 +1,6 @@
 # Progress /gasngoding
 Update terakhir: 2026-11-03
-Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 2/15 selesai · 0 blocked · 13 belum dikerjakan
+Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 3/15 selesai · 0 blocked · 12 belum dikerjakan
 
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
 
@@ -8,7 +8,8 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
 |---|---|---|---|---|---|
 | T01 | Audit HTML v0.5 FIXED | DONE | `node audit/T01/audit.mjs`: 34 PASS / 14 FAIL / 1 NOT TESTED; laporan `audit/T01/T01_AUDIT_REPORT.md` | Sign-off: owner menjalankan /gasngoding sebagai jawaban pertanyaan sign-off → dianggap disetujui (lihat PC-0) | 294c26c |
-| T02 | Perbaiki temuan T01 | DONE | Suite regresi 56/56 PASS (`audit/T02/evidence/run_log.txt`); laporan `audit/T02/T02_REPAIR_REPORT.md` | Semua temuan F-01..F-11 + I03 diperbaiki (PRD: "perbaiki temuan secara berurutan"), bukan cuma yang kritis | (lihat git log) |
+| T02 | Perbaiki temuan T01 | DONE | Suite regresi 56/56 PASS (`audit/T02/evidence/run_log.txt`); laporan `audit/T02/T02_REPAIR_REPORT.md` | Semua temuan F-01..F-11 + I03 diperbaiki (PRD: "perbaiki temuan secara berurutan"), bukan cuma yang kritis | 90fe219 |
+| T03 | ADR desktop/hybrid & boundary fs | DONE | `docs/adr/ADR-001-desktop-hybrid-storage-boundary.md`; dicek terhadap PRD §0.1, §0.3, v0.8 §C/§F/§H (path, junction, actor AI, purge manual, secret) | Storage core = modul Node/TS tanpa dependensi runtime, shell-agnostic; metadata JSON + atomic write (bisa dimigrasi ke SQLite) | (lihat git log) |
 
 ## Pending Confirmation
 ### PC-0: Konfirmasi sign-off T01
@@ -17,6 +18,13 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Opsi A: anggap sign-off sah (status sekarang).
 - Opsi B: batalkan; T01 balik ke TESTING dan pekerjaan sesudahnya ditahan.
 - Rekomendasi: A. Audit lengkap & bisa diulang, dan semua temuan sudah diperbaiki di T02.
+
+### PC-1: Shell desktop
+- Task terdampak: integrasi UI (dashboard storage, dialog Trash/purge), backlog editor. **Tidak** memblokir T04–T15 (storage core shell-agnostic).
+- Opsi A: Electron. Storage core jalan langsung di main process, satu bahasa TS. Installer besar.
+- Opsi B: Tauri + sidecar Node. Ringan, tapi dua runtime dan packaging lebih rumit.
+- Opsi C: Tauri + port storage ke Rust. Paling ringan, tapi tulis ulang dan test ganda.
+- Rekomendasi: A, karena paling cepat jadi dan risiko integrasi FFmpeg/Node paling kecil.
 
 ## Audit
 (belum ada checkpoint)
