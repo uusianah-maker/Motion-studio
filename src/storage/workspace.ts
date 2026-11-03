@@ -104,8 +104,15 @@ export async function initWorkspace(rootInput: string, opts: { clock?: Clock } =
     throw new StorageError('CONFLICT', 'Folder root harus kosong untuk workspace baru', { root: abs, entries: entries.slice(0, 5) });
   }
   const root = await canonicalRoot(abs);
-  for (const dir of Object.values(LAYOUT)) await fsp.mkdir(path.join(root, dir));
-  await fsp.mkdir(path.join(root, LAYOUT.meta, META_FILES.journal));
+  try {
+    for (const dir of Object.values(LAYOUT)) await fsp.mkdir(path.join(root, dir));
+    await fsp.mkdir(path.join(root, LAYOUT.meta, META_FILES.journal));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new StorageError('CONFLICT', 'Workspace sedang/sudah dibuat oleh proses lain', { root });
+    }
+    throw e;
+  }
   const meta: WorkspaceMeta = { schema_version: WORKSPACE_SCHEMA_VERSION, workspace_id: newId('ws'), created_at: clock.now() };
   const ws: Workspace = { root, meta, clock };
   await writeJsonAtomic(metaPath(ws, META_FILES.policy), DEFAULT_POLICY);
@@ -119,7 +126,24 @@ export async function initWorkspace(rootInput: string, opts: { clock?: Clock } =
 
 /** Open and validate an existing workspace (all layout folders present, none are links). */
 export async function openWorkspace(rootInput: string, opts: { clock?: Clock } = {}): Promise<Workspace> {
+  try {
+    if ((await fsp.lstat(path.resolve(rootInput))).isSymbolicLink()) {
+      throw new StorageError('WORKSPACE_INVALID', 'Root workspace tidak boleh symlink/junction', { root: rootInput });
+    }
+  } catch (e) {
+    if (e instanceof StorageError) throw e;
+    throw new StorageError('WORKSPACE_INVALID', 'Root workspace tidak bisa diakses', { root: rootInput, cause: String(e) });
+  }
   const root = await canonicalRoot(rootInput);
+  // Metadata files must be regular files inside the workspace (no links pointing elsewhere).
+  for (const f of [META_FILES.workspace, META_FILES.policy, META_FILES.registry, META_FILES.leases, META_FILES.purgeRequests]) {
+    try {
+      const p = await resolveInside(root, `${LAYOUT.meta}/${f}`);
+      if (!(await fsp.lstat(p)).isFile()) throw new StorageError('WORKSPACE_INVALID', `Bukan file biasa: ${f}`);
+    } catch (e) {
+      throw new StorageError('WORKSPACE_INVALID', `File metadata bermasalah: ${f}`, { cause: String(e) });
+    }
+  }
   const meta = await readJson(path.join(root, LAYOUT.meta, META_FILES.workspace), validateMeta);
   for (const dir of [...Object.values(LAYOUT), `${LAYOUT.meta}/${META_FILES.journal}`]) {
     let p: string;

@@ -1,0 +1,33 @@
+
+> motion-studio-copilot@0.1.0 verify
+> npm run typecheck && npm run lint && npm test && npm run build
+
+
+> motion-studio-copilot@0.1.0 typecheck
+> tsc -p tsconfig.test.json
+
+
+> motion-studio-copilot@0.1.0 lint
+> eslint .
+
+
+> motion-studio-copilot@0.1.0 test
+> vitest run
+
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.8 [39m[90mD:/VIBECODING/Video motion[39m
+
+ [32m✓[39m test/clock.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 2[2mms[22m[39m
+ [32m✓[39m test/st01-workspace.test.ts [2m([22m[2m35 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 843[2mms[22m[39m
+ [32m✓[39m test/st01-hardening.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 1776[2mms[22m[39m
+   [33m[2m✓[22m[39m H2/M1/M2/M3 lock safety[2m > [22matomic write cleans its temp file when the target cannot be written [33m974[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m48 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (49)[39m
+[2m   Start at [22m 23:56:35
+[2m   Duration [22m 3.10s[2m (transform 213ms, setup 0ms, collect 385ms, tests 2.62s, environment 0ms, prepare 1.83s)[22m
+
+
+> motion-studio-copilot@0.1.0 build
+> tsc -p tsconfig.json
+

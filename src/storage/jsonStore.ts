@@ -64,11 +64,21 @@ interface LockInfo {
   pid: number;
   host: string;
   owner: string;
+  token: string;
   acquired_at: number;
 }
 
-const held = new AsyncLocalStorage<Set<string>>();
-const STALE_MS = 10 * 60 * 1000;
+export const LOCK_TIMING = {
+  /** A lock whose file has not been touched for this long is considered abandoned. */
+  staleMs: 10 * 60 * 1000,
+  /** Holders refresh the lock file mtime at this interval (heartbeat). */
+  heartbeatMs: 30 * 1000,
+};
+
+/** In-process registry of currently held locks: key -> token. Cleared on release. */
+const active = new Map<string, string>();
+/** Async context: which (key, token) pairs this call chain holds. */
+const held = new AsyncLocalStorage<Map<string, string>>();
 
 function pidAlive(pid: number): boolean {
   try {
@@ -79,62 +89,107 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-async function tryBreakStale(lockPath: string): Promise<boolean> {
-  let info: Partial<LockInfo>;
+async function readLock(lockPath: string): Promise<Partial<LockInfo> | null> {
   try {
-    info = JSON.parse(await fsp.readFile(lockPath, 'utf8')) as Partial<LockInfo>;
+    return JSON.parse(await fsp.readFile(lockPath, 'utf8')) as Partial<LockInfo>;
   } catch {
-    // Unreadable lock: only break it once it is old enough by mtime.
-    try {
-      const st = await fsp.stat(lockPath);
-      if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    } catch {
-      return true;
-    }
-    await fsp.rm(lockPath, { force: true });
-    return true;
+    return null;
   }
-  const sameHost = info.host === os.hostname();
-  const dead = sameHost && typeof info.pid === 'number' && !pidAlive(info.pid);
-  const old = typeof info.acquired_at === 'number' && Date.now() - info.acquired_at > STALE_MS;
-  if (dead || old) {
-    await fsp.rm(lockPath, { force: true });
-    return true;
+}
+
+async function isStale(lockPath: string, info: Partial<LockInfo> | null): Promise<boolean> {
+  let mtime: number;
+  try {
+    mtime = (await fsp.stat(lockPath)).mtimeMs;
+  } catch {
+    return false; // vanished: just retry acquiring
   }
-  return false;
+  const silentTooLong = Date.now() - mtime > LOCK_TIMING.staleMs;
+  // Owner process on this host is gone: stale regardless of age.
+  if (info && info.host === os.hostname() && typeof info.pid === 'number' && !pidAlive(info.pid)) return true;
+  // Otherwise (live pid, other host, unreadable/partial file) only a stopped heartbeat makes it stale.
+  return silentTooLong;
 }
 
 /**
- * Exclusive cross-process lock on a workspace (file created with O_EXCL).
- * Re-entrant inside the same async call chain.
+ * Break a stale lock without deleting a *fresh* one created in between:
+ * rename it aside, verify the renamed file is the one judged stale, otherwise
+ * put it back with link() (atomic create-if-absent).
+ */
+async function breakStale(lockPath: string, expectedToken: string | undefined): Promise<void> {
+  const aside = `${lockPath}.stale.${process.pid}.${randomBytes(4).toString('hex')}`;
+  try {
+    await fsp.rename(lockPath, aside);
+  } catch {
+    return; // someone else already moved it
+  }
+  const got = await readLock(aside);
+  if (got?.token !== expectedToken) {
+    // We grabbed a lock that is not the stale one: restore it if the slot is still free.
+    await fsp.link(aside, lockPath).catch(() => undefined);
+  }
+  await fsp.rm(aside, { force: true });
+}
+
+async function createLock(lockPath: string, info: LockInfo): Promise<boolean> {
+  let fh;
+  try {
+    fh = await fsp.open(lockPath, 'wx');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw e;
+  }
+  try {
+    await fh.writeFile(JSON.stringify(info));
+    await fh.sync();
+    await fh.close();
+    return true;
+  } catch (e) {
+    await fh.close().catch(() => undefined);
+    await fsp.rm(lockPath, { force: true });
+    throw e;
+  }
+}
+
+/**
+ * Exclusive cross-process lock (file created with O_EXCL, owner token, heartbeat).
+ * Re-entrant only for the call chain that currently holds it; work that outlives
+ * the critical section does NOT inherit the lock.
  */
 export async function withLock<T>(lockPath: string, owner: string, fn: () => Promise<T>, timeoutMs = 5000): Promise<T> {
   const key = path.resolve(lockPath).toLowerCase();
-  const current = held.getStore();
-  if (current?.has(key)) return fn();
+  const ctx = held.getStore();
+  const myToken = ctx?.get(key);
+  if (myToken !== undefined && active.get(key) === myToken) return fn();
 
+  const info: LockInfo = { pid: process.pid, host: os.hostname(), owner, token: randomBytes(16).toString('hex'), acquired_at: Date.now() };
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    try {
-      const fh = await fsp.open(lockPath, 'wx');
-      const info: LockInfo = { pid: process.pid, host: os.hostname(), owner, acquired_at: Date.now() };
-      await fh.writeFile(JSON.stringify(info));
-      await fh.close();
-      break;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      if (await tryBreakStale(lockPath)) continue;
-      if (Date.now() >= deadline) {
-        throw new StorageError('WORKSPACE_LOCKED', 'Workspace sedang dipakai operasi lain', { lockPath });
-      }
-      await sleep(30);
+    if (await createLock(lockPath, info)) break;
+    const current = await readLock(lockPath);
+    if (await isStale(lockPath, current)) {
+      await breakStale(lockPath, current?.token);
+      continue;
     }
+    if (Date.now() >= deadline) {
+      throw new StorageError('WORKSPACE_LOCKED', 'Workspace sedang dipakai operasi lain', { lockPath, holder: current?.owner });
+    }
+    await sleep(30);
   }
-  const next = new Set(current ?? []);
-  next.add(key);
+  active.set(key, info.token);
+  const beat = setInterval(() => {
+    const now = new Date();
+    fsp.utimes(lockPath, now, now).catch(() => undefined);
+  }, LOCK_TIMING.heartbeatMs);
+  beat.unref();
+  const next = new Map(ctx ?? []);
+  next.set(key, info.token);
   try {
     return await held.run(next, fn);
   } finally {
-    await withFsRetry(() => fsp.rm(lockPath, { force: true }));
+    clearInterval(beat);
+    if (active.get(key) === info.token) active.delete(key);
+    const onDisk = await readLock(lockPath);
+    if (onDisk?.token === info.token) await withFsRetry(() => fsp.rm(lockPath, { force: true }));
   }
 }

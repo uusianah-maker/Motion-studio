@@ -430,11 +430,11 @@ At any point versions can be `PROTECTED`, `MISSING`, `CHANGED`, `RETIRED`, `FAIL
 **CHECKPOINT AUDIT B (mandatory after ST-06..ST-10):** all GC acceptance tests, crash recovery, filesystem boundary security, capacity accounting, rerender integrity. Fix failures before sign-off; only then update implementation status.
 
 ## K. Work-tracking checklist / guardrails
-- [ ] T01 baseline HTML audit — **not signed off**; do not skip.
+- [x] T01 baseline HTML audit — DONE 2026-11-03 (sign-off via /gasngoding, lihat PC-0 di PROGRESS.md).
 - [x] Storage decisions collected in conversation — **design-only**, not implementation.
 - [x] Smart GC behavior finalized — **design-only**, this addendum.
 - [ ] Review/approve project autosave defaults (separate user decision).
-- [ ] ST-01 [TODO]
+- [x] ST-01 [DONE 2026-11-03, T05]
 - [ ] ST-02 [TODO]
 - [ ] ST-03 [TODO]
 - [ ] ST-04 [TODO]

@@ -1,5 +1,5 @@
 import { StorageError } from './errors.js';
-import { relativeSegments } from './paths.js';
+import { type ResolveOptions, type Resolved, relativeSegments, resolveCanonical } from './paths.js';
 
 /** Who is asking. Enforced in the storage service, never only in UI (PRD v0.8 §F, §H). */
 export type Actor = 'user' | 'scheduler' | 'ai';
@@ -33,7 +33,7 @@ const MATRIX: Record<Operation, readonly Actor[]> = {
 };
 
 export function isAllowed(actor: Actor, op: Operation): boolean {
-  return MATRIX[op].includes(actor);
+  return Object.hasOwn(MATRIX, op) && MATRIX[op].includes(actor);
 }
 
 export function assertAllowed(actor: Actor, op: Operation): void {
@@ -93,4 +93,13 @@ export function assertArea(rel: string, allowed: readonly Area[]): Area {
     throw new StorageError('FORBIDDEN', `Operasi tidak diizinkan di area "${area}"`, { rel, area, allowed });
   }
   return area;
+}
+
+/**
+ * Resolve a path AND check its area on the canonical form (case variants / short names
+ * cannot alias another area). This is the only area check callers should use for I/O.
+ */
+export async function resolveInArea(rootReal: string, rel: string, allowed: readonly Area[], opts: ResolveOptions = {}): Promise<Resolved & { area: Area }> {
+  const r = await resolveCanonical(rootReal, rel, opts);
+  return { ...r, area: assertArea(r.rel, allowed) };
 }

@@ -13,6 +13,8 @@ const FORBIDDEN_PRINTABLE = /[<>:"|?*]/;
 const hasForbiddenChar = (seg: string): boolean =>
   FORBIDDEN_PRINTABLE.test(seg) || [...seg].some((ch) => ch.charCodeAt(0) < 0x20);
 const MAX_REL_LENGTH = 1024;
+/** 8.3 short names (PROGRA~1, MOTION~1) alias long names on Windows: reject any `~<digit>`. */
+const SHORT_NAME = /~[0-9]/;
 const isWin = process.platform === 'win32';
 /** OS-level realpath: resolves junctions/symlinks and normalizes case on Windows. */
 export const realpathNative = promisify(fs.realpath.native);
@@ -35,6 +37,9 @@ export function relativeSegments(rel: string): string[] {
     }
     if (/[. ]$/.test(seg)) {
       throw new StorageError('PATH_INVALID', 'Segmen path tidak boleh berakhir titik/spasi', { rel });
+    }
+    if (SHORT_NAME.test(seg)) {
+      throw new StorageError('PATH_INVALID', 'Nama pendek 8.3 (mis. "SHARED~1") tidak diizinkan', { rel });
     }
     if (WIN_RESERVED.test(seg)) {
       throw new StorageError('PATH_INVALID', `Nama perangkat Windows terlarang: ${seg}`, { rel });
@@ -78,9 +83,26 @@ export interface ResolveOptions {
  * realpath'ed and checked for containment (defence in depth).
  */
 export async function resolveInside(rootReal: string, rel: string, opts: ResolveOptions = {}): Promise<string> {
+  return (await resolveCanonical(rootReal, rel, opts)).abs;
+}
+
+export interface Resolved {
+  /** Canonical absolute path (OS case, no short names) — use this for I/O. */
+  abs: string;
+  /** Canonical workspace-relative path — use this for area/permission decisions. */
+  rel: string;
+}
+
+/**
+ * Like `resolveInside` but also returns the canonical relative path. Area checks MUST use
+ * this `rel`, never the caller's input string: Windows resolves case variants
+ * (`shared_media`) and could otherwise alias a protected area.
+ */
+export async function resolveCanonical(rootReal: string, rel: string, opts: ResolveOptions = {}): Promise<Resolved> {
   const segs = relativeSegments(rel);
   let cur = rootReal;
   let deepestExisting = rootReal;
+  let existingCount = 0;
   let missing = false;
   for (const seg of segs) {
     cur = path.join(cur, seg);
@@ -99,6 +121,7 @@ export async function resolveInside(rootReal: string, rel: string, opts: Resolve
       throw new StorageError('PATH_LINK_REJECTED', 'Symlink/junction di dalam workspace tidak diizinkan', { rel, at: cur });
     }
     deepestExisting = cur;
+    existingCount++;
   }
   if (missing && !opts.allowMissing) {
     throw new StorageError('NOT_FOUND', 'Path tidak ditemukan', { rel });
@@ -107,7 +130,8 @@ export async function resolveInside(rootReal: string, rel: string, opts: Resolve
   if (!isInside(rootReal, real)) {
     throw new StorageError('PATH_OUTSIDE_WORKSPACE', 'Path keluar dari workspace', { rel });
   }
-  return cur;
+  const abs = path.join(real, ...segs.slice(existingCount));
+  return { abs, rel: toRelative(rootReal, abs) };
 }
 
 /** Convert an absolute path inside the workspace back to canonical relative form. */

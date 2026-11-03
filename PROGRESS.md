@@ -36,7 +36,10 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Rekomendasi: A dulu, kalibrasi setelah pilot.
 
 ## Audit
-(belum ada checkpoint)
+### Checkpoint A (T01–T05): LULUS setelah perbaikan
+- Suite: verify 48 pass / 1 skip (stabil 5x), prototype 56/56. Laporan: `audit/CHECKPOINT_A/CHECKPOINT_A_REPORT.md`.
+- Review independen (subagent): 2 High (alias area via case/8.3; dua penulis saat bobol lock basi), 5 Medium, beberapa Low. Semua High/Medium kode diperbaiki + diberi tes.
+- Dibawa ke task berikutnya: validasi ulang di bawah lock + tolak hard link sebelum move/delete (ST-06 = T10, ST-08 = T12).
 
 ## Bug
 | Bug | Ditemukan di | Status (fixed/open) | Catatan |
@@ -46,4 +49,7 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | Baris mati di audit.mjs | T04 (lint) | fixed | |
 | `test:prototype` menimpa bukti T01 | T04 | fixed | dipulihkan dari git; default output → `.tmp/prototype-evidence` |
 | `fsp.realpath.native` tidak ada | T05 (test) | fixed | pakai `promisify(fs.realpath.native)` |
+| H1 alias area via case/8.3 | Checkpoint A | fixed | `resolveInArea` + tolak `~<digit>` |
+| H2/M1/M2/M3 lock | Checkpoint A | fixed | token, heartbeat, release berpemilik |
+| TOCTOU sebelum destruktif, hard link | Checkpoint A | open → T10/T12 | syarat desain |
 | `<video>` hitam menutupi placeholder | T02 (self-review screenshot) | fixed | tes A04 ditambah |
