@@ -436,7 +436,7 @@ At any point versions can be `PROTECTED`, `MISSING`, `CHANGED`, `RETIRED`, `FAIL
 - [ ] Review/approve project autosave defaults (separate user decision).
 - [x] ST-01 [DONE 2026-11-03, T05]
 - [x] ST-02 [DONE 2026-11-03, T06]
-- [ ] ST-03 [TODO]
+- [x] ST-03 [DONE 2026-11-03, T07]
 - [ ] ST-04 [TODO]
 - [ ] ST-05 [TODO]
 - [ ] CHECKPOINT AUDIT A [TODO]

@@ -1,0 +1,245 @@
+import { createHash } from 'node:crypto';
+import { promises as fsp } from 'node:fs';
+import { audit } from './audit.js';
+import { StorageError, isStorageError } from './errors.js';
+import { isSafeId, newId } from './ids.js';
+import { readJson, writeJsonAtomic } from './jsonStore.js';
+import { type MediaRef, type ProjectManifest, manifestReferences, validateProjectManifest } from './project.js';
+import { resolveInside } from './paths.js';
+import { type Actor, assertAllowed } from './permissions.js';
+import { type Registry, loadRegistry, saveRegistry } from './registry.js';
+import { META_FILES, type Workspace, listProjectIds, manifestRel, metaPath, readProject, withWorkspaceLock } from './workspace.js';
+
+// ------------------------------------------------------------------ leases
+
+export type JobKind = 'render' | 'ai';
+export type LeaseStatus = 'queued' | 'running';
+
+export interface LeasedMedia extends MediaRef {
+  content_hash: string;
+}
+
+/** A queued/running job pins exact media versions (PRD v0.8 §H). */
+export interface Lease {
+  lease_id: string;
+  job: JobKind;
+  status: LeaseStatus;
+  label: string;
+  created_at: number;
+  media: LeasedMedia[];
+}
+
+interface LeaseFile {
+  schema_version: 1;
+  leases: Lease[];
+}
+
+function validateLeases(x: unknown): LeaseFile {
+  const bad = (m: string): never => {
+    throw new StorageError('INDEX_INVALID', `leases.json tidak valid: ${m}`);
+  };
+  const o = x as Partial<LeaseFile> | null;
+  if (!o || o.schema_version !== 1 || !Array.isArray(o.leases)) bad('struktur');
+  for (const l of o!.leases!) {
+    if (!isSafeId(l.lease_id) || (l.job !== 'render' && l.job !== 'ai') || (l.status !== 'queued' && l.status !== 'running') || !Array.isArray(l.media)) bad(`lease ${String(l?.lease_id)}`);
+    for (const m of l.media) if (!isSafeId(m.media_id) || !isSafeId(m.version_id) || typeof m.content_hash !== 'string') bad(`lease ${l.lease_id} media`);
+  }
+  return o as LeaseFile;
+}
+
+export const loadLeases = (ws: Workspace): Promise<LeaseFile> => readJson(metaPath(ws, META_FILES.leases), validateLeases, 'INDEX_INVALID');
+const saveLeases = (ws: Workspace, f: LeaseFile) => writeJsonAtomic(metaPath(ws, META_FILES.leases), validateLeases(f));
+
+function assertUsable(reg: Registry, ref: MediaRef): void {
+  const v = reg.versions[ref.version_id];
+  if (!v || v.media_id !== ref.media_id) throw new StorageError('PRECONDITION', 'Referensi media tidak dikenal', { ...ref });
+  if (v.lifecycle !== 'active') throw new StorageError('PRECONDITION', `Versi media sedang ${v.lifecycle}; pulihkan dulu`, { ...ref });
+  if (v.integrity !== 'ok') throw new StorageError('INTEGRITY', `Versi media ${v.integrity}: perlu relink/verifikasi, tidak diganti diam-diam`, { ...ref });
+}
+
+/** Create a job lease pinning exact versions + hashes (immutable dependency snapshot). */
+export async function createLease(ws: Workspace, input: { job: JobKind; label: string; media: MediaRef[]; actor: Actor }): Promise<Lease> {
+  assertAllowed(input.actor, 'manage_lease');
+  return withWorkspaceLock(ws, 'createLease', async () => {
+    const reg = await loadRegistry(ws);
+    for (const r of input.media) assertUsable(reg, r);
+    const file = await loadLeases(ws);
+    const lease: Lease = {
+      lease_id: newId('lease'),
+      job: input.job,
+      status: 'queued',
+      label: input.label,
+      created_at: ws.clock.now(),
+      media: input.media.map((r) => ({ ...r, content_hash: reg.versions[r.version_id]!.content_hash })),
+    };
+    file.leases.push(lease);
+    await saveLeases(ws, file);
+    await audit(ws, { op: 'lease.create', actor: input.actor, outcome: 'ok', lease_id: lease.lease_id, job: lease.job, media: lease.media });
+    return lease;
+  });
+}
+
+export async function setLeaseStatus(ws: Workspace, input: { lease_id: string; status: LeaseStatus; actor: Actor }): Promise<Lease> {
+  assertAllowed(input.actor, 'manage_lease');
+  return withWorkspaceLock(ws, 'setLeaseStatus', async () => {
+    const file = await loadLeases(ws);
+    const lease = file.leases.find((l) => l.lease_id === input.lease_id);
+    if (!lease) throw new StorageError('NOT_FOUND', 'Lease tidak ditemukan', { lease_id: input.lease_id });
+    lease.status = input.status;
+    await saveLeases(ws, file);
+    return lease;
+  });
+}
+
+/** Job finished/failed/cancelled: the lease stops holding its media. */
+export async function releaseLease(ws: Workspace, input: { lease_id: string; outcome: 'completed' | 'failed' | 'cancelled'; actor: Actor }): Promise<void> {
+  assertAllowed(input.actor, 'manage_lease');
+  await withWorkspaceLock(ws, 'releaseLease', async () => {
+    const file = await loadLeases(ws);
+    const i = file.leases.findIndex((l) => l.lease_id === input.lease_id);
+    if (i < 0) throw new StorageError('NOT_FOUND', 'Lease tidak ditemukan', { lease_id: input.lease_id });
+    file.leases.splice(i, 1);
+    await saveLeases(ws, file);
+    await audit(ws, { op: 'lease.release', actor: input.actor, outcome: 'ok', lease_id: input.lease_id, result: input.outcome });
+  });
+}
+
+// ------------------------------------------------------------------ index
+
+export type Holder =
+  | { kind: 'project'; project_id: string; status: 'active' | 'archived'; source: 'timeline' | 'snapshot' | 'undo'; detail: string }
+  | { kind: 'lease'; lease_id: string; job: JobKind; status: LeaseStatus };
+
+export interface DependencyIndex {
+  schema_version: 1;
+  built_at: number;
+  /** Hash over every input (manifests, leases, registry) the index was derived from. */
+  fingerprint: string;
+  projects: Record<string, { status: 'active' | 'archived'; revision: number }>;
+  by_version: Record<string, Holder[]>;
+}
+
+export type IndexResult = { ok: true; index: DependencyIndex } | { ok: false; errors: string[] };
+
+async function inputsFingerprint(ws: Workspace, projectIds: string[]): Promise<string> {
+  const h = createHash('sha256');
+  for (const id of projectIds) {
+    h.update(`p:${id}\n`);
+    h.update(await fsp.readFile(await resolveInside(ws.root, manifestRel(id))));
+  }
+  h.update('leases\n');
+  h.update(await fsp.readFile(metaPath(ws, META_FILES.leases)));
+  h.update('registry\n');
+  h.update(await fsp.readFile(metaPath(ws, META_FILES.registry)));
+  return h.digest('hex');
+}
+
+/**
+ * Rebuild the reverse index from source of truth (project manifests + leases + registry).
+ * Any missing/corrupt/dangling input makes the whole result invalid (fail closed, GC-07).
+ */
+export async function buildIndex(ws: Workspace): Promise<IndexResult> {
+  const errors: string[] = [];
+  let reg: Registry;
+  let leases: LeaseFile;
+  let projectIds: string[];
+  try {
+    reg = await loadRegistry(ws);
+    leases = await loadLeases(ws);
+    projectIds = await listProjectIds(ws);
+  } catch (e) {
+    return { ok: false, errors: [isStorageError(e) ? `${e.code}: ${e.message}` : String(e)] };
+  }
+
+  const by_version: Record<string, Holder[]> = {};
+  const add = (vid: string, h: Holder) => (by_version[vid] ??= []).push(h);
+  const projects: DependencyIndex['projects'] = {};
+  const checkRef = (ref: MediaRef, where: string) => {
+    const v = reg.versions[ref.version_id];
+    if (!v) errors.push(`${where}: versi ${ref.version_id} tidak ada di registry`);
+    else if (v.media_id !== ref.media_id) errors.push(`${where}: versi ${ref.version_id} bukan milik media ${ref.media_id}`);
+    else if (v.lifecycle !== 'active') errors.push(`${where}: versi ${ref.version_id} berstatus ${v.lifecycle} padahal masih direferensikan`);
+  };
+
+  for (const id of projectIds) {
+    let m: ProjectManifest;
+    try {
+      m = await readJson(await resolveInside(ws.root, manifestRel(id)), validateProjectManifest, 'PROJECT_INVALID');
+      if (m.project_id !== id) throw new StorageError('PROJECT_INVALID', 'project_id tidak cocok dengan folder');
+    } catch (e) {
+      errors.push(`proyek ${id}: ${isStorageError(e) ? e.message : String(e)}`);
+      continue;
+    }
+    projects[id] = { status: m.status, revision: m.revision };
+    for (const r of manifestReferences(m)) {
+      checkRef(r.ref, `proyek ${id} (${r.source} ${r.detail})`);
+      add(r.ref.version_id, { kind: 'project', project_id: id, status: m.status, source: r.source, detail: r.detail });
+    }
+  }
+  for (const l of leases.leases) {
+    for (const r of l.media) {
+      checkRef(r, `lease ${l.lease_id}`);
+      add(r.version_id, { kind: 'lease', lease_id: l.lease_id, job: l.job, status: l.status });
+    }
+  }
+  if (errors.length) return { ok: false, errors };
+  let fingerprint: string;
+  try {
+    fingerprint = await inputsFingerprint(ws, projectIds);
+  } catch (e) {
+    return { ok: false, errors: [`fingerprint: ${String(e)}`] };
+  }
+  return { ok: true, index: { schema_version: 1, built_at: ws.clock.now(), fingerprint, projects, by_version } };
+}
+
+/** Rebuild and persist `deps.json` (for dashboards). GC never trusts the persisted copy. */
+export async function rebuildAndSaveIndex(ws: Workspace): Promise<IndexResult> {
+  return withWorkspaceLock(ws, 'rebuildIndex', async () => {
+    const r = await buildIndex(ws);
+    await writeJsonAtomic(metaPath(ws, META_FILES.deps), r.ok ? { status: 'ok', ...r.index } : { status: 'invalid', built_at: ws.clock.now(), errors: r.errors });
+    return r;
+  });
+}
+
+/** True when nothing the index was derived from has changed since it was built. */
+export async function isIndexFresh(ws: Workspace, index: DependencyIndex): Promise<boolean> {
+  try {
+    return (await inputsFingerprint(ws, await listProjectIds(ws))) === index.fingerprint;
+  } catch {
+    return false;
+  }
+}
+
+export const holdersOf = (index: DependencyIndex, versionId: string): Holder[] => index.by_version[versionId] ?? [];
+
+// ------------------------------------------------------------------ project commits
+
+/**
+ * Commit a project manifest through the storage service (optimistic concurrency on revision).
+ * Referenced versions must be active + intact and are marked `ever_referenced`.
+ * `afterCommit` lets the eligibility layer reconcile clocks inside the same lock.
+ */
+export async function commitProject(
+  ws: Workspace,
+  input: { manifest: ProjectManifest; expected_revision: number; actor: Actor },
+  afterCommit?: (reg: Registry) => Promise<void>,
+): Promise<ProjectManifest> {
+  assertAllowed(input.actor, 'commit_project');
+  const next = validateProjectManifest(input.manifest);
+  return withWorkspaceLock(ws, 'commitProject', async () => {
+    const current = await readProject(ws, next.project_id);
+    if (current.revision !== input.expected_revision) {
+      throw new StorageError('CONFLICT', 'Revisi proyek sudah berubah; muat ulang dulu', { expected: input.expected_revision, actual: current.revision });
+    }
+    const reg = await loadRegistry(ws);
+    const refs = manifestReferences(next);
+    for (const r of refs) assertUsable(reg, r.ref);
+    const saved: ProjectManifest = { ...next, revision: current.revision + 1, created_at: current.created_at, updated_at: ws.clock.now() };
+    await writeJsonAtomic(await resolveInside(ws.root, manifestRel(next.project_id)), saved);
+    for (const r of refs) reg.versions[r.ref.version_id]!.ever_referenced = true;
+    await saveRegistry(ws, reg);
+    if (afterCommit) await afterCommit(reg);
+    await audit(ws, { op: 'project.commit', actor: input.actor, outcome: 'ok', project_id: saved.project_id, revision: saved.revision, status: saved.status, refs: refs.length });
+    return saved;
+  });
+}
