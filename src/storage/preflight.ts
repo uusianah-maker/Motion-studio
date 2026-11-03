@@ -1,0 +1,185 @@
+import { randomBytes } from 'node:crypto';
+import { promises as fsp } from 'node:fs';
+import path from 'node:path';
+import { audit } from './audit.js';
+import { type Lease, createLease, loadLeases, releaseLease } from './deps.js';
+import { StorageError } from './errors.js';
+import { guard } from './guard.js';
+import { journalBusy } from './journal.js';
+import { normalizeRelative } from './paths.js';
+import { type Actor, resolveInArea } from './permissions.js';
+import type { MediaRef } from './project.js';
+import { estimateSpace } from './quota.js';
+import { hashFile, loadRegistry } from './registry.js';
+import { type Workspace, projectRel, readProject } from './workspace.js';
+
+export interface SnapshotItem extends MediaRef {
+  content_hash: string;
+}
+
+export type PreflightProblem =
+  | { code: 'MEDIA_UNKNOWN' | 'MEDIA_TRASHED' | 'MEDIA_PURGED' | 'MEDIA_BUSY'; ref: MediaRef }
+  | { code: 'MEDIA_MISSING' | 'MEDIA_CHANGED'; ref: MediaRef; relink_options: MediaRef[] }
+  | { code: 'OUTPUT_NOT_WRITABLE'; detail: string }
+  | { code: 'INSUFFICIENT_DISK'; free_bytes: number | null; needed_bytes: number; reserve_bytes: number }
+  | { code: 'NO_MEDIA' };
+
+export interface PreflightResult {
+  ok: boolean;
+  project_id: string;
+  project_revision: number;
+  /** Exact media versions + hashes the render will use (immutable dependency snapshot). */
+  snapshot: SnapshotItem[];
+  output_rel: string;
+  /** True when the requested name was taken and a versioned name was chosen instead. */
+  output_versioned: boolean;
+  problems: PreflightProblem[];
+  /** Informational: e.g. a newer version exists but is NOT used automatically. */
+  notes: string[];
+}
+
+function safeOutputName(name: string): string {
+  const n = normalizeRelative(name);
+  if (n.includes('/')) throw new StorageError('PATH_INVALID', 'Nama output tidak boleh berisi folder', { name });
+  return n;
+}
+
+async function freeOutputName(dirAbs: string, name: string): Promise<{ name: string; versioned: boolean }> {
+  const ext = path.extname(name);
+  const base = path.basename(name, ext);
+  const taken = async (n: string) => fsp.lstat(path.join(dirAbs, n)).then(() => true, () => false);
+  if (!(await taken(name))) return { name, versioned: false };
+  for (let i = 2; i < 1000; i++) {
+    const cand = `${base}_v${i}${ext}`;
+    if (!(await taken(cand))) return { name: cand, versioned: true };
+  }
+  throw new StorageError('CONFLICT', 'Tidak ada nama output versi yang bebas');
+}
+
+/**
+ * Render preflight (PRD v0.8 §H): availability + fresh hash of every locked version,
+ * no silent upgrade/relink, versioned output path in 05_OUTPUT (no overwrite of finals
+ * without explicit approval), write permission and disk space checks.
+ */
+export async function renderPreflight(
+  ws: Workspace,
+  input: { project_id: string; output_name: string; estimated_bytes: number; approve_overwrite?: boolean; actor: Actor; disk?: { free_bytes: number; total_bytes: number } | null },
+): Promise<PreflightResult> {
+  await guard(ws, input.actor, 'render_preflight', { project_id: input.project_id });
+  const project = await readProject(ws, input.project_id);
+  const reg = await loadRegistry(ws);
+  const busy = await journalBusy(ws);
+  const problems: PreflightProblem[] = [];
+  const notes: string[] = [];
+  const seen = new Set<string>();
+  const snapshot: SnapshotItem[] = [];
+
+  const refs: MediaRef[] = [];
+  for (const t of project.timeline.tracks) for (const c of t.clips) if (c.media) refs.push(c.media);
+  if (!refs.length) problems.push({ code: 'NO_MEDIA' });
+
+  for (const ref of refs) {
+    if (seen.has(ref.version_id)) continue;
+    seen.add(ref.version_id);
+    const v = reg.versions[ref.version_id];
+    if (!v || v.media_id !== ref.media_id) {
+      problems.push({ code: 'MEDIA_UNKNOWN', ref });
+      continue;
+    }
+    if (v.lifecycle === 'trashed') {
+      problems.push({ code: 'MEDIA_TRASHED', ref });
+      continue;
+    }
+    if (v.lifecycle === 'purged') {
+      problems.push({ code: 'MEDIA_PURGED', ref });
+      continue;
+    }
+    if (busy.has(v.version_id)) {
+      problems.push({ code: 'MEDIA_BUSY', ref });
+      continue;
+    }
+    // Relink proposal = other intact, active versions of the same media. Never applied automatically.
+    const relink_options = Object.values(reg.versions)
+      .filter((o) => o.media_id === v.media_id && o.version_id !== v.version_id && o.lifecycle === 'active' && o.integrity === 'ok')
+      .map((o) => ({ media_id: o.media_id, version_id: o.version_id }));
+    try {
+      const { abs } = await resolveInArea(ws.root, v.rel_path, ['shared_media', 'shared_assets', 'project_input', 'project_assets']);
+      const { hash } = await hashFile(abs);
+      if (hash !== v.content_hash) {
+        problems.push({ code: 'MEDIA_CHANGED', ref, relink_options });
+        continue;
+      }
+    } catch {
+      problems.push({ code: 'MEDIA_MISSING', ref, relink_options });
+      continue;
+    }
+    const current = reg.media[v.media_id]!.current_version_id;
+    if (current !== v.version_id) notes.push(`Versi lebih baru tersedia untuk ${v.media_id} (${current}); render tetap memakai ${v.version_id} sesuai timeline`);
+    snapshot.push({ media_id: v.media_id, version_id: v.version_id, content_hash: v.content_hash });
+  }
+
+  // Output: versioned, inside this project's 05_OUTPUT only.
+  const name = safeOutputName(input.output_name);
+  const outDir = await resolveInArea(ws.root, `${projectRel(input.project_id, '05_OUTPUT')}/${name}`, ['project_output'], { allowMissing: true });
+  const dirAbs = path.dirname(outDir.abs);
+  let chosen = { name, versioned: false };
+  if (!input.approve_overwrite) chosen = await freeOutputName(dirAbs, name);
+  else notes.push('Overwrite output disetujui eksplisit oleh user');
+  const output_rel = `${projectRel(input.project_id, '05_OUTPUT')}/${chosen.name}`;
+
+  // Write permission: create and remove a probe file (access() is unreliable on Windows).
+  const probe = path.join(dirAbs, `.write-probe-${randomBytes(4).toString('hex')}`);
+  try {
+    await fsp.writeFile(probe, '', { flag: 'wx' });
+    await fsp.rm(probe, { force: true });
+  } catch (e) {
+    problems.push({ code: 'OUTPUT_NOT_WRITABLE', detail: String(e) });
+  }
+
+  const space = await estimateSpace(ws, { bytes_needed: input.estimated_bytes, ...(input.disk !== undefined ? { disk: input.disk } : {}) });
+  if (!space.ok) problems.push({ code: 'INSUFFICIENT_DISK', free_bytes: space.free_bytes, needed_bytes: input.estimated_bytes, reserve_bytes: space.reserve_bytes });
+
+  const result: PreflightResult = { ok: problems.length === 0, project_id: project.project_id, project_revision: project.revision, snapshot, output_rel, output_versioned: chosen.versioned, problems, notes };
+  await audit(ws, { op: 'render.preflight', actor: input.actor, outcome: result.ok ? 'ok' : 'blocked', project_id: project.project_id, revision: project.revision, output_rel, problems: problems.map((p) => p.code), snapshot });
+  return result;
+}
+
+/** Preflight + lease: the render job pins its exact dependency snapshot (GC-05). */
+export async function startRender(ws: Workspace, input: Parameters<typeof renderPreflight>[1]): Promise<{ preflight: PreflightResult; lease: Lease | null }> {
+  const preflight = await renderPreflight(ws, input);
+  if (!preflight.ok) return { preflight, lease: null };
+  const lease = await createLease(ws, { job: 'render', label: `${preflight.project_id}@${preflight.project_revision} → ${preflight.output_rel}`, media: preflight.snapshot.map(({ media_id, version_id }) => ({ media_id, version_id })), actor: input.actor });
+  // The lease must pin exactly what preflight verified.
+  for (const s of preflight.snapshot) {
+    const l = lease.media.find((m) => m.version_id === s.version_id);
+    if (l?.content_hash !== s.content_hash) {
+      await releaseLease(ws, { lease_id: lease.lease_id, outcome: 'cancelled', actor: input.actor });
+      throw new StorageError('INTEGRITY', 'Media berubah antara preflight dan lease; render dibatalkan', { version_id: s.version_id });
+    }
+  }
+  return { preflight, lease };
+}
+
+/** Right before the worker reads media: re-check every leased file is still intact and unmoved. */
+export async function verifyRenderSnapshot(ws: Workspace, leaseId: string): Promise<{ ok: boolean; problems: string[] }> {
+  const lease = (await loadLeases(ws)).leases.find((l) => l.lease_id === leaseId);
+  if (!lease) return { ok: false, problems: ['LEASE_UNKNOWN'] };
+  const reg = await loadRegistry(ws);
+  const problems: string[] = [];
+  for (const m of lease.media) {
+    const v = reg.versions[m.version_id];
+    if (!v || v.lifecycle !== 'active') {
+      problems.push(`${m.version_id}: ${v?.lifecycle ?? 'unknown'}`);
+      continue;
+    }
+    try {
+      const { abs } = await resolveInArea(ws.root, v.rel_path, ['shared_media', 'shared_assets', 'project_input', 'project_assets']);
+      if ((await hashFile(abs)).hash !== m.content_hash) problems.push(`${m.version_id}: CHANGED`);
+    } catch {
+      problems.push(`${m.version_id}: MISSING`);
+    }
+  }
+  return { ok: problems.length === 0, problems };
+}
+
+export const finishRender = (ws: Workspace, input: { lease_id: string; outcome: 'completed' | 'failed' | 'cancelled'; actor: Actor }) => releaseLease(ws, input);

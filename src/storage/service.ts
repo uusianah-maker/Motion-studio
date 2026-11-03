@@ -4,6 +4,7 @@ import type { Actor } from './permissions.js';
 import type { ProjectManifest } from './project.js';
 import * as registry from './registry.js';
 import * as backup from './backup.js';
+import * as render from './preflight.js';
 import { executePurge, preparePurge } from './purge.js';
 import { recoverOnStartup } from './recovery.js';
 import { restoreVersion } from './restore.js';
@@ -108,5 +109,23 @@ export class StorageService {
 
   createScheduler(opts?: ConstructorParameters<typeof GcScheduler>[1]) {
     return new GcScheduler(this.ws, opts);
+  }
+
+  renderPreflight(input: Parameters<typeof render.renderPreflight>[1]) {
+    return render.renderPreflight(this.ws, input);
+  }
+
+  /** Preflight + render lease pinning the exact dependency snapshot (clock reset via lease). */
+  startRender(input: Parameters<typeof render.startRender>[1]) {
+    return mutate(this.ws, 'svc.startRender', input.actor, () => render.startRender(this.ws, input));
+  }
+
+  verifyRenderSnapshot(leaseId: string) {
+    return render.verifyRenderSnapshot(this.ws, leaseId);
+  }
+
+  /** Release the render lease; the 30-day clock restarts if nothing else holds the media. */
+  finishRender(input: Parameters<typeof render.finishRender>[1]) {
+    return mutate(this.ws, 'svc.finishRender', input.actor, () => render.finishRender(this.ws, input));
   }
 }

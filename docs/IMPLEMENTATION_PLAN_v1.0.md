@@ -17,8 +17,8 @@ Status: PLANNED. Jangan mulai coding sebelum audit T01 sign-off.
 - [x] T11 Restore dan collision handling (ST-07).
 - [x] T12 Manual permanent delete + explicit approval (ST-08).
 - [x] T13 Scheduler + crash recovery (ST-09).
-- [x] T14 Disk quota + storage dashboard (ST-10).
-- [ ] T15 Integrasi render preflight dan snapshot dependensi.
+- [x] T14 Disk quota + storage dashboard (ST-10). — backend + CLI selesai; tampilan dashboard di app desktop menunggu PC-1 (shell).
+- [x] T15 Integrasi render preflight dan snapshot dependensi.
 **CHECKPOINT C:** audit lima tugas, repair sampai lulus.
 
 ## Backlog setelah storage
