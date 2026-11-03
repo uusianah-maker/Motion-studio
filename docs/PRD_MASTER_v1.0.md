@@ -443,7 +443,7 @@ At any point versions can be `PROTECTED`, `MISSING`, `CHANGED`, `RETIRED`, `FAIL
 - [x] ST-06 [DONE 2026-11-03, T10]
 - [x] ST-07 [DONE 2026-11-03, T11]
 - [x] ST-08 [DONE 2026-11-03, T12]
-- [ ] ST-09 [TODO]
+- [x] ST-09 [DONE 2026-11-03, T13]
 - [ ] ST-10 [TODO]
 - [ ] CHECKPOINT AUDIT B [TODO]
 

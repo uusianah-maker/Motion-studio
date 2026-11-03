@@ -16,7 +16,7 @@ Status: PLANNED. Jangan mulai coding sebelum audit T01 sign-off.
 **CHECKPOINT B:** audit lima tugas, repair sampai lulus.
 - [x] T11 Restore dan collision handling (ST-07).
 - [x] T12 Manual permanent delete + explicit approval (ST-08).
-- [ ] T13 Scheduler + crash recovery (ST-09).
+- [x] T13 Scheduler + crash recovery (ST-09).
 - [ ] T14 Disk quota + storage dashboard (ST-10).
 - [ ] T15 Integrasi render preflight dan snapshot dependensi.
 **CHECKPOINT C:** audit lima tugas, repair sampai lulus.

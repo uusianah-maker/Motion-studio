@@ -5,7 +5,9 @@ import type { ProjectManifest } from './project.js';
 import * as registry from './registry.js';
 import * as backup from './backup.js';
 import { executePurge, preparePurge } from './purge.js';
+import { recoverOnStartup } from './recovery.js';
 import { restoreVersion } from './restore.js';
+import { GcScheduler } from './scheduler.js';
 import { scanCandidates } from './scanner.js';
 import { runAutoTrash } from './trash.js';
 import { type Workspace, withWorkspaceLock } from './workspace.js';
@@ -98,5 +100,13 @@ export class StorageService {
 
   verifyBackupLocation(input: Parameters<typeof backup.verifyBackupLocation>[1]) {
     return backup.verifyBackupLocation(this.ws, input);
+  }
+
+  recover() {
+    return recoverOnStartup(this.ws);
+  }
+
+  createScheduler(opts?: ConstructorParameters<typeof GcScheduler>[1]) {
+    return new GcScheduler(this.ws, opts);
   }
 }

@@ -12,7 +12,7 @@ import { type Registry, type VersionRecord, hashFile, loadRegistry, saveRegistry
 import { LAYOUT, type Workspace, withWorkspaceLock } from './workspace.js';
 
 export { type JournalEntry, clearJournal, journalBusy, listJournal, writeJournal } from './journal.js';
-import { type JournalEntry, clearJournal, journalBusy, writeJournal } from './journal.js';
+import { type JournalEntry, clearJournal, journalBusy, listJournal, writeJournal } from './journal.js';
 
 // ------------------------------------------------------------------ manifest
 
@@ -113,6 +113,12 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
     }
     const now = ws.clock.now();
     if (reconcileClocks(reg, idx.index, now).length) await saveRegistry(ws, reg);
+    const unreadable = (await listJournal(ws)).filter((j) => !j.entry).map((j) => path.basename(j.file));
+    if (unreadable.length) {
+      // An unfinished operation we cannot interpret: its version is unknown → fail closed.
+      await audit(ws, { op_id, op: 'gc.auto_trash', actor: opts.actor, outcome: 'blocked', reason: 'JOURNAL_CORRUPT', files: unreadable });
+      return { ...res, ok: false, errors: [`journal tidak terbaca: ${unreadable.join(', ')}`] };
+    }
     const busy = new Set([...(opts.busy ?? []), ...(await journalBusy(ws))]);
 
     for (const v of Object.values(reg.versions).sort((a, b) => a.version_id.localeCompare(b.version_id))) {
