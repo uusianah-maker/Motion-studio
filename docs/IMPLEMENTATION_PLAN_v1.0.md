@@ -8,7 +8,7 @@ Status: PLANNED. Jangan mulai coding sebelum audit T01 sign-off.
 - [x] T04 Setup repository, test harness, lint/typecheck, dan CI minimal.
 - [x] T05 Implementasi workspace schema + izin folder (ST-01).
 **CHECKPOINT A:** audit lima tugas, repair sampai lulus, baru lanjut.
-- [ ] T06 Media registry + immutable version (ST-02).
+- [x] T06 Media registry + immutable version (ST-02).
 - [ ] T07 Dependency Manager + reverse index (ST-03).
 - [ ] T08 Eligibility engine 30 hari + never-used protection (ST-04).
 - [ ] T09 Candidate scanner + audit log (ST-05).
