@@ -7,7 +7,7 @@ import { type Holder, buildIndex, holdersOf } from './deps.js';
 import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { newId } from './ids.js';
-import { journalBusy } from './journal.js';
+import { clearJournal, journalBusy, listJournal, writeJournal } from './journal.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { resolveInArea } from './permissions.js';
 import type { Actor } from './permissions.js';
@@ -67,6 +67,11 @@ const loadRequests = (ws: Workspace) =>
   }, 'INDEX_INVALID');
 const saveRequests = (ws: Workspace, f: RequestFile) => writeJsonAtomic(metaPath(ws, META_FILES.purgeRequests), f);
 
+/** Any unreadable journal = an unknown operation in flight → every purge item is blocked (review C-M1). */
+async function corruptJournal(ws: Workspace): Promise<boolean> {
+  return (await listJournal(ws)).some((j) => !j.entry);
+}
+
 /** Evaluate every purge blocker for one version against fresh data. */
 async function blockersFor(ws: Workspace, reg: Registry, versionId: string, holders: Holder[], busy: ReadonlySet<string>): Promise<{ blockers: string[]; protectedBy: string[] }> {
   const blockers: string[] = [];
@@ -95,6 +100,7 @@ export async function preparePurge(ws: Workspace, input: { version_ids: string[]
     const idx = await buildIndex(ws);
     const reg = await loadRegistry(ws);
     const busy = await journalBusy(ws);
+    const journalCorrupt = await corruptJournal(ws);
     const items: PurgePlanItem[] = [];
     for (const id of [...new Set(input.version_ids)]) {
       const v = reg.versions[id];
@@ -102,6 +108,7 @@ export async function preparePurge(ws: Workspace, input: { version_ids: string[]
       const holders = idx.ok ? holdersOf(idx.index, id) : [];
       const { blockers, protectedBy } = await blockersFor(ws, reg, id, holders, busy);
       if (!idx.ok) blockers.push('INDEX_INVALID');
+      if (journalCorrupt) blockers.push('JOURNAL_CORRUPT');
       items.push({
         version_id: id,
         media_id: v.media_id,
@@ -153,7 +160,8 @@ export async function executePurge(ws: Workspace, input: { request_id: string; c
     };
     if (!req) return deny('REQUEST_UNKNOWN');
     if (req.used) return deny('REQUEST_ALREADY_USED');
-    // Burn the request on any attempt so a token can never be retried or replayed.
+    // Burn the request on any attempt so a token can never be retried or replayed. Consequence
+    // (documented): any wrong attempt cancels the request and the user must prepare again.
     req.used = true;
     await saveRequests(ws, f);
     if (now > req.expires_at) return deny('REQUEST_EXPIRED');
@@ -171,8 +179,10 @@ export async function executePurge(ws: Workspace, input: { request_id: string; c
     }
     const reg = await loadRegistry(ws);
     const busy = await journalBusy(ws);
+    const journalCorrupt = await corruptJournal(ws);
     for (const id of req.version_ids) {
       const { blockers } = await blockersFor(ws, reg, id, holdersOf(idx.index, id), busy);
+      if (journalCorrupt) blockers.push('JOURNAL_CORRUPT');
       const v = reg.versions[id];
       let fileAbs: string | null = null;
       let manifestAbs: string | null = null;
@@ -195,18 +205,23 @@ export async function executePurge(ws: Workspace, input: { request_id: string; c
         await audit(ws, { op: 'purge.item', actor: input.actor, outcome: 'blocked', request_id: req.request_id, version_id: id, reasons: blockers });
         continue;
       }
+      const trashPath = v.rel_path;
+      const journal = { schema_version: 1 as const, op_id: req.request_id, kind: 'purge' as const, version_id: id, from_rel: trashPath, to_rel: trashPath, manifest_rel: v.trash!.manifest_rel_path, content_hash: v.content_hash, started_at: now };
+      // Journal + "started" audit BEFORE deleting, so a crash is never silent (review C-M2).
+      await writeJournal(ws, journal);
+      await audit(ws, { op: 'purge.item', actor: input.actor, outcome: 'info', phase: 'started', request_id: req.request_id, media_id: v.media_id, version_id: id, deleted_path: trashPath, checksum: v.content_hash, size: v.size });
       await fsp.chmod(fileAbs, 0o666);
       await fsp.rm(fileAbs);
       await fsp.rm(manifestAbs, { force: true });
       const dir = path.dirname(manifestAbs);
       await fsp.rmdir(dir).catch(() => undefined);
       await fsp.rmdir(path.dirname(dir)).catch(() => undefined);
-      const trashPath = v.rel_path;
       reg.versions[id] = { ...v, lifecycle: 'purged', trash: null, unreferenced_since: null };
       await saveRegistry(ws, reg);
+      await clearJournal(ws, journal);
       result.purged.push(id);
       result.freed_bytes += v.size;
-      await audit(ws, { op: 'purge.item', actor: input.actor, outcome: 'ok', request_id: req.request_id, media_id: v.media_id, version_id: id, deleted_path: trashPath, checksum: v.content_hash, size: v.size });
+      await audit(ws, { op: 'purge.item', actor: input.actor, outcome: 'ok', phase: 'done', request_id: req.request_id, media_id: v.media_id, version_id: id, deleted_path: trashPath, checksum: v.content_hash, size: v.size });
     }
     await audit(ws, { op: 'purge.execute', actor: input.actor, outcome: 'ok', request_id: req.request_id, purged: result.purged.length, blocked: result.blocked.length, freed_bytes: result.freed_bytes });
     return result;

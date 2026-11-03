@@ -1,5 +1,5 @@
 # Progress /gasngoding
-Update terakhir: 2026-11-03
+Update terakhir: 2026-11-04
 Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 15/15 selesai · 0 blocked · 0 belum dikerjakan
 
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
@@ -69,6 +69,10 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Review independen: 1 High (jam 30 hari tidak reset bila referensi dibuat saat index invalid → Trash terlalu cepat), 5 Medium, 5 Low. High + semua Medium + L1/L3 diperbaiki dengan tes regresi.
 - Owner (2026-11-04): "jalankan dulu semua end to end, konfirmasi nanti kalau sudah 90%" → lanjut tanpa jeda konfirmasi; PC dikumpulkan di akhir.
 
+### Checkpoint C (T11–T15, audit akhir): LULUS setelah perbaikan
+- Suite: verify 133 pass / 1 skip (stabil 3x), E2E 18/18 (build + MP4 nyata: GC-01..GC-12, design check M-1..M-5, crash recovery), prototype 56/56. Laporan: `audit/CHECKPOINT_C/CHECKPOINT_C_REPORT.md`.
+- Review independen: 2 High (recovery bisa menghapus satu-satunya salinan di Trash; recovery bisa menghapus file user / mengikuti path journal di luar area), 4 Medium (purge abaikan journal korup; crash purge tanpa jejak; overwrite render oleh non-user; nama output render bentrok), 5 Low. Semua diperbaiki + tes regresi.
+
 ## Bug
 | Bug | Ditemukan di | Status (fixed/open) | Catatan |
 |---|---|---|---|
@@ -84,6 +88,9 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | Dedup import salah scope/Trash (M5-B) | Checkpoint B | fixed | |
 | Orphan file setelah crash import | Checkpoint B | fixed (T13) | temp disapu, file yatim dilaporkan |
 | Lompatan jam sistem (L2-B) | Checkpoint B | open (risiko) | PC-3 |
-| TOCTOU sebelum destruktif, hard link | Checkpoint A | fixed untuk Trash (T10); purge menyusul T12 | `revalidateFile()` |
+| Recovery menghapus salinan tunggal / file user (H1/H2-C) | Checkpoint C | fixed | bukti inode/hash + cek area journal |
+| Purge: journal korup & crash tanpa jejak (M1/M2-C) | Checkpoint C | fixed | journal purge + audit started |
+| Render: overwrite non-user & nama output bentrok (M3/M4-C) | Checkpoint C | fixed | reservasi output di lease |
+| TOCTOU sebelum destruktif, hard link | Checkpoint A | fixed (Trash T10, purge T12) | `revalidateFile()`, cek nlink di purge |
 | Jam 30 hari baru mulai saat rekonsiliasi berikutnya, bukan saat referensi hilang | T09 (test) | fixed | `StorageService` rekonsiliasi di dalam lock setelah tiap mutasi; tes `service.test.ts` |
 | `<video>` hitam menutupi placeholder | T02 (self-review screenshot) | fixed | tes A04 ditambah |

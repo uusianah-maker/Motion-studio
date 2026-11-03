@@ -1,4 +1,5 @@
 import { promises as fsp } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readAudit } from '../src/storage/audit.js';
@@ -43,16 +44,32 @@ describe('ST-09 crash recovery', () => {
     expect((await runAutoTrash(fx.ws, { actor: 'scheduler' })).moved).toHaveLength(1);
   });
 
-  it('crash before the move → nothing to undo; interrupted copy → partial destination removed', async () => {
+  it('crash before the move → nothing to undo; unproven destination is never deleted', async () => {
     const fx = await crashSetup();
     await writeJournal(fx.ws, fx.entry);
     expect((await recoverOnStartup(fx.ws)).journal[0]!.action).toBe('not-started');
 
+    // Partial copy (or someone else's file): cannot be proven ours → left untouched + alert.
     await writeJournal(fx.ws, fx.entry);
     await fsp.mkdir(path.dirname(fx.A(fx.to)), { recursive: true });
     await fsp.writeFile(fx.A(fx.to), 'half-copied');
-    expect((await recoverOnStartup(fx.ws)).journal[0]!.action).toBe('partial-destination-removed');
+    expect((await recoverOnStartup(fx.ws)).journal[0]!.action).toBe('destination-left-untouched');
+    expect(await fsp.readFile(fx.A(fx.to), 'utf8')).toBe('half-copied');
+    expect(await exists(fx.A(fx.from))).toBe(true);
+    expect(await readAudit(fx.ws, (e) => e.reason === 'DESTINATION_UNPROVEN')).toHaveLength(1);
+    await fsp.rm(fx.A(fx.to));
+
+    // Proven duplicates are cleaned: an extra hard link (same inode) …
+    await writeJournal(fx.ws, fx.entry);
+    await fsp.link(fx.A(fx.from), fx.A(fx.to));
+    expect((await recoverOnStartup(fx.ws)).journal[0]!.action).toBe('extra-link-removed');
     expect(await exists(fx.A(fx.to))).toBe(false);
+    await expect(fsp.writeFile(fx.A(fx.from), 'x')).rejects.toThrow(); // source still read-only
+
+    // … and a complete identical copy inside our own Trash folder.
+    await writeJournal(fx.ws, fx.entry);
+    await fsp.copyFile(fx.A(fx.from), fx.A(fx.to));
+    expect((await recoverOnStartup(fx.ws)).journal[0]!.action).toBe('duplicate-copy-removed');
     expect(await exists(fx.A(fx.from))).toBe(true);
   });
 
@@ -100,6 +117,10 @@ describe('ST-09 crash recovery', () => {
     const tmp = path.join(ws.root, 'SHARED_MEDIA', '.importing-op_dead');
     const orphanDir = path.join(ws.root, 'SHARED_MEDIA', 'm_aaaaaaaaaaaaaaaa');
     await fsp.writeFile(tmp, 'partial');
+    const old = new Date(Date.now() - 2 * 24 * 3_600_000); // stale: untouched for 2 days
+    await fsp.utimes(tmp, old, old);
+    const fresh = path.join(ws.root, 'SHARED_MEDIA', '.importing-op_running');
+    await fsp.writeFile(fresh, 'an import still copying');
     await fsp.mkdir(orphanDir);
     await fsp.writeFile(path.join(orphanDir, 'v_bbbbbbbbbbbbbbbb.mp4'), 'orphan bytes');
     await fsp.writeFile(path.join(ws.root, '.motionstudio', 'registry.json.123.abcd.tmp'), '{');
@@ -107,6 +128,7 @@ describe('ST-09 crash recovery', () => {
     expect(r.removed_temp_files.sort()).toEqual(['.motionstudio/registry.json.123.abcd.tmp', 'SHARED_MEDIA/.importing-op_dead']);
     expect(r.orphan_files).toEqual(['SHARED_MEDIA/m_aaaaaaaaaaaaaaaa/v_bbbbbbbbbbbbbbbb.mp4']);
     expect(await exists(path.join(orphanDir, 'v_bbbbbbbbbbbbbbbb.mp4'))).toBe(true);
+    expect(await exists(fresh)).toBe(true); // a running import is never broken (review C-L2)
     const again = await recoverOnStartup(ws);
     expect(again.removed_temp_files).toEqual([]);
     expect(again.journal).toEqual([]);
@@ -160,6 +182,17 @@ describe('ST-09 scheduler', () => {
     const s = new GcScheduler(ws, { timers: new FakeTimers() });
     const [a, b] = await Promise.all([s.runCycle(), s.runCycle()]);
     expect([a.status, b.status].sort()).toEqual(['ok', 'skipped-overlap']);
+    // A provider that throws is turned into an 'error' cycle (never escapes the timer) and audited.
+    const throwing = new GcScheduler(ws, { timers: new FakeTimers(), busy: () => { throw new Error('player state unavailable'); } });
+    const e = await throwing.runCycle();
+    expect(e).toMatchObject({ status: 'error', error: 'Error: player state unavailable' });
+    expect(await readAudit(ws, (x) => x.op === 'gc.scheduler' && x.outcome === 'failed')).toHaveLength(1);
+    // A workspace held by another live process → skipped, retried next tick.
+    const lock = path.join(ws.root, '.motionstudio', 'workspace.lock');
+    await fsp.writeFile(lock, JSON.stringify({ pid: process.ppid, host: os.hostname(), owner: 'other-app', token: 't', acquired_at: Date.now() }));
+    const l = await s.runCycle();
+    await fsp.rm(lock);
+    expect(l.status).toBe('skipped-locked');
     await fsp.writeFile(path.join(ws.root, '.motionstudio', 'registry.json'), 'broken');
     const c = await s.runCycle();
     expect(c.status).toBe('blocked');

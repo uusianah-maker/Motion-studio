@@ -1,0 +1,20 @@
+PASS GC-02 29 hari 23 jam: belum dipindah — moved=0
+PASS GC-03 30 hari + semua gate lulus: masuk Trash, registry & audit akurat — moved=v_13f8629a74d30446 lifecycle=trashed audit=started,done
+PASS GC-06 Re-reference hari 29: jam reset, tidak dipindah di jadwal lama — espresso since=reset
+PASS GC-10 Trash di disk yang sama: freed space dilaporkan 0 — freed=0 moved_bytes=121584
+PASS GC-01 Media baru belum pernah dipakai (90 hari): tetap terlindungi — lifecycle=active ever=false
+PASS GC-04 Dipakai proyek arsip: tidak pernah dipindah — lifecycle=active
+PASS GC-05 Lease render antre: tidak dipindah, preflight tetap stabil — lifecycle=active snapshot_ok=true
+PASS GC-11 Byte sumber diganti tanpa versi baru: alert CHANGED, timeline tidak di-upgrade — integrity=changed preflight=MEDIA_CHANGED
+PASS GC-12 Prompt AI "hapus media lama": diblok dari Trash/purge/restore + diaudit — rejected,rejected,rejected
+PASS GC-09 Restore ke tujuan yang terisi: tidak overwrite, pilih path alternatif — first=conflict then=restored at SHARED_MEDIA/m_44335d8bd7acd9b2/v_13f8629a74d30446.restored-1.mp4
+PASS GC-08 Hapus permanen: audit dependensi segar + konfirmasi eksplisit, tanpa auto purge — wrong_phrase=FORBIDDEN purged=2/2
+PASS M-1 Item 1 hari di Trash bisa di-purge manual (audit + konfirmasi lulus) — purged=v_13f8629a74d30446,v_3bb8a1df9d98d09c
+PASS M-3 Item yang direferensikan/terkunci tidak bisa di-purge manual — NOT_IN_TRASH (active)+REFERENCED | NOT_IN_TRASH (active)+REFERENCED+PROTECTED (CURRENT)
+PASS M-4 Prompt AI tidak bisa memicu hapus permanen — lihat GC-12
+PASS M-2 Item 365 hari di Trash tidak pernah di-purge otomatis — lifecycle=trashed
+PASS M-5 Disk penuh tidak pernah memicu purge (hanya peringatan) — warnings=LOW_FREE_SPACE,TRASH_REVIEW_SUGGESTED
+PASS GC-07 Database dependensi rusak: GC berhenti aman + alasan dicatat — scan.ok=false errors=proyek old-campaign: File metadata korup (JSON tidak valid):
+PASS ST-09 Crash di tengah pemindahan: recovery mengembalikan kondisi konsisten — action=rolled-back
+
+SUMMARY {"PASS":18}

@@ -180,7 +180,8 @@ check('GC-07', 'Database dependensi rusak: GC berhenti aman + alasan dicatat', !
 
 // ---- Crash recovery: simulated crash mid-Trash
 await fsp.writeFile(abs('PROJECTS/old-campaign/03_PROJECT/project.json'), JSON.stringify(manifest(await (async () => { const r = JSON.parse(JSON.stringify(await readProject(ws, 'lucy-elegant'))); return { ...r, project_id: 'old-campaign', status: 'archived' }; })(), [ref(archOld)])));
-const rec = await state(espresso.version.version_id);
+const rec = await state(lucyV2.version.version_id); // an active, current version (a real mid-move crash)
+if (rec.lifecycle !== "active") throw new Error("e2e setup: expected an active version");
 const to = `.trash/op_crash/${rec.version_id}/${path.basename(rec.rel_path)}`;
 await writeJournal(ws, { schema_version: 1, op_id: 'op_crash', kind: 'trash', version_id: rec.version_id, from_rel: rec.rel_path, to_rel: to, manifest_rel: `.trash/op_crash/${rec.version_id}/manifest.json`, content_hash: rec.content_hash, started_at: clock.now() });
 await fsp.mkdir(path.dirname(abs(to)), { recursive: true });

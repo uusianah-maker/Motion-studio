@@ -29,6 +29,8 @@ export interface Lease {
   label: string;
   created_at: number;
   media: LeasedMedia[];
+  /** Render output path reserved by this job (no two queued renders share a final name). */
+  output_rel?: string;
 }
 
 interface LeaseFile {
@@ -44,6 +46,7 @@ function validateLeases(x: unknown): LeaseFile {
   if (!o || o.schema_version !== 1 || !Array.isArray(o.leases)) bad('struktur');
   for (const l of o!.leases!) {
     if (!isSafeId(l.lease_id) || (l.job !== 'render' && l.job !== 'ai') || (l.status !== 'queued' && l.status !== 'running') || !Array.isArray(l.media)) bad(`lease ${String(l?.lease_id)}`);
+    if (l.output_rel !== undefined && typeof l.output_rel !== 'string') bad(`lease ${l.lease_id} output`);
     for (const m of l.media) if (!isSafeId(m.media_id) || !isSafeId(m.version_id) || typeof m.content_hash !== 'string') bad(`lease ${l.lease_id} media`);
   }
   return o as LeaseFile;
@@ -61,7 +64,7 @@ function assertUsable(reg: Registry, ref: MediaRef, busy: ReadonlySet<string>): 
 }
 
 /** Create a job lease pinning exact versions + hashes (immutable dependency snapshot). */
-export async function createLease(ws: Workspace, input: { job: JobKind; label: string; media: MediaRef[]; actor: Actor }): Promise<Lease> {
+export async function createLease(ws: Workspace, input: { job: JobKind; label: string; media: MediaRef[]; actor: Actor; output_rel?: string }): Promise<Lease> {
   await guard(ws, input.actor, 'manage_lease', { job: input.job });
   return withWorkspaceLock(ws, 'createLease', async () => {
     const reg = await loadRegistry(ws);
@@ -75,7 +78,11 @@ export async function createLease(ws: Workspace, input: { job: JobKind; label: s
       label: input.label,
       created_at: ws.clock.now(),
       media: input.media.map((r) => ({ ...r, content_hash: reg.versions[r.version_id]!.content_hash })),
+      ...(input.output_rel ? { output_rel: input.output_rel } : {}),
     };
+    if (lease.output_rel && file.leases.some((l) => l.output_rel?.toLowerCase() === lease.output_rel!.toLowerCase())) {
+      throw new StorageError('CONFLICT', 'Nama output sedang dipakai render lain', { output_rel: lease.output_rel });
+    }
     file.leases.push(lease);
     await saveLeases(ws, file);
     // A lease holds its versions: reset their clocks right here (review H1/M1), not only on reconcile.

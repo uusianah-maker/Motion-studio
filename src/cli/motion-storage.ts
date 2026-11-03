@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Minimal CLI for the storage core until the desktop shell exists (PC-1).
- * Only safe operations: init, dashboard, scan (dry run), recover.
+ * Non-destructive operations only: init, dashboard, scan (dry run), recover (repairs
+ * interrupted operations and sweeps stale temp files; never deletes media).
  * Auto Trash, restore and permanent delete are deliberately NOT exposed here.
  */
 import { pathToFileURL } from 'node:url';

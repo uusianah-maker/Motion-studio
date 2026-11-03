@@ -1,0 +1,118 @@
+{
+  "runAt": "2026-11-03T17:51:04.516Z",
+  "workspace": "C:\\Users\\distc\\AppData\\Local\\Temp\\msc-e2e-3Ccbr4\\MOTION_STUDIO",
+  "results": [
+    {
+      "id": "GC-02",
+      "name": "29 hari 23 jam: belum dipindah",
+      "status": "PASS",
+      "evidence": "moved=0"
+    },
+    {
+      "id": "GC-03",
+      "name": "30 hari + semua gate lulus: masuk Trash, registry & audit akurat",
+      "status": "PASS",
+      "evidence": "moved=v_87d4ac51f8c4aade lifecycle=trashed audit=started,done"
+    },
+    {
+      "id": "GC-06",
+      "name": "Re-reference hari 29: jam reset, tidak dipindah di jadwal lama",
+      "status": "PASS",
+      "evidence": "espresso since=reset"
+    },
+    {
+      "id": "GC-10",
+      "name": "Trash di disk yang sama: freed space dilaporkan 0",
+      "status": "PASS",
+      "evidence": "freed=0 moved_bytes=121584"
+    },
+    {
+      "id": "GC-01",
+      "name": "Media baru belum pernah dipakai (90 hari): tetap terlindungi",
+      "status": "PASS",
+      "evidence": "lifecycle=active ever=false"
+    },
+    {
+      "id": "GC-04",
+      "name": "Dipakai proyek arsip: tidak pernah dipindah",
+      "status": "PASS",
+      "evidence": "lifecycle=active"
+    },
+    {
+      "id": "GC-05",
+      "name": "Lease render antre: tidak dipindah, preflight tetap stabil",
+      "status": "PASS",
+      "evidence": "lifecycle=active snapshot_ok=true"
+    },
+    {
+      "id": "GC-11",
+      "name": "Byte sumber diganti tanpa versi baru: alert CHANGED, timeline tidak di-upgrade",
+      "status": "PASS",
+      "evidence": "integrity=changed preflight=MEDIA_CHANGED"
+    },
+    {
+      "id": "GC-12",
+      "name": "Prompt AI \"hapus media lama\": diblok dari Trash/purge/restore + diaudit",
+      "status": "PASS",
+      "evidence": "rejected,rejected,rejected"
+    },
+    {
+      "id": "GC-09",
+      "name": "Restore ke tujuan yang terisi: tidak overwrite, pilih path alternatif",
+      "status": "PASS",
+      "evidence": "first=conflict then=restored at SHARED_MEDIA/m_613bc84dc0e66786/v_87d4ac51f8c4aade.restored-1.mp4"
+    },
+    {
+      "id": "GC-08",
+      "name": "Hapus permanen: audit dependensi segar + konfirmasi eksplisit, tanpa auto purge",
+      "status": "PASS",
+      "evidence": "wrong_phrase=FORBIDDEN purged=2/2"
+    },
+    {
+      "id": "M-1",
+      "name": "Item 1 hari di Trash bisa di-purge manual (audit + konfirmasi lulus)",
+      "status": "PASS",
+      "evidence": "purged=v_2592b04bebc9799e,v_87d4ac51f8c4aade"
+    },
+    {
+      "id": "M-3",
+      "name": "Item yang direferensikan/terkunci tidak bisa di-purge manual",
+      "status": "PASS",
+      "evidence": "NOT_IN_TRASH (active)+REFERENCED | NOT_IN_TRASH (active)+REFERENCED+PROTECTED (CURRENT)"
+    },
+    {
+      "id": "M-4",
+      "name": "Prompt AI tidak bisa memicu hapus permanen",
+      "status": "PASS",
+      "evidence": "lihat GC-12"
+    },
+    {
+      "id": "M-2",
+      "name": "Item 365 hari di Trash tidak pernah di-purge otomatis",
+      "status": "PASS",
+      "evidence": "lifecycle=trashed"
+    },
+    {
+      "id": "M-5",
+      "name": "Disk penuh tidak pernah memicu purge (hanya peringatan)",
+      "status": "PASS",
+      "evidence": "warnings=LOW_FREE_SPACE,TRASH_REVIEW_SUGGESTED"
+    },
+    {
+      "id": "GC-07",
+      "name": "Database dependensi rusak: GC berhenti aman + alasan dicatat",
+      "status": "PASS",
+      "evidence": "scan.ok=false errors=proyek old-campaign: File metadata korup (JSON tidak valid):"
+    },
+    {
+      "id": "ST-09",
+      "name": "Crash di tengah pemindahan: recovery mengembalikan kondisi konsisten",
+      "status": "FAIL",
+      "evidence": "action=invalid-journal-left-for-review"
+    }
+  ],
+  "summary": {
+    "PASS": 17,
+    "FAIL": 1
+  }
+}

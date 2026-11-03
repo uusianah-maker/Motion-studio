@@ -9,7 +9,7 @@ import { LAYOUT, META_FILES, type Workspace } from './workspace.js';
 export interface JournalEntry {
   schema_version: 1;
   op_id: string;
-  kind: 'trash' | 'restore';
+  kind: 'trash' | 'restore' | 'purge';
   version_id: string;
   from_rel: string;
   to_rel: string;

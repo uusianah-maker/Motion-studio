@@ -11,7 +11,7 @@ import { type Actor, resolveInArea } from './permissions.js';
 import type { MediaRef } from './project.js';
 import { estimateSpace } from './quota.js';
 import { hashFile, loadRegistry } from './registry.js';
-import { type Workspace, projectRel, readProject } from './workspace.js';
+import { type Workspace, projectRel, readProject, withWorkspaceLock } from './workspace.js';
 
 export interface SnapshotItem extends MediaRef {
   content_hash: string;
@@ -44,10 +44,10 @@ function safeOutputName(name: string): string {
   return n;
 }
 
-async function freeOutputName(dirAbs: string, name: string): Promise<{ name: string; versioned: boolean }> {
+async function freeOutputName(dirAbs: string, name: string, reserved: ReadonlySet<string>): Promise<{ name: string; versioned: boolean }> {
   const ext = path.extname(name);
   const base = path.basename(name, ext);
-  const taken = async (n: string) => fsp.lstat(path.join(dirAbs, n)).then(() => true, () => false);
+  const taken = async (n: string) => reserved.has(n.toLowerCase()) || fsp.lstat(path.join(dirAbs, n)).then(() => true, () => false);
   if (!(await taken(name))) return { name, versioned: false };
   for (let i = 2; i < 1000; i++) {
     const cand = `${base}_v${i}${ext}`;
@@ -66,6 +66,11 @@ export async function renderPreflight(
   input: { project_id: string; output_name: string; estimated_bytes: number; approve_overwrite?: boolean; actor: Actor; disk?: { free_bytes: number; total_bytes: number } | null },
 ): Promise<PreflightResult> {
   await guard(ws, input.actor, 'render_preflight', { project_id: input.project_id });
+  if (input.approve_overwrite && input.actor !== 'user') {
+    // Overwriting a final needs an explicit *user* decision (review C-M3).
+    await audit(ws, { op: 'render.preflight', actor: input.actor, outcome: 'blocked', reason: 'OVERWRITE_NOT_USER', project_id: input.project_id });
+    throw new StorageError('FORBIDDEN', 'Hanya user yang boleh menyetujui overwrite output');
+  }
   const project = await readProject(ws, input.project_id);
   const reg = await loadRegistry(ws);
   const busy = await journalBusy(ws);
@@ -122,8 +127,16 @@ export async function renderPreflight(
   const name = safeOutputName(input.output_name);
   const outDir = await resolveInArea(ws.root, `${projectRel(input.project_id, '05_OUTPUT')}/${name}`, ['project_output'], { allowMissing: true });
   const dirAbs = path.dirname(outDir.abs);
+  const outPrefix = `${projectRel(input.project_id, '05_OUTPUT')}/`.toLowerCase();
+  const reserved = new Set(
+    (await loadLeases(ws)).leases
+      .map((l) => l.output_rel?.toLowerCase())
+      .filter((r): r is string => !!r && r.startsWith(outPrefix))
+      .map((r) => r.slice(outPrefix.length)),
+  );
   let chosen = { name, versioned: false };
-  if (!input.approve_overwrite) chosen = await freeOutputName(dirAbs, name);
+  if (!input.approve_overwrite) chosen = await freeOutputName(dirAbs, name, reserved);
+  else if (reserved.has(name.toLowerCase())) problems.push({ code: 'OUTPUT_NOT_WRITABLE', detail: 'Nama output sedang dipakai render lain yang belum selesai' });
   else notes.push('Overwrite output disetujui eksplisit oleh user');
   const output_rel = `${projectRel(input.project_id, '05_OUTPUT')}/${chosen.name}`;
 
@@ -144,20 +157,24 @@ export async function renderPreflight(
   return result;
 }
 
-/** Preflight + lease: the render job pins its exact dependency snapshot (GC-05). */
+/**
+ * Preflight + lease in ONE workspace lock: the hashes verified by preflight are the ones the
+ * lease pins, and the output name is reserved atomically (no two renders share a final).
+ * External byte changes after this point are caught by `verifyRenderSnapshot` before reading.
+ */
 export async function startRender(ws: Workspace, input: Parameters<typeof renderPreflight>[1]): Promise<{ preflight: PreflightResult; lease: Lease | null }> {
-  const preflight = await renderPreflight(ws, input);
-  if (!preflight.ok) return { preflight, lease: null };
-  const lease = await createLease(ws, { job: 'render', label: `${preflight.project_id}@${preflight.project_revision} → ${preflight.output_rel}`, media: preflight.snapshot.map(({ media_id, version_id }) => ({ media_id, version_id })), actor: input.actor });
-  // The lease must pin exactly what preflight verified.
-  for (const s of preflight.snapshot) {
-    const l = lease.media.find((m) => m.version_id === s.version_id);
-    if (l?.content_hash !== s.content_hash) {
-      await releaseLease(ws, { lease_id: lease.lease_id, outcome: 'cancelled', actor: input.actor });
-      throw new StorageError('INTEGRITY', 'Media berubah antara preflight dan lease; render dibatalkan', { version_id: s.version_id });
-    }
-  }
-  return { preflight, lease };
+  return withWorkspaceLock(ws, 'startRender', async () => {
+    const preflight = await renderPreflight(ws, input);
+    if (!preflight.ok) return { preflight, lease: null };
+    const lease = await createLease(ws, {
+      job: 'render',
+      label: `${preflight.project_id}@${preflight.project_revision} → ${preflight.output_rel}`,
+      media: preflight.snapshot.map(({ media_id, version_id }) => ({ media_id, version_id })),
+      output_rel: preflight.output_rel,
+      actor: input.actor,
+    });
+    return { preflight, lease };
+  });
 }
 
 /** Right before the worker reads media: re-check every leased file is still intact and unmoved. */
