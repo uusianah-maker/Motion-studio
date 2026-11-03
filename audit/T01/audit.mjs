@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PROTO = path.resolve(here, '../../prototype/prototype_v0.5_FIXED.html');
 const URL_ = pathToFileURL(PROTO).href;
-const EV = process.env.EVIDENCE_DIR ? path.resolve(process.env.EVIDENCE_DIR) : path.join(here, 'evidence');
+const EV = process.env.EVIDENCE_DIR ? path.resolve(process.env.EVIDENCE_DIR) : path.resolve(here, '../../.tmp/prototype-evidence');
 const FX = path.join(here, 'fixtures');
 fs.mkdirSync(EV, { recursive: true });
 
@@ -58,7 +58,6 @@ const lastBubble = page => page.locator('#messages .bubble').last().innerText();
   // CTA + overlay visibility
   await page.click('#addCta');
   const ctaClips = await count(page, '#trackText .ctaClip');
-  await page.evaluate(() => { const r = document.getElementById('trackVideo').getBoundingClientRect(); });
   const box = await page.locator('#trackVideo').boundingBox();
   await page.mouse.click(box.x + box.width * 0.9, box.y + box.height / 2); // ~27s
   const ov = await count(page, '#overlays .overlay.cta');

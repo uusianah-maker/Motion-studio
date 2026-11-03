@@ -5,7 +5,7 @@ Status: PLANNED. Jangan mulai coding sebelum audit T01 sign-off.
 - [x] T01 Audit HTML v0.5 FIXED: inspeksi struktur, syntax, console, interaksi, pengujian browser; laporan bukti dan gap.
 - [x] T02 Perbaiki temuan T01 secara berurutan, regression test; jika tak ada temuan, dokumentasikan N/A.
 - [x] T03 Tetapkan architecture decision record desktop/hybrid dan boundary akses filesystem.
-- [ ] T04 Setup repository, test harness, lint/typecheck, dan CI minimal.
+- [x] T04 Setup repository, test harness, lint/typecheck, dan CI minimal.
 - [ ] T05 Implementasi workspace schema + izin folder (ST-01).
 **CHECKPOINT A:** audit lima tugas, repair sampai lulus, baru lanjut.
 - [ ] T06 Media registry + immutable version (ST-02).
