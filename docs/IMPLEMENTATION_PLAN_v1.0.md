@@ -6,7 +6,7 @@ Status: PLANNED. Jangan mulai coding sebelum audit T01 sign-off.
 - [x] T02 Perbaiki temuan T01 secara berurutan, regression test; jika tak ada temuan, dokumentasikan N/A.
 - [x] T03 Tetapkan architecture decision record desktop/hybrid dan boundary akses filesystem.
 - [x] T04 Setup repository, test harness, lint/typecheck, dan CI minimal.
-- [ ] T05 Implementasi workspace schema + izin folder (ST-01).
+- [x] T05 Implementasi workspace schema + izin folder (ST-01).
 **CHECKPOINT A:** audit lima tugas, repair sampai lulus, baru lanjut.
 - [ ] T06 Media registry + immutable version (ST-02).
 - [ ] T07 Dependency Manager + reverse index (ST-03).
