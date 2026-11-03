@@ -438,7 +438,7 @@ At any point versions can be `PROTECTED`, `MISSING`, `CHANGED`, `RETIRED`, `FAIL
 - [x] ST-02 [DONE 2026-11-03, T06]
 - [x] ST-03 [DONE 2026-11-03, T07]
 - [x] ST-04 [DONE 2026-11-03, T08]
-- [ ] ST-05 [TODO]
+- [x] ST-05 [DONE 2026-11-03, T09]
 - [ ] CHECKPOINT AUDIT A [TODO]
 - [ ] ST-06 [TODO]
 - [ ] ST-07 [TODO]

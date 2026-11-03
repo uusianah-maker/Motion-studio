@@ -1,9 +1,9 @@
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { DAY_MS, ManualClock } from '../src/storage/clock.js';
-import { commitProject } from '../src/storage/deps.js';
 import type { MediaRef, ProjectManifest } from '../src/storage/project.js';
 import { importMedia } from '../src/storage/registry.js';
+import { StorageService } from '../src/storage/service.js';
 import { type Workspace, createProject, initWorkspace, readProject } from '../src/storage/workspace.js';
 import { tempDir } from './helpers.js';
 
@@ -50,13 +50,15 @@ export function buildManifest(base: ProjectManifest, spec: ProjectSpec): Project
   };
 }
 
-/** Create the project if needed and commit the given references. */
-export async function commit(ws: Workspace, projectId: string, spec: ProjectSpec, after?: Parameters<typeof commitProject>[2]): Promise<ProjectManifest> {
+/** Create the project if needed and commit the given references through the service (clocks reconciled). */
+export async function commit(ws: Workspace, projectId: string, spec: ProjectSpec): Promise<ProjectManifest> {
   let base: ProjectManifest;
   try {
     base = await readProject(ws, projectId);
   } catch {
     base = await createProject(ws, { project_id: projectId, name: projectId });
   }
-  return commitProject(ws, { manifest: buildManifest(base, spec), expected_revision: base.revision, actor: 'user' }, after);
+  const r = await new StorageService(ws).commitProject({ manifest: buildManifest(base, spec), expected_revision: base.revision, actor: 'user' });
+  if (!r.clocks.ok) throw new Error(`clock sync failed: ${r.clocks.errors.join('; ')}`);
+  return r.result;
 }
