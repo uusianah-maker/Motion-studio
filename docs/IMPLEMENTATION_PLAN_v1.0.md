@@ -10,7 +10,7 @@ Status: PLANNED. Jangan mulai coding sebelum audit T01 sign-off.
 **CHECKPOINT A:** audit lima tugas, repair sampai lulus, baru lanjut.
 - [x] T06 Media registry + immutable version (ST-02).
 - [x] T07 Dependency Manager + reverse index (ST-03).
-- [ ] T08 Eligibility engine 30 hari + never-used protection (ST-04).
+- [x] T08 Eligibility engine 30 hari + never-used protection (ST-04).
 - [ ] T09 Candidate scanner + audit log (ST-05).
 - [ ] T10 Auto Trash engine (ST-06).
 **CHECKPOINT B:** audit lima tugas, repair sampai lulus.
