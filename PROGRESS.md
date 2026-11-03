@@ -27,7 +27,7 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 ### PC-0: Konfirmasi sign-off T01 — DIJAWAB 2026-11-04: **A (sah)**
 - Owner: "PC-0 A sah". T01 resmi sign-off; semua pekerjaan T02–T15 tetap berlaku.
 
-### PC-1: Shell desktop
+### PC-1: Shell desktop — SELESAI oleh PC-5 (web app, bukan desktop)
 - Task terdampak: integrasi UI (dashboard storage, dialog Trash/purge), backlog editor. **Tidak** memblokir T04–T15 (storage core shell-agnostic).
 - Opsi A: Electron. Storage core jalan langsung di main process, satu bahasa TS. Installer besar.
 - Opsi B: Tauri + sidecar Node. Ringan, tapi dua runtime dan packaging lebih rumit.
@@ -54,7 +54,10 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Opsi B: AI planner/provider dulu, editor & render belakangan.
 - Rekomendasi: A. Pengguna butuh edit & render nyata dulu; AI tanpa editor/render tidak menghasilkan video.
 
-### PC-5: Pivot arsitektur — web app tim + Google Drive (DIBAHAS 2026-11-04, BELUM DIPUTUSKAN)
+### PC-5: Pivot arsitektur — web app tim + Google Drive — DIJAWAB 2026-11-04: **A**
+- Owner: "setuju opsi A, team 1 orang, VPS nanti kalau UI/UX, backend dan frontend sudah jadi". Dicatat di `docs/adr/ADR-002-web-app-google-drive.md`; rencana baru `docs/IMPLEMENTATION_PLAN_v2.0.md` (menunggu persetujuan urutan).
+- "Publik" belum dijawab → default aman: hanya email di allowlist yang bisa login.
+- Riwayat diskusi:
 - Konteks: owner mau app dipakai **tim** dan di-online-kan; semua file di **Google Drive**, app hanya memproses. Ini mengubah keputusan terkunci PRD §0.1-1/2 (desktop, local-first) → wajib ADR-002 + rencana task baru sebelum coding.
 - Fakta yang sudah dijelaskan ke owner: video tetap harus diunduh sementara ke mesin yang merender; link share Drive tidak cocok untuk proses otomatis (halaman konfirmasi file besar, batas download, tidak bisa list/upload, risiko bocor); akses yang benar = OAuth "Login with Google" oleh app (bukan password, bisa dicabut); Trash bawaan Google Drive auto-hapus 30 hari → bentrok aturan "purge selalu manual", jadi app pakai folder Trash sendiri.
 - Opsi A (rekomendasi): web app + Login Google + Google Shared Drive via API + 1 server render (VPS FFmpeg, cache lokal) + fitur "paste link Drive" untuk import.
@@ -65,6 +68,20 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Dampak ke kode: logika storage (aturan 30 hari, proteksi, purge manual, audit, skema proyek, preflight, larangan AI) dipakai ulang; lapisan file lokal diganti adapter Drive/R2 (perkiraan ±50% reuse).
 - Catatan lingkungan: D: (Portable SSD) ±1,5 TB kosong, C: ±41 GB kosong; Google Drive for Desktop belum terpasang.
 - PC-1 (bentuk app) dan PC-4 (urutan backlog) mengikuti keputusan PC-5.
+
+### PC-6: Jenis akun Google
+- Task terdampak: W04, W05.
+- Opsi A: Google Workspace (email kantor/domain sendiri) → bisa Shared Drive + OAuth "Internal" (login tidak kedaluwarsa).
+- Opsi B: Gmail pribadi → folder di My Drive; OAuth "External" mode testing (token kedaluwarsa tiap 7 hari kecuali app dipublikasikan).
+- Rekomendasi: pakai yang owner sudah punya; kalau Gmail pribadi, pasangkan dengan PC-7 opsi A supaya app bisa dipublikasikan tanpa audit berat.
+
+### PC-7: Izin akses Drive
+- Task terdampak: W04–W06.
+- Opsi A (rekomendasi): `drive.file` — app hanya bisa akses file yang dia buat atau yang owner pilih lewat Google Picker. Paling aman, izin "non-sensitive" (mudah dipublikasikan, token tidak kedaluwarsa 7 hari). Import lewat Picker; "paste link" terbatas.
+- Opsi B: `drive` penuh — app bisa baca seluruh Drive, "paste link" bebas. Izin "restricted": butuh verifikasi keamanan Google bila dipublikasikan; mode testing = login ulang tiap 7 hari.
+
+### PC-8: Persetujuan urutan rencana v2.0
+- Lihat `docs/IMPLEMENTATION_PLAN_v2.0.md` (W01–W15, checkpoint D/E/F). Opsi A: setujui apa adanya. Opsi B: ubah urutan.
 
 ## Audit
 ### Checkpoint A (T01–T05): LULUS setelah perbaikan
