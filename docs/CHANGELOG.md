@@ -1,4 +1,8 @@
 # CHANGELOG
+## 2026-11-03 — T02 perbaikan prototype
+- F-01..F-11 + I03 diperbaiki di `prototype/prototype_v0.5_FIXED.html`; suite regresi 56/56 PASS.
+- T01 ditandai DONE (sign-off via /gasngoding, PC-0).
+
 ## 2026-11-03 — T01 audit dijalankan
 - Workspace kerja dibuat di `D:\VIBECODING\Video motion` (docs, prototype, audit).
 - T01: audit browser otomatis & bisa diulang (Playwright + Chrome), 49 cek: 34 PASS, 14 FAIL, 1 NOT TESTED.

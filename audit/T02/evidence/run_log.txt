@@ -1,0 +1,58 @@
+PASS A01 Load tanpa error JS — pageErrors=[] console=[]
+PASS A04 Placeholder canvas terlihat sebelum import — placeholderOnTop=true
+PASS B01 Ganti rasio canvas 4 opsi — 3:4->aspect=3 / 4 meta=1080 × 1440 · 25 fps; 1:1->aspect=1 / 1 meta=1080 × 1080 · 25 fps; 16:9->aspect=16 / 9 meta=1920 × 1080 · 25 fps; 9:16->aspect=9 / 16 meta=1080 × 1920 · 25 fps
+PASS B02 Tambah CTA + overlay muncul di akhir — ctaClips=1 overlayCta=1 time=00:26 / 00:30
+PASS B03 Klik linimasa memindah playhead — time=00:26 / 00:30 playheadLeft=calc(89.9371% - 2.11321px)
+PASS B04 Tambah teks via dialog — clips=["Teks Uji Audit"] overlays=["Teks Uji Audit"]
+PASS B05 Edit teks dengan klik clip — clip=Teks Diedit
+PASS B06 Undo bertahap — afterUndo1=["Teks Uji Audit"] afterUndo2Clips=1 afterUndo3Clips=0
+PASS B07 Undo saat history kosong — modal=Undo | Belum ada perubahan yang dapat dibatalkan.
+PASS C01 Copilot pill Hook+CTA → plan → terapkan — plan=["Tambah teks “LUCY PANTS · ELEGANT LOOK” (00:00–00:03)","Tambah CTA “JOIN LIVE SEKARANG” (00:25–00:30)"] clips=["LUCY PANTS · ELEGANT LOOK","JOIN LIVE SEKARANG"]
+PASS C02 Tolak rencana → timeline tidak berubah — plan=["Ubah canvas ke 3:4","Tambah teks “ELEGANT LOOK” (00:01–00:05)"] clips=2 ratio=9:16
+PASS C03 Perintah unsupported (subtitle) tidak dipalsukan — disabled=true text=Fitur ini memerlukan layanan AI/media processing backend; belum dijalankan di prototype.
+PASS C04 Perintah tidak dikenal — bubble=Perintah belum dikenali oleh planner lokal. Coba: “buat hook, CTA join live, ras
+PASS C05-1 Prompt rasio "ubah ke 16x9" — plan=Ubah canvas ke 16:9 ratioSelect="16:9" meta=1920 × 1080 · 25 fps newPageErrors=[]
+PASS C05-2 Prompt rasio "ubah rasio 1 : 1" — plan=Ubah canvas ke 1:1 ratioSelect="1:1" meta=1080 × 1080 · 25 fps newPageErrors=[]
+PASS C05-3 Prompt rasio "ubah rasio 9 x 16" — plan=Ubah canvas ke 9:16 ratioSelect="9:16" meta=1080 × 1920 · 25 fps newPageErrors=[]
+PASS D01 Play simulasi tanpa video — time=00:01 / 00:30
+PASS D02 Mute tanpa video — modal=Audio | Impor video terlebih dahulu.
+PASS E01 Export JSON proyek — keys=name,ratio,duration,videoName,texts texts=2 → evidence/exported_project.json
+PASS E02 Render jujur (tidak palsu MP4) — modal=Render MP4 · Belum tersedia | Ini prototype HTML. Rendering 
+PASS F01 Escape menutup modal + fokus terkunci di modal (a11y) — focusOnOpen=closeModal focusInsideAfterTab=true modalStillVisible=false
+PASS F01b Escape menutup Settings & membersihkan field key — {"open":false,"key":""}
+PASS F02 Nav modul rencana (Template) jujur — modal=Template | Modul Template ditampilkan dalam navigasi sebagai rancangan
+PASS F03 Nav "Proyek" punya aksi — activeElement=search
+PASS F04 Item proyek di sidebar memberi respons jujur — modal=Data contoh | Daftar proyek & folder ini adalah data contoh 
+PASS F05 Cari proyek — visible=1
+PASS F06 Katalog fitur: count, filter, search — count="29 modul ditampilkan · 4 demo terbatas · 25 rencana" demo=4 subtitle=1
+PASS G01 Failover butuh ≥2 koneksi — 1conn="Tambahkan minimal 2 provider berbeda agar failover mungkin d" 2conn="SIMULASI (tidak ada panggilan API): openai → 429/timeout (tu"
+PASS G02 API key tidak tersimpan (storage/DOM) — storage={"ls":{},"ss":{},"cookie":""} domHasSecret=false registryKeyCleared=true
+PASS G03 API key tidak ikut export JSON — jsonContainsSecret=false
+PASS G04 Strategi eksekusi tersimpan saat dibuka ulang — executionStrategy=rules (wrapper openBrain baris 77 tidak terpasang ke tombol Settings, binding baris 41)
+PASS G04b Batal tidak menyimpan strategi (reopen = nilai tersimpan) — executionStrategy=rules — form menampilkan nilai belum disimpan; G04 PASS hanya karena DOM tidak di-reset
+PASS G05 Mode Cloud: pesan konsisten dg perilaku — saveMsg="Konfigurasi cloud dipilih (demo). Koneksi model belum aktif, jadi Copilot TIDAK akan mempr" reply="Backend AI belum terhubung. Tidak ada token/API yang dipakai. Ganti ke"
+PASS G06 Tidak ada request jaringan eksternal — requests=[]
+PASS H01 Badge "Disimpan lokal" sesuai fakta — badge="○ Belum disimpan · prototype" clipsAfterReload=0 (klaim simpan menyesatkan)
+PASS A02 Tidak ada pageerror selama sesi run1 (di luar probe C05) — pageErrors=[]
+PASS I01 Import MP4 H.264 8 detik — duration=00:08 clip="▥ sample_8s_9x16.mp4" intrinsic=360x640 dur=8.00
+PASS I01b Ruler linimasa mengikuti durasi — ruler=00:00,00:01,00:02,00:04,00:05,00:06,00:08 duration=00:08
+PASS I02 Teks lama di luar durasi video baru — left=37.5% width=62.5% warningShown=true
+PASS I03 Rasio intrinsik video ditampilkan benar — objectFit=contain meta=1080 × 1920 · 25 fps · sumber 360×640
+PASS I04 Play/pause video nyata — time=00:01 / 00:08
+PASS I05 Mute video — muted=true
+PASS I06 Undo setelah import tidak merusak durasi — durationAfterUndo=00:08 (snapshot sebelum import berisi duration=30)
+PASS I07 Import file non-video — modal=File tidak didukung | Pilih file video yang dapat 
+PASS I01c Ruler video pendek tanpa label dobel — ruler=00:00,00:01,00:02,00:03
+PASS I03b Video 16:9 di canvas 9:16 tidak terpotong — meta=1080 × 1920 · 25 fps · sumber 640×360 duration=00:03
+PASS I08 Proyek baru reset state — {"name":"Proyek Baru","clips":0,"v":0,"ph":true}
+PASS I09 Undo "Proyek baru" — {"name":"Lucy — Elegant Look","v":0,"src":null} (nama/teks kembali, video tidak)
+PASS I10 Tambah teks saat playhead di ujung — clip left=96.6667% width=3.33333% time=00:29 / 00:30
+PASS A03 Tidak ada pageerror selama run2 — pageErrors=[]
+PASS J-1100 Responsif lebar 1100px — scrollWidth=1100 clientWidth=1100
+PASS J-1100b Tombol utama terlihat di 1100px — [{"id":"uploadBtn","visible":true,"onTop":true},{"id":"jsonBtn","visible":true,"onTop":true},{"id":"renderBtn","visible":true,"onTop":true},{"id":"send","visible":true,"onTop":true}]
+PASS J-820 Responsif lebar 820px — scrollWidth=820 clientWidth=820
+PASS J-820b Tombol utama terlihat di 820px — [{"id":"uploadBtn","visible":true,"onTop":true},{"id":"jsonBtn","visible":true,"onTop":true},{"id":"renderBtn","visible":true,"onTop":true},{"id":"send","visible":true,"onTop":false}]
+PASS J-390 Responsif lebar 390px — scrollWidth=390 clientWidth=390
+PASS J-390b Tombol utama terlihat di 390px — [{"id":"uploadBtn","visible":true,"onTop":true},{"id":"jsonBtn","visible":true,"onTop":true},{"id":"renderBtn","visible":true,"onTop":true},{"id":"send","visible":true,"onTop":false}]
+
+SUMMARY {"PASS":56}

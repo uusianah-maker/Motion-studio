@@ -6,8 +6,9 @@ Tanggal: 2026-10-27
 | DOC-02 Audit konflik dokumen | DONE | Tabel konflik pada bagian 0.2 PRD master |
 | DOC-03 Implementation plan | DONE | IMPLEMENTATION_PLAN_v1.0.md |
 | DOC-04 Changelog dan packaging | DONE | CHANGELOG.md dan ZIP |
-| T01 Audit HTML v0.5 FIXED | TESTING / NOT SIGNED OFF | 2026-11-03: audit browser otomatis `audit/T01/audit.mjs`, 34 PASS / 14 FAIL / 1 NOT TESTED; laporan `audit/T01/T01_AUDIT_REPORT.md`; menunggu sign-off owner |
-| T02–T15 | TODO | Dilarang loncat urutan |
-| Coding / commit | NOT STARTED | Tidak ada implementasi software pada baseline ini |
+| T01 Audit HTML v0.5 FIXED | DONE | 34 PASS / 14 FAIL / 1 NOT TESTED; `audit/T01/T01_AUDIT_REPORT.md`; sign-off via /gasngoding (PC-0) |
+| T02 Perbaikan temuan T01 | DONE | 56/56 PASS; `audit/T02/T02_REPAIR_REPORT.md` |
+| T03–T15 | TODO | Dilarang loncat urutan |
+| Coding / commit | IN PROGRESS | Repo git lokal, commit per task; status rinci di `PROGRESS.md` root |
 
 **Catatan:** Audit dokumen tidak sama dengan audit implementasi; checkpoint setiap lima tugas coding belum berjalan.

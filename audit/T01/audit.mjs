@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PROTO = path.resolve(here, '../../prototype/prototype_v0.5_FIXED.html');
 const URL_ = pathToFileURL(PROTO).href;
-const EV = path.join(here, 'evidence');
+const EV = process.env.EVIDENCE_DIR ? path.resolve(process.env.EVIDENCE_DIR) : path.join(here, 'evidence');
 const FX = path.join(here, 'fixtures');
 fs.mkdirSync(EV, { recursive: true });
 
@@ -43,6 +43,8 @@ const lastBubble = page => page.locator('#messages .bubble').last().innerText();
   await page.waitForTimeout(500);
   record('A01', 'Load tanpa error JS', '0 pageerror, 0 console error', log.pageErrors.length === 0 && !log.console.some(c => c.startsWith('error')) ? 'PASS' : 'FAIL', `pageErrors=${JSON.stringify(log.pageErrors)} console=${JSON.stringify(log.console)}`);
   await page.screenshot({ path: path.join(EV, '01_load_1440.png') });
+  const phVisible = await page.evaluate(() => { const r = document.getElementById('placeholder').getBoundingClientRect(); const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return document.getElementById('placeholder').contains(h); });
+  record('A04', 'Placeholder canvas terlihat sebelum import', 'placeholder di lapisan atas', phVisible ? 'PASS' : 'FAIL', `placeholderOnTop=${phVisible}`);
 
   // Ratio
   const ratioRes = [];
@@ -157,16 +159,26 @@ const lastBubble = page => page.locator('#messages .bubble').last().innerText();
   record('E02', 'Render jujur (tidak palsu MP4)', 'modal "Belum tersedia"', rm?.includes('Belum tersedia') ? 'PASS' : 'FAIL', `modal=${rm?.slice(0, 60)}`); await closeModal(page);
 
   // Escape closes modal?
-  await page.click('#renderBtn'); await page.keyboard.press('Escape'); const escOpen = await page.locator('#modal').isVisible();
-  record('F01', 'Tombol Escape menutup modal (a11y)', 'modal tertutup', !escOpen ? 'PASS' : 'FAIL', `modalStillVisible=${escOpen}`); await closeModal(page);
+  await page.click('#renderBtn');
+  const focusOnOpen = await page.evaluate(() => document.activeElement?.id);
+  await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+  const focusInside = await page.evaluate(() => document.getElementById('modal').contains(document.activeElement));
+  await page.keyboard.press('Escape'); const escOpen = await page.locator('#modal').isVisible();
+  record('F01', 'Escape menutup modal + fokus terkunci di modal (a11y)', 'fokus di modal saat buka & Tab, Escape menutup', !escOpen && focusOnOpen === 'closeModal' && focusInside ? 'PASS' : 'FAIL', `focusOnOpen=${focusOnOpen} focusInsideAfterTab=${focusInside} modalStillVisible=${escOpen}`);
+  if (escOpen) await closeModal(page);
+  await page.click('.nav[data-panel="Settings"]'); await page.fill('#brainKey', 'x'); await page.keyboard.press('Escape');
+  const sEsc = { open: await page.locator('#settingsBackdrop').isVisible(), key: await page.inputValue('#brainKey') };
+  record('F01b', 'Escape menutup Settings & membersihkan field key', 'tertutup, key kosong', !sEsc.open && sEsc.key === '' ? 'PASS' : 'FAIL', JSON.stringify(sEsc));
 
   // Nav buttons
   await page.click('.nav[data-panel="Template"]'); const navm = await modalText(page);
   record('F02', 'Nav modul rencana (Template) jujur', 'modal "belum tersedia"', navm?.includes('belum tersedia') ? 'PASS' : 'FAIL', `modal=${navm?.slice(0, 70)}`); await closeModal(page);
-  const projBtnHasHandler = await page.$eval('.nav.sel', e => !!e.onclick);
-  record('F03', 'Nav "Proyek" punya aksi', 'ada handler', projBtnHasHandler ? 'PASS' : 'FAIL', `onclick=${projBtnHasHandler} (tombol tidak melakukan apa-apa)`);
-  const projItemClickable = await page.$eval('#projectList .project:nth-child(2)', e => !!e.onclick);
-  record('F04', 'Item proyek di sidebar bisa dibuka', 'klik membuka proyek', projItemClickable ? 'PASS' : 'FAIL', `onclick=${projItemClickable} (data contoh statis)`);
+  await page.click('.nav.sel');
+  const projFocus = await page.evaluate(() => document.activeElement?.id);
+  record('F03', 'Nav "Proyek" punya aksi', 'fokus ke pencarian proyek', projFocus === 'search' ? 'PASS' : 'FAIL', `activeElement=${projFocus}`);
+  await page.click('#projectList .project:nth-child(2)'); const projModal = await modalText(page);
+  record('F04', 'Item proyek di sidebar memberi respons jujur', 'modal "Data contoh" (bukan klik mati)', projModal?.includes('Data contoh') ? 'PASS' : 'FAIL', `modal=${projModal?.slice(0, 60)}`);
+  if (projModal) await closeModal(page);
 
   // Search
   await page.fill('#search', 'loose');
@@ -230,7 +242,7 @@ const lastBubble = page => page.locator('#messages .bubble').last().innerText();
   await page.reload(); await page.waitForTimeout(300);
   const clipsAfterReload = await count(page, '#trackText .clip');
   const badge = await txt(page, '#saveBadge');
-  record('H01', 'Badge "Disimpan lokal" sesuai fakta', 'data bertahan setelah reload, atau badge tidak klaim simpan', clipsAfterReload > 0 ? 'PASS' : 'FAIL', `badge="${badge}" clipsAfterReload=${clipsAfterReload} (klaim simpan menyesatkan)`);
+  record('H01', 'Badge "Disimpan lokal" sesuai fakta', 'data bertahan setelah reload, atau badge tidak klaim simpan', clipsAfterReload > 0 || !badge.includes('Disimpan lokal') ? 'PASS' : 'FAIL', `badge="${badge}" clipsAfterReload=${clipsAfterReload} (klaim simpan menyesatkan)`);
   record('A02', 'Tidak ada pageerror selama sesi run1 (di luar probe C05)', '0', log.pageErrors.length === 0 ? 'PASS' : 'FAIL', `pageErrors=${JSON.stringify(log.pageErrors)}`);
   await ctx.close();
 }
@@ -245,13 +257,17 @@ const lastBubble = page => page.locator('#messages .bubble').last().innerText();
   const vclip = await page.locator('#trackVideo .videoClip').innerText().catch(() => '');
   const vw = await page.$eval('#video', v => `${v.videoWidth}x${v.videoHeight} dur=${v.duration.toFixed(2)}`);
   record('I01', 'Import MP4 H.264 8 detik', 'durasi 00:08, clip video tampil', dur === '00:08' && vclip.includes('sample_8s') ? 'PASS' : 'FAIL', `duration=${dur} clip="${vclip}" intrinsic=${vw}`);
-  const rulerLast = (await page.locator('#ruler span').allInnerTexts()).pop();
-  record('I01b', 'Ruler linimasa mengikuti durasi', 'label terakhir 00:08', rulerLast === '00:08' ? 'PASS' : 'FAIL', `rulerLast=${rulerLast} duration=${dur} (ruler statis di HTML)`);
+  const rulerAll = await page.locator('#ruler span').allInnerTexts();
+  const rulerLast = rulerAll[rulerAll.length - 1];
+  record('I01b', 'Ruler linimasa mengikuti durasi', 'label terakhir 00:08', rulerLast === '00:08' ? 'PASS' : 'FAIL', `ruler=${rulerAll.join(',')} duration=${dur}`);
   // CTA from before import now beyond duration
   const ctaStyle = await page.$eval('#trackText .ctaClip', e => `left=${e.style.left} width=${e.style.width}`);
   const ctaLeft = parseFloat(ctaStyle.match(/left=([\d.]+)/)[1]);
-  record('I02', 'Teks lama di luar durasi video baru', 'di-clamp/diberi peringatan', ctaLeft <= 100 ? 'PASS' : 'FAIL', `${ctaStyle} (clip CTA 25–30s di video 8s → keluar track, tak pernah tampil)`);
-  record('I03', 'Rasio intrinsik video ditampilkan benar', 'PRD §10: aspek intrinsik', 'NOT TESTED', 'Prototype selalu object-fit:cover ke rasio canvas; tidak mendeteksi rasio intrinsik. Gap PRD, perlu desain di implementasi.');
+  const clampMsg = (await page.locator('#messages .bubble').allInnerTexts()).some(t => t.includes('digeser/dipotong'));
+  record('I02', 'Teks lama di luar durasi video baru', 'di-clamp ke dalam durasi + diberi peringatan', ctaLeft < 100 && clampMsg ? 'PASS' : 'FAIL', `${ctaStyle} warningShown=${clampMsg}`);
+  const fit = await page.$eval('#video', v => getComputedStyle(v).objectFit);
+  const meta9 = await txt(page, '#projectMeta');
+  record('I03', 'Rasio intrinsik video ditampilkan benar', 'object-fit contain + resolusi sumber tampil', fit === 'contain' && meta9.includes('sumber 360×640') ? 'PASS' : 'FAIL', `objectFit=${fit} meta=${meta9}`);
 
   await page.click('#play'); await page.waitForTimeout(1500); await page.click('#play');
   const pt = await txt(page, '#time');
@@ -271,6 +287,15 @@ const lastBubble = page => page.locator('#messages .bubble').last().innerText();
   const nv = await modalText(page);
   record('I07', 'Import file non-video', 'modal "File tidak didukung"', nv?.includes('tidak didukung') ? 'PASS' : 'FAIL', `modal=${nv?.slice(0, 50)}`);
   if (nv) await closeModal(page);
+
+  // Import landscape into portrait canvas: intrinsic aspect must be preserved (letterbox)
+  await page.setInputFiles('#file', path.join(FX, 'sample_3s_16x9.mp4'));
+  await page.waitForFunction(() => document.getElementById('durationText').textContent === '00:03', null, { timeout: 8000 }).catch(() => {});
+  const meta16 = await txt(page, '#projectMeta');
+  const ruler3 = await page.locator('#ruler span').allInnerTexts();
+  record('I01c', 'Ruler video pendek tanpa label dobel', 'label unik', new Set(ruler3).size === ruler3.length ? 'PASS' : 'FAIL', `ruler=${ruler3.join(',')}`);
+  await page.screenshot({ path: path.join(EV, '07b_landscape_in_portrait.png') });
+  record('I03b', 'Video 16:9 di canvas 9:16 tidak terpotong', 'resolusi sumber 640×360 tampil, letterbox', meta16.includes('sumber 640×360') ? 'PASS' : 'FAIL', `meta=${meta16} duration=${await txt(page, '#durationText')}`);
 
   // New project
   await page.click('#newProject');
@@ -300,6 +325,13 @@ for (const vp of [{ width: 1100, height: 800 }, { width: 820, height: 1000 }, { 
   const ov = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
   await page.screenshot({ path: path.join(EV, `08_responsive_${vp.width}.png`), fullPage: true });
   record(`J-${vp.width}`, `Responsif lebar ${vp.width}px`, 'tanpa scroll horizontal', ov.sw <= ov.cw ? 'PASS' : 'FAIL', `scrollWidth=${ov.sw} clientWidth=${ov.cw}`);
+  const btns = await page.evaluate(() => ['uploadBtn', 'jsonBtn', 'renderBtn', 'send'].map(id => {
+    const el = document.getElementById(id); const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2 - window.scrollY + window.scrollY);
+    return { id, visible: r.width > 0 && r.left >= 0 && r.right <= innerWidth + 0.5, onTop: el === hit || el.contains(hit) };
+  }));
+  const bad = btns.filter(b => !b.visible);
+  record(`J-${vp.width}b`, `Tombol utama terlihat di ${vp.width}px`, 'Import/JSON/Render/Susun edit di dalam layar', bad.length === 0 ? 'PASS' : 'FAIL', JSON.stringify(btns));
   await ctx.close();
 }
 

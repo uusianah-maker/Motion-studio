@@ -1,0 +1,398 @@
+{
+  "runAt": "2026-11-03T16:36:28.174Z",
+  "target": "D:\\VIBECODING\\Video motion\\prototype\\prototype_v0.5_FIXED.html",
+  "results": [
+    {
+      "id": "A01",
+      "name": "Load tanpa error JS",
+      "expected": "0 pageerror, 0 console error",
+      "status": "PASS",
+      "evidence": "pageErrors=[] console=[]"
+    },
+    {
+      "id": "A04",
+      "name": "Placeholder canvas terlihat sebelum import",
+      "expected": "placeholder di lapisan atas",
+      "status": "PASS",
+      "evidence": "placeholderOnTop=true"
+    },
+    {
+      "id": "B01",
+      "name": "Ganti rasio canvas 4 opsi",
+      "expected": "aspect-ratio & resolusi meta berubah",
+      "status": "PASS",
+      "evidence": "3:4->aspect=3 / 4 meta=1080 × 1440 · 25 fps; 1:1->aspect=1 / 1 meta=1080 × 1080 · 25 fps; 16:9->aspect=16 / 9 meta=1920 × 1080 · 25 fps; 9:16->aspect=9 / 16 meta=1080 × 1920 · 25 fps"
+    },
+    {
+      "id": "B02",
+      "name": "Tambah CTA + overlay muncul di akhir",
+      "expected": "1 clip CTA, overlay tampil di detik ≥25",
+      "status": "PASS",
+      "evidence": "ctaClips=1 overlayCta=1 time=00:26 / 00:30"
+    },
+    {
+      "id": "B03",
+      "name": "Klik linimasa memindah playhead",
+      "expected": "waktu ~00:27",
+      "status": "PASS",
+      "evidence": "time=00:26 / 00:30 playheadLeft=calc(89.9371% - 2.11321px)"
+    },
+    {
+      "id": "B04",
+      "name": "Tambah teks via dialog",
+      "expected": "clip & overlay \"Teks Uji Audit\"",
+      "status": "PASS",
+      "evidence": "clips=[\"Teks Uji Audit\"] overlays=[\"Teks Uji Audit\"]"
+    },
+    {
+      "id": "B05",
+      "name": "Edit teks dengan klik clip",
+      "expected": "clip berubah jadi \"Teks Diedit\"",
+      "status": "PASS",
+      "evidence": "clip=Teks Diedit"
+    },
+    {
+      "id": "B06",
+      "name": "Undo bertahap",
+      "expected": "edit→teks lama, hapus teks, hapus CTA",
+      "status": "PASS",
+      "evidence": "afterUndo1=[\"Teks Uji Audit\"] afterUndo2Clips=1 afterUndo3Clips=0"
+    },
+    {
+      "id": "B07",
+      "name": "Undo saat history kosong",
+      "expected": "modal \"Belum ada perubahan\"",
+      "status": "PASS",
+      "evidence": "modal=Undo | Belum ada perubahan yang dapat dibatalkan."
+    },
+    {
+      "id": "C01",
+      "name": "Copilot pill Hook+CTA → plan → terapkan",
+      "expected": "2 langkah, 2 clip baru",
+      "status": "PASS",
+      "evidence": "plan=[\"Tambah teks “LUCY PANTS · ELEGANT LOOK” (00:00–00:03)\",\"Tambah CTA “JOIN LIVE SEKARANG” (00:25–00:30)\"] clips=[\"LUCY PANTS · ELEGANT LOOK\",\"JOIN LIVE SEKARANG\"]"
+    },
+    {
+      "id": "C02",
+      "name": "Tolak rencana → timeline tidak berubah",
+      "expected": "clip tetap 2, rasio tetap 9:16",
+      "status": "PASS",
+      "evidence": "plan=[\"Ubah canvas ke 3:4\",\"Tambah teks “ELEGANT LOOK” (00:01–00:05)\"] clips=2 ratio=9:16"
+    },
+    {
+      "id": "C03",
+      "name": "Perintah unsupported (subtitle) tidak dipalsukan",
+      "expected": "tombol Terapkan disabled + pesan butuh backend",
+      "status": "PASS",
+      "evidence": "disabled=true text=Fitur ini memerlukan layanan AI/media processing backend; belum dijalankan di prototype."
+    },
+    {
+      "id": "C04",
+      "name": "Perintah tidak dikenal",
+      "expected": "pesan \"belum dikenali\"",
+      "status": "PASS",
+      "evidence": "bubble=Perintah belum dikenali oleh planner lokal. Coba: “buat hook, CTA join live, ras"
+    },
+    {
+      "id": "C05-1",
+      "name": "Prompt rasio \"ubah ke 16x9\"",
+      "expected": "rasio valid diterapkan, tanpa error",
+      "status": "PASS",
+      "evidence": "plan=Ubah canvas ke 16:9 ratioSelect=\"16:9\" meta=1920 × 1080 · 25 fps newPageErrors=[]"
+    },
+    {
+      "id": "C05-2",
+      "name": "Prompt rasio \"ubah rasio 1 : 1\"",
+      "expected": "rasio valid diterapkan, tanpa error",
+      "status": "PASS",
+      "evidence": "plan=Ubah canvas ke 1:1 ratioSelect=\"1:1\" meta=1080 × 1080 · 25 fps newPageErrors=[]"
+    },
+    {
+      "id": "C05-3",
+      "name": "Prompt rasio \"ubah rasio 9 x 16\"",
+      "expected": "rasio valid diterapkan, tanpa error",
+      "status": "PASS",
+      "evidence": "plan=Ubah canvas ke 9:16 ratioSelect=\"9:16\" meta=1080 × 1920 · 25 fps newPageErrors=[]"
+    },
+    {
+      "id": "D01",
+      "name": "Play simulasi tanpa video",
+      "expected": "waktu maju ~1 detik lalu pause",
+      "status": "PASS",
+      "evidence": "time=00:01 / 00:30"
+    },
+    {
+      "id": "D02",
+      "name": "Mute tanpa video",
+      "expected": "modal minta import",
+      "status": "PASS",
+      "evidence": "modal=Audio | Impor video terlebih dahulu."
+    },
+    {
+      "id": "E01",
+      "name": "Export JSON proyek",
+      "expected": "file valid, berisi texts, prototype:true",
+      "status": "PASS",
+      "evidence": "keys=name,ratio,duration,videoName,texts texts=2 → evidence/exported_project.json"
+    },
+    {
+      "id": "E02",
+      "name": "Render jujur (tidak palsu MP4)",
+      "expected": "modal \"Belum tersedia\"",
+      "status": "PASS",
+      "evidence": "modal=Render MP4 · Belum tersedia | Ini prototype HTML. Rendering "
+    },
+    {
+      "id": "F01",
+      "name": "Escape menutup modal + fokus terkunci di modal (a11y)",
+      "expected": "fokus di modal saat buka & Tab, Escape menutup",
+      "status": "PASS",
+      "evidence": "focusOnOpen=closeModal focusInsideAfterTab=true modalStillVisible=false"
+    },
+    {
+      "id": "F01b",
+      "name": "Escape menutup Settings & membersihkan field key",
+      "expected": "tertutup, key kosong",
+      "status": "PASS",
+      "evidence": "{\"open\":false,\"key\":\"\"}"
+    },
+    {
+      "id": "F02",
+      "name": "Nav modul rencana (Template) jujur",
+      "expected": "modal \"belum tersedia\"",
+      "status": "PASS",
+      "evidence": "modal=Template | Modul Template ditampilkan dalam navigasi sebagai rancangan"
+    },
+    {
+      "id": "F03",
+      "name": "Nav \"Proyek\" punya aksi",
+      "expected": "fokus ke pencarian proyek",
+      "status": "PASS",
+      "evidence": "activeElement=search"
+    },
+    {
+      "id": "F04",
+      "name": "Item proyek di sidebar memberi respons jujur",
+      "expected": "modal \"Data contoh\" (bukan klik mati)",
+      "status": "PASS",
+      "evidence": "modal=Data contoh | Daftar proyek & folder ini adalah data contoh "
+    },
+    {
+      "id": "F05",
+      "name": "Cari proyek",
+      "expected": "hanya Loosepants tampil",
+      "status": "PASS",
+      "evidence": "visible=1"
+    },
+    {
+      "id": "F06",
+      "name": "Katalog fitur: count, filter, search",
+      "expected": "total 29, demo 4, search \"subtitle\" ≥1",
+      "status": "PASS",
+      "evidence": "count=\"29 modul ditampilkan · 4 demo terbatas · 25 rencana\" demo=4 subtitle=1"
+    },
+    {
+      "id": "G01",
+      "name": "Failover butuh ≥2 koneksi",
+      "expected": "1 koneksi → ditolak; 2 → simulasi",
+      "status": "PASS",
+      "evidence": "1conn=\"Tambahkan minimal 2 provider berbeda agar failover mungkin d\" 2conn=\"SIMULASI (tidak ada panggilan API): openai → 429/timeout (tu\""
+    },
+    {
+      "id": "G02",
+      "name": "API key tidak tersimpan (storage/DOM)",
+      "expected": "tidak ada di localStorage/session/cookie/DOM",
+      "status": "PASS",
+      "evidence": "storage={\"ls\":{},\"ss\":{},\"cookie\":\"\"} domHasSecret=false registryKeyCleared=true"
+    },
+    {
+      "id": "G03",
+      "name": "API key tidak ikut export JSON",
+      "expected": "secret absen",
+      "status": "PASS",
+      "evidence": "jsonContainsSecret=false"
+    },
+    {
+      "id": "G04",
+      "name": "Strategi eksekusi tersimpan saat dibuka ulang",
+      "expected": "\"rules\"",
+      "status": "PASS",
+      "evidence": "executionStrategy=rules (wrapper openBrain baris 77 tidak terpasang ke tombol Settings, binding baris 41)"
+    },
+    {
+      "id": "G04b",
+      "name": "Batal tidak menyimpan strategi (reopen = nilai tersimpan)",
+      "expected": "\"rules\" (nilai yang disimpan)",
+      "status": "PASS",
+      "evidence": "executionStrategy=rules — form menampilkan nilai belum disimpan; G04 PASS hanya karena DOM tidak di-reset"
+    },
+    {
+      "id": "G05",
+      "name": "Mode Cloud: pesan konsisten dg perilaku",
+      "expected": "pesan simpan sesuai perilaku Copilot",
+      "status": "PASS",
+      "evidence": "saveMsg=\"Konfigurasi cloud dipilih (demo). Koneksi model belum aktif, jadi Copilot TIDAK akan mempr\" reply=\"Backend AI belum terhubung. Tidak ada token/API yang dipakai. Ganti ke\""
+    },
+    {
+      "id": "G06",
+      "name": "Tidak ada request jaringan eksternal",
+      "expected": "0 request",
+      "status": "PASS",
+      "evidence": "requests=[]"
+    },
+    {
+      "id": "H01",
+      "name": "Badge \"Disimpan lokal\" sesuai fakta",
+      "expected": "data bertahan setelah reload, atau badge tidak klaim simpan",
+      "status": "PASS",
+      "evidence": "badge=\"○ Belum disimpan · prototype\" clipsAfterReload=0 (klaim simpan menyesatkan)"
+    },
+    {
+      "id": "A02",
+      "name": "Tidak ada pageerror selama sesi run1 (di luar probe C05)",
+      "expected": "0",
+      "status": "PASS",
+      "evidence": "pageErrors=[]"
+    },
+    {
+      "id": "I01",
+      "name": "Import MP4 H.264 8 detik",
+      "expected": "durasi 00:08, clip video tampil",
+      "status": "PASS",
+      "evidence": "duration=00:08 clip=\"▥ sample_8s_9x16.mp4\" intrinsic=360x640 dur=8.00"
+    },
+    {
+      "id": "I01b",
+      "name": "Ruler linimasa mengikuti durasi",
+      "expected": "label terakhir 00:08",
+      "status": "PASS",
+      "evidence": "ruler=00:00,00:01,00:02,00:04,00:05,00:06,00:08 duration=00:08"
+    },
+    {
+      "id": "I02",
+      "name": "Teks lama di luar durasi video baru",
+      "expected": "di-clamp ke dalam durasi + diberi peringatan",
+      "status": "PASS",
+      "evidence": "left=37.5% width=62.5% warningShown=true"
+    },
+    {
+      "id": "I03",
+      "name": "Rasio intrinsik video ditampilkan benar",
+      "expected": "object-fit contain + resolusi sumber tampil",
+      "status": "PASS",
+      "evidence": "objectFit=contain meta=1080 × 1920 · 25 fps · sumber 360×640"
+    },
+    {
+      "id": "I04",
+      "name": "Play/pause video nyata",
+      "expected": "waktu maju ≥1s",
+      "status": "PASS",
+      "evidence": "time=00:01 / 00:08"
+    },
+    {
+      "id": "I05",
+      "name": "Mute video",
+      "expected": "video.muted=true",
+      "status": "PASS",
+      "evidence": "muted=true"
+    },
+    {
+      "id": "I06",
+      "name": "Undo setelah import tidak merusak durasi",
+      "expected": "durasi tetap 00:08",
+      "status": "PASS",
+      "evidence": "durationAfterUndo=00:08 (snapshot sebelum import berisi duration=30)"
+    },
+    {
+      "id": "I07",
+      "name": "Import file non-video",
+      "expected": "modal \"File tidak didukung\"",
+      "status": "PASS",
+      "evidence": "modal=File tidak didukung | Pilih file video yang dapat "
+    },
+    {
+      "id": "I01c",
+      "name": "Ruler video pendek tanpa label dobel",
+      "expected": "label unik",
+      "status": "PASS",
+      "evidence": "ruler=00:00,00:01,00:02,00:03"
+    },
+    {
+      "id": "I03b",
+      "name": "Video 16:9 di canvas 9:16 tidak terpotong",
+      "expected": "resolusi sumber 640×360 tampil, letterbox",
+      "status": "PASS",
+      "evidence": "meta=1080 × 1920 · 25 fps · sumber 640×360 duration=00:03"
+    },
+    {
+      "id": "I08",
+      "name": "Proyek baru reset state",
+      "expected": "nama Proyek Baru, 0 clip, placeholder tampil",
+      "status": "PASS",
+      "evidence": "{\"name\":\"Proyek Baru\",\"clips\":0,\"v\":0,\"ph\":true}"
+    },
+    {
+      "id": "I09",
+      "name": "Undo \"Proyek baru\"",
+      "expected": "state & video kembali konsisten",
+      "status": "PASS",
+      "evidence": "{\"name\":\"Lucy — Elegant Look\",\"v\":0,\"src\":null} (nama/teks kembali, video tidak)"
+    },
+    {
+      "id": "I10",
+      "name": "Tambah teks saat playhead di ujung",
+      "expected": "durasi teks > 0 atau ditolak",
+      "status": "PASS",
+      "evidence": "clip left=96.6667% width=3.33333% time=00:29 / 00:30"
+    },
+    {
+      "id": "A03",
+      "name": "Tidak ada pageerror selama run2",
+      "expected": "0",
+      "status": "PASS",
+      "evidence": "pageErrors=[]"
+    },
+    {
+      "id": "J-1100",
+      "name": "Responsif lebar 1100px",
+      "expected": "tanpa scroll horizontal",
+      "status": "PASS",
+      "evidence": "scrollWidth=1100 clientWidth=1100"
+    },
+    {
+      "id": "J-1100b",
+      "name": "Tombol utama terlihat di 1100px",
+      "expected": "Import/JSON/Render/Susun edit di dalam layar",
+      "status": "PASS",
+      "evidence": "[{\"id\":\"uploadBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"jsonBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"renderBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"send\",\"visible\":true,\"onTop\":true}]"
+    },
+    {
+      "id": "J-820",
+      "name": "Responsif lebar 820px",
+      "expected": "tanpa scroll horizontal",
+      "status": "PASS",
+      "evidence": "scrollWidth=820 clientWidth=820"
+    },
+    {
+      "id": "J-820b",
+      "name": "Tombol utama terlihat di 820px",
+      "expected": "Import/JSON/Render/Susun edit di dalam layar",
+      "status": "PASS",
+      "evidence": "[{\"id\":\"uploadBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"jsonBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"renderBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"send\",\"visible\":true,\"onTop\":false}]"
+    },
+    {
+      "id": "J-390",
+      "name": "Responsif lebar 390px",
+      "expected": "tanpa scroll horizontal",
+      "status": "PASS",
+      "evidence": "scrollWidth=390 clientWidth=390"
+    },
+    {
+      "id": "J-390b",
+      "name": "Tombol utama terlihat di 390px",
+      "expected": "Import/JSON/Render/Susun edit di dalam layar",
+      "status": "PASS",
+      "evidence": "[{\"id\":\"uploadBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"jsonBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"renderBtn\",\"visible\":true,\"onTop\":true},{\"id\":\"send\",\"visible\":true,\"onTop\":false}]"
+    }
+  ]
+}

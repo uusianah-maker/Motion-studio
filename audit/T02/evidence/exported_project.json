@@ -1,0 +1,27 @@
+{
+  "app": "Motion Studio Copilot",
+  "prototype": true,
+  "project": {
+    "name": "Lucy — Elegant Look",
+    "ratio": "9:16",
+    "duration": 30,
+    "videoName": "",
+    "texts": [
+      {
+        "id": 1793723778405.163,
+        "type": "text",
+        "text": "LUCY PANTS · ELEGANT LOOK",
+        "start": 0,
+        "end": 3
+      },
+      {
+        "id": 1793723778405.8137,
+        "type": "cta",
+        "text": "JOIN LIVE SEKARANG",
+        "start": 25,
+        "end": 30
+      }
+    ]
+  },
+  "warning": "Source video is not embedded in this JSON."
+}
