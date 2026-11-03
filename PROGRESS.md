@@ -1,6 +1,6 @@
 # Progress /gasngoding
 Update terakhir: 2026-11-03
-Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 9/15 selesai · 0 blocked · 6 belum dikerjakan
+Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 10/15 selesai · 0 blocked · 5 belum dikerjakan
 
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
 
@@ -15,7 +15,8 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | T06 | ST-02 media registry + versi imutabel | DONE | verify: 57 pass/1 skip. Tes: import shared/proyek, SHA-256 stream multi-chunk, file read-only, duplikat (termasuk import paralel), versi baru tidak menimpa lama, current/protection user-only, GC-11 CHANGED + alert tanpa update hash, MISSING, registry korup → INDEX_INVALID, redaksi audit | Status integritas (ok/missing/changed) & lifecycle (active/trashed/purged) disimpan; state GC turunan dihitung di ST-04. Sumber import wajib dari luar workspace. Duplikat dicek global per hash | 38d6c08 |
 | T07 | ST-03 Dependency Manager + reverse index | DONE | verify: 62 pass/1 skip. Tes: holder dari timeline aktif, arsip, snapshot & undo retained, lease queued/running; snapshot non-retained tidak menahan; rebuild dari manifest deterministik tanpa deps.json; fingerprint basi terdeteksi; fail-closed (manifest korup, ref dangling, pasangan media/versi salah, folder tanpa manifest, junction, leases korup); commit optimistic concurrency, ref CHANGED ditolak, AI ditolak; lease pin hash & release | GC tidak pernah percaya deps.json tersimpan: index selalu dibangun ulang. ever_referenced hanya dari proyek (bukan lease), sesuai definisi PRD §B | 1b41e41 |
 | T08 | ST-04 eligibility engine 30 hari + never-used | DONE | verify: 70 pass/1 skip. Tes GC-01 (never-used 60 hari tetap terlindungi), GC-02 (29h23j tidak eligible), GC-03 (30 hari eligible, level engine), GC-04 (arsip/undo 400 hari), GC-05 (lease menahan; release memulai periode baru), GC-06 (re-reference hari 29 reset), CURRENT/KEEP/PIN/LEGAL_HOLD reset jam, GC-07 level engine (index invalid → FAILED_AUDIT, jam tidak disentuh, diaudit), gate integritas/lifecycle/busy/path | 30 hari = konstanta kode. Semua gate dievaluasi (bukan short-circuit) supaya laporan menjelaskan semua alasan. Jam mulai saat rekonsiliasi pertama setelah referensi hilang (konservatif: tidak pernah lebih awal) | b050c29 |
-| T09 | ST-05 candidate scanner (dry-run) + audit log | DONE | verify: 78 pass/1 skip. Fixture 9 kategori → kandidat persis = {A,B}; file tree tidak berubah (hash seluruh file); byte diubah diam-diam → ditolak CHANGED + flag; file hilang → UNVERIFIABLE + missing; busy dikecualikan; GC-07 berhenti aman + audit 'blocked'; AI scan tidak menulis apa pun selain audit; service: jam mulai tepat saat referensi/proteksi/lease hilang | Ditambah fasad `StorageService` (ADR D1) yang merekonsiliasi jam di lock yang sama setelah tiap mutasi — temuan saat T09: tanpa ini jam baru mulai saat scan berikutnya | (lihat git log) |
+| T09 | ST-05 candidate scanner (dry-run) + audit log | DONE | verify: 78 pass/1 skip. Fixture 9 kategori → kandidat persis = {A,B}; file tree tidak berubah (hash seluruh file); byte diubah diam-diam → ditolak CHANGED + flag; file hilang → UNVERIFIABLE + missing; busy dikecualikan; GC-07 berhenti aman + audit 'blocked'; AI scan tidak menulis apa pun selain audit; service: jam mulai tepat saat referensi/proteksi/lease hilang | Ditambah fasad `StorageService` (ADR D1) yang merekonsiliasi jam di lock yang sama setelah tiap mutasi — temuan saat T09: tanpa ini jam baru mulai saat scan berikutnya | 78be3da |
+| T10 | ST-06 Auto Trash engine | DONE | verify: 86 pass/1 skip. Tes GC-03 (pindah + manifest + registry + audit akurat), GC-10 (freed_bytes = 0 di volume sama), GC-01/02/04/05 tidak pernah dipindah (+ current), GC-07 (data dependensi korup → 0 pindah, diaudit), GC-12 (AI ditolak + diaudit), validasi ulang tepat sebelum pindah (byte berubah & hard link di-skip), busy & idempotensi, versi di Trash tidak bisa di-commit | Journal intent ditulis sebelum pindah (dipakai recovery T13). Fallback lintas-drive: copy → verifikasi hash → hapus original. freed_bytes selalu 0 (tidak pernah klaim ruang bebas) | (lihat git log) |
 
 ## Pending Confirmation
 ### PC-0: Konfirmasi sign-off T01
@@ -55,6 +56,6 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | `fsp.realpath.native` tidak ada | T05 (test) | fixed | pakai `promisify(fs.realpath.native)` |
 | H1 alias area via case/8.3 | Checkpoint A | fixed | `resolveInArea` + tolak `~<digit>` |
 | H2/M1/M2/M3 lock | Checkpoint A | fixed | token, heartbeat, release berpemilik |
-| TOCTOU sebelum destruktif, hard link | Checkpoint A | open → T10/T12 | syarat desain |
+| TOCTOU sebelum destruktif, hard link | Checkpoint A | fixed untuk Trash (T10); purge menyusul T12 | `revalidateFile()` |
 | Jam 30 hari baru mulai saat rekonsiliasi berikutnya, bukan saat referensi hilang | T09 (test) | fixed | `StorageService` rekonsiliasi di dalam lock setelah tiap mutasi; tes `service.test.ts` |
 | `<video>` hitam menutupi placeholder | T02 (self-review screenshot) | fixed | tes A04 ditambah |

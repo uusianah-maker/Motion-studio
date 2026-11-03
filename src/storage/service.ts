@@ -4,6 +4,7 @@ import type { Actor } from './permissions.js';
 import type { ProjectManifest } from './project.js';
 import * as registry from './registry.js';
 import { scanCandidates } from './scanner.js';
+import { runAutoTrash } from './trash.js';
 import { type Workspace, withWorkspaceLock } from './workspace.js';
 
 /**
@@ -67,5 +68,9 @@ export class StorageService {
 
   scan(opts: Parameters<typeof scanCandidates>[1]) {
     return scanCandidates(this.ws, opts);
+  }
+
+  autoTrash(opts: Parameters<typeof runAutoTrash>[1]) {
+    return runAutoTrash(this.ws, opts);
   }
 }

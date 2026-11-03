@@ -4,6 +4,7 @@ import { type Evaluation, type GcState, evaluateAll, reconcileClocks, syncClocks
 import { newId } from './ids.js';
 import { type Actor, MEDIA_AREAS, assertAllowed, resolveInArea } from './permissions.js';
 import { type Registry, hashFile, loadRegistry, verifyVersion } from './registry.js';
+import { journalBusy } from './trash.js';
 import type { Workspace } from './workspace.js';
 
 export interface ScanReport {
@@ -56,7 +57,8 @@ export async function scanCandidates(ws: Workspace, opts: { actor: Actor; busy?:
     reg = await loadRegistry(ws);
   }
 
-  const evaluations = evaluateAll(reg, { now: at, index, ...(opts.busy ? { busy: opts.busy } : {}) });
+  const busy = new Set([...(opts.busy ?? []), ...(await journalBusy(ws))]);
+  const evaluations = evaluateAll(reg, { now: at, index, busy });
   const candidates: Evaluation[] = [];
   const rejected: ScanReport['rejected'] = [];
   for (const e of evaluations.filter((x) => x.eligible)) {

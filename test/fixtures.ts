@@ -2,7 +2,7 @@ import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { DAY_MS, ManualClock } from '../src/storage/clock.js';
 import type { MediaRef, ProjectManifest } from '../src/storage/project.js';
-import { importMedia } from '../src/storage/registry.js';
+import { addVersion, importMedia } from '../src/storage/registry.js';
 import { StorageService } from '../src/storage/service.js';
 import { type Workspace, createProject, initWorkspace, readProject } from '../src/storage/workspace.js';
 import { tempDir } from './helpers.js';
@@ -62,3 +62,16 @@ export async function commit(ws: Workspace, projectId: string, spec: ProjectSpec
   if (!r.clocks.ok) throw new Error(`clock sync failed: ${r.clocks.errors.join('; ')}`);
   return r.result;
 }
+
+let k = 0;
+/** An old, non-current, previously referenced version whose clock started now. */
+export async function oldVersion(ws: Workspace, src: string, project = `p${++k}`): Promise<MediaRef> {
+  const old = await importShared(ws, src, 'old');
+  const p = path.join(src, `new-${++k}-${Math.random()}.mp4`);
+  await fsp.writeFile(p, `new-${k}-${Math.random()}`);
+  await addVersion(ws, { media_id: old.media_id, sourcePath: p, actor: 'user' });
+  await commit(ws, project, { timeline: [old] });
+  await commit(ws, project, { timeline: [] });
+  return old;
+}
+
