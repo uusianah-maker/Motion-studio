@@ -14,7 +14,7 @@ Status: PLANNED. Jangan mulai coding sebelum audit T01 sign-off.
 - [x] T09 Candidate scanner + audit log (ST-05).
 - [x] T10 Auto Trash engine (ST-06).
 **CHECKPOINT B:** audit lima tugas, repair sampai lulus.
-- [ ] T11 Restore dan collision handling (ST-07).
+- [x] T11 Restore dan collision handling (ST-07).
 - [ ] T12 Manual permanent delete + explicit approval (ST-08).
 - [ ] T13 Scheduler + crash recovery (ST-09).
 - [ ] T14 Disk quota + storage dashboard (ST-10).

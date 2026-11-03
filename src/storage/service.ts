@@ -3,6 +3,7 @@ import { type SyncResult, syncClocks } from './eligibility.js';
 import type { Actor } from './permissions.js';
 import type { ProjectManifest } from './project.js';
 import * as registry from './registry.js';
+import { restoreVersion } from './restore.js';
 import { scanCandidates } from './scanner.js';
 import { runAutoTrash } from './trash.js';
 import { type Workspace, withWorkspaceLock } from './workspace.js';
@@ -72,5 +73,10 @@ export class StorageService {
 
   autoTrash(opts: Parameters<typeof runAutoTrash>[1]) {
     return runAutoTrash(this.ws, opts);
+  }
+
+  /** Restore + clock sync: a restored, still-unreferenced version starts a brand-new 30-day period. */
+  restore(input: Parameters<typeof restoreVersion>[1]) {
+    return mutate(this.ws, 'svc.restore', input.actor, () => restoreVersion(this.ws, input));
   }
 }
