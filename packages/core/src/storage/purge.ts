@@ -1,6 +1,4 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { promises as fsp } from 'node:fs';
-import path from 'node:path';
 import { audit } from './audit.js';
 import { type BackupStatus, backupStatusOf } from './backup.js';
 import { type Holder, buildIndex, holdersOf } from './deps.js';
@@ -9,9 +7,8 @@ import { guard } from './guard.js';
 import { newId } from './ids.js';
 import { clearJournal, journalBusy, listJournal, writeJournal } from './journal.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
-import { resolveInArea } from './permissions.js';
 import type { Actor } from './permissions.js';
-import { type Registry, hashFile, loadRegistry, saveRegistry } from './registry.js';
+import { type Registry, loadRegistry, saveRegistry } from './registry.js';
 import { readTrashManifest } from './trash.js';
 import { META_FILES, type Workspace, metaPath, withWorkspaceLock } from './workspace.js';
 
@@ -184,23 +181,24 @@ export async function executePurge(ws: Workspace, input: { request_id: string; c
       const { blockers } = await blockersFor(ws, reg, id, holdersOf(idx.index, id), busy);
       if (journalCorrupt) blockers.push('JOURNAL_CORRUPT');
       const v = reg.versions[id];
-      let fileAbs: string | null = null;
-      let manifestAbs: string | null = null;
+      let fileRel: string | null = null;
+      let manifestRel: string | null = null;
       if (!blockers.length && v?.trash) {
         try {
           const m = await readTrashManifest(ws, v.trash.manifest_rel_path);
           if (m.version_id !== id || m.content_hash !== v.content_hash) blockers.push('MANIFEST_MISMATCH');
-          manifestAbs = (await resolveInArea(ws.root, v.trash.manifest_rel_path, ['trash'])).abs;
-          fileAbs = (await resolveInArea(ws.root, v.rel_path, ['trash'])).abs;
-          const st = await fsp.lstat(fileAbs);
-          if (!st.isFile()) blockers.push('NOT_A_FILE');
-          else if (st.nlink > 1) blockers.push('HARD_LINKED');
-          else if ((await hashFile(fileAbs)).hash !== v.content_hash) blockers.push('HASH_MISMATCH');
+          manifestRel = await ws.blobs.resolve(v.trash.manifest_rel_path, ['trash']);
+          fileRel = await ws.blobs.resolve(v.rel_path, ['trash']);
+          const st = await ws.blobs.stat(fileRel);
+          if (!st) throw new StorageError('NOT_FOUND', 'File Trash tidak ditemukan');
+          if (!st.isFile) blockers.push('NOT_A_FILE');
+          else if (st.multiLinked) blockers.push('HARD_LINKED');
+          else if ((await ws.blobs.hash(fileRel)).hash !== v.content_hash) blockers.push('HASH_MISMATCH');
         } catch (e) {
           blockers.push(`UNVERIFIABLE: ${e instanceof StorageError ? e.code : String(e)}`);
         }
       }
-      if (blockers.length || !v || !fileAbs || !manifestAbs) {
+      if (blockers.length || !v || !fileRel || !manifestRel) {
         result.blocked.push({ version_id: id, reasons: blockers.length ? blockers : ['UNKNOWN'] });
         await audit(ws, { op: 'purge.item', actor: input.actor, outcome: 'blocked', request_id: req.request_id, version_id: id, reasons: blockers });
         continue;
@@ -210,12 +208,9 @@ export async function executePurge(ws: Workspace, input: { request_id: string; c
       // Journal + "started" audit BEFORE deleting, so a crash is never silent (review C-M2).
       await writeJournal(ws, journal);
       await audit(ws, { op: 'purge.item', actor: input.actor, outcome: 'info', phase: 'started', request_id: req.request_id, media_id: v.media_id, version_id: id, deleted_path: trashPath, checksum: v.content_hash, size: v.size });
-      await fsp.chmod(fileAbs, 0o666);
-      await fsp.rm(fileAbs);
-      await fsp.rm(manifestAbs, { force: true });
-      const dir = path.dirname(manifestAbs);
-      await fsp.rmdir(dir).catch(() => undefined);
-      await fsp.rmdir(path.dirname(dir)).catch(() => undefined);
+      await ws.blobs.remove(fileRel);
+      await ws.blobs.remove(manifestRel, { missingOk: true });
+      await ws.blobs.pruneEmptyParents(manifestRel, 2);
       reg.versions[id] = { ...v, lifecycle: 'purged', trash: null, unreferenced_since: null };
       await saveRegistry(ws, reg);
       await clearJournal(ws, journal);

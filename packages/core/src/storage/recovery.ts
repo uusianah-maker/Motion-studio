@@ -3,9 +3,8 @@ import path from 'node:path';
 import { audit } from './audit.js';
 import { type JournalEntry, listJournal } from './journal.js';
 import { writeJsonAtomic } from './jsonStore.js';
-import { type Area, resolveInArea } from './permissions.js';
-import { hashFile, loadRegistry, saveRegistry } from './registry.js';
-import { moveVerified } from './trash.js';
+import type { Area } from './permissions.js';
+import { loadRegistry, saveRegistry } from './registry.js';
 import { LAYOUT, META_FILES, type Workspace, listProjectIds, metaPath, withWorkspaceLock } from './workspace.js';
 
 export interface RecoveryReport {
@@ -20,8 +19,6 @@ export interface RecoveryReport {
 
 export const STALE_TEMP_MS = 24 * 60 * 60 * 1000;
 
-const exists = (p: string) => fsp.lstat(p).then(() => true, () => false);
-
 /** Area each journal path must be in; a tampered journal can never point recovery elsewhere (review C-H2). */
 const MEDIA = ['shared_media', 'shared_assets', 'project_input', 'project_assets'] as const;
 const AREAS: Record<JournalEntry['kind'], { from: readonly Area[]; to: readonly Area[] }> = {
@@ -32,17 +29,21 @@ const AREAS: Record<JournalEntry['kind'], { from: readonly Area[]; to: readonly 
 
 async function inArea(ws: Workspace, rel: string, allowed: readonly Area[]): Promise<string | null> {
   try {
-    return (await resolveInArea(ws.root, rel, allowed, { allowMissing: true })).abs;
+    return await ws.blobs.resolve(rel, allowed, { allowMissing: true });
   } catch {
     return null;
   }
 }
 
-const sameInode = async (a: string, b: string) => {
-  const [x, y] = await Promise.all([fsp.stat(a, { bigint: true }), fsp.stat(b, { bigint: true })]);
-  return x.ino === y.ino && x.dev === y.dev && x.ino !== 0n;
-};
-const hashIs = async (p: string, h: string) => (await hashFile(p).catch(() => null))?.hash === h;
+const hashIs = async (ws: Workspace, rel: string, h: string) => (await ws.blobs.hash(rel).catch(() => null))?.hash === h;
+
+/** Remove our own Trash manifest and its now-empty folders. */
+async function dropManifest(ws: Workspace, manifestRel: string): Promise<void> {
+  const m = await inArea(ws, manifestRel, ['trash']);
+  if (!m) return;
+  await ws.blobs.remove(m, { missingOk: true });
+  await ws.blobs.pruneEmptyParents(m, 2);
+}
 
 /**
  * Resolve one unfinished operation. Rules (Checkpoint C):
@@ -56,17 +57,17 @@ async function resolveEntry(ws: Workspace, e: JournalEntry): Promise<{ action: s
   const reg = await loadRegistry(ws);
   const v = reg.versions[e.version_id];
   const areas = AREAS[e.kind];
-  const fromAbs = await inArea(ws, e.from_rel, areas.from);
-  const toAbs = e.kind === 'purge' ? fromAbs : await inArea(ws, e.to_rel, areas.to);
-  if (!fromAbs || !toAbs || !v) return { action: 'invalid-journal-left-for-review', keepJournal: true };
-  const atFrom = await exists(fromAbs);
-  const atTo = await exists(toAbs);
+  const from = await inArea(ws, e.from_rel, areas.from);
+  const to = e.kind === 'purge' ? from : await inArea(ws, e.to_rel, areas.to);
+  if (!from || !to || !v) return { action: 'invalid-journal-left-for-review', keepJournal: true };
+  const atFrom = await ws.blobs.exists(from);
+  const atTo = await ws.blobs.exists(to);
 
   if (e.kind === 'purge') {
     if (atFrom) return { action: 'purge-not-started' };
     // File is gone: the user-approved purge happened but the registry was not saved.
     const m = await inArea(ws, e.manifest_rel, ['trash']);
-    if (m) await fsp.rm(m, { force: true });
+    if (m) await ws.blobs.remove(m, { missingOk: true });
     reg.versions[v.version_id] = { ...v, lifecycle: 'purged', trash: null, unreferenced_since: null };
     await saveRegistry(ws, reg);
     await audit(ws, { op: 'purge.item', actor: 'system', outcome: 'ok', phase: 'recovered', version_id: v.version_id, deleted_path: e.from_rel });
@@ -75,18 +76,10 @@ async function resolveEntry(ws: Workspace, e: JournalEntry): Promise<{ action: s
 
   // Completed before the crash: registry already points at the destination.
   if (v.rel_path === e.to_rel) {
-    if (e.kind === 'restore') {
-      const m = await inArea(ws, e.manifest_rel, ['trash']);
-      if (m) {
-        await fsp.rm(m, { force: true });
-        await fsp.rmdir(path.dirname(m)).catch(() => undefined);
-        await fsp.rmdir(path.dirname(path.dirname(m))).catch(() => undefined);
-      }
-    }
-    if (atFrom && atTo && (await sameInode(fromAbs, toAbs))) {
-      await fsp.chmod(fromAbs, 0o666).catch(() => undefined);
-      await fsp.unlink(fromAbs); // leftover hard link of the same bytes
-      await fsp.chmod(toAbs, 0o444).catch(() => undefined);
+    if (e.kind === 'restore') await dropManifest(ws, e.manifest_rel);
+    if (atFrom && atTo && (await ws.blobs.sameObject(from, to))) {
+      await ws.blobs.remove(from); // leftover hard link of the same bytes
+      await ws.blobs.setReadOnly(to).catch(() => undefined);
     }
     return { action: 'completed-before-crash' };
   }
@@ -94,15 +87,13 @@ async function resolveEntry(ws: Workspace, e: JournalEntry): Promise<{ action: s
   if (atFrom && !atTo) return { action: 'not-started' };
 
   if (atFrom && atTo) {
-    if (await sameInode(fromAbs, toAbs)) {
-      await fsp.chmod(toAbs, 0o666).catch(() => undefined);
-      await fsp.unlink(toAbs); // same bytes via hard link: removing the extra name loses nothing
-      await fsp.chmod(fromAbs, 0o444).catch(() => undefined); // shared inode: restore read-only
+    if (await ws.blobs.sameObject(from, to)) {
+      await ws.blobs.remove(to); // same bytes via hard link: removing the extra name loses nothing
+      await ws.blobs.setReadOnly(from).catch(() => undefined); // shared inode: restore read-only
       return { action: 'extra-link-removed' };
     }
-    if (e.kind === 'trash' && (await hashIs(fromAbs, e.content_hash)) && (await hashIs(toAbs, e.content_hash))) {
-      await fsp.chmod(toAbs, 0o666).catch(() => undefined);
-      await fsp.rm(toAbs); // complete duplicate inside our own Trash folder; source intact
+    if (e.kind === 'trash' && (await hashIs(ws, from, e.content_hash)) && (await hashIs(ws, to, e.content_hash))) {
+      await ws.blobs.remove(to); // complete duplicate inside our own Trash folder; source intact
       return { action: 'duplicate-copy-removed' };
     }
     // Could be a partial copy or a user's file: never guess, never delete.
@@ -111,17 +102,17 @@ async function resolveEntry(ws: Workspace, e: JournalEntry): Promise<{ action: s
   }
 
   if (!atFrom && atTo) {
-    if (!(await hashIs(toAbs, e.content_hash))) {
+    if (!(await hashIs(ws, to, e.content_hash))) {
       v.integrity = 'missing';
       await saveRegistry(ws, reg);
       await audit(ws, { op: 'recovery.item', actor: 'system', outcome: 'alert', version_id: v.version_id, reason: 'BYTES_UNPROVEN', left_untouched: e.to_rel });
       return { action: 'bytes-unproven-left-untouched' };
     }
-    await moveVerified(toAbs, fromAbs, e.content_hash);
-    await fsp.chmod(fromAbs, 0o444).catch(() => undefined);
+    await ws.blobs.move(to, from, e.content_hash);
+    await ws.blobs.setReadOnly(from).catch(() => undefined);
     if (e.kind === 'trash') {
       const m = await inArea(ws, e.manifest_rel, ['trash']);
-      if (m) await fsp.rm(m, { force: true });
+      if (m) await ws.blobs.remove(m, { missingOk: true });
       v.lifecycle = 'active';
       v.trash = null;
     }
@@ -135,6 +126,7 @@ async function resolveEntry(ws: Workspace, e: JournalEntry): Promise<{ action: s
   return { action: 'bytes-missing' };
 }
 
+/** Local metadata sweep (temp files of atomic JSON writes). */
 async function sweep(dir: string, onFile: (p: string, name: string) => Promise<void>, depth = 0): Promise<void> {
   if (depth > 4) return;
   let entries;
@@ -176,17 +168,16 @@ export async function recoverOnStartup(ws: Workspace): Promise<RecoveryReport> {
     const known = new Set(Object.values(reg.versions).map((v) => v.rel_path.toLowerCase()));
     const areas = [LAYOUT.sharedMedia, ...(await listProjectIds(ws)).map((p) => `${LAYOUT.projects}/${p}/01_INPUT`)];
     for (const area of areas) {
-      await sweep(path.join(ws.root, area), async (p, name) => {
-        const rel = path.relative(ws.root, p).split(path.sep).join('/');
-        if (name.startsWith('.importing-')) {
+      for (const f of await ws.blobs.listFiles(area, 4)) {
+        if (f.name.startsWith('.importing-')) {
           // Imports stage outside the lock: only sweep temps untouched for a day (review C-L2).
-          if (Date.now() - (await fsp.stat(p)).mtimeMs < STALE_TEMP_MS) return;
-          await fsp.rm(p, { force: true });
-          report.removed_temp_files.push(rel);
-        } else if (/^v_[0-9a-f]{16}/.test(name) && !known.has(rel.toLowerCase())) {
-          report.orphan_files.push(rel);
+          if (Date.now() - f.mtimeMs < STALE_TEMP_MS) continue;
+          await ws.blobs.remove(f.rel, { missingOk: true });
+          report.removed_temp_files.push(f.rel);
+        } else if (/^v_[0-9a-f]{16}/.test(f.name) && !known.has(f.rel.toLowerCase())) {
+          report.orphan_files.push(f.rel);
         }
-      });
+      }
     }
     await sweep(path.join(ws.root, LAYOUT.meta), async (p, name) => {
       if (/\.tmp$/.test(name)) {

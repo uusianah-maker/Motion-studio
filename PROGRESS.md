@@ -1,7 +1,7 @@
 # Progress /gasngoding
 Update terakhir: 2026-11-04
 Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 15/15 selesai · 0 blocked · 0 belum dikerjakan
-Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 1/15 selesai · 0 blocked · 14 belum dikerjakan
+Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 2/15 selesai · 0 blocked · 13 belum dikerjakan
 
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
 
@@ -27,7 +27,8 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 ## Log task v2.0
 | # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
 |---|---|---|---|---|---|
-| W01 | Restrukturisasi repo | DONE | `npm run verify`: typecheck, lint, 133 pass / 1 skip, build, smoke OK (dist bisa di-import, CLI init + dashboard jalan); `npm run test:e2e` 18/18; `npm run test:prototype` 56/56. CI ditambah langkah smoke | Storage core dipindah ke `packages/core` (src, test, tsconfig, vitest). **Tidak pakai npm workspaces**: `npm install` gagal EISDIR karena D: exFAT tidak mendukung symlink/junction → satu paket npm + `tsconfig.base.json` + TS project references (`composite`). `apps/server`/`apps/web` tidak dibuat kosong (hindari stub); dibuat di W03/W05 | (commit task W01) |
+| W01 | Restrukturisasi repo | DONE | `npm run verify`: typecheck, lint, 133 pass / 1 skip, build, smoke OK (dist bisa di-import, CLI init + dashboard jalan); `npm run test:e2e` 18/18; `npm run test:prototype` 56/56. CI ditambah langkah smoke | Storage core dipindah ke `packages/core` (src, test, tsconfig, vitest). **Tidak pakai npm workspaces**: `npm install` gagal EISDIR karena D: exFAT tidak mendukung symlink/junction → satu paket npm + `tsconfig.base.json` + TS project references (`composite`). `apps/server`/`apps/web` tidak dibuat kosong (hindari stub); dibuat di W03/W05 | 5c18f53 |
+| W02 | Antarmuka StorageBackend + LocalFs | DONE | verify: 143 pass / 1 skip (133 tes lama tidak diubah + 10 baru), smoke OK; E2E 18/18; prototype 56/56. Tes baru `w02-backend.test.ts`: kontrak backend (hash saat stage, commit/moveNoOverwrite tidak menimpa → CONFLICT, cek area & traversal, blob hilang, JSON, prune folder kosong saja, usage, probe tulis); siklus import → Auto Trash → restore → Trash → purge terbukti lewat backend (proxy pencatat); backend gagal hash → Auto Trash tidak memindah apa pun (fail closed); modul Trash/restore/purge/scanner/preflight dilarang import `node:fs` | Batas lapisan: metadata (registry, journal, audit, lease, manifest proyek, cache, lokasi backup) tetap di disk server sesuai ADR-002; byte media, Trash (+ manifest) dan output lewat `ws.blobs`. `initWorkspace/openWorkspace` menerima opsi `backend` (default LocalFs). `hashFile` dipindah ke `hash.ts` (tetap diekspor ulang dari registry) | (commit task W02) |
 
 ## Pending Confirmation
 ### PC-0: Konfirmasi sign-off T01 — DIJAWAB 2026-11-04: **A (sah)**

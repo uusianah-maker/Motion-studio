@@ -7,7 +7,8 @@ import { newId } from './ids.js';
 import { writeJsonAtomic } from './jsonStore.js';
 import { isInside } from './paths.js';
 import type { Actor } from './permissions.js';
-import { hashFile, loadRegistry } from './registry.js';
+import { hashFile } from './hash.js';
+import { loadRegistry } from './registry.js';
 import { LAYOUT, type Workspace, withWorkspaceLock } from './workspace.js';
 
 /**

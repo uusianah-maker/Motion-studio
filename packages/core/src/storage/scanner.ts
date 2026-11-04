@@ -3,8 +3,8 @@ import { buildIndex } from './deps.js';
 import { type Evaluation, type GcState, evaluateAll, reconcileClocks, syncClocks } from './eligibility.js';
 import { newId } from './ids.js';
 import { guard } from './guard.js';
-import { type Actor, MEDIA_AREAS, resolveInArea } from './permissions.js';
-import { type Registry, hashFile, loadRegistry, verifyVersion } from './registry.js';
+import { type Actor, MEDIA_AREAS } from './permissions.js';
+import { type Registry, loadRegistry, verifyVersion } from './registry.js';
 import { journalBusy } from './trash.js';
 import type { Workspace } from './workspace.js';
 
@@ -65,8 +65,7 @@ export async function scanCandidates(ws: Workspace, opts: { actor: Actor; busy?:
   for (const e of evaluations.filter((x) => x.eligible)) {
     const v = reg.versions[e.version_id]!;
     try {
-      const { abs } = await resolveInArea(ws.root, v.rel_path, MEDIA_AREAS);
-      const { hash } = await hashFile(abs);
+      const { hash } = await ws.blobs.hash(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS));
       if (hash !== v.content_hash) {
         rejected.push({ version_id: v.version_id, reason: 'CHANGED' });
         if (opts.actor !== 'ai') await verifyVersion(ws, v.version_id);

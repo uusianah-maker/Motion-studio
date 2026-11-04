@@ -1,14 +1,11 @@
-import { constants as fsc, promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { audit } from './audit.js';
 import { buildIndex } from './deps.js';
 import { evaluateVersion, reconcileClocks } from './eligibility.js';
 import { StorageError } from './errors.js';
 import { newId } from './ids.js';
-import { readJson, withFsRetry, writeJsonAtomic } from './jsonStore.js';
-import { resolveCanonical } from './paths.js';
-import { type Actor, MEDIA_AREAS, assertAllowed, isAllowed, resolveInArea } from './permissions.js';
-import { type Registry, type VersionRecord, hashFile, loadRegistry, saveRegistry } from './registry.js';
+import { type Actor, MEDIA_AREAS, assertAllowed, isAllowed } from './permissions.js';
+import { type Registry, type VersionRecord, loadRegistry, saveRegistry } from './registry.js';
 import { LAYOUT, type Workspace, withWorkspaceLock } from './workspace.js';
 
 export { type JournalEntry, clearJournal, journalBusy, listJournal, writeJournal } from './journal.js';
@@ -40,37 +37,18 @@ export function validateTrashManifest(x: unknown): TrashManifest {
   return m as TrashManifest;
 }
 
-// ------------------------------------------------------------------ move helpers
+// ------------------------------------------------------------------ checks
 
-/** Rename; on cross-device fall back to copy → verify hash → remove original. Returns true if renamed. */
-export async function moveVerified(fromAbs: string, toAbs: string, expectedHash: string): Promise<boolean> {
-  await fsp.mkdir(path.dirname(toAbs), { recursive: true });
-  try {
-    await withFsRetry(() => fsp.rename(fromAbs, toAbs));
-    return true;
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e;
-  }
-  await fsp.copyFile(fromAbs, toAbs, fsc.COPYFILE_EXCL);
-  if ((await hashFile(toAbs)).hash !== expectedHash) {
-    await fsp.chmod(toAbs, 0o666).catch(() => undefined);
-    await fsp.rm(toAbs, { force: true });
-    throw new StorageError('INTEGRITY', 'Salinan lintas-drive tidak cocok hash; original dibiarkan');
-  }
-  await fsp.chmod(fromAbs, 0o666);
-  await fsp.rm(fromAbs);
-  return false;
-}
-
-/** Fresh on-disk checks right before a destructive step (TOCTOU guard, Checkpoint A M5). */
-export async function revalidateFile(ws: Workspace, v: VersionRecord, allowed = MEDIA_AREAS): Promise<{ abs: string; rel: string }> {
-  const { abs, rel } = await resolveInArea(ws.root, v.rel_path, allowed);
-  const st = await fsp.lstat(abs);
-  if (!st.isFile()) throw new StorageError('INTEGRITY', 'Bukan file biasa', { rel });
-  if (st.nlink > 1) throw new StorageError('PRECONDITION', 'File punya hard link lain; tidak dioperasikan', { rel, nlink: st.nlink });
-  const { hash } = await hashFile(abs);
+/** Fresh checks right before a destructive step (TOCTOU guard, Checkpoint A M5). */
+export async function revalidateFile(ws: Workspace, v: VersionRecord, allowed = MEDIA_AREAS): Promise<{ rel: string }> {
+  const rel = await ws.blobs.resolve(v.rel_path, allowed);
+  const st = await ws.blobs.stat(rel);
+  if (!st) throw new StorageError('NOT_FOUND', 'File tidak ditemukan', { rel });
+  if (!st.isFile) throw new StorageError('INTEGRITY', 'Bukan file biasa', { rel });
+  if (st.multiLinked) throw new StorageError('PRECONDITION', 'File punya hard link lain; tidak dioperasikan', { rel });
+  const { hash } = await ws.blobs.hash(rel);
   if (hash !== v.content_hash) throw new StorageError('INTEGRITY', 'Hash file berubah', { rel });
-  return { abs, rel };
+  return { rel };
 }
 
 // ------------------------------------------------------------------ Auto Trash
@@ -124,7 +102,7 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
     for (const v of Object.values(reg.versions).sort((a, b) => a.version_id.localeCompare(b.version_id))) {
       const e = evaluateVersion(v, reg.media[v.media_id]!, { now, index: idx.index, busy });
       if (!e.eligible) continue;
-      let src: { abs: string; rel: string };
+      let src: { rel: string };
       try {
         src = await revalidateFile(ws, v);
       } catch (err) {
@@ -134,7 +112,7 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
         continue;
       }
       const base = `${LAYOUT.trash}/${op_id}/${v.version_id}`;
-      const to = await resolveCanonical(ws.root, `${base}/${path.basename(src.rel)}`, { allowMissing: true });
+      const to = { rel: await ws.blobs.resolve(`${base}/${path.posix.basename(src.rel)}`, ['trash'], { allowMissing: true }) };
       const manifestRel = `${base}/manifest.json`;
       const journal: JournalEntry = { schema_version: 1, op_id, kind: 'trash', version_id: v.version_id, from_rel: src.rel, to_rel: to.rel, manifest_rel: manifestRel, content_hash: v.content_hash, started_at: now };
       const record = {
@@ -148,12 +126,12 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
         dependencies_checked: { index_fingerprint: idx.index.fingerprint, holders: e.holders.length, checked_at: now },
       };
       let moved = false;
-      let manifestAbs: string | null = null;
+      let manifestWritten = false;
       try {
         await writeJournal(ws, journal);
         // Logged *before* the move so a crash can never leave an unlogged move (review M4).
         await audit(ws, { op_id, op: 'gc.auto_trash.item', actor: opts.actor, outcome: 'info', phase: 'started', ...record });
-        const renamed = await moveVerified(src.abs, to.abs, v.content_hash);
+        const { renamed } = await ws.blobs.move(src.rel, to.rel, v.content_hash);
         moved = true;
         const manifest: TrashManifest = {
           schema_version: 1,
@@ -170,8 +148,8 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
           eligible_since: e.eligible_at,
           dependencies_checked: record.dependencies_checked,
         };
-        manifestAbs = (await resolveCanonical(ws.root, manifestRel, { allowMissing: true })).abs;
-        await writeJsonAtomic(manifestAbs, manifest);
+        manifestWritten = true; // set first: a partial write must still be cleaned up on rollback
+        await ws.blobs.writeJson(manifestRel, manifest);
         // Change a copy; only adopt it once it is safely persisted (review M2).
         reg.versions[v.version_id] = {
           ...v,
@@ -197,9 +175,9 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
         if (moved) {
           // Put the bytes back where the (unchanged) registry says they are.
           try {
-            await moveVerified(to.abs, src.abs, v.content_hash);
-            await fsp.chmod(src.abs, 0o444).catch(() => undefined);
-            if (manifestAbs) await fsp.rm(manifestAbs, { force: true });
+            await ws.blobs.move(to.rel, src.rel, v.content_hash);
+            await ws.blobs.setReadOnly(src.rel).catch(() => undefined);
+            if (manifestWritten) await ws.blobs.remove(manifestRel, { missingOk: true });
             rolledBack = true;
           } catch (rbErr) {
             res.errors.push(`${v.version_id}: rollback gagal: ${String(rbErr)}`);
@@ -226,6 +204,6 @@ export async function runAutoTrash(ws: Workspace, opts: { actor: Actor; busy?: R
 }
 
 export async function readTrashManifest(ws: Workspace, manifestRel: string): Promise<TrashManifest> {
-  const { abs } = await resolveInArea(ws.root, manifestRel, ['trash']);
-  return readJson(abs, validateTrashManifest, 'INDEX_INVALID');
+  const rel = await ws.blobs.resolve(manifestRel, ['trash']);
+  return ws.blobs.readJson(rel, validateTrashManifest, 'INDEX_INVALID');
 }

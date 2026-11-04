@@ -7,7 +7,7 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 
 ## Fase 1 — Fondasi lokal + UI (tanpa Google)
 - [x] W01 Restrukturisasi repo: `packages/core` (storage yang ada); `apps/server` (W03) dan `apps/web` (W05) dibuat oleh task-nya; skrip root (`verify`, `test:e2e`, `test:prototype`) tetap jalan; 133 pass / 1 skip, E2E 18/18, prototype 56/56. *Bukan npm workspaces: D: exFAT tidak bisa symlink → satu paket + TS project references.*
-- [ ] W02 Antarmuka `StorageBackend` di core; backend `LocalFs` = perilaku sekarang (semua tes lama lulus tanpa diubah maknanya).
+- [x] W02 Antarmuka `StorageBackend` di core; backend `LocalFs` = perilaku sekarang (semua tes lama lulus tanpa diubah maknanya). Metadata tetap lokal; byte media/Trash/output lewat backend. Tes kontrak `backendContract()` dipakai ulang untuk backend Drive di W10.
 - [ ] W03 Server API dasar (Node/TS): hanya listen di 127.0.0.1, health, sesi lokal (token acak per start, belum Google), error bertipe, aktor ditegakkan di server (browser tidak bisa mengaku "user" untuk aksi AI/scheduler).
 - [ ] W04 Endpoint proyek & media (backend lokal): buat/buka proyek, import file (upload dari browser), daftar media, Trash/restore/purge manual (token + frasa), dashboard storage.
 - [ ] W05 UI web dari prototype (React): daftar proyek, media library, layout editor, Trash/purge/restore, dashboard storage.

@@ -1,5 +1,3 @@
-import { randomBytes } from 'node:crypto';
-import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { audit } from './audit.js';
 import { type Lease, createLease, loadLeases, releaseLease } from './deps.js';
@@ -7,10 +5,10 @@ import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { journalBusy } from './journal.js';
 import { normalizeRelative } from './paths.js';
-import { type Actor, resolveInArea } from './permissions.js';
+import { type Actor, MEDIA_AREAS } from './permissions.js';
 import type { MediaRef } from './project.js';
 import { estimateSpace } from './quota.js';
-import { hashFile, loadRegistry } from './registry.js';
+import { loadRegistry } from './registry.js';
 import { type Workspace, projectRel, readProject, withWorkspaceLock } from './workspace.js';
 
 export interface SnapshotItem extends MediaRef {
@@ -44,10 +42,10 @@ function safeOutputName(name: string): string {
   return n;
 }
 
-async function freeOutputName(dirAbs: string, name: string, reserved: ReadonlySet<string>): Promise<{ name: string; versioned: boolean }> {
-  const ext = path.extname(name);
-  const base = path.basename(name, ext);
-  const taken = async (n: string) => reserved.has(n.toLowerCase()) || fsp.lstat(path.join(dirAbs, n)).then(() => true, () => false);
+async function freeOutputName(ws: Workspace, dirRel: string, name: string, reserved: ReadonlySet<string>): Promise<{ name: string; versioned: boolean }> {
+  const ext = path.posix.extname(name);
+  const base = path.posix.basename(name, ext);
+  const taken = async (n: string) => reserved.has(n.toLowerCase()) || ws.blobs.exists(`${dirRel}/${n}`);
   if (!(await taken(name))) return { name, versioned: false };
   for (let i = 2; i < 1000; i++) {
     const cand = `${base}_v${i}${ext}`;
@@ -108,8 +106,7 @@ export async function renderPreflight(
       .filter((o) => o.media_id === v.media_id && o.version_id !== v.version_id && o.lifecycle === 'active' && o.integrity === 'ok')
       .map((o) => ({ media_id: o.media_id, version_id: o.version_id }));
     try {
-      const { abs } = await resolveInArea(ws.root, v.rel_path, ['shared_media', 'shared_assets', 'project_input', 'project_assets']);
-      const { hash } = await hashFile(abs);
+      const { hash } = await ws.blobs.hash(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS));
       if (hash !== v.content_hash) {
         problems.push({ code: 'MEDIA_CHANGED', ref, relink_options });
         continue;
@@ -125,8 +122,8 @@ export async function renderPreflight(
 
   // Output: versioned, inside this project's 05_OUTPUT only.
   const name = safeOutputName(input.output_name);
-  const outDir = await resolveInArea(ws.root, `${projectRel(input.project_id, '05_OUTPUT')}/${name}`, ['project_output'], { allowMissing: true });
-  const dirAbs = path.dirname(outDir.abs);
+  const outTarget = await ws.blobs.resolve(`${projectRel(input.project_id, '05_OUTPUT')}/${name}`, ['project_output'], { allowMissing: true });
+  const dirRel = path.posix.dirname(outTarget);
   const outPrefix = `${projectRel(input.project_id, '05_OUTPUT')}/`.toLowerCase();
   const reserved = new Set(
     (await loadLeases(ws)).leases
@@ -135,16 +132,14 @@ export async function renderPreflight(
       .map((r) => r.slice(outPrefix.length)),
   );
   let chosen = { name, versioned: false };
-  if (!input.approve_overwrite) chosen = await freeOutputName(dirAbs, name, reserved);
+  if (!input.approve_overwrite) chosen = await freeOutputName(ws, dirRel, name, reserved);
   else if (reserved.has(name.toLowerCase())) problems.push({ code: 'OUTPUT_NOT_WRITABLE', detail: 'Nama output sedang dipakai render lain yang belum selesai' });
   else notes.push('Overwrite output disetujui eksplisit oleh user');
   const output_rel = `${projectRel(input.project_id, '05_OUTPUT')}/${chosen.name}`;
 
   // Write permission: create and remove a probe file (access() is unreliable on Windows).
-  const probe = path.join(dirAbs, `.write-probe-${randomBytes(4).toString('hex')}`);
   try {
-    await fsp.writeFile(probe, '', { flag: 'wx' });
-    await fsp.rm(probe, { force: true });
+    await ws.blobs.probeWritable(dirRel);
   } catch (e) {
     problems.push({ code: 'OUTPUT_NOT_WRITABLE', detail: String(e) });
   }
@@ -190,8 +185,7 @@ export async function verifyRenderSnapshot(ws: Workspace, leaseId: string): Prom
       continue;
     }
     try {
-      const { abs } = await resolveInArea(ws.root, v.rel_path, ['shared_media', 'shared_assets', 'project_input', 'project_assets']);
-      if ((await hashFile(abs)).hash !== m.content_hash) problems.push(`${m.version_id}: CHANGED`);
+      if ((await ws.blobs.hash(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS))).hash !== m.content_hash) problems.push(`${m.version_id}: CHANGED`);
     } catch {
       problems.push(`${m.version_id}: MISSING`);
     }

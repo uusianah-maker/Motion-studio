@@ -1,9 +1,11 @@
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
+import type { StorageBackend } from './backend.js';
 import { type Clock, systemClock } from './clock.js';
 import { StorageError } from './errors.js';
 import { assertSafeId, newId } from './ids.js';
 import { readJson, withLock, writeJsonAtomic } from './jsonStore.js';
+import { LocalFsBackend } from './localfs.js';
 import { PROJECT_SCHEMA_VERSION, type ProjectManifest, validateProjectManifest } from './project.js';
 import { canonicalRoot, resolveInside } from './paths.js';
 
@@ -60,7 +62,17 @@ export interface Workspace {
   readonly root: string;
   readonly meta: WorkspaceMeta;
   readonly clock: Clock;
+  /** Where media bytes live (W02). Metadata always stays under `root`. */
+  readonly blobs: StorageBackend;
 }
+
+export interface WorkspaceOptions {
+  clock?: Clock;
+  /** Blob backend for this workspace; default = local filesystem under the root. */
+  backend?: (root: string) => StorageBackend;
+}
+
+const makeBackend = (root: string, opts: WorkspaceOptions): StorageBackend => (opts.backend ?? ((r) => new LocalFsBackend(r)))(root);
 
 export const metaPath = (ws: Pick<Workspace, 'root'>, file: string): string => path.join(ws.root, LAYOUT.meta, file);
 
@@ -91,7 +103,7 @@ export function validatePolicy(x: unknown): Policy {
 }
 
 /** Create a brand-new workspace. Refuses non-empty folders so we never adopt random user data. */
-export async function initWorkspace(rootInput: string, opts: { clock?: Clock } = {}): Promise<Workspace> {
+export async function initWorkspace(rootInput: string, opts: WorkspaceOptions = {}): Promise<Workspace> {
   const clock = opts.clock ?? systemClock;
   const abs = path.resolve(rootInput);
   await fsp.mkdir(abs, { recursive: true });
@@ -114,7 +126,7 @@ export async function initWorkspace(rootInput: string, opts: { clock?: Clock } =
     throw e;
   }
   const meta: WorkspaceMeta = { schema_version: WORKSPACE_SCHEMA_VERSION, workspace_id: newId('ws'), created_at: clock.now() };
-  const ws: Workspace = { root, meta, clock };
+  const ws: Workspace = { root, meta, clock, blobs: makeBackend(root, opts) };
   await writeJsonAtomic(metaPath(ws, META_FILES.policy), DEFAULT_POLICY);
   await writeJsonAtomic(metaPath(ws, META_FILES.registry), { schema_version: 1, media: {}, versions: {} });
   await writeJsonAtomic(metaPath(ws, META_FILES.leases), { schema_version: 1, leases: [] });
@@ -125,7 +137,7 @@ export async function initWorkspace(rootInput: string, opts: { clock?: Clock } =
 }
 
 /** Open and validate an existing workspace (all layout folders present, none are links). */
-export async function openWorkspace(rootInput: string, opts: { clock?: Clock } = {}): Promise<Workspace> {
+export async function openWorkspace(rootInput: string, opts: WorkspaceOptions = {}): Promise<Workspace> {
   try {
     if ((await fsp.lstat(path.resolve(rootInput))).isSymbolicLink()) {
       throw new StorageError('WORKSPACE_INVALID', 'Root workspace tidak boleh symlink/junction', { root: rootInput });
@@ -154,7 +166,7 @@ export async function openWorkspace(rootInput: string, opts: { clock?: Clock } =
     }
     if (!(await fsp.stat(p)).isDirectory()) throw new StorageError('WORKSPACE_INVALID', `Bukan folder: ${dir}`);
   }
-  return { root, meta, clock: opts.clock ?? systemClock };
+  return { root, meta, clock: opts.clock ?? systemClock, blobs: makeBackend(root, opts) };
 }
 
 export const withWorkspaceLock = <T>(ws: Workspace, owner: string, fn: () => Promise<T>, timeoutMs?: number): Promise<T> =>

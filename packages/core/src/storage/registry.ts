@@ -1,16 +1,16 @@
-import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, promises as fsp } from 'node:fs';
+import { promises as fsp } from 'node:fs';
 import path from 'node:path';
-import { Transform } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import { audit } from './audit.js';
+import type { StagedBlob } from './backend.js';
 import { StorageError } from './errors.js';
 import { assertSafeId, isSafeId, newId } from './ids.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
-import { isInside, resolveCanonical, resolveInside } from './paths.js';
+import { isInside } from './paths.js';
 import { guard } from './guard.js';
 import type { Actor } from './permissions.js';
 import { LAYOUT, META_FILES, type Workspace, metaPath, projectRel, readProject, withWorkspaceLock } from './workspace.js';
+
+export { hashFile } from './hash.js';
 
 export const REGISTRY_SCHEMA_VERSION = 1;
 
@@ -100,39 +100,6 @@ export const loadRegistry = (ws: Workspace): Promise<Registry> =>
 export const saveRegistry = (ws: Workspace, reg: Registry): Promise<void> =>
   writeJsonAtomic(metaPath(ws, META_FILES.registry), validateRegistry(reg));
 
-// ------------------------------------------------------------------ hashing
-
-export async function hashFile(file: string): Promise<{ hash: string; size: number }> {
-  const h = createHash('sha256');
-  let size = 0;
-  for await (const chunk of createReadStream(file)) {
-    h.update(chunk as Buffer);
-    size += (chunk as Buffer).length;
-  }
-  return { hash: `sha256:${h.digest('hex')}`, size };
-}
-
-/** Copy while hashing the exact bytes written, then fsync. */
-async function copyHashing(src: string, dest: string): Promise<{ hash: string; size: number }> {
-  const h = createHash('sha256');
-  let size = 0;
-  const tap = new Transform({
-    transform(chunk: Buffer, _enc, cb) {
-      h.update(chunk);
-      size += chunk.length;
-      cb(null, chunk);
-    },
-  });
-  await pipeline(createReadStream(src), tap, createWriteStream(dest, { flags: 'wx' }));
-  const fh = await fsp.open(dest, 'r+');
-  try {
-    await fh.sync();
-  } finally {
-    await fh.close();
-  }
-  return { hash: `sha256:${h.digest('hex')}`, size };
-}
-
 const safeExt = (name: string): string => {
   const ext = path.extname(name).toLowerCase();
   return /^\.[a-z0-9]{1,8}$/.test(ext) ? ext : '';
@@ -185,35 +152,7 @@ function findDuplicate(reg: Registry, hash: string, accept: (v: VersionRecord) =
   return undefined;
 }
 
-interface StagedCopy {
-  tmpAbs: string;
-  hash: string;
-  size: number;
-}
-
-/** Copy the source into the destination area under a temp name (outside the lock: may be slow). */
-async function stage(ws: Workspace, dirRel: string, source: string): Promise<StagedCopy> {
-  const dir = await resolveInside(ws.root, dirRel);
-  const tmpAbs = path.join(dir, `.importing-${newId('op')}`);
-  try {
-    const { hash, size } = await copyHashing(source, tmpAbs);
-    return { tmpAbs, hash, size };
-  } catch (e) {
-    await fsp.rm(tmpAbs, { force: true });
-    throw e;
-  }
-}
-
-async function commitStaged(ws: Workspace, staged: StagedCopy, mediaId: string, versionId: string, ext: string, dirRel: string): Promise<string> {
-  const rel = `${dirRel}/${mediaId}/${versionId}${ext}`;
-  const target = await resolveCanonical(ws.root, rel, { allowMissing: true });
-  await fsp.mkdir(path.dirname(target.abs), { recursive: true });
-  await fsp.rename(staged.tmpAbs, target.abs);
-  await fsp.chmod(target.abs, 0o444); // media are read-only for the app (PRD v0.8 §C)
-  return target.rel;
-}
-
-function newVersion(ws: Workspace, mediaId: string, versionId: string, staged: StagedCopy, rel: string, originalName: string): VersionRecord {
+function newVersion(ws: Workspace, mediaId: string, versionId: string, staged: StagedBlob, rel: string, originalName: string): VersionRecord {
   const now = ws.clock.now();
   return {
     version_id: versionId,
@@ -248,7 +187,7 @@ export async function importMedia(
   }
   const source = await validateSource(ws, input.sourcePath);
   const dirRel = scopeDir(input.scope);
-  const staged = await stage(ws, dirRel, source);
+  const staged = await ws.blobs.stage(dirRel, source);
   try {
     return await withWorkspaceLock(ws, 'importMedia', async () => {
       const reg = await loadRegistry(ws);
@@ -257,13 +196,13 @@ export async function importMedia(
         return sc.kind === 'shared' || sameScope(sc, input.scope);
       });
       if (dup) {
-        await fsp.rm(staged.tmpAbs, { force: true });
+        await ws.blobs.discard(staged);
         await audit(ws, { op: 'media.import', actor: input.actor, outcome: 'info', duplicate: true, version_id: dup.version_id, content_hash: dup.content_hash });
         return { media: reg.media[dup.media_id]!, version: dup, duplicate: true };
       }
       const mediaId = newId('m');
       const versionId = newId('v');
-      const rel = await commitStaged(ws, staged, mediaId, versionId, safeExt(source), dirRel);
+      const rel = await ws.blobs.commit(staged, `${dirRel}/${mediaId}/${versionId}${safeExt(source)}`);
       const originalName = path.basename(source);
       const version = newVersion(ws, mediaId, versionId, staged, rel, originalName);
       const media: MediaRecord = {
@@ -280,7 +219,7 @@ export async function importMedia(
       return { media, version, duplicate: false };
     });
   } finally {
-    await fsp.rm(staged.tmpAbs, { force: true });
+    await ws.blobs.discard(staged);
   }
 }
 
@@ -296,7 +235,7 @@ export async function addVersion(
   const m0 = before.media[mediaId];
   if (!m0) throw new StorageError('NOT_FOUND', 'Media tidak ditemukan', { media_id: mediaId });
   const dirRel = scopeDir(m0.scope);
-  const staged = await stage(ws, dirRel, source);
+  const staged = await ws.blobs.stage(dirRel, source);
   try {
     return await withWorkspaceLock(ws, 'addVersion', async () => {
       const reg = await loadRegistry(ws);
@@ -308,7 +247,7 @@ export async function addVersion(
         return { media, version: dup, duplicate: true };
       }
       const versionId = newId('v');
-      const rel = await commitStaged(ws, staged, mediaId, versionId, safeExt(source), dirRel);
+      const rel = await ws.blobs.commit(staged, `${dirRel}/${mediaId}/${versionId}${safeExt(source)}`);
       const version = newVersion(ws, mediaId, versionId, staged, rel, path.basename(source));
       reg.versions[versionId] = version;
       const previous = media.current_version_id;
@@ -318,7 +257,7 @@ export async function addVersion(
       return { media, version, duplicate: false };
     });
   } finally {
-    await fsp.rm(staged.tmpAbs, { force: true });
+    await ws.blobs.discard(staged);
   }
 }
 
@@ -383,8 +322,7 @@ export async function verifyVersion(ws: Workspace, versionId: string, actor: Act
   let integrity: Integrity;
   let actual: string | undefined;
   try {
-    const abs = await resolveInside(ws.root, v0.rel_path);
-    actual = (await hashFile(abs)).hash;
+    actual = (await ws.blobs.hash(v0.rel_path)).hash;
     integrity = actual === v0.content_hash ? 'ok' : 'changed';
   } catch (e) {
     const notFound = (e instanceof StorageError && e.code === 'NOT_FOUND') || (e as NodeJS.ErrnoException).code === 'ENOENT';

@@ -70,21 +70,22 @@ export async function diskSpace(dir: string): Promise<{ free_bytes: number; tota
 export async function getStorageStats(ws: Workspace, opts: { disk?: { free_bytes: number; total_bytes: number } | null } = {}): Promise<StorageStats> {
   const policy = (await readPolicy(ws)).quota;
   const usage: AreaUsage = {
-    shared_media: await dirSize(path.join(ws.root, LAYOUT.sharedMedia)),
-    shared_assets: await dirSize(path.join(ws.root, LAYOUT.sharedAssets)),
+    // Blob areas (media, Trash, output) through the backend; backups + cache are local metadata.
+    shared_media: await ws.blobs.usage(LAYOUT.sharedMedia),
+    shared_assets: await ws.blobs.usage(LAYOUT.sharedAssets),
     project_input: 0,
     project_assets: 0,
     project_cache: 0,
     project_output: 0,
-    trash: await dirSize(path.join(ws.root, LAYOUT.trash)),
+    trash: await ws.blobs.usage(LAYOUT.trash),
     backup_projects: await dirSize(path.join(ws.root, LAYOUT.backups)),
   };
   for (const p of await listProjectIds(ws)) {
-    const base = path.join(ws.root, LAYOUT.projects, p);
-    usage.project_input += await dirSize(path.join(base, '01_INPUT'));
-    usage.project_assets += await dirSize(path.join(base, '02_ASSETS'));
-    usage.project_cache += await dirSize(path.join(base, '04_CACHE'));
-    usage.project_output += await dirSize(path.join(base, '05_OUTPUT'));
+    const base = `${LAYOUT.projects}/${p}`;
+    usage.project_input += await ws.blobs.usage(`${base}/01_INPUT`);
+    usage.project_assets += await ws.blobs.usage(`${base}/02_ASSETS`);
+    usage.project_cache += await dirSize(path.join(ws.root, LAYOUT.projects, p, '04_CACHE'));
+    usage.project_output += await ws.blobs.usage(`${base}/05_OUTPUT`);
   }
   const media_bytes = usage.shared_media + usage.shared_assets + usage.project_input + usage.project_assets;
   const disk = opts.disk !== undefined ? opts.disk : await diskSpace(ws.root);
