@@ -1,7 +1,7 @@
 # Progress /gasngoding
 Update terakhir: 2026-11-04
 Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 15/15 selesai · 0 blocked · 0 belum dikerjakan
-Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 0/15 selesai · 0 blocked · 15 belum dikerjakan
+Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 1/15 selesai · 0 blocked · 14 belum dikerjakan
 
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
 
@@ -27,6 +27,7 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 ## Log task v2.0
 | # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
 |---|---|---|---|---|---|
+| W01 | Restrukturisasi repo | DONE | `npm run verify`: typecheck, lint, 133 pass / 1 skip, build, smoke OK (dist bisa di-import, CLI init + dashboard jalan); `npm run test:e2e` 18/18; `npm run test:prototype` 56/56. CI ditambah langkah smoke | Storage core dipindah ke `packages/core` (src, test, tsconfig, vitest). **Tidak pakai npm workspaces**: `npm install` gagal EISDIR karena D: exFAT tidak mendukung symlink/junction → satu paket npm + `tsconfig.base.json` + TS project references (`composite`). `apps/server`/`apps/web` tidak dibuat kosong (hindari stub); dibuat di W03/W05 | (commit task W01) |
 
 ## Pending Confirmation
 ### PC-0: Konfirmasi sign-off T01 — DIJAWAB 2026-11-04: **A (sah)**
@@ -131,4 +132,5 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | Render: overwrite non-user & nama output bentrok (M3/M4-C) | Checkpoint C | fixed | reservasi output di lease |
 | TOCTOU sebelum destruktif, hard link | Checkpoint A | fixed (Trash T10, purge T12) | `revalidateFile()`, cek nlink di purge |
 | Jam 30 hari baru mulai saat rekonsiliasi berikutnya, bukan saat referensi hilang | T09 (test) | fixed | `StorageService` rekonsiliasi di dalam lock setelah tiap mutasi; tes `service.test.ts` |
+| npm workspaces gagal (EISDIR symlink) di D: exFAT | W01 | fixed (workaround) | satu paket + TS project references; kalau repo pindah ke NTFS, workspaces bisa dipakai lagi |
 | `<video>` hitam menutupi placeholder | T02 (self-review screenshot) | fixed | tes A04 ditambah |

@@ -1,4 +1,4 @@
-// End-to-end acceptance run against the BUILT storage core (dist/), with real MP4 files.
+// End-to-end acceptance run against the BUILT storage core (packages/core/dist/), with real MP4 files.
 // Covers PRD v0.8 §I GC-01..GC-12 and §M design checks (1)-(5) in one realistic workspace story.
 // Run: npm run build && node audit/E2E/e2e.mjs
 import { Buffer } from 'node:buffer';
@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dist = (m) => import(pathToFileURL(path.resolve(here, '../../dist/storage', m)).href);
+const dist = (m) => import(pathToFileURL(path.resolve(here, '../../packages/core/dist/storage', m)).href);
 const { ManualClock, DAY_MS } = await dist('clock.js');
 const { initWorkspace, createProject, readProject } = await dist('workspace.js');
 const { StorageService } = await dist('service.js');

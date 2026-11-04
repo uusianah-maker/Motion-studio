@@ -4,3 +4,4 @@ coverage/
 *.log
 .tmp/
 audit/**/evidence/*.mp4
+*.tsbuildinfo

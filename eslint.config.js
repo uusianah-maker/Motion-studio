@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['.tmp/**', 'dist/**', 'coverage/**', 'node_modules/**', 'prototype/**', 'audit/**/evidence/**'] },
+  { ignores: ['.tmp/**', '**/dist/**', '**/coverage/**', '**/node_modules/**', 'prototype/**', 'audit/**/evidence/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -14,7 +14,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['audit/**/*.mjs', 'src/cli/**/*.ts'],
+    files: ['audit/**/*.mjs', 'scripts/**/*.mjs', 'packages/core/src/cli/**/*.ts'],
     rules: { 'no-console': 'off' },
     languageOptions: { globals: { console: 'readonly', process: 'readonly', document: 'readonly', window: 'readonly', getComputedStyle: 'readonly', innerWidth: 'readonly', localStorage: 'readonly', sessionStorage: 'readonly' } },
   },
