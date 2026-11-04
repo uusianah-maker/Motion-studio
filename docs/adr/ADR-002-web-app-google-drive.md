@@ -31,6 +31,8 @@ Browser (React)  ──HTTPS/localhost──►  Server (Node/TS)
 - Google Drive for Desktop di tiap komputer: tidak cocok untuk tim/online.
 - Object storage (R2/S3): lebih cepat/murah, tapi owner ingin file terlihat di Drive.
 
-## Keputusan yang masih terbuka
-- **PC-6:** akun Google owner — Google Workspace (bisa Shared Drive + "Internal app") atau Gmail pribadi (folder di My Drive).
-- **PC-7:** izin Drive — `drive.file` (rekomendasi) vs `drive` penuh. Lihat `PROGRESS.md`.
+## Keputusan lanjutan (2026-11-04)
+- **PC-6 = B:** Gmail pribadi (kuota 2 TB). Workspace = folder di My Drive; OAuth "External", di-set "In production" (bukan testing) supaya refresh token tidak kedaluwarsa 7 hari.
+- **PC-7 = A:** scope `drive.file` (+ `openid email profile`), non-sensitive. App hanya melihat file buatannya atau yang dipilih via Google Picker; import = Picker atau upload dari app.
+
+- **PC-8 = B:** UI web + editor dulu di atas backend lokal; Login Google + Drive di W09–W10.

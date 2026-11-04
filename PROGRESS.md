@@ -1,6 +1,7 @@
 # Progress /gasngoding
 Update terakhir: 2026-11-04
 Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 15/15 selesai · 0 blocked · 0 belum dikerjakan
+Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 0/15 selesai · 0 blocked · 15 belum dikerjakan
 
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
 
@@ -22,6 +23,10 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | T13 | ST-09 scheduler + crash recovery | DONE | verify: 114 pass/1 skip. Simulasi crash: setelah pindah sebelum registry → rollback; sebelum pindah → no-op; copy terputus → tujuan parsial dihapus; selesai tapi journal tertinggal → dibersihkan; byte hilang → missing; restore terputus → kembali ke Trash lalu bisa diulang; journal korup → Auto Trash diblok + dilaporkan; sweep .importing-*/.tmp; file yatim dilaporkan tidak dihapus; idempoten. Scheduler: launch = recovery + siklus langsung + interval policy, tanpa overlap, error tidak lolos, busy provider, mode scan-only | Kebijakan recovery = selalu rollback ke kondisi sebelum operasi (keputusan GC diulang dari data segar, tidak pernah menyelesaikan keputusan basi). Scheduler tidak pernah purge | 91f176d |
 | T14 | ST-10 disk quota + storage dashboard | SELESAI (backend + CLI); UI dashboard menunggu PC-1 | verify: 120 pass/1 skip. Tes: pemakaian per area + statfs nyata; disk penuh/kuota hanya memberi peringatan, tidak pernah Trash/purge (design check 5); estimasi ruang import/render vs cadangan, fail closed bila tak terbaca; cleanup cache hanya 04_CACHE, terlama dulu, lewati file dipakai job, original & output aman, AI ditolak; dashboard (ringkasan GC, kapan versi jadi eligible, Trash + status backup, operasi tertunda, audit terbaru); CLI init/dashboard/scan/recover dijalankan nyata dari dist | Dashboard memakai scan dry-run aktor AI (read-only). CLI sengaja TIDAK membuka Auto Trash/restore/purge. Tampilan dashboard di app desktop belum dibuat karena shell belum diputuskan (PC-1) | 228aa8c |
 | T15 | Integrasi render preflight + snapshot dependensi | DONE | verify: 126 pass/1 skip. Tes: snapshot persis (versi + hash), output versioned di 05_OUTPUT (final_v2), overwrite hanya dengan persetujuan eksplisit; media hilang/berubah → gagal eksplisit + usulan relink tanpa substitusi; versi lebih baru dilaporkan tapi TIDAK dipakai; media di Trash, disk kurang, timeline kosong, nama output traversal/subfolder, AI ditolak; GC-05 lease render 60 hari tidak di-Trash + snapshot tetap terverifikasi + jam mulai saat render selesai; bytes berubah saat render terdeteksi | Probe tulis (buat+hapus file) dipakai karena access() tidak andal di Windows. Render preflight hanya membaca timeline (bukan snapshot undo) | fe0484b |
+
+## Log task v2.0
+| # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
+|---|---|---|---|---|---|
 
 ## Pending Confirmation
 ### PC-0: Konfirmasi sign-off T01 — DIJAWAB 2026-11-04: **A (sah)**
@@ -69,19 +74,27 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Catatan lingkungan: D: (Portable SSD) ±1,5 TB kosong, C: ±41 GB kosong; Google Drive for Desktop belum terpasang.
 - PC-1 (bentuk app) dan PC-4 (urutan backlog) mengikuti keputusan PC-5.
 
-### PC-6: Jenis akun Google
+### PC-6: Jenis akun Google — DIJAWAB 2026-11-04: **B (Gmail pribadi, kuota 2 TB)**
+- Owner: "gua ada gmail bisa itu 2TB". Akibatnya: folder workspace di My Drive (bukan Shared Drive); OAuth tipe "External". Karena PC-7 = A (`drive.file`, non-sensitive), app bisa di-set "In production" di Google Cloud tanpa audit keamanan, jadi login tidak kedaluwarsa tiap 7 hari.
 - Task terdampak: W04, W05.
 - Opsi A: Google Workspace (email kantor/domain sendiri) → bisa Shared Drive + OAuth "Internal" (login tidak kedaluwarsa).
 - Opsi B: Gmail pribadi → folder di My Drive; OAuth "External" mode testing (token kedaluwarsa tiap 7 hari kecuali app dipublikasikan).
 - Rekomendasi: pakai yang owner sudah punya; kalau Gmail pribadi, pasangkan dengan PC-7 opsi A supaya app bisa dipublikasikan tanpa audit berat.
 
-### PC-7: Izin akses Drive
+### PC-7: Izin akses Drive — DIJAWAB 2026-11-04: **A (`drive.file`)**
+- Owner: "pakai rekomendasi A". Akibatnya: app hanya melihat file yang dia buat/upload sendiri atau yang dipilih owner lewat Google Picker. File yang di-drag manual ke folder app lewat web Drive **tidak terlihat** oleh app sampai dipilih lewat Picker → import wajib lewat Picker atau upload dari app.
 - Task terdampak: W04–W06.
 - Opsi A (rekomendasi): `drive.file` — app hanya bisa akses file yang dia buat atau yang owner pilih lewat Google Picker. Paling aman, izin "non-sensitive" (mudah dipublikasikan, token tidak kedaluwarsa 7 hari). Import lewat Picker; "paste link" terbatas.
 - Opsi B: `drive` penuh — app bisa baca seluruh Drive, "paste link" bebas. Izin "restricted": butuh verifikasi keamanan Google bila dipublikasikan; mode testing = login ulang tiap 7 hari.
 
-### PC-8: Persetujuan urutan rencana v2.0
-- Lihat `docs/IMPLEMENTATION_PLAN_v2.0.md` (W01–W15, checkpoint D/E/F). Opsi A: setujui apa adanya. Opsi B: ubah urutan.
+### PC-8: Persetujuan urutan rencana v2.0 — DIJAWAB 2026-11-04: **B (UI dulu, Drive menyusul)**
+- Owner: "Gas jalankan Point B". Urutan baru di `docs/IMPLEMENTATION_PLAN_v2.0.md`: W01–W05 fondasi lokal + UI web (tanpa Google) → W06–W08 editor/preview/render → W09–W10 Login Google + Drive → W11–W15 AI.
+
+### PC-9: Link share folder Drive owner terbuka untuk publik (EDIT)
+- Konteks: folder "video motion folder" (`1pls4-EtmxPa09oxctKgaTx352OOMqWnF`) di-share **"Siapa saja yang punya link: Editor"** (dicek 2026-11-04 via konektor Drive). Siapa pun yang dapat link bisa lihat, tambah, ubah, atau hapus video di folder itu. App tidak butuh link share (akses lewat Login Google + Picker), dan Claude membaca lewat konektor akun owner, bukan lewat link.
+- Task terdampak: W10 (folder ini calon workspace). Tidak memblokir W01–W09.
+- Opsi A (rekomendasi): owner ubah ke "Dibatasi" (Share → General access → Restricted). Claude tidak mengubah izin sharing sendiri.
+- Opsi B: biarkan (risiko bocor/terhapus oleh orang lain; Trash/purge app tidak melindungi file dari editor luar).
 
 ## Audit
 ### Checkpoint A (T01–T05): LULUS setelah perbaikan
