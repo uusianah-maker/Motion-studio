@@ -143,7 +143,7 @@ describe('W03 startup', () => {
     const ws = await workspace();
     const lines: string[] = [];
     const s = await start({ MOTION_WORKSPACE: ws.root, MOTION_PORT: '0' }, (l) => lines.push(l));
-    cleanup.push(() => s.app.close());
+    cleanup.push(() => s.stop());
     expect(s.recovery.corrupt_journal).toEqual([]);
     expect(lines.join('\n')).toContain(`http://127.0.0.1:${s.port}/#token=${s.app.token}`);
     expect((await call(s.port, { path: '/api/session', headers: auth(s.app.token) })).status).toBe(200);
@@ -152,5 +152,21 @@ describe('W03 startup', () => {
     await expect(start({}, () => undefined)).rejects.toThrow(/MOTION_WORKSPACE/);
     const ws = await workspace();
     await expect(start({ MOTION_WORKSPACE: ws.root, MOTION_PORT: 'abc' }, () => undefined)).rejects.toThrow(/MOTION_PORT/);
+    await expect(start({ MOTION_WORKSPACE: ws.root, MOTION_GC: 'purge' }, () => undefined)).rejects.toThrow(/MOTION_GC/);
+  });
+  it('GC scheduler: on by default (recovery + first cycle), scan-only, or off (recovery only)', async () => {
+    const ws = await workspace();
+    const on = await start({ MOTION_WORKSPACE: ws.root, MOTION_PORT: '0' }, () => undefined);
+    expect(on.scheduler?.active).toBe(true);
+    expect(on.firstCycle?.status).toBe('ok');
+    await on.stop();
+    expect(on.scheduler?.active).toBe(false);
+    const scan = await start({ MOTION_WORKSPACE: ws.root, MOTION_PORT: '0', MOTION_GC: 'scan-only' }, () => undefined);
+    expect(scan.firstCycle?.trash).toBeUndefined();
+    await scan.stop();
+    const off = await start({ MOTION_WORKSPACE: ws.root, MOTION_PORT: '0', MOTION_GC: 'off' }, () => undefined);
+    expect([off.scheduler, off.firstCycle]).toEqual([null, null]);
+    expect(off.recovery.corrupt_journal).toEqual([]);
+    await off.stop();
   });
 });

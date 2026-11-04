@@ -12,6 +12,8 @@ export interface RequestContext {
   req: IncomingMessage;
   res: ServerResponse;
   url: URL;
+  /** Decoded `:name` segments of the route path (each must be a safe ID-like segment). */
+  params: Record<string, string>;
   /** Always 'user' for HTTP: AI and scheduler actions run inside the server with their own actor. */
   actor: Actor;
   ws: Workspace;
@@ -20,6 +22,7 @@ export interface RequestContext {
 
 export interface Route {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  /** Exact path; `:name` segments become `ctx.params.name`. */
   path: string;
   /** Public routes skip the session token (health only). */
   public?: boolean;
@@ -38,6 +41,29 @@ export interface AppOptions {
 }
 
 const digest = (s: string) => createHash('sha256').update(s).digest();
+const PARAM_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+/** Match `/api/projects/:id` against a pathname; params must look like IDs (no dots/slashes). */
+export function matchPath(pattern: string, pathname: string): Record<string, string> | null {
+  const want = pattern.split('/');
+  const got = pathname.split('/');
+  if (want.length !== got.length) return null;
+  const params: Record<string, string> = {};
+  for (let i = 0; i < want.length; i++) {
+    const w = want[i]!;
+    let g: string;
+    try {
+      g = decodeURIComponent(got[i]!);
+    } catch {
+      return null;
+    }
+    if (w.startsWith(':')) {
+      if (!PARAM_RE.test(g)) return null;
+      params[w.slice(1)] = g;
+    } else if (w !== g) return null;
+  }
+  return params;
+}
 
 export function createApp(opts: AppOptions) {
   const token = opts.token ?? randomBytes(32).toString('hex');
@@ -71,12 +97,12 @@ export function createApp(opts: AppOptions) {
     const origin = req.headers.origin;
     if (origin !== undefined && !allowedOrigins().has(origin)) throw new ApiError(403, 'ORIGIN_REJECTED', 'Origin tidak diizinkan');
     const url = new URL(req.url ?? '/', `http://${HOST}:${port}`);
-    const matches = routes.filter((r) => r.path === url.pathname);
+    const matches = routes.map((r) => ({ r, params: matchPath(r.path, url.pathname) })).filter((m) => m.params !== null);
     if (!matches.length) throw new ApiError(404, 'NOT_FOUND', 'Endpoint tidak ada');
-    const route = matches.find((r) => r.method === req.method);
-    if (!route) throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Method tidak didukung');
-    if (!route.public && !authorized(req)) throw new ApiError(401, 'UNAUTHORIZED', 'Sesi tidak valid');
-    const body = await route.handle({ req, res, url, actor: 'user', ws: opts.ws, svc });
+    const hit = matches.find((m) => m.r.method === req.method);
+    if (!hit) throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Method tidak didukung');
+    if (!hit.r.public && !authorized(req)) throw new ApiError(401, 'UNAUTHORIZED', 'Sesi tidak valid');
+    const body = await hit.r.handle({ req, res, url, params: hit.params!, actor: 'user', ws: opts.ws, svc });
     if (!res.headersSent) sendJson(res, 200, body);
   }
 
