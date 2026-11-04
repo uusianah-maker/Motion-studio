@@ -10,5 +10,5 @@ Baca berurutan:
 
 Gaya kerja owner: Bahasa Indonesia santai & simpel; jalan otomatis pakai `/gasngoding`; audit mandiri (subagent reviewer); keputusan dikumpulkan dan ditanyakan di akhir (~90%), pilihan ganda + rekomendasi.
 
-Verifikasi: `npm ci` lalu `npm run verify` (133 pass / 1 skip), `npm run test:e2e` (18/18), `npm run test:prototype` (56/56, butuh Chrome).
+Verifikasi: `npm ci` lalu `npm run verify` (core 143 pass / 1 skip, server 10/10, smoke), `npm run test:e2e` (18/18), `npm run test:prototype` (56/56, butuh Chrome).
 Belum pernah push/deploy — wajib izin owner.

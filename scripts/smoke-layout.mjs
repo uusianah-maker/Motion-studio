@@ -1,5 +1,5 @@
-// Smoke check for the repo layout (W01): the BUILT storage core in packages/core/dist must be
-// importable by path and its CLI must run end to end (init + dashboard on a fresh temp workspace).
+// Smoke check of the BUILT outputs: storage core (packages/core/dist) importable and its CLI runs
+// (init + dashboard on a fresh temp workspace); server (apps/server/dist) starts and answers.
 // Run after `npm run build`.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -25,7 +25,22 @@ try {
   if (!init.workspace_id) fail('CLI init tidak mengembalikan workspace_id');
   const dash = JSON.parse(execFileSync(process.execPath, [cli, 'dashboard', ws, '--json'], { encoding: 'utf8' }));
   if (!dash.gc || dash.gc.ok !== true) fail(`dashboard workspace baru tidak ok: ${JSON.stringify(dash.gc)}`);
+
+  // Built server (apps/server/dist): start on a free loopback port, check health + session.
+  const { start } = await import(pathToFileURL(path.join(root, 'apps', 'server', 'dist', 'main.js')).href);
+  const s = await start({ MOTION_WORKSPACE: ws, MOTION_PORT: '0' }, () => undefined);
+  try {
+    const base = `http://127.0.0.1:${s.port}`;
+    const health = await fetch(`${base}/api/health`).then((r) => r.json());
+    if (health.ok !== true) fail('server health tidak ok');
+    const noToken = await fetch(`${base}/api/session`);
+    if (noToken.status !== 401) fail(`session tanpa token harus 401, dapat ${noToken.status}`);
+    const session = await fetch(`${base}/api/session`, { headers: { authorization: `Bearer ${s.app.token}` } }).then((r) => r.json());
+    if (session.actor !== 'user' || session.workspace_id !== init.workspace_id) fail(`session salah: ${JSON.stringify(session)}`);
+  } finally {
+    await s.app.close();
+  }
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
-console.log('smoke: OK (packages/core/dist importable, CLI init + dashboard jalan)');
+console.log('smoke: OK (core dist + CLI init/dashboard, server dist: health + session)');
