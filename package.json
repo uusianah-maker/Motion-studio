@@ -7,26 +7,35 @@
     "node": ">=20.11"
   },
   "scripts": {
-    "build": "tsc -b apps/server",
-    "typecheck": "tsc -p packages/core/tsconfig.test.json && tsc -p apps/server/tsconfig.test.json",
+    "build": "tsc -b apps/server && vite build apps/web --logLevel warn",
+    "typecheck": "tsc -p packages/core/tsconfig.test.json && tsc -p apps/server/tsconfig.test.json && tsc -p apps/web/tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run --root packages/core && vitest run --root apps/server",
+    "test": "vitest run --root packages/core && vitest run --root apps/server && vitest run --root apps/web",
     "smoke": "node scripts/smoke-layout.mjs",
     "test:prototype": "node audit/T01/audit.mjs",
     "verify": "npm run build && npm run typecheck && npm run lint && npm test && npm run smoke",
     "test:e2e": "npm run build && node audit/E2E/e2e.mjs",
-    "start:server": "npm run build && node apps/server/dist/main.js"
+    "start:server": "npm run build && node apps/server/dist/main.js",
+    "test:ui": "npm run build && node audit/W05/ui.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@types/node": "^22.10.2",
+    "@types/react": "19.1.2",
+    "@types/react-dom": "19.1.2",
+    "@vitejs/plugin-react": "4.4.1",
     "eslint": "^9.17.0",
     "playwright-core": "^1.49.1",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1",
+    "vite": "6.3.5",
     "vitest": "^2.1.8"
   },
   "bin": {
     "motion-storage": "packages/core/dist/cli/motion-storage.js"
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }

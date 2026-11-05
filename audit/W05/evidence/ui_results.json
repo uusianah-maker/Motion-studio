@@ -1,0 +1,108 @@
+{
+  "at": "2026-11-05T02:33:39.045Z",
+  "summary": {
+    "PASS": 20
+  },
+  "results": [
+    {
+      "id": "SETUP two old versions in Trash",
+      "ok": true,
+      "detail": "moved=2"
+    },
+    {
+      "id": "UI-01 Tanpa token → layar gerbang",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-02 Token dihapus dari address bar",
+      "ok": true,
+      "detail": "http://127.0.0.1:53797/"
+    },
+    {
+      "id": "UI-03 Editor memuat proyek + linimasa asli",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-04 Buat proyek dari sidebar",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-05 Upload MP4 nyata → Selesai",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-06 Media muncul di library",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-07 Upload file sama → ditandai duplikat",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-08 Panel media proyek di editor",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-09 Trash menampilkan 2 item",
+      "ok": true,
+      "detail": "rows=2"
+    },
+    {
+      "id": "UI-10 Restore dari Trash",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-11 Frasa salah → tombol tetap mati",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-12 Frasa benar → tombol aktif",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-13 Hapus permanen sukses",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-14 Registry: satu purged, satu aktif lagi",
+      "ok": true,
+      "detail": "purged/active"
+    },
+    {
+      "id": "UI-15 Dashboard storage tampil",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-16 HP 390px editor tanpa scroll horizontal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-17 HP 390px media tanpa scroll horizontal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-18 Tombol import terlihat di HP",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "UI-19 Tidak ada error console / pelanggaran CSP",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

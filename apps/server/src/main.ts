@@ -5,13 +5,17 @@
  * 127.0.0.1 and print the one-time session URL. The token travels in the URL *fragment*,
  * which browsers never send to servers or proxies.
  */
+import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
 import { type CycleResult, type RecoveryReport, openWorkspace, recoverOnStartup } from './core.js';
 import { apiRoutes } from './routes.js';
 
 export const DEFAULT_PORT = 4317;
+
+/** apps/server/dist/main.js → apps/web/dist (built by `npm run build`). */
+const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
 /** MOTION_GC: "on" (default, PRD: Auto Trash runs while the app runs), "scan-only", "off" (recovery only). */
 type GcMode = 'on' | 'scan-only' | 'off';
@@ -25,8 +29,13 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   if (!['on', 'scan-only', 'off'].includes(gc)) throw new Error(`MOTION_GC tidak valid: ${env.MOTION_GC} (on | scan-only | off)`);
 
   const ws = await openWorkspace(path.resolve(root));
+  const webDir = env.MOTION_WEB_DIR ? path.resolve(env.MOTION_WEB_DIR) : WEB_DIST;
+  const devOrigin = env.MOTION_DEV_ORIGIN;
+  if (devOrigin && !/^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/.test(devOrigin)) throw new Error('MOTION_DEV_ORIGIN hanya boleh http://127.0.0.1:<port> atau http://localhost:<port>');
   const app = createApp({
     ws,
+    ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
+    ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
     routes: apiRoutes(env.MOTION_UPLOAD_TMP ? { tmpDir: path.resolve(env.MOTION_UPLOAD_TMP) } : {}),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });

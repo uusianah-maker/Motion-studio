@@ -1,0 +1,172 @@
+/** Typed client for the local server API (apps/server). The session token never leaves memory/sessionStorage. */
+
+export interface ProjectSummary {
+  project_id: string;
+  name?: string;
+  status?: 'active' | 'archived';
+  revision?: number;
+  created_at?: number;
+  updated_at?: number;
+  error?: string;
+}
+
+export interface Clip {
+  clip_id: string;
+  start_ms: number;
+  end_ms: number;
+  media?: { media_id: string; version_id: string };
+}
+export interface Track {
+  track_id: string;
+  kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'effects';
+  clips: Clip[];
+}
+export interface Project extends Required<Omit<ProjectSummary, 'error'>> {
+  timeline: { tracks: Track[] };
+}
+
+export interface Version {
+  version_id: string;
+  original_name: string;
+  size: number;
+  content_hash: string;
+  imported_at: number;
+  lifecycle: 'active' | 'trashed' | 'purged';
+  integrity: 'ok' | 'missing' | 'changed';
+  ever_referenced: boolean;
+  keep: boolean;
+  pin: boolean;
+  legal_hold: boolean;
+  trashed_at: number | null;
+}
+
+export interface Media {
+  media_id: string;
+  display_name: string;
+  scope: { kind: 'shared' } | { kind: 'project'; project_id: string };
+  created_at: number;
+  current_version_id: string;
+  versions: Version[];
+}
+
+export interface TrashItem extends Version {
+  media_id: string;
+  display_name: string;
+  original_rel_path: string;
+}
+
+export interface PurgePlan {
+  request_id: string;
+  confirmation_token: string;
+  required_phrase: string;
+  expires_at: number;
+  irreversible: true;
+  total_bytes: number;
+  items: {
+    version_id: string;
+    media_id: string;
+    filename: string;
+    size: number;
+    trashed_at: number | null;
+    referenced_by: ({ kind: 'project'; project_id: string; source: string } | { kind: 'lease'; lease_id: string; job: string })[];
+    protected_by: string[];
+    backup: { status: 'verified' | 'unverified'; location?: string };
+    purgeable: boolean;
+    blockers: string[];
+  }[];
+}
+
+export interface Dashboard {
+  stats: {
+    usage: Record<string, number>;
+    media_bytes: number;
+    disk: { free_bytes: number; total_bytes: number } | null;
+    warnings: { code: string; advice: string }[];
+  };
+  gc: { ok: boolean; errors: string[]; summary: Record<string, number>; candidates: number; next_eligible: { version_id: string; eligible_at: number }[] };
+  trash: { version_id: string; filename: string; size: number; trashed_at: number }[];
+  pending_operations: number;
+  corrupt_journal: number;
+  backup: { verified: number; active_versions: number };
+}
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export function createApi(token: string, base = '') {
+  async function call<T>(method: string, path: string, init: { json?: unknown; body?: Blob | File; headers?: Record<string, string> } = {}): Promise<T> {
+    const headers: Record<string, string> = { authorization: `Bearer ${token}`, ...init.headers };
+    let body: BodyInit | undefined;
+    if (init.json !== undefined) {
+      headers['content-type'] = 'application/json';
+      body = JSON.stringify(init.json);
+    } else if (init.body) body = init.body;
+    let res: Response;
+    try {
+      res = await fetch(`${base}${path}`, { method, headers, ...(body !== undefined ? { body } : {}) });
+    } catch {
+      throw new ApiError(0, 'NETWORK', 'Server tidak bisa dihubungi. Pastikan server masih jalan.');
+    }
+    const data = (await res.json().catch(() => ({}))) as { error?: { code: string; message: string } } & T;
+    if (!res.ok) throw new ApiError(res.status, data.error?.code ?? 'UNKNOWN', data.error?.message ?? `HTTP ${res.status}`);
+    return data;
+  }
+
+  return {
+    session: () => call<{ actor: string; workspace_id: string; storage_backend: string }>('GET', '/api/session'),
+    projects: () => call<{ projects: ProjectSummary[] }>('GET', '/api/projects').then((r) => r.projects),
+    createProject: (name: string) => call<{ project: ProjectSummary }>('POST', '/api/projects', { json: { name } }).then((r) => r.project),
+    project: (id: string) => call<{ project: Project }>('GET', `/api/projects/${encodeURIComponent(id)}`).then((r) => r.project),
+    media: (q: { scope?: 'all' | 'shared' | 'project'; project_id?: string } = {}) => {
+      const p = new URLSearchParams();
+      if (q.scope) p.set('scope', q.scope);
+      if (q.project_id) p.set('project_id', q.project_id);
+      return call<{ media: Media[] }>('GET', `/api/media?${p}`).then((r) => r.media);
+    },
+    /** Upload with progress (XHR: fetch has no upload progress). Bytes go raw; the server hashes them. */
+    importFile: (file: File, scope: { kind: 'shared' } | { kind: 'project'; project_id: string }, onProgress?: (fraction: number) => void) => {
+      const p = new URLSearchParams({ scope: scope.kind });
+      if (scope.kind === 'project') p.set('project_id', scope.project_id);
+      return new Promise<{ media_id: string; version: Version; duplicate: boolean }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${base}/api/media/import?${p}`);
+        xhr.setRequestHeader('authorization', `Bearer ${token}`);
+        xhr.setRequestHeader('content-type', 'application/octet-stream');
+        xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name));
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress?.(e.loaded / e.total);
+        };
+        xhr.onerror = () => reject(new ApiError(0, 'NETWORK', 'Upload terputus. Pastikan server masih jalan.'));
+        xhr.onload = () => {
+          let data: { error?: { code: string; message: string } } = {};
+          try {
+            data = JSON.parse(xhr.responseText || '{}');
+          } catch {
+            /* non-JSON reply */
+          }
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data as { media_id: string; version: Version; duplicate: boolean });
+          else reject(new ApiError(xhr.status, data.error?.code ?? 'UNKNOWN', data.error?.message ?? `HTTP ${xhr.status}`));
+        };
+        xhr.send(file);
+      });
+    },
+    trash: () => call<{ items: TrashItem[] }>('GET', '/api/trash').then((r) => r.items),
+    restore: (versionId: string, opts: { on_conflict?: 'ask' | 'alternate' } = {}) =>
+      call<{ result: { status: 'restored' | 'conflict' | 'failed'; reason?: string; wanted?: string; suggested?: string } }>('POST', `/api/trash/${encodeURIComponent(versionId)}/restore`, { json: opts }).then((r) => r.result),
+    preparePurge: (versionIds: string[]) => call<{ plan: PurgePlan }>('POST', '/api/purge/prepare', { json: { version_ids: versionIds } }).then((r) => r.plan),
+    executePurge: (plan: PurgePlan, typedPhrase: string) =>
+      call<{ result: { purged: string[]; blocked: { version_id: string; reasons: string[] }[]; freed_bytes: number } }>('POST', '/api/purge/execute', {
+        json: { request_id: plan.request_id, confirmation_token: plan.confirmation_token, typed_phrase: typedPhrase },
+      }).then((r) => r.result),
+    dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
+  };
+}
+
+export type Api = ReturnType<typeof createApi>;

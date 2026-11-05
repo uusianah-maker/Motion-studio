@@ -10,7 +10,7 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 - [x] W02 Antarmuka `StorageBackend` di core; backend `LocalFs` = perilaku sekarang (semua tes lama lulus tanpa diubah maknanya). Metadata tetap lokal; byte media/Trash/output lewat backend. Tes kontrak `backendContract()` dipakai ulang untuk backend Drive di W10.
 - [x] W03 Server API dasar (Node/TS): hanya listen di 127.0.0.1, health, sesi lokal (token acak per start, belum Google), error bertipe, aktor ditegakkan di server (browser tidak bisa mengaku "user" untuk aksi AI/scheduler).
 - [x] W04 Endpoint proyek & media (backend lokal): buat/buka proyek, import file (upload dari browser), daftar media, Trash/restore/purge manual (token + frasa), dashboard storage.
-- [ ] W05 UI web dari prototype (React): daftar proyek, media library, layout editor, Trash/purge/restore, dashboard storage.
+- [x] W05 UI web dari prototype (React): daftar proyek, media library, layout editor, Trash/purge/restore, dashboard storage.
 **CHECKPOINT D**
 
 ## Fase 2 — Editor + sambung Google Drive

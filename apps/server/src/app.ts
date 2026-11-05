@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { type Actor, StorageService, type Workspace } from './core.js';
 import { ApiError, toApiError } from './errors.js';
 import { sendError, sendJson } from './http.js';
+import { serveStatic } from './static.js';
 
 /** The server only ever listens on loopback (plan v2.0 W03); remote access comes with W09 + deploy. */
 export const HOST = '127.0.0.1';
@@ -37,6 +38,8 @@ export interface AppOptions {
   allowedOrigins?: string[];
   /** Additional routes (W04+). */
   routes?: Route[];
+  /** Built web UI folder (apps/web/dist) served at `/` and `/assets/*` (W05). */
+  staticDir?: string;
   onError?: (e: unknown) => void;
 }
 
@@ -97,6 +100,10 @@ export function createApp(opts: AppOptions) {
     const origin = req.headers.origin;
     if (origin !== undefined && !allowedOrigins().has(origin)) throw new ApiError(403, 'ORIGIN_REJECTED', 'Origin tidak diizinkan');
     const url = new URL(req.url ?? '/', `http://${HOST}:${port}`);
+    if (opts.staticDir && !url.pathname.startsWith('/api/') && (req.method === 'GET' || req.method === 'HEAD')) {
+      if (await serveStatic(opts.staticDir, url.pathname, res, req.method === 'HEAD')) return;
+      throw new ApiError(404, 'NOT_FOUND', 'Halaman tidak ada');
+    }
     const matches = routes.map((r) => ({ r, params: matchPath(r.path, url.pathname) })).filter((m) => m.params !== null);
     if (!matches.length) throw new ApiError(404, 'NOT_FOUND', 'Endpoint tidak ada');
     const hit = matches.find((m) => m.r.method === req.method);

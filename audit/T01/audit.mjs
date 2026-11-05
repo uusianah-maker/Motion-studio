@@ -268,7 +268,11 @@ const lastBubble = page => page.locator('#messages .bubble').last().innerText();
   const meta9 = await txt(page, '#projectMeta');
   record('I03', 'Rasio intrinsik video ditampilkan benar', 'object-fit contain + resolusi sumber tampil', fit === 'contain' && meta9.includes('sumber 360×640') ? 'PASS' : 'FAIL', `objectFit=${fit} meta=${meta9}`);
 
-  await page.click('#play'); await page.waitForTimeout(1500); await page.click('#play');
+  // Wait for real progress instead of a fixed 1.5 s sleep: playback start latency varies per machine
+  // (W05 finding: start took >0.5 s and the fixed sleep read 00:00). Criterion unchanged: ≥1 s.
+  await page.click('#play');
+  await page.waitForFunction(() => /^00:0[1-9]/.test(document.querySelector('#time')?.textContent ?? ''), null, { timeout: 6000 }).catch(() => undefined);
+  await page.click('#play');
   const pt = await txt(page, '#time');
   record('I04', 'Play/pause video nyata', 'waktu maju ≥1s', /^00:0[1-3]/.test(pt) ? 'PASS' : 'FAIL', `time=${pt}`);
   await page.screenshot({ path: path.join(EV, '07_video_imported.png') });

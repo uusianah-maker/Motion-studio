@@ -31,6 +31,8 @@ try {
   const s = await start({ MOTION_WORKSPACE: ws, MOTION_PORT: '0', MOTION_UPLOAD_TMP: tmp }, () => undefined);
   try {
     const base = `http://127.0.0.1:${s.port}`;
+    const ui = await fetch(`${base}/`);
+    if (ui.status !== 200 || !(await ui.text()).includes('id="root"') || !ui.headers.get('content-security-policy')) fail('UI web tidak disajikan dengan CSP');
     const health = await fetch(`${base}/api/health`).then((r) => r.json());
     if (health.ok !== true) fail('server health tidak ok');
     const noToken = await fetch(`${base}/api/session`);
@@ -51,4 +53,4 @@ try {
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
-console.log('smoke: OK (core dist + CLI init/dashboard, server dist: health, session, proyek, upload, dashboard)');
+console.log('smoke: OK (core dist + CLI init/dashboard, server dist: UI web + CSP, health, session, proyek, upload, dashboard)');
