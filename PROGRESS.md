@@ -137,6 +137,12 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Diterapkan: W10 (backend Drive) dibatalkan; `LocalFs` = penyimpanan final. Login Google tetap (menjaga akses online) tapi scope dikurangi ke `openid email profile`, tanpa akses offline, tanpa simpan token Google (tes W09 diperbarui: server 8, UI 14/14). Checkpoint E dipindah ke setelah W11.
 - Asumsi yang perlu dikonfirmasi di W15: "lokal" = disk mesin server. Server di PC owner + tunnel → file di PC owner; server di VPS → file di disk VPS.
 
+### PC-14: Peran VPS — ARAHAN OWNER 2026-11-09, rincian dikonfirmasi di W15
+- Owner: "vps cuman buat mengonlinekan web tools nya aja dong ga harus file video ada di vps juga".
+- Rencana W15 (rekomendasi **A**): server app + FFmpeg + workspace tetap di PC owner (file video tidak pernah pindah). VPS hanya jadi "pintu" publik: HTTPS (domain) → terowongan terenkripsi → PC owner. Kode sudah siap: server listen 127.0.0.1 di belakang proxy, `MOTION_PUBLIC_URL`, login Google wajib untuk URL publik (Checkpoint E E2). Konsekuensi: app online hanya saat PC owner menyala; upload/putar/unduh lewat koneksi internet PC owner.
+- Opsi B (tidak direkomendasikan sekarang): web app di VPS + "agen lokal" di PC yang memegang file & render — arsitektur baru, jauh lebih besar.
+- Yang perlu dipilih di W15: jenis terowongan (SSH reverse tunnel / WireGuard ke VPS sendiri, atau Cloudflare Tunnel tanpa VPS) dan domain.
+
 ## Audit
 ### Checkpoint A (T01–T05): LULUS setelah perbaikan
 - Suite: verify 48 pass / 1 skip (stabil 5x), prototype 56/56. Laporan: `audit/CHECKPOINT_A/CHECKPOINT_A_REPORT.md`.
