@@ -55,6 +55,9 @@ export interface AiSettings {
   budget: { daily_usd: number; monthly_usd: number; per_request_usd: number };
 }
 
+/** Sealed keys are bound to the connection AND the host they are meant for (Checkpoint F F-1). */
+const keyAad = (c: Pick<Connection, 'connection_id' | 'provider' | 'base_url'>) => `${c.connection_id}|${c.provider}|${providerBase(c) ?? ''}`;
+
 export const DEFAULT_SETTINGS: AiSettings = {
   mode: 'local',
   failover: true,
@@ -91,7 +94,7 @@ export async function openAiStore(stateDir: string, secretKeyEnv: string | undef
     if (data.connections.some((c) => c.sealed_key)) {
       const b = await getBox();
       // Fail closed at start: keys sealed with another key are unusable.
-      for (const c of data.connections) if (c.sealed_key) b.open(c.sealed_key, c.connection_id);
+      for (const c of data.connections) if (c.sealed_key) b.open(c.sealed_key, keyAad(c));
     }
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error(`Konfigurasi AI tidak bisa dibuka (${file}): file rusak atau kunci enkripsi berbeda`);
@@ -126,7 +129,7 @@ export async function openAiStore(stateDir: string, secretKeyEnv: string | undef
       const t = now();
       const c: Connection = { ...rest, connection_id: id, sealed_key: null, key_hint: null, status: 'untested', last_error: null, last_test_at: null, cooldown_until: 0, created_at: t, updated_at: t };
       if (api_key) {
-        c.sealed_key = (await getBox()).seal(api_key, id);
+        c.sealed_key = (await getBox()).seal(api_key, keyAad(c));
         c.key_hint = `…${api_key.slice(-4)}`;
       }
       data.connections.push(c);
@@ -143,7 +146,7 @@ export async function openAiStore(stateDir: string, secretKeyEnv: string | undef
     async setKey(id: string, apiKey: string) {
       const c = find(id);
       if (!c) return null;
-      c.sealed_key = (await getBox()).seal(apiKey, id);
+      c.sealed_key = (await getBox()).seal(apiKey, keyAad(c));
       c.key_hint = `…${apiKey.slice(-4)}`;
       c.status = 'untested';
       c.last_error = null;
@@ -160,7 +163,7 @@ export async function openAiStore(stateDir: string, secretKeyEnv: string | undef
     },
     /** Plain key for one outgoing call; never stored elsewhere, never logged. */
     async keyOf(c: Connection): Promise<string | null> {
-      return c.sealed_key ? (await getBox()).open(c.sealed_key, c.connection_id) : null;
+      return c.sealed_key ? (await getBox()).open(c.sealed_key, keyAad(c)) : null;
     },
     /** Persist status fields the router changed in place. */
     touch: () => save(),

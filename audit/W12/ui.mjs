@@ -29,7 +29,7 @@ await core.initWorkspace(wsRoot);
 await core.createProject(await core.openWorkspace(wsRoot), { project_id: 'promo', name: 'Promo Lebaran' });
 const stateDir = path.join(work, 'state');
 const fake = await startFakeAi();
-const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_RENDER_TMP: work, MOTION_STATE_DIR: stateDir }, () => undefined);
+const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_RENDER_TMP: work, MOTION_STATE_DIR: stateDir, MOTION_AI_DEV_ENDPOINTS: '1' }, () => undefined);
 const base = `http://127.0.0.1:${server.port}`;
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const errors = [];

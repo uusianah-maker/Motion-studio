@@ -1,6 +1,6 @@
 import { type Workspace, audit } from '../core.js';
 import { ApiError } from '../errors.js';
-import { AiCallError, type Capability, type CallTarget, type Usage } from './adapters.js';
+import { AiCallError, type Capability, type CallTarget, PROVIDERS, type Usage } from './adapters.js';
 import { type AiStore, type Connection, providerBase } from './store.js';
 
 /**
@@ -18,7 +18,8 @@ import { type AiStore, type Connection, providerBase } from './store.js';
 
 export interface SpendGate {
   /** Block BEFORE calling when the estimate does not fit the hard caps (throws BUDGET_EXCEEDED). */
-  reserve(input: { connection: Connection; estimate_usd: number; capability: Capability; project_id: string | null }): Promise<string>;
+  /** `prior_usd` = what this logical request already cost (earlier attempts), for the per-request cap. */
+  reserve(input: { connection: Connection; estimate_usd: number; prior_usd?: number; capability: Capability; project_id: string | null }): Promise<string>;
   settle(reservation: string, input: { connection: Connection; cost_usd: number; usage: Usage; capability: Capability; project_id: string | null; request_id: string | null; outcome: 'ok' | 'failed' }): Promise<void>;
 }
 
@@ -65,9 +66,28 @@ export function createRouter(opts: RouterOptions) {
     return `Tidak ada koneksi AI yang siap: ${reasons.join('; ')}`;
   }
 
+  /**
+   * Provider identity for failover (Checkpoint F F-4): an official provider is itself; a
+   * "compatible" connection pointing at an official provider's host IS that provider (so its
+   * keys are never treated as an independent quota pool); any other server = its host.
+   */
+  const OFFICIAL_HOSTS = new Map(
+    (Object.entries(PROVIDERS) as [string, { base_url: string | null }][]).filter(([, p]) => p.base_url).map(([id, p]) => [new URL(p.base_url!).host, id]),
+  );
+  const hostOf = (c: Connection) => {
+    if (c.provider !== 'openai_compatible') return c.provider;
+    try {
+      const host = new URL(providerBase(c)!).host.toLowerCase();
+      return OFFICIAL_HOSTS.get(host) ?? host;
+    } catch {
+      return `${c.provider}:${c.connection_id}`;
+    }
+  };
+  const ZERO: Usage = { input_tokens: 0, output_tokens: 0, audio_seconds: 0 };
+
   async function call<T>(
     cap: Capability,
-    meta: { project_id: string | null; estimate: (c: Connection) => number },
+    meta: { project_id: string | null; estimate: (c: Connection) => number; skip?: (c: Connection) => string | null },
     fn: (target: CallTarget, signal: AbortSignal, connection: Connection) => Promise<{ value: T; usage: Usage; request_id: string | null }>,
   ): Promise<{ value: T; connection: Connection; cost_usd: number; usage: Usage; attempts: number }> {
     const settings = opts.store.settings();
@@ -76,39 +96,52 @@ export function createRouter(opts: RouterOptions) {
     const tried = new Set<string>();
     const failures: string[] = [];
     let attempts = 0;
-    for (const c of list) {
-      if (tried.has(c.provider)) continue; // never another key of the same provider
-      tried.add(c.provider);
+    /** What this one logical request has already cost (retries + failover), for the per-request cap. */
+    let spent = 0;
+    outer: for (const c of list) {
+      const ident = hostOf(c);
+      if (tried.has(ident)) continue; // never another key of the same provider (same host)
+      // Checkpoint F F-8: a connection the caller cannot use (e.g. pricier than approved) is
+      // skipped without being marked as failing.
+      const skipWhy = meta.skip?.(c) ?? null;
+      if (skipWhy) {
+        failures.push(`${c.label}: ${skipWhy}`);
+        continue;
+      }
+      tried.add(ident);
       const target: CallTarget = { provider: c.provider, model: c.model, base_url: providerBase(c)!, api_key: await opts.store.keyOf(c) };
       for (let attempt = 0; attempt <= settings.max_retries; attempt++) {
         attempts++;
-        const reservation = opts.gate ? await opts.gate.reserve({ connection: c, estimate_usd: meta.estimate(c), capability: cap, project_id: meta.project_id }) : null;
+        const est = Math.max(0, meta.estimate(c));
+        const reservation = opts.gate ? await opts.gate.reserve({ connection: c, estimate_usd: est, prior_usd: spent, capability: cap, project_id: meta.project_id }) : null;
         const signal = AbortSignal.timeout(settings.timeout_ms);
+        let out: Awaited<ReturnType<typeof fn>>;
         try {
-          const out = await fn(target, signal, c);
-          const cost = costOf(c, out.usage);
-          if (reservation) await opts.gate!.settle(reservation, { connection: c, cost_usd: cost, usage: out.usage, capability: cap, project_id: meta.project_id, request_id: out.request_id, outcome: 'ok' });
-          if (c.status !== 'ok' || c.last_error) {
-            c.status = 'ok';
-            c.last_error = null;
-            await opts.store.touch();
-          }
-          await audit(opts.ws, { op: 'ai.call', actor: 'ai', outcome: 'ok', capability: cap, connection_id: c.connection_id, provider: c.provider, model: c.model, attempt, request_id: out.request_id, input_tokens: out.usage.input_tokens, output_tokens: out.usage.output_tokens, audio_seconds: out.usage.audio_seconds, cost_usd: cost, project_id: meta.project_id });
-          return { value: out.value, connection: c, cost_usd: cost, usage: out.usage, attempts };
+          out = await fn(target, signal, c);
         } catch (e) {
-          if (reservation) await opts.gate!.settle(reservation, { connection: c, cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0, audio_seconds: 0 }, capability: cap, project_id: meta.project_id, request_id: null, outcome: 'failed' });
-          const err = e instanceof AiCallError ? e : new AiCallError('transient', e instanceof Error ? e.message.slice(0, 120) : 'unknown');
-          await audit(opts.ws, { op: 'ai.call', actor: 'ai', outcome: 'failed', capability: cap, connection_id: c.connection_id, provider: c.provider, model: c.model, attempt, error_class: err.cls, status: err.status, request_id: err.requestId, project_id: meta.project_id });
+          const err = e instanceof AiCallError ? e : new AiCallError('transient', e instanceof Error ? e.message.slice(0, 120) : 'unknown', null, null, null, { maybeBilled: true });
+          // Checkpoint F F-2: metered usage counts; an unknown outcome counts as the reserved estimate.
+          const charged = err.extra.usage ? costOf(c, err.extra.usage) : err.extra.maybeBilled ? est : 0;
+          spent += charged;
+          if (reservation) await opts.gate!.settle(reservation, { connection: c, cost_usd: charged, usage: err.extra.usage ?? ZERO, capability: cap, project_id: meta.project_id, request_id: err.requestId, outcome: 'failed' }).catch(() => undefined);
+          await audit(opts.ws, { op: 'ai.call', actor: 'ai', outcome: 'failed', capability: cap, connection_id: c.connection_id, provider: c.provider, model: c.model, attempt, error_class: err.cls, status: err.status, request_id: err.requestId, cost_usd: charged, project_id: meta.project_id }).catch(() => undefined);
           c.last_error = { class: err.cls, status: err.status, message: err.message.slice(0, 200), at: now() };
           if (err.cls === 'auth' || err.cls === 'billing') {
             c.status = 'needs_admin';
-            await opts.store.touch();
+            await opts.store.touch().catch(() => undefined);
             failures.push(`${c.label}: ${err.cls === 'auth' ? 'API key ditolak' : 'kredit/tagihan habis'} — perlu tindakan admin`);
             break;
           }
+          // Checkpoint F F-3: a paid upload that may already have been processed is never sent again —
+          // not to this provider, not to another one.
+          if (cap === 'transcription' && (err.extra.maybeBilled || err.extra.usage)) {
+            c.status = 'error';
+            await opts.store.touch().catch(() => undefined);
+            failures.push(`${c.label}: ${err.message} — tidak dikirim ulang ke provider mana pun supaya tidak bayar dua kali`);
+            break outer;
+          }
           const retryable = err.cls === 'rate_limit' || err.cls === 'transient';
-          const safeToRepeat = cap !== 'transcription' || (err.status !== null && [429, 503, 529].includes(err.status));
-          if (retryable && safeToRepeat && attempt < settings.max_retries) {
+          if (retryable && attempt < settings.max_retries) {
             const backoff = Math.min(MAX_WAIT_MS, 500 * 2 ** attempt) * (0.5 + random());
             const wait = err.retryAfterMs ?? backoff;
             if (wait <= MAX_WAIT_MS) {
@@ -118,10 +151,21 @@ export function createRouter(opts: RouterOptions) {
           }
           c.status = 'error';
           if (retryable) c.cooldown_until = now() + Math.max(settings.cooldown_ms, err.retryAfterMs ?? 0);
-          await opts.store.touch();
+          await opts.store.touch().catch(() => undefined);
           failures.push(`${c.label}: ${err.message}`);
           break;
         }
+        // Checkpoint F F-7: the paid call succeeded — bookkeeping problems never cause another call.
+        const cost = costOf(c, out.usage);
+        spent += cost;
+        if (reservation) await opts.gate!.settle(reservation, { connection: c, cost_usd: cost, usage: out.usage, capability: cap, project_id: meta.project_id, request_id: out.request_id, outcome: 'ok' }).catch(() => undefined);
+        if (c.status !== 'ok' || c.last_error) {
+          c.status = 'ok';
+          c.last_error = null;
+          await opts.store.touch().catch(() => undefined);
+        }
+        await audit(opts.ws, { op: 'ai.call', actor: 'ai', outcome: 'ok', capability: cap, connection_id: c.connection_id, provider: c.provider, model: c.model, attempt, request_id: out.request_id, input_tokens: out.usage.input_tokens, output_tokens: out.usage.output_tokens, audio_seconds: out.usage.audio_seconds, cost_usd: cost, project_id: meta.project_id }).catch(() => undefined);
+        return { value: out.value, connection: c, cost_usd: cost, usage: out.usage, attempts };
       }
       if (!settings.failover) break;
     }

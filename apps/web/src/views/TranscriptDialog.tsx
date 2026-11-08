@@ -79,10 +79,10 @@ export function TranscriptDialog({ api, project, media, onClose, onApplied }: { 
 
   const start = () =>
     act(async () => {
-      if (!est?.estimate_usd && est?.estimate_usd !== 0) return;
+      if (!est?.provider || est.estimate_usd === null) return;
       setTr(null);
       setPlan(null);
-      setJob(await api.transcriptStart(project.project_id, versionId, lang, est.estimate_usd));
+      setJob(await api.transcriptStart(project.project_id, versionId, lang, est.estimate_usd, est.provider.connection_id));
     });
 
   const save = () =>

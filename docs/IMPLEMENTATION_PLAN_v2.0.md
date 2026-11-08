@@ -27,7 +27,7 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 - [x] W13 Usage/biaya, batas anggaran keras, audit. *Selesai 2026-11-09: reservasi perkiraan terhadap batas per permintaan/harian/bulanan sebelum kirim, biaya nyata dari usage provider ke buku pemakaian.*
 - [x] W14 Caption/STT + edit transkrip. *Selesai 2026-11-09: STT word timestamps lewat router AI + anggaran (biaya dikonfirmasi dulu, audio tanpa metadata), edit cue tervalidasi, subtitle lewat rencana + satu undo.*
 - [x] W15 Uji E2E UI (Playwright) + paket deploy VPS (deploy nyata menunggu izin owner). *Selesai 2026-11-09: E2E online lewat HTTPS + proxy (16/16); paket `deploy/` sesuai PC-14 (VPS = pintu Caddy + SSH reverse tunnel, file & render tetap di PC owner); `npm run check:deploy`.*
-**CHECKPOINT F**
+**CHECKPOINT F** — LULUS setelah perbaikan (2026-11-09, `audit/CHECKPOINT_F/CHECKPOINT_F_REPORT.md`)
 
 ## Catatan Drive owner
 - Folder workspace yang disiapkan owner: "video motion folder" (`1pls4-EtmxPa09oxctKgaTx352OOMqWnF`, My Drive, kosong per 2026-11-04).

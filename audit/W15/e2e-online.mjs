@@ -81,6 +81,7 @@ const env = {
   MOTION_UPLOAD_TMP: work,
   MOTION_RENDER_TMP: work,
   MOTION_STATE_DIR: path.join(work, 'state'),
+  MOTION_AI_DEV_ENDPOINTS: '1', // stand-in AI provider on loopback (tests only)
   MOTION_PUBLIC_URL: `https://${HOSTNAME}`,
   MOTION_GOOGLE_CLIENT_ID: CLIENT_ID,
   MOTION_GOOGLE_CLIENT_SECRET: 'GOCSPX-w15',

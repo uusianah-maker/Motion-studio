@@ -399,8 +399,8 @@ export function createApi(token: string | null, base = '') {
     transcripts: (id: string) => call<{ transcripts: TranscriptSummary[]; jobs: SttJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/transcripts`),
     transcriptEstimate: (id: string, version_id: string) =>
       call<{ minutes: number; estimate_usd: number | null; provider: { connection_id: string; provider: string; model: string; label: string } | null; unavailable: string | null }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts/estimate`, { json: { version_id } }),
-    transcriptStart: (id: string, version_id: string, language: 'id' | 'en' | 'auto', confirm_usd: number) =>
-      call<{ job: SttJob }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts`, { json: { version_id, language, confirm_usd } }).then((r) => r.job),
+    transcriptStart: (id: string, version_id: string, language: 'id' | 'en' | 'auto', confirm_usd: number, connection_id: string) =>
+      call<{ job: SttJob }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts`, { json: { version_id, language, confirm_usd, connection_id } }).then((r) => r.job),
     transcript: (id: string, tid: string) => call<{ transcript: TranscriptFull }>('GET', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}`).then((r) => r.transcript),
     transcriptSave: (id: string, tid: string, expected_rev: number, cues: { cue_id?: string; start_ms: number; end_ms: number; text: string }[]) =>
       call<{ transcript: TranscriptFull }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}`, { json: { expected_rev, cues } }).then((r) => r.transcript),

@@ -78,14 +78,17 @@ export async function openSpendGate(opts: { ws: Workspace; store: AiStore; state
   }
 
   const gate: SpendGate = {
-    async reserve({ connection: c, estimate_usd, capability, project_id }) {
+    async reserve({ connection: c, estimate_usd, prior_usd = 0, capability, project_id }) {
       const b = opts.store.settings().budget;
       const est = Math.max(0, estimate_usd);
+      const prior = Math.max(0, prior_usd);
       const ctx = { connection_id: c.connection_id, provider: c.provider, capability, project_id, estimate_usd: est };
-      if (c.provider !== 'openai_compatible' && !priced(c, capability)) {
+      // Only a server on this machine (loopback) may be free; anything reachable over https is paid (Checkpoint F F-4).
+      const local = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/.test(c.base_url ?? '');
+      if (!(c.provider === 'openai_compatible' && local) && !priced(c, capability)) {
         await block(`Harga ${c.label} belum diisi, jadi biaya tidak bisa diperkirakan. Isi harga di menu AI dulu.`, ctx);
       }
-      if (est > b.per_request_usd) await block(`Perkiraan biaya ${usd(est)} melebihi batas per permintaan ${usd(b.per_request_usd)}.`, ctx);
+      if (prior + est > b.per_request_usd) await block(`Perkiraan biaya ${usd(est)}${prior ? ` (+ ${usd(prior)} dari percobaan sebelumnya)` : ''} melebihi batas per permintaan ${usd(b.per_request_usd)}.`, ctx);
       const t = totals();
       if (t.day + t.inFlight + est > b.daily_usd) await block(`Batas harian ${usd(b.daily_usd)} akan terlewati (terpakai ${usd(t.day)}${t.inFlight ? ` + ${usd(t.inFlight)} berjalan` : ''}, perkiraan ${usd(est)}).`, ctx);
       if (t.month + t.inFlight + est > b.monthly_usd) await block(`Batas bulanan ${usd(b.monthly_usd)} akan terlewati (terpakai ${usd(t.month)}, perkiraan ${usd(est)}).`, ctx);

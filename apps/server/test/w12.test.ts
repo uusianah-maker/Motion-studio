@@ -33,7 +33,7 @@ async function setup() {
   const waits: number[] = [];
   const router = createRouter({ ws, store, sleep: async (ms) => void waits.push(ms), random: () => 0.5 });
   const copilot = createCopilot(ws, { ai: createAiPlanner(store, router), mode: () => store.settings().mode });
-  const app = createApp({ ws, routes: [...apiRoutes({ tmpDir: dir }), ...copilot.routes, ...aiRoutes(ws, store)] });
+  const app = createApp({ ws, routes: [...apiRoutes({ tmpDir: dir }), ...copilot.routes, ...aiRoutes(ws, store, undefined, fetch, { devEndpoints: true })] });
   const port = await app.listen(0);
   cleanup.push(() => app.close());
   const call = (p: string, body?: unknown, method?: string) =>

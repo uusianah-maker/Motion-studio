@@ -1,7 +1,7 @@
 # Progress /gasngoding
 Update terakhir: 2026-11-04
 Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 15/15 selesai · 0 blocked · 0 belum dikerjakan
-Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 14/15 selesai · 1 dibatalkan (W10, PC-13) · 0 blocked · 0 belum dikerjakan (tinggal Checkpoint F + deploy nyata oleh owner)
+Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 14/15 selesai · 1 dibatalkan (W10, PC-13) · 0 blocked · 0 belum dikerjakan · Checkpoint F lulus (tinggal deploy nyata oleh owner)
 
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
 
@@ -154,6 +154,12 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Suite: verify 98 pass / 1 skip, prototype 56/56. Laporan: `audit/CHECKPOINT_B/CHECKPOINT_B_REPORT.md`.
 - Review independen: 1 High (jam 30 hari tidak reset bila referensi dibuat saat index invalid → Trash terlalu cepat), 5 Medium, 5 Low. High + semua Medium + L1/L3 diperbaiki dengan tes regresi.
 - Owner (2026-11-04): "jalankan dulu semua end to end, konfirmasi nanti kalau sudah 90%" → lanjut tanpa jeda konfirmasi; PC dikumpulkan di akhir.
+
+### Checkpoint F (W12–W15, audit akhir v2.0): LULUS setelah perbaikan (2026-11-09)
+- Laporan: `audit/CHECKPOINT_F/CHECKPOINT_F_REPORT.md`. Review independen (subagent read-only, repro dengan provider tiruan): 2 High, 5 Medium, 4 Low — semua diperbaiki + tes regresi.
+- High: F-1 key AI bisa dialihkan ke host lain (ganti alamat = key dihapus; provider resmi dikunci ke host resmi; key terikat host), F-2 panggilan gagal yang tetap ditagih tercatat $0 (usage/estimasi kini dihitung, batas per permintaan lintas retry).
+- Medium/Low: transkripsi tak pernah dikirim ulang setelah hasil tak jelas, "kompatibel" ke host resmi = vendor yang sama + tidak gratis, mode lokal tak bisa ditimpa, cue otomatis selalu valid, pencatatan gagal tak memicu panggilan ulang, job STT tak bisa menjatuhkan server, konfirmasi biaya harus persis, skrip VPS (ClientAlive, newline, sshd -t, semua port SSH), SSRF IP literal + tanpa teks error jauh.
+- Suite setelah perbaikan: core 201 pass / 1 skip, server 85/85, web 11/11, smoke, UI W05–W14, E2E online 16/16, E2E 18/18, prototype 56/56.
 
 ### Checkpoint E (W06–W09 + W11): LULUS setelah perbaikan (2026-11-09)
 - Laporan: `audit/CHECKPOINT_E/CHECKPOINT_E_REPORT.md`. Review independen (subagent read-only): 0 High, 2 Medium, 9 Low, 1 Info.

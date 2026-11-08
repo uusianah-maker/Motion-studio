@@ -146,7 +146,10 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
         if (typeof playhead !== 'number' || !Number.isFinite(playhead) || playhead < 0) throw bad('playhead_ms tidak valid');
         const reqMode = body.mode ?? null;
         if (reqMode !== null && reqMode !== 'local' && reqMode !== 'auto' && reqMode !== 'ai') throw bad('mode harus local | auto | ai');
-        const mode: CopilotMode = (reqMode as CopilotMode | null) ?? (opts.mode ? await opts.mode() : 'local');
+        // Checkpoint F F-5: a request may narrow the admin's mode (e.g. force "local"), never widen it.
+        const RANK: Record<CopilotMode, number> = { local: 0, auto: 1, ai: 2 };
+        const allowed: CopilotMode = opts.mode ? await opts.mode() : 'local';
+        const mode: CopilotMode = reqMode && RANK[reqMode as CopilotMode] < RANK[allowed] ? (reqMode as CopilotMode) : allowed;
         const projectId = params.project_id!;
         const project = await readProject(ws, projectId);
 

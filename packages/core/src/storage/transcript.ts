@@ -57,7 +57,7 @@ const bad = (msg: string, details: Record<string, unknown> = {}): never => {
  * Group words into readable caption cues: break on sentence end, on a pause, or when a cue
  * would get too long (characters / duration). Times stay exactly on word boundaries.
  */
-export function buildCues(words: Word[], opts: { max_chars?: number; max_ms?: number; gap_ms?: number } = {}): Cue[] {
+export function buildCues(words: Word[], opts: { max_chars?: number; max_ms?: number; gap_ms?: number; duration_ms?: number } = {}): Cue[] {
   const maxChars = opts.max_chars ?? 42;
   const maxMs = opts.max_ms ?? 3500;
   const gapMs = opts.gap_ms ?? 600;
@@ -81,9 +81,36 @@ export function buildCues(words: Word[], opts: { max_chars?: number; max_ms?: nu
     if (/[.!?…]$/.test(w.text)) flush();
   }
   flush();
-  // Never overlap: a cue ends no later than the next one starts.
-  for (let i = 0; i + 1 < cues.length; i++) if (cues[i]!.end_ms > cues[i + 1]!.start_ms) cues[i]!.end_ms = cues[i + 1]!.start_ms;
-  return cues.filter((c) => c.end_ms - c.start_ms >= 1);
+  // Never overlap: a cue ends no later than the next one starts; never past the media.
+  const dur = opts.duration_ms ?? Number.POSITIVE_INFINITY;
+  for (let i = 0; i < cues.length; i++) {
+    const c = cues[i]!;
+    if (i + 1 < cues.length && c.end_ms > cues[i + 1]!.start_ms) c.end_ms = cues[i + 1]!.start_ms;
+    c.end_ms = Math.min(c.end_ms, dur);
+  }
+  // Checkpoint F F-6: every generated cue must pass validateCues (≥ MIN_CUE_MS, inside the media,
+  // no overlap). A too-short cue joins the previous one, or grows into free space, or is dropped.
+  const out: Cue[] = [];
+  cues.forEach((c, i) => {
+    if (c.start_ms >= dur) return;
+    if (c.end_ms - c.start_ms >= MIN_CUE_MS) return void out.push(c);
+    const prev = out[out.length - 1];
+    if (prev && prev.text.length + 1 + c.text.length <= MAX_TEXT_LEN) {
+      prev.text = `${prev.text} ${c.text}`;
+      prev.end_ms = Math.max(prev.end_ms, c.end_ms);
+      return;
+    }
+    const next = cues[i + 1];
+    if (next && next.start_ms < dur && c.text.length + 1 + next.text.length <= MAX_TEXT_LEN) {
+      // No room before: the words move into the next cue (never lost).
+      next.text = `${c.text} ${next.text}`;
+      next.start_ms = c.start_ms;
+      return;
+    }
+    const end = Math.min(c.start_ms + MIN_CUE_MS, dur);
+    if (end - c.start_ms >= MIN_CUE_MS) out.push({ ...c, end_ms: end });
+  });
+  return out;
 }
 
 /** Validate edited cues: shape, inside the media, minimum length, no overlap. Returns them sorted. */

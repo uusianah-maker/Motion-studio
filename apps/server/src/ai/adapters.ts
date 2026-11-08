@@ -28,6 +28,13 @@ export class AiCallError extends Error {
     readonly status: number | null = null,
     readonly retryAfterMs: number | null = null,
     readonly requestId: string | null = null,
+    /**
+     * Checkpoint F F-2/F-3: what the failed call may have cost. `usage` = the provider metered it
+     * (HTTP 200 with a refusal / cut-off answer). `maybeBilled` = the request reached the provider
+     * and the outcome is unknown (timeout, connection reset, 500/502/504): count it as spent, and
+     * never send a paid upload again elsewhere.
+     */
+    readonly extra: { usage?: Usage; maybeBilled?: boolean } = {},
   ) {
     super(message);
     this.name = 'AiCallError';
@@ -89,11 +96,15 @@ export async function classify(r: Response): Promise<AiCallError> {
   }
   const s = r.status;
   const id = reqId(r.headers);
-  const text = `HTTP ${s}${code ? ` ${code}` : ''}${msg ? `: ${msg}` : ''}`;
+  // Checkpoint F F-11: only a short error identifier is kept — never free text from the remote
+  // (a misconfigured or hostile endpoint must not get a read-back channel into the UI/logs).
+  void msg;
+  const safeCode = /^[a-z0-9_.-]{1,40}$/.test(code) ? code : '';
+  const text = `HTTP ${s}${safeCode ? ` ${safeCode}` : ''}`;
   if (s === 401 || s === 403) return new AiCallError('auth', text, s, null, id);
   if (s === 402 || /insufficient_quota|billing|credit|resource_exhausted.*quota/.test(code)) return new AiCallError('billing', text, s, null, id);
   if (s === 429) return new AiCallError('rate_limit', text, s, retryAfter(r.headers), id);
-  if (s === 408 || s >= 500) return new AiCallError('transient', text, s, retryAfter(r.headers), id);
+  if (s === 408 || s >= 500) return new AiCallError('transient', text, s, retryAfter(r.headers), id, { maybeBilled: ![503, 529].includes(s) });
   return new AiCallError('bad_request', text, s, null, id);
 }
 
@@ -102,8 +113,11 @@ async function send(url: string, init: RequestInit, signal: AbortSignal, fetchIm
   try {
     r = await fetchImpl(url, { ...init, signal, redirect: 'error' });
   } catch (e) {
-    if (signal.aborted) throw new AiCallError('transient', 'Waktu habis (timeout)');
-    throw new AiCallError('transient', `Jaringan gagal: ${e instanceof Error ? e.message.slice(0, 80) : 'unknown'}`);
+    if (signal.aborted) throw new AiCallError('transient', 'Waktu habis (timeout)', null, null, null, { maybeBilled: true });
+    // Refused / unknown host = nothing was sent; anything else (reset mid-request) may have been processed.
+    const cause = (e as { cause?: { code?: string } }).cause?.code ?? '';
+    const notSent = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNABORTED', 'EHOSTUNREACH', 'ENETUNREACH'].includes(cause);
+    throw new AiCallError('transient', `Jaringan gagal${cause ? ` (${cause})` : ''}`, null, null, null, { maybeBilled: !notSent });
   }
   if (!r.ok) throw await classify(r);
   return r;
@@ -141,10 +155,11 @@ export async function completeJson(t: CallTarget, req: JsonRequest, signal: Abor
       fetchImpl,
     );
     const b = (await r.json()) as { content?: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number }; stop_reason?: string };
-    if (b.stop_reason === 'refusal') throw new AiCallError('refused', 'Model menolak permintaan ini', 200, null, reqId(r.headers));
-    if (b.stop_reason === 'max_tokens') throw new AiCallError('bad_output', 'Jawaban model terpotong (max_tokens)', 200, null, reqId(r.headers));
+    const usage = { input_tokens: b.usage?.input_tokens ?? 0, output_tokens: b.usage?.output_tokens ?? 0, audio_seconds: 0 };
+    if (b.stop_reason === 'refusal') throw new AiCallError('refused', 'Model menolak permintaan ini', 200, null, reqId(r.headers), { usage });
+    if (b.stop_reason === 'max_tokens') throw new AiCallError('bad_output', 'Jawaban model terpotong (max_tokens)', 200, null, reqId(r.headers), { usage });
     const text = (b.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('');
-    return { text, usage: { input_tokens: b.usage?.input_tokens ?? 0, output_tokens: b.usage?.output_tokens ?? 0, audio_seconds: 0 }, request_id: reqId(r.headers) };
+    return { text, usage, request_id: reqId(r.headers) };
   }
   if (t.provider === 'gemini') {
     const r = await send(
@@ -163,10 +178,11 @@ export async function completeJson(t: CallTarget, req: JsonRequest, signal: Abor
     );
     const b = (await r.json()) as { candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } };
     const c = b.candidates?.[0];
-    if (c?.finishReason === 'SAFETY' || c?.finishReason === 'PROHIBITED_CONTENT') throw new AiCallError('refused', 'Model menolak permintaan ini', 200);
-    if (c?.finishReason === 'MAX_TOKENS') throw new AiCallError('bad_output', 'Jawaban model terpotong (max tokens)', 200);
     const u = b.usageMetadata ?? {};
-    return { text: (c?.content?.parts ?? []).map((p) => p.text ?? '').join(''), usage: { input_tokens: u.promptTokenCount ?? 0, output_tokens: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0), audio_seconds: 0 }, request_id: reqId(r.headers) };
+    const usage = { input_tokens: u.promptTokenCount ?? 0, output_tokens: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0), audio_seconds: 0 };
+    if (c?.finishReason === 'SAFETY' || c?.finishReason === 'PROHIBITED_CONTENT') throw new AiCallError('refused', 'Model menolak permintaan ini', 200, null, null, { usage });
+    if (c?.finishReason === 'MAX_TOKENS') throw new AiCallError('bad_output', 'Jawaban model terpotong (max tokens)', 200, null, null, { usage });
+    return { text: (c?.content?.parts ?? []).map((p) => p.text ?? '').join(''), usage, request_id: reqId(r.headers) };
   }
   // openai + openai_compatible
   const r = await send(
@@ -189,9 +205,10 @@ export async function completeJson(t: CallTarget, req: JsonRequest, signal: Abor
   );
   const b = (await r.json()) as { choices?: { message?: { content?: string; refusal?: string | null }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
   const ch = b.choices?.[0];
-  if (ch?.message?.refusal) throw new AiCallError('refused', 'Model menolak permintaan ini', 200, null, reqId(r.headers));
-  if (ch?.finish_reason === 'length') throw new AiCallError('bad_output', 'Jawaban model terpotong (max tokens)', 200, null, reqId(r.headers));
-  return { text: ch?.message?.content ?? '', usage: { input_tokens: b.usage?.prompt_tokens ?? 0, output_tokens: b.usage?.completion_tokens ?? 0, audio_seconds: 0 }, request_id: reqId(r.headers) };
+  const usage = { input_tokens: b.usage?.prompt_tokens ?? 0, output_tokens: b.usage?.completion_tokens ?? 0, audio_seconds: 0 };
+  if (ch?.message?.refusal) throw new AiCallError('refused', 'Model menolak permintaan ini', 200, null, reqId(r.headers), { usage });
+  if (ch?.finish_reason === 'length') throw new AiCallError('bad_output', 'Jawaban model terpotong (max tokens)', 200, null, reqId(r.headers), { usage });
+  return { text: ch?.message?.content ?? '', usage, request_id: reqId(r.headers) };
 }
 
 /** Speech-to-text with word timestamps (OpenAI audio API shape; also OpenAI-compatible servers). */
@@ -209,8 +226,9 @@ export async function transcribe(t: CallTarget, req: TranscribeRequest, signal: 
   const words = (b.words ?? [])
     .map((w) => ({ text: String(w.word ?? '').trim(), start_ms: Math.round(Number(w.start) * 1000), end_ms: Math.round(Number(w.end) * 1000) }))
     .filter((w) => w.text && Number.isFinite(w.start_ms) && Number.isFinite(w.end_ms) && w.end_ms >= w.start_ms);
-  if (!words.length && (b.text ?? '').trim()) throw new AiCallError('bad_output', 'Provider tidak mengirim timestamp per kata');
-  return { words, text: b.text ?? '', language: b.language ?? null, usage: { input_tokens: 0, output_tokens: 0, audio_seconds: Number(b.duration) || 0 }, request_id: reqId(r.headers) };
+  const usage = { input_tokens: 0, output_tokens: 0, audio_seconds: Number(b.duration) || 0 };
+  if (!words.length && (b.text ?? '').trim()) throw new AiCallError('bad_output', 'Provider tidak mengirim timestamp per kata', 200, null, reqId(r.headers), { usage, maybeBilled: true });
+  return { words, text: b.text ?? '', language: b.language ?? null, usage, request_id: reqId(r.headers) };
 }
 
 /** First JSON object in a model answer (models sometimes wrap it in ``` fences). */

@@ -34,7 +34,7 @@ async function setup(clockStart = Date.now()) {
   const ledger = await openSpendGate({ ws, store, stateDir, now });
   const router = createRouter({ ws, store, gate: ledger.gate, sleep: async () => undefined, now });
   const copilot = createCopilot(ws, { ai: createAiPlanner(store, router), mode: () => store.settings().mode });
-  const app = createApp({ ws, routes: [...apiRoutes({ tmpDir: dir }), ...copilot.routes, ...aiRoutes(ws, store, ledger)] });
+  const app = createApp({ ws, routes: [...apiRoutes({ tmpDir: dir }), ...copilot.routes, ...aiRoutes(ws, store, ledger, fetch, { devEndpoints: true })] });
   const port = await app.listen(0);
   cleanup.push(() => app.close());
   const call = (p: string, body?: unknown) =>
@@ -136,17 +136,24 @@ describe('W13 usage, cost and hard budget', () => {
     expect(s.fake.count('anthropic.messages')).toBe(1);
   });
 
-  it('failed calls cost nothing and do not eat the budget; budget settings are validated', async () => {
+  it('refused calls (503) cost nothing; calls that may have been processed (500) count the estimate (Checkpoint F F-2); settings validated', async () => {
     const s = await setup();
     await s.add({ prices: PRICES });
-    await s.call('/api/ai/settings', { max_retries: 0, budget: { daily_usd: 0.02, per_request_usd: 1 } });
+    await s.call('/api/ai/settings', { max_retries: 0, budget: { daily_usd: 1, per_request_usd: 1 } });
+    s.fake.queue('anthropic.messages', { status: 503, body: {} });
+    expect((await s.plan()).status).toBe(503);
+    expect(s.ledger.summary().today.usd).toBe(0);
+    for (const c of s.store.connections()) c.cooldown_until = 0;
     s.fake.queue('anthropic.messages', { status: 500, body: {} });
     expect((await s.plan()).status).toBe(503);
+    const charged = s.ledger.summary().today.usd;
+    expect(charged).toBeGreaterThan(0.01); // the reserved estimate (≈ $0.012)
     for (const c of s.store.connections()) c.cooldown_until = 0;
     expect((await s.plan()).status).toBe(200);
     const u = s.ledger.summary();
     expect(u.today.calls).toBe(1);
-    expect(u.by_model[0]).toMatchObject({ calls: 2, failed: 1 });
+    expect(u.today.usd).toBeCloseTo(charged + ACTUAL, 8);
+    expect(u.by_model[0]).toMatchObject({ calls: 3, failed: 2 });
     for (const bad of [{ budget: { daily_usd: -1 } }, { budget: { daily_usd: 'banyak' } }, { budget: { yearly_usd: 5 } }, { budget: [] }]) expect((await s.call('/api/ai/settings', bad)).status).toBe(400);
   });
 });

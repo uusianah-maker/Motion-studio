@@ -17,7 +17,9 @@ if [[ $EUID -ne 0 ]]; then echo "Jalankan sebagai root (sudo)." >&2; exit 1; fi
 if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
   echo "Domain tidak valid: '$DOMAIN' (contoh: motion.domainlo.com)" >&2; exit 1
 fi
-if [[ ! "$PUBKEY" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+(\ .*)?$ ]]; then
+# Satu baris saja: newline/CR di argumen akan menambah baris authorized_keys TANPA pembatasan.
+if [[ "$PUBKEY" == *$'\n'* || "$PUBKEY" == *$'\r'* ]]; then echo "Public key harus satu baris." >&2; exit 1; fi
+if [[ ! "$PUBKEY" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+(\ [A-Za-z0-9@._-]*)?$ ]]; then
   echo "Public key harus satu baris 'ssh-ed25519 AAAA...' (isi file motion_tunnel.pub dari PC)." >&2; exit 1
 fi
 
@@ -40,7 +42,8 @@ printf 'restrict,port-forwarding,permitlisten="127.0.0.1:%s" %s\n' "$TUNNEL_PORT
 chown motiontunnel:motiontunnel /home/motiontunnel/.ssh/authorized_keys
 chmod 600 /home/motiontunnel/.ssh/authorized_keys
 
-cat > /etc/ssh/sshd_config.d/60-motiontunnel.conf <<'EOF'
+SSHD_DROPIN=/etc/ssh/sshd_config.d/60-motiontunnel.conf
+cat > "$SSHD_DROPIN" <<'EOF'
 # Motion Studio: user terowongan hanya boleh membuka port di loopback VPS, tidak bisa login shell.
 Match User motiontunnel
     AllowTcpForwarding remote
@@ -49,8 +52,16 @@ Match User motiontunnel
     AllowAgentForwarding no
     PermitTTY no
     ForceCommand /usr/sbin/nologin
+    # Sesi mati (PC putus internet) dilepas dalam +-90 detik, supaya port 14317 bisa dipakai sambungan baru.
+    ClientAliveInterval 30
+    ClientAliveCountMax 3
 EOF
-sshd -t
+# Konfigurasi SSH yang salah tidak boleh tertinggal (restart SSH berikutnya bisa mengunci owner).
+if ! sshd -t; then
+  rm -f "$SSHD_DROPIN"
+  echo "Konfigurasi SSH ditolak sshd -t; file dihapus lagi, tidak ada yang berubah." >&2
+  exit 1
+fi
 systemctl reload ssh 2>/dev/null || systemctl reload sshd
 
 echo "==> Caddyfile"
@@ -80,8 +91,12 @@ systemctl enable --now caddy
 systemctl reload caddy
 
 echo "==> Firewall (SSH, 80, 443)"
-SSH_PORT="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')"
-ufw allow "${SSH_PORT:-22}/tcp"
+SSH_PORTS="$(sshd -T 2>/dev/null | awk '/^port /{print $2}' | sort -u)"
+for p in ${SSH_PORTS:-22}; do ufw allow "${p}/tcp"; done
+echo "Port SSH yang dibuka di firewall: ${SSH_PORTS:-22}"
+if systemctl is-enabled ssh.socket >/dev/null 2>&1; then
+  echo "PERHATIAN: SSH memakai ssh.socket - pastikan port di atas sama dengan ListenStream di 'systemctl cat ssh.socket'." >&2
+fi
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable

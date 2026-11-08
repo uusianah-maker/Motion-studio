@@ -19,6 +19,7 @@ import {
   runFfmpeg,
   saveNewTranscript,
   updateCues,
+  validateCues,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
@@ -76,19 +77,24 @@ export function transcribeRoutes(ws: Workspace, opts: { router: AiRouter; copilo
   }
 
   async function run(job: Job, rel: string, durationMs: number, mediaId: string, language: 'id' | 'en' | null, confirmUsd: number, minutes: number) {
-    const dir = await fsp.mkdtemp(path.join(opts.tmpRoot, STT_TMP_PREFIX));
+    let dir: string | null = null;
     try {
-      const audio = path.join(dir, 'audio.m4a');
+      const work = await fsp.mkdtemp(path.join(opts.tmpRoot, STT_TMP_PREFIX));
+      dir = work;
+      const audio = path.join(work, 'audio.m4a');
       await ws.blobs.withLocalFile(rel, (src) =>
-        runFfmpeg(['-hide_banner', '-nostdin', '-v', 'error', '-n', '-i', src, '-vn', '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-c:a', 'aac', '-b:a', '48k', '-map_metadata', '-1', '-map_chapters', '-1', '-fflags', '+bitexact', '-flags:a', '+bitexact', audio], { cwd: dir }),
+        runFfmpeg(['-hide_banner', '-nostdin', '-v', 'error', '-n', '-i', src, '-vn', '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-c:a', 'aac', '-b:a', '48k', '-map_metadata', '-1', '-map_chapters', '-1', '-fflags', '+bitexact', '-flags:a', '+bitexact', audio], { cwd: work }),
       );
       job.phase = 'transcribing';
       const r = await opts.router.call(
         'transcription',
-        { project_id: job.project_id, estimate: (c) => minutes * c.prices.per_audio_minute },
-        async (target, signal, conn) => {
-          // The user approved a price; a backup provider that costs more is not used silently.
-          if (minutes * conn.prices.per_audio_minute > confirmUsd + 1e-9) throw new AiCallError('bad_request', `${conn.label} lebih mahal dari biaya yang disetujui`);
+        {
+          project_id: job.project_id,
+          estimate: (c) => minutes * c.prices.per_audio_minute,
+          // The user approved a price; a backup provider that costs more is skipped, not used silently (F-8/F-9).
+          skip: (c) => (minutes * c.prices.per_audio_minute > confirmUsd + 1e-9 ? 'lebih mahal dari biaya yang disetujui' : null),
+        },
+        async (target, signal) => {
           const out = await transcribe(target, { file: audio, mime: 'audio/mp4', language }, signal);
           return { value: out, usage: out.usage.audio_seconds ? out.usage : { ...out.usage, audio_seconds: durationMs / 1000 }, request_id: out.request_id };
         },
@@ -97,7 +103,9 @@ export function transcribeRoutes(ws: Workspace, opts: { router: AiRouter; copilo
         await audit(ws, { op: 'transcript.cost_over_confirmed', actor: 'ai', outcome: 'alert', project_id: job.project_id, confirmed_usd: confirmUsd, cost_usd: r.cost_usd });
       }
       job.phase = 'saving';
-      const words = r.value.words.filter((w) => w.start_ms <= durationMs + 500).map((w) => ({ ...w, end_ms: Math.min(w.end_ms, durationMs) }));
+      // Checkpoint F F-6: words outside the media are dropped; the cues built from them always pass
+      // the same validation as a human edit (so saving an untouched transcript never fails).
+      const words = r.value.words.filter((w) => w.start_ms < durationMs).map((w) => ({ ...w, end_ms: Math.min(w.end_ms, durationMs) }));
       const t = await saveNewTranscript(ws, {
         project_id: job.project_id,
         media_id: mediaId,
@@ -107,11 +115,11 @@ export function transcribeRoutes(ws: Workspace, opts: { router: AiRouter; copilo
         model: r.connection.model,
         source_duration_ms: durationMs,
         words,
-        cues: buildCues(words),
+        cues: validateCues(buildCues(words, { duration_ms: durationMs }), durationMs),
       });
       job.transcript_id = t.transcript_id;
       job.status = 'completed';
-      await audit(ws, { op: 'transcript.create', actor: 'user', outcome: 'ok', project_id: job.project_id, transcript_id: t.transcript_id, version_id: job.version_id, provider: r.connection.provider, cues: t.cues.length, cost_usd: r.cost_usd });
+      await audit(ws, { op: 'transcript.create', actor: 'user', outcome: 'ok', project_id: job.project_id, transcript_id: t.transcript_id, version_id: job.version_id, provider: r.connection.provider, cues: t.cues.length, cost_usd: r.cost_usd }).catch(() => undefined);
     } catch (e) {
       job.status = 'failed';
       const code = e instanceof ApiError ? e.code : isStorageError(e) ? e.code : e instanceof AiCallError ? 'AI_UNAVAILABLE' : 'INTERNAL';
@@ -120,7 +128,7 @@ export function transcribeRoutes(ws: Workspace, opts: { router: AiRouter; copilo
       await audit(ws, { op: 'transcript.create', actor: 'user', outcome: 'failed', project_id: job.project_id, version_id: job.version_id, code }).catch(() => undefined);
     } finally {
       job.finished_at = Date.now();
-      await fsp.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      if (dir) await fsp.rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 
@@ -146,7 +154,7 @@ export function transcribeRoutes(ws: Workspace, opts: { router: AiRouter; copilo
       path: '/api/projects/:project_id/transcripts',
       handle: async ({ req, params }) => {
         const body = await readJsonBody(req);
-        onlyKeys(body, ['version_id', 'language', 'confirm_usd']);
+        onlyKeys(body, ['version_id', 'language', 'confirm_usd', 'connection_id']);
         const projectId = params.project_id!;
         const lang = body.language ?? 'auto';
         if (lang !== 'id' && lang !== 'en' && lang !== 'auto') throw bad('language harus id | en | auto');
@@ -154,15 +162,17 @@ export function transcribeRoutes(ws: Workspace, opts: { router: AiRouter; copilo
         const est = estimate(minutes);
         if (!est) throw new ApiError(503, 'AI_UNAVAILABLE', opts.router.available('transcription') ?? 'Belum ada koneksi transkripsi');
         const confirm = body.confirm_usd;
-        // Paid action: the user must have seen and accepted (at least) the current estimate.
-        if (typeof confirm !== 'number' || !Number.isFinite(confirm) || confirm + 1e-9 < est.usd) {
-          throw new ApiError(409, 'CONFLICT', `Konfirmasi biaya dulu: perkiraan $${est.usd.toFixed(4)} (${minutes} menit × $${est.connection.prices.per_audio_minute}/menit)`);
+        // Paid action (Checkpoint F F-9): the user must confirm exactly the estimate that was shown,
+        // for the connection it was quoted for — not "any big number".
+        const tolerance = Math.max(0.0001, est.usd * 0.01);
+        if (typeof confirm !== 'number' || !Number.isFinite(confirm) || Math.abs(confirm - est.usd) > tolerance || body.connection_id !== est.connection.connection_id) {
+          throw new ApiError(409, 'CONFLICT', `Konfirmasi biaya dulu: perkiraan $${est.usd.toFixed(4)} (${minutes} menit × $${est.connection.prices.per_audio_minute}/menit, ${est.connection.label})`);
         }
         if (jobs.some((j) => j.status === 'running')) throw new ApiError(409, 'BUSY', 'Masih ada transkripsi yang berjalan; tunggu selesai');
         const job: Job = { job_id: `stt_${randomBytes(6).toString('hex')}`, project_id: projectId, version_id: v.version_id, status: 'running', phase: 'extracting', transcript_id: null, error: null, created_at: Date.now(), finished_at: null };
         jobs.push(job);
         while (jobs.length > 30) jobs.shift();
-        void run(job, v.rel_path, v.probe!.duration_ms, m.media_id, lang === 'auto' ? null : lang, confirm, minutes);
+        run(job, v.rel_path, v.probe!.duration_ms, m.media_id, lang === 'auto' ? null : lang, est.usd, minutes).catch(() => undefined);
         return { job };
       },
     },

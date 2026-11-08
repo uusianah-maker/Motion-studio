@@ -54,7 +54,7 @@ async function setup() {
   const ledger = await openSpendGate({ ws, store, stateDir });
   const router = createRouter({ ws, store, gate: ledger.gate, sleep: async () => undefined });
   const copilot = createCopilot(ws, { ai: createAiPlanner(store, router), mode: () => store.settings().mode });
-  const app = createApp({ ws, routes: [...apiRoutes({ tmpDir: dir }), ...copilot.routes, ...aiRoutes(ws, store, ledger), ...transcribeRoutes(ws, { router, copilot, tmpRoot: dir })] });
+  const app = createApp({ ws, routes: [...apiRoutes({ tmpDir: dir }), ...copilot.routes, ...aiRoutes(ws, store, ledger, fetch, { devEndpoints: true }), ...transcribeRoutes(ws, { router, copilot, tmpRoot: dir })] });
   const port = await app.listen(0);
   cleanup.push(() => app.close());
   const call = (p: string, body?: unknown) =>
@@ -84,6 +84,12 @@ async function setup() {
   return { ws, fake, store, ledger, call, conn, waitJob, ref, mute: mute.version.version_id, dir };
 }
 
+/** The estimate the UI shows, confirmed exactly (Checkpoint F F-9). */
+async function quote(s: Awaited<ReturnType<typeof setup>>) {
+  const e = (await s.call('/api/projects/p1/transcripts/estimate', { version_id: s.ref.version_id })).json;
+  return { confirm_usd: e.estimate_usd as number, connection_id: e.provider.connection_id as string };
+}
+
 describe.skipIf(!hasFfmpeg)('W14 captions / speech-to-text', () => {
   it('estimate → confirm cost → audio WITHOUT metadata to the provider → cues saved → metered', async () => {
     const s = await setup();
@@ -96,7 +102,7 @@ describe.skipIf(!hasFfmpeg)('W14 captions / speech-to-text', () => {
     expect(noConfirm.json.error.message).toMatch(/Konfirmasi biaya dulu/);
     expect(s.fake.count('openai.transcribe')).toBe(0);
 
-    const start = await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, language: 'id', confirm_usd: est.json.estimate_usd });
+    const start = await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, language: 'id', confirm_usd: est.json.estimate_usd, connection_id: est.json.provider.connection_id });
     expect(start.json.job.status).toBe('running');
     const job = await s.waitJob();
     expect(job).toMatchObject({ status: 'completed', error: null });
@@ -126,7 +132,7 @@ describe.skipIf(!hasFfmpeg)('W14 captions / speech-to-text', () => {
     const s = await setup();
     await s.conn();
     const est = (await s.call('/api/projects/p1/transcripts/estimate', { version_id: s.ref.version_id })).json;
-    await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, language: 'id', confirm_usd: est.estimate_usd });
+    await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, language: 'id', confirm_usd: est.estimate_usd, connection_id: est.provider.connection_id });
     const id = (await s.waitJob()).transcript_id;
     const url = `/api/projects/p1/transcripts/${id}`;
     expect((await s.call(url, { expected_rev: 0, cues: [{ start_ms: 0, end_ms: 2000, text: 'A' }, { start_ms: 1500, end_ms: 3000, text: 'B' }] })).json.error.message).toMatch(/tumpang tindih/);
@@ -158,13 +164,13 @@ describe.skipIf(!hasFfmpeg)('W14 captions / speech-to-text', () => {
     expect((await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, confirm_usd: 1, language: 'jp' })).status).toBe(400);
 
     await s.call('/api/ai/settings', { budget: { per_request_usd: 0.0001 } });
-    await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, confirm_usd: 1 });
+    await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, ...(await quote(s)) });
     expect(await s.waitJob()).toMatchObject({ status: 'failed', error: { code: 'BUDGET_EXCEEDED' } });
     expect(s.fake.count('openai.transcribe')).toBe(0);
 
     await s.call('/api/ai/settings', { budget: { per_request_usd: 1 } });
     s.fake.queue('openai.transcribe', { status: 401, body: { error: { code: 'invalid_api_key' } } });
-    await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, confirm_usd: 1 });
+    await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, ...(await quote(s)) });
     const failed = await s.waitJob();
     expect(failed).toMatchObject({ status: 'failed', error: { code: 'AI_UNAVAILABLE' } });
     expect(failed.error.message).toMatch(/API key ditolak/);
@@ -174,6 +180,17 @@ describe.skipIf(!hasFfmpeg)('W14 captions / speech-to-text', () => {
     expect((await fsp.readdir(s.dir)).filter((n) => n.startsWith('motion-stt-'))).toEqual([]);
   }, 60_000);
 
+  it('F-9: the confirmation must be exactly the estimate shown, for the connection it was quoted for', async () => {
+    const s = await setup();
+    await s.conn();
+    const q = await quote(s);
+    for (const bad of [{ confirm_usd: 1000, connection_id: q.connection_id }, { confirm_usd: q.confirm_usd, connection_id: 'conn_000000000000' }, { confirm_usd: q.confirm_usd }]) {
+      expect((await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, ...bad })).status).toBe(409);
+    }
+    expect(s.fake.count('openai.transcribe')).toBe(0);
+    expect((await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, ...q })).status).toBe(200);
+  }, 60_000);
+
   it('a backup provider that costs more than the approved amount is not used silently', async () => {
     const s = await setup();
     await s.conn({ priority: 1 });
@@ -181,7 +198,7 @@ describe.skipIf(!hasFfmpeg)('W14 captions / speech-to-text', () => {
     const est = (await s.call('/api/projects/p1/transcripts/estimate', { version_id: s.ref.version_id })).json;
     s.fake.queue('openai.transcribe', { status: 503, body: {} }, { status: 503, body: {} }, { status: 503, body: {} });
     await s.call('/api/ai/settings', { budget: { per_request_usd: 1 } });
-    await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, confirm_usd: est.estimate_usd });
+    await s.call('/api/projects/p1/transcripts', { version_id: s.ref.version_id, confirm_usd: est.estimate_usd, connection_id: est.provider.connection_id });
     const j = await s.waitJob();
     expect(j.status).toBe('failed');
     expect(j.error.message).toMatch(/lebih mahal dari biaya yang disetujui/);

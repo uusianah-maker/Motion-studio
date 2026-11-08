@@ -40,7 +40,7 @@ const proj = async () => core.readProject(await core.openWorkspace(wsRoot), 'tal
 const subs = async () => ((await proj()).timeline.tracks.find((t) => t.kind === 'subtitle')?.clips ?? []).map((c) => c.text);
 
 const fake = await startFakeAi();
-const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_RENDER_TMP: work, MOTION_STATE_DIR: path.join(work, 'state') }, () => undefined);
+const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_RENDER_TMP: work, MOTION_STATE_DIR: path.join(work, 'state'), MOTION_AI_DEV_ENDPOINTS: '1' }, () => undefined);
 const base = `http://127.0.0.1:${server.port}`;
 await fetch(`${base}/api/ai/providers`, {
   method: 'POST',

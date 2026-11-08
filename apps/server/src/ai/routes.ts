@@ -15,7 +15,8 @@ import { type AiSettings, type AiStore, type Prices, providerBase, publicConnect
 
 const MODEL_RE = /^[A-Za-z0-9._:/-]{1,100}$/;
 const LOOPBACK_RE = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?(\/[A-Za-z0-9._~/-]*)?$/;
-const HTTPS_RE = /^https:\/\/[A-Za-z0-9.-]+(:\d{1,5})?(\/[A-Za-z0-9._~/-]*)?$/;
+/** A real hostname (letters in the TLD): no IP literals, so no private/link-local addresses (Checkpoint F F-11). */
+const HTTPS_HOST_RE = /^https:\/\/([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,63}(:\d{1,5})?(\/[A-Za-z0-9._~/-]*)?$/;
 
 function text(v: unknown, what: string, max: number): string {
   if (typeof v !== 'string' || !v.trim() || v.length > max) throw bad(`${what} wajib teks 1–${max} karakter`);
@@ -27,10 +28,26 @@ function apiKey(v: unknown): string {
   return v;
 }
 
-function baseUrl(v: unknown): string | null {
-  if (v === undefined || v === null || v === '') return null;
-  if (typeof v !== 'string' || !(HTTPS_RE.test(v) || LOOPBACK_RE.test(v))) throw bad('base_url harus https://… atau http://127.0.0.1:<port> (server lokal)');
-  return v.replace(/\/+$/, '');
+/**
+ * Where a connection's key may be sent (Checkpoint F F-1/F-11). Official providers always use
+ * their official host (a test endpoint on this machine is allowed only in dev mode, for the
+ * fake providers). "Compatible" servers: this machine (http loopback) or an https hostname.
+ */
+function baseUrl(provider: ProviderId, v: unknown, dev: boolean): string | null {
+  const official = PROVIDERS[provider].base_url;
+  if (v === undefined || v === null || v === '') {
+    if (!official) throw bad('Provider kompatibel OpenAI butuh alamat server-nya');
+    return null;
+  }
+  if (typeof v !== 'string') throw bad('base_url tidak valid');
+  const url = v.replace(/\/+$/, '');
+  if (official) {
+    if (url === official) return null;
+    if (dev && LOOPBACK_RE.test(url)) return url;
+    throw bad('Provider resmi selalu memakai alamat resminya; kosongkan "Alamat server"');
+  }
+  if (LOOPBACK_RE.test(url) || HTTPS_HOST_RE.test(url)) return url;
+  throw bad('Alamat server harus http://127.0.0.1:<port> (server di komputer ini) atau https://nama-domain');
 }
 
 function prices(v: unknown, current?: Prices): Prices {
@@ -88,7 +105,9 @@ export function parseSettings(body: Record<string, unknown>, cur: AiSettings): A
   return next;
 }
 
-export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fetchImpl: typeof fetch = fetch): Route[] {
+/** `devEndpoints`: allow loopback test endpoints for official providers (tests / MOTION_AI_DEV_ENDPOINTS=1 only). */
+export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fetchImpl: typeof fetch = fetch, opts: { devEndpoints?: boolean } = {}): Route[] {
+  const dev = opts.devEndpoints === true;
   const notFound = () => new ApiError(404, 'NOT_FOUND', 'Koneksi AI tidak ada');
   const view = () => ({
     connections: store.connections().map(publicConnection),
@@ -108,8 +127,7 @@ export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fe
         if (!Object.hasOwn(PROVIDERS, provider)) throw bad(`provider harus ${Object.keys(PROVIDERS).join(' | ')}`);
         const model = text(body.model, 'model', 100);
         if (!MODEL_RE.test(model)) throw bad('Nama model hanya huruf, angka, . _ : / -');
-        const base = baseUrl(body.base_url);
-        if (provider === 'openai_compatible' && !base) throw bad('Provider kompatibel OpenAI butuh base_url server-nya');
+        const base = baseUrl(provider, body.base_url, dev);
         const key = body.api_key === undefined || body.api_key === '' ? null : apiKey(body.api_key);
         if (PROVIDERS[provider].key_required && !key) throw bad('API key wajib untuk provider ini');
         const c = await store.add({
@@ -145,10 +163,14 @@ export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fe
         }
         if (body.capabilities !== undefined) patch.capabilities = caps(body.capabilities, c.provider);
         if (body.base_url !== undefined) {
-          const b = baseUrl(body.base_url);
-          if (c.provider === 'openai_compatible' && !b) throw bad('Provider kompatibel OpenAI butuh base_url');
-          patch.base_url = b;
-          patch.status = 'untested';
+          const b = baseUrl(c.provider, body.base_url, dev);
+          if (b !== c.base_url) {
+            // The key was entered for the old address: it never follows the connection elsewhere (F-1).
+            patch.base_url = b;
+            patch.sealed_key = null;
+            patch.key_hint = null;
+            patch.status = 'untested';
+          }
         }
         if (body.priority !== undefined) patch.priority = intIn(body.priority, 'priority', 1, 99);
         if (body.prices !== undefined) patch.prices = prices(body.prices, c.prices);
