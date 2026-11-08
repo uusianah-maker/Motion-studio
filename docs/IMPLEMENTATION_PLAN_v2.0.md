@@ -14,7 +14,7 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 **CHECKPOINT D** — LULUS setelah perbaikan (2026-11-08, `audit/CHECKPOINT_D/CHECKPOINT_D_REPORT.md`)
 
 ## Fase 2 — Editor + sambung Google Drive
-- [ ] W06 Editor timeline inti: pilih, geser, trim, split, undo/redo di atas skema proyek.
+- [x] W06 Editor timeline inti: pilih, geser, trim, split, undo/redo di atas skema proyek.
 - [ ] W07 Preview: proxy/cache lokal, playhead sinkron teks/video/audio, rasio & safe area.
 - [ ] W08 Render MP4 nyata (FFmpeg lokal): preflight + lease (T15), status job, output versioned di 05_OUTPUT. **Wajib (owner 2026-11-08): metadata hasil render dibersihkan sebelum output dinyatakan jadi** — FFmpeg `-map_metadata -1 -map_chapters -1 -fflags +bitexact -flags:v +bitexact -flags:a +bitexact` + kosongkan `handler_name`/`encoder` stream; lalu `ffprobe` memverifikasi tidak ada tag tersisa (selain yang wajib secara teknis, mis. bahasa `und`). Gagal verifikasi = render gagal, bukan output kotor. File asli (import) tidak pernah diubah.
 - [ ] W09 Login Google (OAuth "External", scope `openid email profile drive.file`) + allowlist email + token terenkripsi di server. *Uji nyata butuh OAuth Client ID dari owner (langkah manual, dipandu).*

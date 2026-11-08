@@ -65,7 +65,7 @@ export function App({ api, workspaceId }: { api: Api; workspaceId: string }) {
       {view === 'editor' && !narrow && <aside className="side" aria-label="Proyek">{sideList}</aside>}
       <div className="page">
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
-        {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} />}
+        {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, revision: p.revision, updated_at: p.updated_at } : x)) ?? list)} />}
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
         {view === 'trash' && <TrashView api={api} />}
         {view === 'storage' && <StorageView api={api} />}

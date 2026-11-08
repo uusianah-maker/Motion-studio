@@ -16,6 +16,8 @@ export interface Clip {
   clip_id: string;
   start_ms: number;
   end_ms: number;
+  /** Offset into the source media where this clip starts (trim-start / split). Default 0. */
+  in_ms?: number;
   media?: MediaRef;
 }
 
@@ -28,10 +30,13 @@ export interface Track {
 /** Retained history entry. `retained:true` snapshots/undo records hold their media (PRD v0.8 §B). */
 export interface Snapshot {
   snapshot_id: string;
-  kind: 'snapshot' | 'undo';
+  /** `undo`/`redo` entries carry the full timeline to go back/forward to (W06). */
+  kind: 'snapshot' | 'undo' | 'redo';
   retained: boolean;
   created_at: number;
   media: MediaRef[];
+  timeline?: { tracks: Track[] };
+  label?: string;
 }
 
 export interface ProjectManifest {
@@ -83,35 +88,26 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
   if (o.schema_version !== PROJECT_SCHEMA_VERSION) fail('schema_version', `harus ${PROJECT_SCHEMA_VERSION}`);
   const status = o.status;
   if (status !== 'active' && status !== 'archived') fail('status', 'harus active|archived');
-  const timeline = obj(o.timeline, 'timeline');
-  const tracks = arr(timeline.tracks, 'timeline.tracks').map((t, i) => {
-    const w = `timeline.tracks[${i}]`;
-    const to = obj(t, w);
-    const kind = to.kind as TrackKind;
-    if (!TRACK_KINDS.includes(kind)) fail(`${w}.kind`, 'jenis track tidak dikenal');
-    const clips = arr(to.clips, `${w}.clips`).map((c, j) => {
-      const cw = `${w}.clips[${j}]`;
-      const co = obj(c, cw);
-      const start = num(co.start_ms, `${cw}.start_ms`);
-      const end = num(co.end_ms, `${cw}.end_ms`);
-      if (end <= start) fail(cw, 'end_ms harus > start_ms');
-      const clip: Clip = { clip_id: id(co.clip_id, `${cw}.clip_id`), start_ms: start, end_ms: end };
-      if (co.media !== undefined) clip.media = mediaRef(co.media, `${cw}.media`);
-      return clip;
-    });
-    return { track_id: id(to.track_id, `${w}.track_id`), kind, clips };
-  });
+  const tracks = validateTracks(o.timeline, 'timeline');
   const snapshots = arr(o.snapshots, 'snapshots').map((s, i) => {
     const w = `snapshots[${i}]`;
     const so = obj(s, w);
-    if (so.kind !== 'snapshot' && so.kind !== 'undo') fail(`${w}.kind`, 'harus snapshot|undo');
-    return {
+    if (so.kind !== 'snapshot' && so.kind !== 'undo' && so.kind !== 'redo') fail(`${w}.kind`, 'harus snapshot|undo|redo');
+    const snap: Snapshot = {
       snapshot_id: id(so.snapshot_id, `${w}.snapshot_id`),
       kind: so.kind as Snapshot['kind'],
       retained: bool(so.retained, `${w}.retained`),
       created_at: num(so.created_at, `${w}.created_at`),
       media: arr(so.media, `${w}.media`).map((m, j) => mediaRef(m, `${w}.media[${j}]`)),
     };
+    if (so.label !== undefined) snap.label = str(so.label, `${w}.label`);
+    if (so.timeline !== undefined) {
+      snap.timeline = { tracks: validateTracks(so.timeline, `${w}.timeline`) };
+      // The GC must see every media the stored timeline would bring back (PRD: retained undo holds media).
+      const held = new Set(snap.media.map((m) => m.version_id));
+      for (const t of snap.timeline.tracks) for (const c of t.clips) if (c.media && !held.has(c.media.version_id)) fail(`${w}.media`, 'tidak memuat semua media timeline');
+    }
+    return snap;
   });
   return {
     schema_version: PROJECT_SCHEMA_VERSION,
@@ -126,6 +122,28 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
   };
 }
 
+function validateTracks(x: unknown, where: string): Track[] {
+  const timeline = obj(x, where);
+  return arr(timeline.tracks, `${where}.tracks`).map((t, i) => {
+    const w = `${where}.tracks[${i}]`;
+    const to = obj(t, w);
+    const kind = to.kind as TrackKind;
+    if (!TRACK_KINDS.includes(kind)) fail(`${w}.kind`, 'jenis track tidak dikenal');
+    const clips = arr(to.clips, `${w}.clips`).map((c, j) => {
+      const cw = `${w}.clips[${j}]`;
+      const co = obj(c, cw);
+      const start = num(co.start_ms, `${cw}.start_ms`);
+      const end = num(co.end_ms, `${cw}.end_ms`);
+      if (end <= start) fail(cw, 'end_ms harus > start_ms');
+      const clip: Clip = { clip_id: id(co.clip_id, `${cw}.clip_id`), start_ms: start, end_ms: end };
+      if (co.in_ms !== undefined) clip.in_ms = num(co.in_ms, `${cw}.in_ms`);
+      if (co.media !== undefined) clip.media = mediaRef(co.media, `${cw}.media`);
+      return clip;
+    });
+    return { track_id: id(to.track_id, `${w}.track_id`), kind, clips };
+  });
+}
+
 /** Every media version a manifest holds: timeline clips + retained snapshots/undo. */
 export function manifestReferences(m: ProjectManifest): { ref: MediaRef; source: 'timeline' | 'snapshot' | 'undo'; detail: string }[] {
   const out: { ref: MediaRef; source: 'timeline' | 'snapshot' | 'undo'; detail: string }[] = [];
@@ -134,7 +152,7 @@ export function manifestReferences(m: ProjectManifest): { ref: MediaRef; source:
   }
   for (const s of m.snapshots) {
     if (!s.retained) continue;
-    for (const ref of s.media) out.push({ ref, source: s.kind, detail: s.snapshot_id });
+    for (const ref of s.media) out.push({ ref, source: s.kind === 'redo' ? 'undo' : s.kind, detail: s.snapshot_id });
   }
   return out;
 }

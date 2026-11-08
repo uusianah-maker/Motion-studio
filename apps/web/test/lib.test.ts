@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockerText, ellipsize, formatBytes, formatDuration, relativeDays, takeTokenFromHash } from '../src/lib';
+import { blockerText, dragSpan, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeTokenFromHash, visibleDuration } from '../src/lib';
 
 const TOKEN = 'a'.repeat(64);
 
@@ -31,5 +31,30 @@ describe('web lib', () => {
   it('ellipsizes long names', () => {
     expect(ellipsize('abcdef', 4)).toBe('abc…');
     expect(ellipsize('abc', 4)).toBe('abc');
+  });
+});
+
+
+describe('timeline drag math (W06)', () => {
+  const c = { start_ms: 2000, end_ms: 6000, in_ms: 1000, hasMedia: true };
+  it('snaps to 100 ms and never goes below 0', () => {
+    expect(snap(1249)).toBe(1200);
+    expect(snap(1250)).toBe(1300);
+    expect(snap(-40)).toBe(0);
+  });
+  it('move keeps length; trims respect minimum length and the source start', () => {
+    expect(dragSpan('move', c, 1234)).toEqual({ start_ms: 3200, end_ms: 7200 });
+    expect(dragSpan('move', c, -9999)).toEqual({ start_ms: 0, end_ms: 4000 });
+    expect(dragSpan('trim-end', c, -9999)).toEqual({ start_ms: 2000, end_ms: 2100 });
+    expect(dragSpan('trim-end', c, 1500)).toEqual({ start_ms: 2000, end_ms: 7500 });
+    expect(dragSpan('trim-start', c, -9999)).toEqual({ start_ms: 1000, end_ms: 6000 }); // in_ms 1000 → source start at 1000
+    expect(dragSpan('trim-start', c, 9999)).toEqual({ start_ms: 5900, end_ms: 6000 });
+    expect(dragSpan('trim-start', { start_ms: 2000, end_ms: 6000 }, -9999)).toEqual({ start_ms: 0, end_ms: 6000 }); // no media: free
+  });
+  it('ruler and visible duration', () => {
+    expect(rulerTicks(30_000)).toEqual([0, 5000, 10000, 15000, 20000, 25000, 30000]);
+    expect(rulerTicks(8000)).toHaveLength(9);
+    expect(visibleDuration(0)).toBe(30_000);
+    expect(visibleDuration(41_200)).toBe(50_000);
   });
 });

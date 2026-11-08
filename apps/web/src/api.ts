@@ -14,8 +14,16 @@ export interface Clip {
   clip_id: string;
   start_ms: number;
   end_ms: number;
+  in_ms?: number;
   media?: { media_id: string; version_id: string };
 }
+
+export type EditOp =
+  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; start_ms: number; duration_ms: number; in_ms?: number }
+  | { op: 'move_clip'; clip_id: string; start_ms: number }
+  | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
+  | { op: 'split_clip'; clip_id: string; at_ms: number }
+  | { op: 'delete_clip'; clip_id: string };
 export interface Track {
   track_id: string;
   kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'effects';
@@ -23,6 +31,7 @@ export interface Track {
 }
 export interface Project extends Required<Omit<ProjectSummary, 'error'>> {
   timeline: { tracks: Track[] };
+  history: { undo: number; redo: number; undo_label: string | null; redo_label: string | null };
 }
 
 export interface Version {
@@ -124,6 +133,11 @@ export function createApi(token: string, base = '') {
     projects: () => call<{ projects: ProjectSummary[] }>('GET', '/api/projects').then((r) => r.projects),
     createProject: (name: string) => call<{ project: ProjectSummary }>('POST', '/api/projects', { json: { name } }).then((r) => r.project),
     project: (id: string) => call<{ project: Project }>('GET', `/api/projects/${encodeURIComponent(id)}`).then((r) => r.project),
+    /** Server applies the ops atomically and returns the new revision (409 CONFLICT if stale). */
+    editProject: (id: string, expected_revision: number, ops: EditOp[]) =>
+      call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/edit`, { json: { expected_revision, ops } }).then((r) => r.project),
+    stepHistory: (id: string, expected_revision: number, direction: 'undo' | 'redo') =>
+      call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/${direction}`, { json: { expected_revision } }).then((r) => r.project),
     media: (q: { scope?: 'all' | 'shared' | 'project'; project_id?: string } = {}) => {
       const p = new URLSearchParams();
       if (q.scope) p.set('scope', q.scope);

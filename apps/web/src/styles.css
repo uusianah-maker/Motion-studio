@@ -157,3 +157,23 @@ table.list tr:hover td { background: #191d29; }
   .hideNarrow { display: none; }
   table.list th.hideNarrow, table.list td.hideNarrow { display: none; }
 }
+
+/* ---------- timeline editing (W06) ---------- */
+.clip { cursor: grab; touch-action: none; user-select: none; }
+.clip.dragging { cursor: grabbing; opacity: 0.85; z-index: 3; }
+.clip.selected { outline: 2px solid #f6d67c; outline-offset: 0; z-index: 2; }
+.clip:focus-visible { outline: 2px solid #9b86ff; }
+.clip .clipLabel { pointer-events: none; overflow: hidden; text-overflow: ellipsis; }
+.clip .handle { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; background: #ffffff22; }
+.clip .handle.start { left: 0; border-radius: 4px 0 0 4px; }
+.clip .handle.end { right: 0; border-radius: 0 4px 4px 0; }
+.clip.selected .handle { background: #f6d67c88; }
+.trackSurface { cursor: pointer; }
+.trackSurface .playhead { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid #f09d87; pointer-events: none; z-index: 4; }
+.rulerRow { height: 28px; border-bottom: 1px solid #303545; }
+.trackSurface.ruler { background: transparent; height: 22px; overflow: visible; }
+.ruler .tick { position: absolute; top: 4px; font-size: 10px; color: #7f899f; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }
+.ruler .tick:first-child { transform: none; }
+.editorHeader .time { font-variant-numeric: tabular-nums; color: #b0b8c9; }
+.timelineTop { flex-wrap: wrap; height: auto; min-height: 47px; padding: 6px 17px; }
+.timelineTop .smallbtn:disabled { opacity: 0.45; }

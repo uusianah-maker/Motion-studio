@@ -10,7 +10,9 @@ export type StorageErrorCode =
   | 'INTEGRITY'
   | 'FORBIDDEN'
   | 'INDEX_INVALID'
-  | 'PRECONDITION';
+  | 'PRECONDITION'
+  /** A timeline edit that would produce an invalid timeline (overlap, too short, unknown clip…). */
+  | 'EDIT_INVALID';
 
 /** Typed error so callers (UI/IPC) can react without parsing messages. */
 export class StorageError extends Error {

@@ -76,3 +76,49 @@ export function blockerText(code: string): string {
 export function ellipsize(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, Math.max(0, max - 1))}…`;
 }
+
+// ------------------------------------------------------------------ timeline editing (W06)
+
+export const SNAP_MS = 100;
+export const MIN_CLIP_MS = 100;
+export const DEFAULT_CLIP_MS = 5000;
+
+export type DragMode = 'move' | 'trim-start' | 'trim-end';
+export interface ClipSpan {
+  start_ms: number;
+  end_ms: number;
+  in_ms?: number;
+  hasMedia?: boolean;
+}
+
+export const snap = (ms: number, step = SNAP_MS): number => Math.max(0, Math.round(ms / step) * step);
+
+/**
+ * Where a clip would be after dragging by `deltaMs` (ghost while dragging, op on release).
+ * Mirrors the server rules: minimum length, never before 0, trim-start never before the source start.
+ */
+export function dragSpan(mode: DragMode, c: ClipSpan, deltaMs: number): { start_ms: number; end_ms: number } {
+  const len = c.end_ms - c.start_ms;
+  if (mode === 'move') {
+    const start = snap(Math.max(0, c.start_ms + deltaMs));
+    return { start_ms: start, end_ms: start + len };
+  }
+  if (mode === 'trim-end') {
+    return { start_ms: c.start_ms, end_ms: Math.max(c.start_ms + MIN_CLIP_MS, snap(c.end_ms + deltaMs)) };
+  }
+  const earliest = c.hasMedia ? c.start_ms - (c.in_ms ?? 0) : 0;
+  const start = Math.min(c.end_ms - MIN_CLIP_MS, Math.max(Math.max(0, earliest), snap(c.start_ms + deltaMs)));
+  return { start_ms: start, end_ms: c.end_ms };
+}
+
+/** Ruler ticks: a "nice" step so there are at most ~10 labels. */
+export function rulerTicks(durationMs: number): number[] {
+  const steps = [1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000];
+  const step = steps.find((s) => durationMs / s <= 10) ?? 600_000;
+  const out: number[] = [];
+  for (let t = 0; t <= durationMs; t += step) out.push(t);
+  return out;
+}
+
+/** Timeline length shown: at least 30 s and always 5 s of room after the last clip. */
+export const visibleDuration = (endMs: number): number => Math.max(30_000, Math.ceil((endMs + 5000) / 5000) * 5000);

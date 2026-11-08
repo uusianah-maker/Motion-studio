@@ -11,7 +11,11 @@ import { restoreVersion } from './restore.js';
 import { GcScheduler } from './scheduler.js';
 import { scanCandidates } from './scanner.js';
 import { runAutoTrash } from './trash.js';
-import { type Workspace, withWorkspaceLock } from './workspace.js';
+import { type EditOp, editManifest, stepHistory, validateOps } from './timeline.js';
+import { StorageError } from './errors.js';
+import { guard } from './guard.js';
+import { newId } from './ids.js';
+import { type Workspace, readProject, withWorkspaceLock } from './workspace.js';
 
 /**
  * Single entry point for the UI/IPC layer (ADR-001 D1/D2).
@@ -54,6 +58,40 @@ export class StorageService {
 
   commitProject(input: { manifest: ProjectManifest; expected_revision: number; actor: Actor }) {
     return mutate(this.ws, 'svc.commitProject', input.actor, () => deps.commitProject(this.ws, input));
+  }
+
+  /**
+   * Manual timeline edit (W06): validate ops, apply them with the shared reducer, keep the old
+   * timeline as a retained undo step, then commit through the normal path (revision check,
+   * media usable, clocks reconciled). Atomic: an invalid op changes nothing.
+   */
+  async editTimeline(input: { project_id: string; expected_revision: number; ops: unknown; label?: string; actor: Actor }) {
+    await guard(this.ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'edit' });
+    const ops = validateOps(input.ops);
+    const current = await this.revisionOrConflict(input.project_id, input.expected_revision);
+    const next = editManifest(current, ops, input.label?.slice(0, 80) || describeOps(ops), { now: this.ws.clock.now(), newId: () => newId('snap'), newClipId: () => newId('c') });
+    return this.commitProject({ manifest: next, expected_revision: input.expected_revision, actor: input.actor });
+  }
+
+  async undoTimeline(input: { project_id: string; expected_revision: number; actor: Actor }) {
+    return this.step(input, 'undo');
+  }
+
+  async redoTimeline(input: { project_id: string; expected_revision: number; actor: Actor }) {
+    return this.step(input, 'redo');
+  }
+
+  private async step(input: { project_id: string; expected_revision: number; actor: Actor }, direction: 'undo' | 'redo') {
+    await guard(this.ws, input.actor, 'commit_project', { project_id: input.project_id, step: direction });
+    const current = await this.revisionOrConflict(input.project_id, input.expected_revision);
+    const next = stepHistory(current, direction, { now: this.ws.clock.now(), newId: () => newId('snap') });
+    return this.commitProject({ manifest: next, expected_revision: input.expected_revision, actor: input.actor });
+  }
+
+  private async revisionOrConflict(projectId: string, expected: number) {
+    const current = await readProject(this.ws, projectId);
+    if (current.revision !== expected) throw new StorageError('CONFLICT', 'Revisi proyek sudah berubah; muat ulang dulu', { expected, actual: current.revision });
+    return current;
   }
 
   createLease(input: Parameters<typeof deps.createLease>[1]) {
@@ -128,4 +166,17 @@ export class StorageService {
   finishRender(input: Parameters<typeof render.finishRender>[1]) {
     return mutate(this.ws, 'svc.finishRender', input.actor, () => render.finishRender(this.ws, input));
   }
+}
+
+const OP_LABEL: Record<EditOp['op'], string> = {
+  add_clip: 'Tambah klip',
+  move_clip: 'Geser klip',
+  trim_clip: 'Trim klip',
+  split_clip: 'Split klip',
+  delete_clip: 'Hapus klip',
+};
+
+/** Short human label for the undo history ("Geser klip", "3 perubahan"). */
+export function describeOps(ops: EditOp[]): string {
+  return ops.length === 1 ? OP_LABEL[ops[0]!.op] : `${ops.length} perubahan`;
 }

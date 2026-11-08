@@ -17,6 +17,7 @@ import {
   diskSpace,
   estimateSpace,
   getDashboard,
+  historyCounts,
   listProjectIds,
   loadRegistry,
   readProject,
@@ -109,6 +110,19 @@ function mediaList(reg: Registry, filter: (scope: MediaScope) => boolean) {
       current_version_id: m.current_version_id,
       versions: versions.filter((v) => v.media_id === m.media_id).sort((a, b) => a.imported_at - b.imported_at).map(versionView),
     }));
+}
+
+/** Project for the editor: timeline + undo/redo counts; stored history timelines stay on the server. */
+const projectView = (m: ProjectManifest) => {
+  const { snapshots: _snapshots, ...rest } = m;
+  void _snapshots;
+  return { ...rest, history: historyCounts(m) };
+};
+
+function revision(body: Record<string, unknown>): number {
+  const r = body.expected_revision;
+  if (typeof r !== 'number' || !Number.isSafeInteger(r) || r < 0) throw bad('expected_revision wajib angka revisi');
+  return r;
 }
 
 const projectSummary = (m: ProjectManifest) => ({
@@ -226,7 +240,29 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}): Route[] {
         return { project: projectSummary(await createProject(ws, { project_id, name })) };
       },
     },
-    { method: 'GET', path: '/api/projects/:project_id', handle: async ({ ws, params }) => ({ project: await readProject(ws, params.project_id!) }) },
+    { method: 'GET', path: '/api/projects/:project_id', handle: async ({ ws, params }) => ({ project: projectView(await readProject(ws, params.project_id!)) }) },
+    {
+      method: 'POST',
+      path: '/api/projects/:project_id/edit',
+      handle: async ({ req, params, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['expected_revision', 'ops', 'label']);
+        const label = str(body, 'label', { optional: true, max: 80 });
+        const r = await svc.editTimeline({ project_id: params.project_id!, expected_revision: revision(body), ops: body.ops, actor, ...(label ? { label } : {}) });
+        return { project: projectView(r.result), clocks_ok: r.clocks.ok };
+      },
+    },
+    ...(['undo', 'redo'] as const).map((dir) => ({
+      method: 'POST' as const,
+      path: `/api/projects/:project_id/${dir}`,
+      handle: async ({ req, params, svc, actor }: Parameters<Route['handle']>[0]) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['expected_revision']);
+        const input = { project_id: params.project_id!, expected_revision: revision(body), actor };
+        const r = dir === 'undo' ? await svc.undoTimeline(input) : await svc.redoTimeline(input);
+        return { project: projectView(r.result), clocks_ok: r.clocks.ok };
+      },
+    })),
 
     // Media
     {
