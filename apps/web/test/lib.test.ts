@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aspectCss, blockerText, clipAt, dragSpan, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeTokenFromHash, visibleDuration } from '../src/lib';
+import { aspectCss, blockerText, clipAt, dragSpan, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
 
 const TOKEN = 'a'.repeat(64);
 
@@ -76,5 +76,14 @@ describe('preview helpers (W07)', () => {
     expect(safeInsets('9:16')).toEqual([12, 14, 20, 6]);
     expect(safeInsets('16:9')).toEqual([5, 5, 5, 5]);
     expect(aspectCss('3:4')).toBe('3 / 4');
+  });
+});
+
+describe('W09 auth error fragment', () => {
+  it('reads a known-shaped code once and keeps the rest of the fragment', () => {
+    expect(takeAuthError('#auth_error=EMAIL_NOT_ALLOWED')).toEqual({ code: 'EMAIL_NOT_ALLOWED', rest: '' });
+    expect(takeAuthError('#view=trash&auth_error=ACCESS_DENIED')).toEqual({ code: 'ACCESS_DENIED', rest: '#view=trash' });
+    expect(takeAuthError('#auth_error=<script>').code).toBeNull();
+    expect(takeAuthError('')).toEqual({ code: null, rest: '' });
   });
 });

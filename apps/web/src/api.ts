@@ -1,4 +1,8 @@
-/** Typed client for the local server API (apps/server). The session token never leaves memory/sessionStorage. */
+/**
+ * Typed client for the server API (apps/server). Local mode: URL token (memory/sessionStorage only).
+ * Google mode (W09): no token at all; the HttpOnly session cookie travels by itself, and every call
+ * carries `x-motion-request: 1`, which the server requires (a cross-site page cannot send it).
+ */
 
 export interface ProjectSummary {
   project_id: string;
@@ -145,9 +149,26 @@ export class ApiError extends Error {
   }
 }
 
-export function createApi(token: string, base = '') {
+export interface Session {
+  actor: string;
+  workspace_id: string;
+  storage_backend: string;
+  auth: 'local' | 'google';
+  user: { email: string; name: string; drive_granted: boolean } | null;
+}
+
+/** Public: which login the server uses. */
+export async function authMode(base = ''): Promise<'local' | 'google'> {
+  const r = await fetch(`${base}/api/auth/mode`);
+  if (!r.ok) throw new ApiError(r.status, 'UNKNOWN', `HTTP ${r.status}`);
+  const data = (await r.json()) as { mode?: string };
+  return data.mode === 'google' ? 'google' : 'local';
+}
+
+export function createApi(token: string | null, base = '') {
+  const authHeaders = (): Record<string, string> => ({ 'x-motion-request': '1', ...(token ? { authorization: `Bearer ${token}` } : {}) });
   async function call<T>(method: string, path: string, init: { json?: unknown; body?: Blob | File; headers?: Record<string, string> } = {}): Promise<T> {
-    const headers: Record<string, string> = { authorization: `Bearer ${token}`, ...init.headers };
+    const headers: Record<string, string> = { ...authHeaders(), ...init.headers };
     let body: BodyInit | undefined;
     if (init.json !== undefined) {
       headers['content-type'] = 'application/json';
@@ -165,7 +186,8 @@ export function createApi(token: string, base = '') {
   }
 
   return {
-    session: () => call<{ actor: string; workspace_id: string; storage_backend: string }>('GET', '/api/session'),
+    session: () => call<Session>('GET', '/api/session'),
+    logout: () => call<{ ok: true }>('POST', '/api/auth/logout', { json: {} }),
     projects: () => call<{ projects: ProjectSummary[] }>('GET', '/api/projects').then((r) => r.projects),
     createProject: (name: string) => call<{ project: ProjectSummary }>('POST', '/api/projects', { json: { name } }).then((r) => r.project),
     project: (id: string) => call<{ project: Project }>('GET', `/api/projects/${encodeURIComponent(id)}`).then((r) => r.project),
@@ -187,7 +209,7 @@ export function createApi(token: string, base = '') {
       return new Promise<{ media_id: string; version: Version; duplicate: boolean }>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', `${base}/api/media/import?${p}`);
-        xhr.setRequestHeader('authorization', `Bearer ${token}`);
+        for (const [k, v] of Object.entries(authHeaders())) xhr.setRequestHeader(k, v);
         xhr.setRequestHeader('content-type', 'application/octet-stream');
         xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name));
         xhr.upload.onprogress = (e) => {

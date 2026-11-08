@@ -4,9 +4,10 @@ import type { AddressInfo } from 'node:net';
 import { type Actor, StorageService, type Workspace } from './core.js';
 import { ApiError, toApiError } from './errors.js';
 import { sendError, sendJson } from './http.js';
+import type { GoogleAuth, SessionUser } from './auth.js';
 import { serveStatic } from './static.js';
 
-/** The server only ever listens on loopback (plan v2.0 W03); remote access comes with W09 + deploy. */
+/** The server only ever listens on loopback (plan v2.0 W03); on a VPS a reverse proxy (W15) fronts it. */
 export const HOST = '127.0.0.1';
 
 export interface RequestContext {
@@ -17,6 +18,8 @@ export interface RequestContext {
   params: Record<string, string>;
   /** Always 'user' for HTTP: AI and scheduler actions run inside the server with their own actor. */
   actor: Actor;
+  /** Signed-in Google account (W09); null in local-token mode and on public routes. */
+  user: SessionUser | null;
   ws: Workspace;
   svc: StorageService;
 }
@@ -32,8 +35,12 @@ export interface Route {
 
 export interface AppOptions {
   ws: Workspace;
-  /** Session token; a fresh random one per start when omitted. */
+  /** Session token; a fresh random one per start when omitted. Unused when `auth` is set. */
   token?: string;
+  /** Google login (W09). When set, the URL token is off: every API call needs a login session. */
+  auth?: GoogleAuth;
+  /** Public origin when served behind a proxy/domain (e.g. https://motion.example.com). */
+  publicOrigin?: string;
   /** Extra browser origins allowed to call the API (e.g. the web dev server in W05). */
   allowedOrigins?: string[];
   /** Additional routes (W04+). */
@@ -76,22 +83,41 @@ export function createApp(opts: AppOptions) {
 
   const routes: Route[] = [
     { method: 'GET', path: '/api/health', public: true, handle: async () => ({ ok: true }) },
+    { method: 'GET', path: '/api/auth/mode', public: true, handle: async () => ({ mode: opts.auth ? 'google' : 'local' }) },
     {
       method: 'GET',
       path: '/api/session',
-      handle: async ({ actor, ws }) => ({ actor, workspace_id: ws.meta.workspace_id, storage_backend: ws.blobs.kind }),
+      handle: async ({ actor, ws, user }) => ({
+        actor,
+        workspace_id: ws.meta.workspace_id,
+        storage_backend: ws.blobs.kind,
+        auth: opts.auth ? 'google' : 'local',
+        user: user ? { email: user.email, name: user.name, drive_granted: user.drive_granted } : null,
+      }),
     },
+    ...(opts.auth?.routes ?? []),
     ...(opts.routes ?? []),
   ];
 
-  const allowedHosts = () => new Set([`${HOST}:${port}`, `localhost:${port}`]);
-  const allowedOrigins = () => new Set([`http://${HOST}:${port}`, `http://localhost:${port}`, ...(opts.allowedOrigins ?? [])]);
+  const pub = opts.publicOrigin ? new URL(opts.publicOrigin) : null;
+  if (pub && (pub.origin !== opts.publicOrigin!.replace(/\/$/, '') || !/^https?:$/.test(pub.protocol))) throw new Error(`publicOrigin harus origin saja (tanpa path): ${opts.publicOrigin}`);
+  const allowedHosts = () => new Set([`${HOST}:${port}`, `localhost:${port}`, ...(pub ? [pub.host] : [])]);
+  const allowedOrigins = () => new Set([`http://${HOST}:${port}`, `http://localhost:${port}`, ...(pub ? [pub.origin] : []), ...(opts.allowedOrigins ?? [])]);
 
-  function authorized(req: IncomingMessage): boolean {
+  function bearerOk(req: IncomingMessage): boolean {
     const h = req.headers.authorization ?? '';
     const m = /^Bearer ([0-9a-f]{64})$/.exec(h);
     if (!m) return false;
     return timingSafeEqual(digest(m[1]!), tokenDigest);
+  }
+
+  /** Who is calling: `undefined` = not allowed. Google mode: login cookie + our own request header. */
+  function caller(req: IncomingMessage): SessionUser | null | undefined {
+    if (!opts.auth) return bearerOk(req) ? null : undefined;
+    // A custom header cannot be sent cross-site without a CORS preflight we never grant, so a
+    // forged form/image/link from another site never reaches a handler even if a cookie leaks along.
+    if (req.headers['x-motion-request'] !== '1') return undefined;
+    return opts.auth.authenticate(req) ?? undefined;
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -108,8 +134,13 @@ export function createApp(opts: AppOptions) {
     if (!matches.length) throw new ApiError(404, 'NOT_FOUND', 'Endpoint tidak ada');
     const hit = matches.find((m) => m.r.method === req.method);
     if (!hit) throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Method tidak didukung');
-    if (!hit.r.public && !authorized(req)) throw new ApiError(401, 'UNAUTHORIZED', 'Sesi tidak valid');
-    const body = await hit.r.handle({ req, res, url, params: hit.params!, actor: 'user', ws: opts.ws, svc });
+    let user: SessionUser | null = null;
+    if (!hit.r.public) {
+      const who = caller(req);
+      if (who === undefined) throw new ApiError(401, 'UNAUTHORIZED', opts.auth ? 'Belum login atau sesi sudah habis' : 'Sesi tidak valid');
+      user = who;
+    }
+    const body = await hit.r.handle({ req, res, url, params: hit.params!, actor: 'user', user, ws: opts.ws, svc });
     if (!res.headersSent) sendJson(res, 200, body);
   }
 
@@ -129,6 +160,7 @@ export function createApp(opts: AppOptions) {
 
   return {
     server,
+    /** Local-mode URL token. With Google login it is never accepted (and main never prints it). */
     token,
     svc,
     /** Listen on loopback only; resolves with the bound port. */

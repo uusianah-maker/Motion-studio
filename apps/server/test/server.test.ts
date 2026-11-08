@@ -68,7 +68,7 @@ describe('W03 server API dasar', () => {
     expect((await call(port, { path: '/api/session', headers: { authorization: `Basic ${app.token}` } })).status).toBe(401);
     const ok = await call(port, { path: '/api/session', headers: auth(app.token) });
     expect(ok.status).toBe(200);
-    expect(ok.body).toEqual({ actor: 'user', workspace_id: ws.meta.workspace_id, storage_backend: 'local-fs' });
+    expect(ok.body).toEqual({ actor: 'user', workspace_id: ws.meta.workspace_id, storage_backend: 'local-fs', auth: 'local', user: null }); // W09 added auth + user
     const other = await running();
     expect(other.app.token).not.toBe(app.token); // fresh token per start
   });

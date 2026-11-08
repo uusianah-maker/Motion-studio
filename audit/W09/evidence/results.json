@@ -1,0 +1,77 @@
+{
+  "at": "2026-11-08T16:50:32.622Z",
+  "passed": 14,
+  "total": 14,
+  "results": [
+    {
+      "id": "LG-01 Tanpa login: halaman masuk Google, API menolak (401)",
+      "ok": true,
+      "detail": "session 401"
+    },
+    {
+      "id": "LG-02 Klik → Google → kembali ke app; alamat bersih (tanpa code/state)",
+      "ok": true,
+      "detail": "http://127.0.0.1:63451/"
+    },
+    {
+      "id": "LG-03 Sesi = cookie HttpOnly + SameSite=Strict; JS & storage tidak melihat token apa pun",
+      "ok": true,
+      "detail": "cookie JS: \"\""
+    },
+    {
+      "id": "LG-04 Akun tampil di rail (owner@example.com) + tidak ada peringatan Drive",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "LG-05 API jalan dengan sesi; tanpa header app ditolak",
+      "ok": true,
+      "detail": "200/401"
+    },
+    {
+      "id": "LG-06 Situs lain tidak bisa memakai sesi (CSRF): tidak ada proyek dibuat",
+      "ok": true,
+      "detail": "percobaan: opaque, blocked; proyek 2→2"
+    },
+    {
+      "id": "LG-07 Reload: tetap masuk (tanpa login ulang)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "LG-08 Keluar: kembali ke halaman masuk, sesi mati, cookie dihapus",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "LG-09 Email di luar daftar: ditolak dengan pesan jelas, tanpa sesi; kode error dihapus dari alamat",
+      "ok": true,
+      "detail": "http://127.0.0.1:63451/"
+    },
+    {
+      "id": "LG-10 Batal di Google: pesan \"Login dibatalkan\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "LG-11 Izin Drive tidak dicentang: tetap masuk + peringatan jelas",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "LG-12 Refresh token tersimpan terenkripsi; tidak ada token di audit log",
+      "ok": true,
+      "detail": "file state: google-tokens.json, secret.key"
+    },
+    {
+      "id": "LG-13 HP 390px: halaman masuk muat tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "LG-14 0 error JS (CSP tetap aktif)",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -5,3 +5,4 @@ coverage/
 .tmp/
 audit/**/evidence/*.mp4
 *.tsbuildinfo
+.env.local

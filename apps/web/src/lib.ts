@@ -15,6 +15,26 @@ export function takeTokenFromHash(hash: string): { token: string | null; rest: s
   return { token: t && TOKEN_RE.test(t) ? t : null, rest: rest ? `#${rest}` : '' };
 }
 
+/** Login error codes the server puts in `/#auth_error=CODE` after a failed Google login (W09). */
+export const AUTH_ERRORS: Record<string, string> = {
+  ACCESS_DENIED: 'Login dibatalkan di halaman Google.',
+  EMAIL_NOT_ALLOWED: 'Akun Google ini tidak ada di daftar email yang diizinkan. Masuk dengan akun lain atau minta owner menambahkan email Anda.',
+  EMAIL_UNVERIFIED: 'Email akun Google ini belum terverifikasi.',
+  STATE_INVALID: 'Sesi login tidak cocok atau kedaluwarsa (mis. login dimulai di tab/browser lain). Coba masuk lagi.',
+  TOKEN_EXCHANGE_FAILED: 'Server gagal menghubungi Google. Coba lagi sebentar.',
+  ID_TOKEN_INVALID: 'Jawaban Google tidak valid. Coba lagi.',
+  GOOGLE_ERROR: 'Google menolak permintaan login. Coba lagi.',
+};
+
+/** Read and strip `auth_error` from the fragment. Unknown codes are ignored (the page shows a generic message). */
+export function takeAuthError(hash: string): { code: string | null; rest: string } {
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const c = params.get('auth_error');
+  params.delete('auth_error');
+  const rest = params.toString();
+  return { code: c && /^[A-Z_]{1,40}$/.test(c) ? c : null, rest: rest ? `#${rest}` : '' };
+}
+
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return '–';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

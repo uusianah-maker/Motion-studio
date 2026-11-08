@@ -15,12 +15,20 @@ const NAV: { id: View; sym: string; label: string }[] = [
   { id: 'storage', sym: '▥', label: 'Storage' },
 ];
 
-export function App({ api, workspaceId }: { api: Api; workspaceId: string }) {
+export interface Account {
+  email: string;
+  name: string;
+  drive_granted: boolean;
+  onLogout: () => Promise<void>;
+}
+
+export function App({ api, workspaceId, account = null }: { api: Api; workspaceId: string; account?: Account | null }) {
   const [view, setView] = useState<View>('editor');
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const narrow = useMediaQuery('(max-width: 900px)');
+  const [leaving, setLeaving] = useState(false);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -60,10 +68,32 @@ export function App({ api, workspaceId }: { api: Api; workspaceId: string }) {
           </button>
         ))}
         <div className="grow" />
+        {account && (
+          <button
+            className="nav account"
+            title={`Masuk sebagai ${account.email}. Klik untuk keluar.`}
+            aria-label={`Keluar (${account.email})`}
+            disabled={leaving}
+            onClick={() => {
+              setLeaving(true);
+              void account.onLogout();
+            }}
+          >
+            <span className="avatar" aria-hidden="true">
+              {(account.name || account.email).slice(0, 1).toUpperCase()}
+            </span>
+            Keluar
+          </button>
+        )}
         <span className="mono muted" title={`Workspace ${workspaceId}`}>●</span>
       </nav>
       {view === 'editor' && !narrow && <aside className="side" aria-label="Proyek">{sideList}</aside>}
       <div className="page">
+        {account && !account.drive_granted && (
+          <div className="notice warn driveNotice" role="alert">
+            Izin Google Drive belum diberikan untuk <b>{account.email}</b>. Penyimpanan ke Drive (tahap berikutnya) butuh izin ini: keluar, masuk lagi, lalu centang izin Google Drive di halaman Google.
+          </div>
+        )}
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
         {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, revision: p.revision, updated_at: p.updated_at } : x)) ?? list)} />}
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
