@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AiCatalogItem, AiConnection, AiLogEntry, AiSettings, Api, Capability, ProviderId } from '../api';
+import type { AiCatalogItem, AiConnection, AiLogEntry, AiSettings, AiUsage, Api, Capability, ProviderId } from '../api';
 import { formatDate } from '../lib';
 import { ErrorNotice } from '../ui';
 
@@ -25,12 +25,14 @@ export function AiView({ api }: { api: Api }) {
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [catalog, setCatalog] = useState<AiCatalogItem[]>([]);
   const [log, setLog] = useState<AiLogEntry[]>([]);
+  const [usage, setUsage] = useState<AiUsage | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [p, l] = await Promise.all([api.aiProviders(), api.aiLog()]);
+    const [p, l, u] = await Promise.all([api.aiProviders(), api.aiLog(), api.aiUsage()]);
+    setUsage(u);
     setConns(p.connections.sort((a, b) => a.priority - b.priority));
     setSettings(p.settings);
     setCatalog(p.catalog);
@@ -156,6 +158,8 @@ export function AiView({ api }: { api: Api }) {
         <AddConnection catalog={catalog} busy={busy} onAdd={(body) => act(() => api.aiAdd(body), 'Koneksi ditambahkan. Klik "Tes koneksi" untuk mengecek key-nya.')} />
       </section>
 
+      {settings && usage && <BudgetSection settings={settings} usage={usage} busy={busy} onSave={(b) => act(() => api.aiSettings({ budget: b }), 'Batas anggaran disimpan.')} />}
+
       <section className="card aiSection" aria-label="Log routing AI">
         <h3>Log routing</h3>
         {log.length === 0 ? (
@@ -188,6 +192,98 @@ export function AiView({ api }: { api: Api }) {
         )}
       </section>
     </div>
+  );
+}
+
+const money = (n: number) => `$${n.toFixed(4)}`;
+
+function Meter({ label, spent, cap }: { label: string; spent: number; cap: number }) {
+  const pct = cap > 0 ? Math.min(100, (spent / cap) * 100) : spent > 0 ? 100 : 0;
+  return (
+    <div className="meter">
+      <div className="row">
+        <span>{label}</span>
+        <span className="spacer" />
+        <b>
+          {money(spent)} / {money(cap)}
+        </b>
+      </div>
+      <div className="bar" role="progressbar" aria-label={`Pemakaian ${label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+        <span className={pct >= 90 ? 'hot' : ''} style={{ width: `${Math.max(1, pct)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function BudgetSection({ settings, usage, busy, onSave }: { settings: AiSettings; usage: AiUsage; busy: boolean; onSave: (b: AiSettings['budget']) => Promise<void> }) {
+  const [daily, setDaily] = useState(String(settings.budget.daily_usd));
+  const [monthly, setMonthly] = useState(String(settings.budget.monthly_usd));
+  const [perReq, setPerReq] = useState(String(settings.budget.per_request_usd));
+  useEffect(() => {
+    setDaily(String(settings.budget.daily_usd));
+    setMonthly(String(settings.budget.monthly_usd));
+    setPerReq(String(settings.budget.per_request_usd));
+  }, [settings.budget.daily_usd, settings.budget.monthly_usd, settings.budget.per_request_usd]);
+  const nums = [daily, monthly, perReq].map(Number);
+  const valid = nums.every((n) => Number.isFinite(n) && n >= 0);
+  return (
+    <section className="card aiSection" aria-label="Anggaran dan pemakaian AI">
+      <h3>Anggaran &amp; pemakaian</h3>
+      <p className="muted small">
+        Batas keras: panggilan AI yang perkiraan biayanya melewati batas ditolak <b>sebelum</b> dikirim. Biaya sebenarnya dicatat dari angka pemakaian provider.
+      </p>
+      <Meter label="Hari ini" spent={usage.today.usd} cap={settings.budget.daily_usd} />
+      <Meter label="Bulan ini" spent={usage.month.usd} cap={settings.budget.monthly_usd} />
+      <div className="formGrid">
+        <label>
+          Batas harian (USD)
+          <input aria-label="Batas harian" inputMode="decimal" value={daily} onChange={(e) => setDaily(e.target.value)} />
+        </label>
+        <label>
+          Batas bulanan (USD)
+          <input aria-label="Batas bulanan" inputMode="decimal" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+        </label>
+        <label>
+          Maks per permintaan (USD)
+          <input aria-label="Batas per permintaan" inputMode="decimal" value={perReq} onChange={(e) => setPerReq(e.target.value)} />
+        </label>
+      </div>
+      <div>
+        <button className="btn primary" disabled={busy || !valid} onClick={() => void onSave({ daily_usd: nums[0]!, monthly_usd: nums[1]!, per_request_usd: nums[2]! })}>
+          Simpan batas
+        </button>
+      </div>
+      {usage.by_model.length > 0 && (
+        <table className="list small" aria-label="Pemakaian per model bulan ini">
+          <thead>
+            <tr>
+              <th>Model (bulan ini)</th>
+              <th>Panggilan</th>
+              <th className="hideNarrow">Token in/out</th>
+              <th>Biaya</th>
+            </tr>
+          </thead>
+          <tbody>
+            {usage.by_model.map((m) => (
+              <tr key={`${m.provider}|${m.model}`}>
+                <td>
+                  {m.provider} · {m.model}
+                </td>
+                <td>
+                  {m.calls - m.failed}
+                  {m.failed ? ` (+${m.failed} gagal)` : ''}
+                </td>
+                <td className="hideNarrow">
+                  {m.input_tokens.toLocaleString('id-ID')} / {m.output_tokens.toLocaleString('id-ID')}
+                  {m.audio_seconds ? ` · ${Math.round(m.audio_seconds)} dtk audio` : ''}
+                </td>
+                <td>{money(m.usd)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 

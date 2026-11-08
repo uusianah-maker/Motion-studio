@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
 import { type GoogleAuth, createGoogleAuth, parseAllowlist } from './auth.js';
 import { type CycleResult, RENDER_TMP_PREFIX, type RecoveryReport, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
+import { openSpendGate } from './ai/budget.js';
 import { createAiPlanner } from './ai/planner.js';
 import { createRouter } from './ai/router.js';
 import { aiRoutes } from './ai/routes.js';
@@ -83,7 +84,8 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   const stateDir = env.MOTION_STATE_DIR ? path.resolve(env.MOTION_STATE_DIR) : defaultStateDir();
   // AI (W12): provider keys sealed in the state folder; the key file is only created on first use.
   const aiStore = await openAiStore(stateDir, env.MOTION_SECRET_KEY);
-  const aiRouter = createRouter({ ws, store: aiStore });
+  const ledger = await openSpendGate({ ws, store: aiStore, stateDir });
+  const aiRouter = createRouter({ ws, store: aiStore, gate: ledger.gate });
   const copilot = createCopilot(ws, { ai: createAiPlanner(aiStore, aiRouter), mode: () => aiStore.settings().mode });
   if (googleSet.length) {
     const authEndpoint = endpoint(env.MOTION_GOOGLE_AUTH_ENDPOINT, 'MOTION_GOOGLE_AUTH_ENDPOINT');
@@ -104,7 +106,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore)],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger)],
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 
@@ -151,7 +153,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     jobs,
     auth: auth ?? null,
     copilot,
-    ai: { store: aiStore, router: aiRouter },
+    ai: { store: aiStore, router: aiRouter, ledger },
     stateDir,
     async stop() {
       scheduler?.stop();

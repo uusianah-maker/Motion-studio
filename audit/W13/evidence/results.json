@@ -1,0 +1,52 @@
+{
+  "at": "2026-11-08T18:11:24.540Z",
+  "passed": 9,
+  "total": 9,
+  "results": [
+    {
+      "id": "BG-01 Meter hari ini & bulan ini tampil (default $1 / $10)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "BG-02 Batas disimpan dari UI",
+      "ok": true,
+      "detail": "{\"daily_usd\":1,\"monthly_usd\":10,\"per_request_usd\":0.005}"
+    },
+    {
+      "id": "BG-03 Perkiraan melewati batas per permintaan → ditolak SEBELUM dikirim (0 panggilan)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "BG-04 Panggilan pertama jalan ($0.0108), kedua ditolak batas harian",
+      "ok": true,
+      "detail": "≈ $0.0108"
+    },
+    {
+      "id": "BG-05 Meter = biaya tercatat dari usage provider; tabel per model",
+      "ok": true,
+      "detail": "Model (bulan ini) Panggilan Token in/out Biaya anthropic · claude-opus-5-5 1 1.200 / 300 $0.0108"
+    },
+    {
+      "id": "BG-06 Log routing mencatat penolakan anggaran (ai.budget_blocked)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "BG-07 Buku pemakaian di server: angka saja (tanpa prompt, tanpa key)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "BG-08 HP 390px: tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "BG-09 0 error JS (CSP tetap aktif)",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { type Workspace, audit, readAudit } from '../core.js';
 import { ApiError } from '../errors.js';
 import { readJsonBody } from '../http.js';
 import { bad, onlyKeys } from '../routes.js';
+import type { SpendLedger } from './budget.js';
 import { AiCallError, type Capability, PROVIDERS, type ProviderId, testConnection } from './adapters.js';
 import { type AiSettings, type AiStore, type Prices, providerBase, publicConnection } from './store.js';
 
@@ -87,7 +88,7 @@ export function parseSettings(body: Record<string, unknown>, cur: AiSettings): A
   return next;
 }
 
-export function aiRoutes(ws: Workspace, store: AiStore, fetchImpl: typeof fetch = fetch): Route[] {
+export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fetchImpl: typeof fetch = fetch): Route[] {
   const notFound = () => new ApiError(404, 'NOT_FOUND', 'Koneksi AI tidak ada');
   const view = () => ({
     connections: store.connections().map(publicConnection),
@@ -217,6 +218,14 @@ export function aiRoutes(ws: Workspace, store: AiStore, fetchImpl: typeof fetch 
         await store.setSettings(next);
         await audit(ws, { op: 'ai.settings', actor, outcome: 'ok', mode: next.mode, failover: next.failover, budget: next.budget });
         return { settings: next };
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/ai/usage',
+      handle: async () => {
+        if (!ledger) throw new ApiError(404, 'NOT_FOUND', 'Pencatatan pemakaian tidak aktif');
+        return { usage: ledger.summary() };
       },
     },
     {
