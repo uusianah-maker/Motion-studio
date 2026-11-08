@@ -109,7 +109,7 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Opsi B: tetap ketat, tambah tombol "Bersihkan riwayat undo" di editor.
 - Rekomendasi: A — edit tetap jalan, perlindungan GC tidak berkurang, dan tidak ada data yang dibuang.
 
-### PC-11: FFmpeg di mesin owner versi lama (4.1, 2018) — DIJAWAB 2026-11-08: **A** (owner memasang FFmpeg terbaru; W08 menunggu konfirmasi selesai pasang)
+### PC-11: FFmpeg di mesin owner versi lama (4.1, 2018) — DIJAWAB 2026-11-08: **A**, SELESAI. Atas permintaan owner, Claude memasang FFmpeg **9.0.2** (`winget install --id Gyan.FFmpeg`, build full gyan.dev, hash diverifikasi winget) dan — dengan izin owner — menghapus entri `C:fmpegin` (4.1) dari PATH user (folder lama tidak dihapus; tipe nilai PATH tetap ExpandString). `ffmpeg`/`ffprobe` kini 9.0.2. Diverifikasi: core W07 8/8, UI W07 19/19 dengan ffprobe 9.0.2. Terminal/IDE yang sudah terbuka perlu dibuka ulang agar memakai PATH baru
 - Konteks (W07): `C:\ffmpeg\bin` berisi FFmpeg/ffprobe 4.1. Cukup untuk probe, tapi W08 (render + hapus metadata) sebaiknya memakai versi yang masih didukung: banyak perbaikan keamanan parser dan codec sejak 2018, dan beberapa flag pembersih metadata lebih andal di versi baru.
 - Task terdampak: W08. Tidak memblokir W07.
 - Opsi A (rekomendasi): owner pasang FFmpeg rilis stabil terbaru (mis. build "release essentials" untuk Windows) lalu W08 memakai path itu (`MOTION_FFMPEG`/`MOTION_FFPROBE`). Claude tidak mengunduh/memasang software sendiri.
