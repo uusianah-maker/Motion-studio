@@ -10,7 +10,7 @@ Baca berurutan:
 
 Gaya kerja owner: Bahasa Indonesia santai & simpel; jalan otomatis pakai `/gasngoding`; audit mandiri (subagent reviewer); keputusan dikumpulkan dan ditanyakan di akhir (~90%), pilihan ganda + rekomendasi.
 
-Status v2.0: W01–W09 + W11 selesai (Checkpoint D lulus; W10 Drive dibatalkan PC-13, file tetap lokal); berikutnya Checkpoint E (audit W06–W11), lalu W12–W14. Render (W08) wajib menghapus metadata — lihat PROGRESS baris W08. Login Google (W09) aktif bila env Google diisi; uji nyata menunggu owner membuat OAuth Client (PC-12, `docs/SETUP_GOOGLE_LOGIN.md`).
+Status v2.0: W01–W09 + W11 selesai (Checkpoint D lulus; W10 Drive dibatalkan PC-13, file tetap lokal); Checkpoint E lulus; W12 AI Provider Manager selesai; berikutnya W13 (anggaran), W14 (caption/STT). Render (W08) wajib menghapus metadata — lihat PROGRESS baris W08. Login Google (W09) aktif bila env Google diisi; uji nyata menunggu owner membuat OAuth Client (PC-12, `docs/SETUP_GOOGLE_LOGIN.md`).
 
-Verifikasi: `npm ci` lalu `npm run verify` (core 193 pass / 1 skip, server 54/54, web 11/11, smoke), `npm run test:ui` (W05 20, W06 16, W07 19, W08 16, W09 14, W11 11; butuh Chrome + FFmpeg ≥7), `npm run test:e2e` (18/18), `npm run test:prototype` (56/56).
+Verifikasi: `npm ci` lalu `npm run verify` (core 193 pass / 1 skip, server 66/66, web 11/11, smoke), `npm run test:ui` (W05 20, W06 16, W07 19, W08 16, W09 14, W11 11, W12 13; butuh Chrome + FFmpeg ≥7), `npm run test:e2e` (18/18), `npm run test:prototype` (56/56).
 Belum pernah push/deploy — wajib izin owner.

@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Api, ProjectSummary } from './api';
+import { AiView } from './views/AiView';
 import { EditorView } from './views/EditorView';
 import { MediaView } from './views/MediaView';
 import { StorageView } from './views/StorageView';
 import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 
-export type View = 'editor' | 'media' | 'trash' | 'storage';
+export type View = 'editor' | 'media' | 'trash' | 'storage' | 'ai';
 
 const NAV: { id: View; sym: string; label: string }[] = [
   { id: 'editor', sym: '▤', label: 'Editor' },
   { id: 'media', sym: '◇', label: 'Media' },
   { id: 'trash', sym: '♲', label: 'Trash' },
   { id: 'storage', sym: '▥', label: 'Storage' },
+  { id: 'ai', sym: '✦', label: 'AI' },
 ];
 
 export interface Account {
@@ -93,6 +95,7 @@ export function App({ api, workspaceId, account = null }: { api: Api; workspaceI
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
         {view === 'trash' && <TrashView api={api} />}
         {view === 'storage' && <StorageView api={api} />}
+        {view === 'ai' && <AiView api={api} />}
       </div>
     </div>
   );

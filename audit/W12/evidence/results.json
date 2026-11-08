@@ -1,0 +1,72 @@
+{
+  "at": "2026-11-08T18:06:26.494Z",
+  "passed": 13,
+  "total": 13,
+  "results": [
+    {
+      "id": "AI-01 Halaman AI: belum ada koneksi, Copilot tetap lokal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "AI-02 Tambah koneksi: tampil \"…1111\", key tidak ada di DOM/storage/balasan server",
+      "ok": true,
+      "detail": "balasan dicek: 11"
+    },
+    {
+      "id": "AI-03 Tes koneksi berhasil → status Siap; header resmi terkirim",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "AI-04 Koneksi kedua urutan 2",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "AI-05 Rencana dari AI: badge provider + biaya (1200 in × $4 + 300 out × $20 = $0.0108)",
+      "ok": true,
+      "detail": "≈ $0.0108"
+    },
+    {
+      "id": "AI-06 Disetujui → klip \"Hook dari AI\" masuk linimasa",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "AI-07 Failover: Claude overload 3× → rencana dari OpenAI",
+      "ok": true,
+      "detail": "panggilan claude 4"
+    },
+    {
+      "id": "AI-08 Log routing: gagal transient (anthropic) lalu ok (openai), tanpa key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "AI-09 Provider utama ditandai jeda (cooldown)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "AI-10 Key ditolak → Perlu tindakan → ganti key → Siap lagi (…NEW9)",
+      "ok": true,
+      "detail": "held=true hint=true sent=NEW9"
+    },
+    {
+      "id": "AI-11 Hapus koneksi (dengan konfirmasi); file server hanya berisi key terenkripsi",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "AI-12 HP 390px: halaman AI muat tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "AI-13 0 error JS (CSP tetap aktif)",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

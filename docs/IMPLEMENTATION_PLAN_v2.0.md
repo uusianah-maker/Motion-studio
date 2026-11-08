@@ -23,7 +23,7 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 
 ## Fase 3 — Copilot & AI
 - [x] W11 Copilot planner lokal → edit plan JSON tervalidasi → diff → setujui → terapkan → undo. *Selesai 2026-11-09: mesin aturan lokal (tanpa LLM), skema `EditPlan` v1, setujui sebagian, idempotent, satu langkah undo; hook AiPlanner untuk W12.*
-- [ ] W12 AI Provider Manager (API key manual, rahasia di server) + router & failover resmi.
+- [x] W12 AI Provider Manager (API key manual, rahasia di server) + router & failover resmi. *Selesai 2026-11-09: Anthropic/OpenAI/Gemini/kompatibel-OpenAI lewat HTTP resmi, key disegel, failover hanya lintas provider; diuji dengan provider tiruan.*
 - [ ] W13 Usage/biaya, batas anggaran keras, audit.
 - [ ] W14 Caption/STT + edit transkrip.
 - [ ] W15 Uji E2E UI (Playwright) + paket deploy VPS (deploy nyata menunggu izin owner).

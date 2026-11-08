@@ -12,6 +12,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
 import { type GoogleAuth, createGoogleAuth, parseAllowlist } from './auth.js';
 import { type CycleResult, RENDER_TMP_PREFIX, type RecoveryReport, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
+import { createAiPlanner } from './ai/planner.js';
+import { createRouter } from './ai/router.js';
+import { aiRoutes } from './ai/routes.js';
+import { openAiStore } from './ai/store.js';
 import { createCopilot } from './copilot.js';
 import { createRenderJobs } from './render.js';
 import { apiRoutes, sweepUploadTemp } from './routes.js';
@@ -75,9 +79,12 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   const releasedLeases = await releaseOrphanLeases(ws);
   const jobs = createRenderJobs(ws, { tmpRoot: renderTmp }, (e) => process.stderr.write(`[server] render: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}
 `));
-  const copilot = createCopilot(ws);
   let auth: GoogleAuth | undefined;
   const stateDir = env.MOTION_STATE_DIR ? path.resolve(env.MOTION_STATE_DIR) : defaultStateDir();
+  // AI (W12): provider keys sealed in the state folder; the key file is only created on first use.
+  const aiStore = await openAiStore(stateDir, env.MOTION_SECRET_KEY);
+  const aiRouter = createRouter({ ws, store: aiStore });
+  const copilot = createCopilot(ws, { ai: createAiPlanner(aiStore, aiRouter), mode: () => aiStore.settings().mode });
   if (googleSet.length) {
     const authEndpoint = endpoint(env.MOTION_GOOGLE_AUTH_ENDPOINT, 'MOTION_GOOGLE_AUTH_ENDPOINT');
     const tokenEndpoint = endpoint(env.MOTION_GOOGLE_TOKEN_ENDPOINT, 'MOTION_GOOGLE_TOKEN_ENDPOINT');
@@ -97,7 +104,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore)],
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 
@@ -144,6 +151,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     jobs,
     auth: auth ?? null,
     copilot,
+    ai: { store: aiStore, router: aiRouter },
     stateDir,
     async stop() {
       scheduler?.stop();

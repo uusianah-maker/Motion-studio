@@ -238,3 +238,20 @@ table.list tr:hover td { background: #191d29; }
 .diff.add { color: #8fe3b4; }
 .diff.remove { color: #ff9e9e; }
 .diff.change, .diff.canvas { color: #f3d08a; }
+
+/* ---------- AI provider manager (W12/W13) ---------- */
+.aiPage h2 { margin: 0 0 6px; }
+.aiSection { margin-top: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.aiSection h3 { margin: 0; font-size: 14px; }
+.row.wrap { flex-wrap: wrap; }
+label.inline { display: inline-flex; align-items: center; gap: 6px; }
+.conns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.conns li { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.conns li.off { opacity: 0.6; }
+.addConn summary { cursor: pointer; font-weight: 650; margin: 6px 0; }
+.formGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 8px 0; }
+.formGrid label, .formGrid fieldset { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b3bbce; }
+.formGrid fieldset { border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; }
+.formGrid input, .formGrid select, .aiSection select, .conns input { border: 1px solid var(--line); background: #10141e; border-radius: 8px; padding: 7px 9px; color: inherit; font: inherit; min-width: 0; }
+.row { display: flex; align-items: center; gap: 8px; }
+.aiSection .row.wrap > .btn { margin: 0; }

@@ -16,6 +16,6 @@ export default tseslint.config(
   {
     files: ['audit/**/*.mjs', 'scripts/**/*.mjs', 'packages/core/src/cli/**/*.ts'],
     rules: { 'no-console': 'off' },
-    languageOptions: { globals: { console: 'readonly', process: 'readonly', fetch: 'readonly', URL: 'readonly', URLSearchParams: 'readonly', TextEncoder: 'readonly', Buffer: 'readonly', location: 'readonly', document: 'readonly', window: 'readonly', getComputedStyle: 'readonly', innerWidth: 'readonly', localStorage: 'readonly', sessionStorage: 'readonly' } },
+    languageOptions: { globals: { console: 'readonly', process: 'readonly', fetch: 'readonly', URL: 'readonly', URLSearchParams: 'readonly', setTimeout: 'readonly', TextEncoder: 'readonly', Buffer: 'readonly', location: 'readonly', document: 'readonly', window: 'readonly', getComputedStyle: 'readonly', innerWidth: 'readonly', localStorage: 'readonly', sessionStorage: 'readonly' } },
   },
 );

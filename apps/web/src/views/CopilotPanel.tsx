@@ -34,6 +34,11 @@ export function CopilotPanel({
   const [done, setDone] = useState<{ count: number; of: number; revision: number } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [working, setWorking] = useState(false);
+  const [mode, setMode] = useState<'local' | 'auto' | 'ai'>('local');
+
+  useEffect(() => {
+    api.aiProviders().then((r) => setMode(r.settings.mode), () => undefined);
+  }, [api]);
 
   // Another project: start clean.
   useEffect(() => {
@@ -119,8 +124,8 @@ export function CopilotPanel({
     <section className="copilot" aria-label="Motion Copilot">
       <div className="copilotHead">
         <b>Motion Copilot</b>
-        <span className="badge" title="Perintah dikenali aturan lokal; tidak ada panggilan AI atau biaya API">
-          Lokal · tanpa AI
+        <span className={`badge${mode === 'local' ? '' : ' warn'}`} title={mode === 'local' ? 'Perintah dikenali aturan lokal; tidak ada panggilan AI atau biaya API' : 'Perintah yang tidak dikenali aturan dikirim ke AI (berbiaya, dibatasi anggaran)'}>
+          {mode === 'local' ? 'Lokal · tanpa AI' : mode === 'auto' ? 'Otomatis · AI jika perlu' : 'AI'}
         </span>
       </div>
       <textarea

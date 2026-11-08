@@ -173,6 +173,63 @@ export interface ApplyReply {
   already_applied: boolean;
 }
 
+// ------------------------------------------------------------ AI providers (W12/W13)
+export type ProviderId = 'anthropic' | 'openai' | 'gemini' | 'openai_compatible';
+export type Capability = 'planner' | 'transcription';
+export interface Prices {
+  input_per_mtok: number;
+  output_per_mtok: number;
+  per_audio_minute: number;
+}
+export interface AiConnection {
+  connection_id: string;
+  provider: ProviderId;
+  label: string;
+  model: string;
+  capabilities: Capability[];
+  base_url: string | null;
+  priority: number;
+  enabled: boolean;
+  prices: Prices;
+  key_hint: string | null;
+  has_key: boolean;
+  status: 'untested' | 'ok' | 'error' | 'needs_admin';
+  last_error: { class: string; status: number | null; message: string; at: number } | null;
+  last_test_at: number | null;
+  cooldown_until: number;
+  cooling_down: boolean;
+}
+export interface AiSettings {
+  mode: 'local' | 'auto' | 'ai';
+  failover: boolean;
+  max_retries: number;
+  timeout_ms: number;
+  cooldown_ms: number;
+  max_output_tokens: number;
+  budget: { daily_usd: number; monthly_usd: number; per_request_usd: number };
+}
+export interface AiCatalogItem {
+  provider: ProviderId;
+  label: string;
+  base_url: string | null;
+  capabilities: Capability[];
+  key_required: boolean;
+  model_hint: string;
+}
+export interface AiLogEntry {
+  ts: number;
+  op: string;
+  outcome: string;
+  provider?: string;
+  model?: string;
+  capability?: string;
+  error_class?: string | null;
+  status?: number | null;
+  cost_usd?: number;
+  request_id?: string | null;
+  reason?: string;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -281,6 +338,16 @@ export function createApi(token: string | null, base = '') {
     copilotPreview: (id: string, planId: string, accept: number[]) =>
       call<{ diff: DiffItem[] }>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plans/${encodeURIComponent(planId)}/preview`, { json: { accept } }).then((r) => r.diff),
     copilotReject: (id: string, planId: string) => call<{ status: string }>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plans/${encodeURIComponent(planId)}/reject`, { json: {} }),
+    aiProviders: () => call<{ connections: AiConnection[]; settings: AiSettings; catalog: AiCatalogItem[] }>('GET', '/api/ai/providers'),
+    aiAdd: (body: { provider: ProviderId; label?: string; model: string; api_key?: string; capabilities: Capability[]; base_url?: string; prices: Prices }) =>
+      call<{ connection: AiConnection }>('POST', '/api/ai/providers', { json: body }).then((r) => r.connection),
+    aiUpdate: (id: string, patch: Partial<Pick<AiConnection, 'label' | 'model' | 'capabilities' | 'priority' | 'enabled' | 'prices'>>) =>
+      call<{ connection: AiConnection }>('POST', `/api/ai/providers/${encodeURIComponent(id)}`, { json: patch }).then((r) => r.connection),
+    aiRotate: (id: string, api_key: string) => call<{ connection: AiConnection }>('POST', `/api/ai/providers/${encodeURIComponent(id)}/key`, { json: { api_key } }).then((r) => r.connection),
+    aiTest: (id: string) => call<{ result: { ok: boolean; models: number | null; model_listed: boolean | null; error: { class: string; status: number | null; message: string } | null }; connection: AiConnection }>('POST', `/api/ai/providers/${encodeURIComponent(id)}/test`, { json: {} }),
+    aiRemove: (id: string) => call<{ ok: true }>('DELETE', `/api/ai/providers/${encodeURIComponent(id)}`),
+    aiSettings: (patch: Partial<Omit<AiSettings, 'budget'>> & { budget?: Partial<AiSettings['budget']> }) => call<{ settings: AiSettings }>('POST', '/api/ai/settings', { json: patch }).then((r) => r.settings),
+    aiLog: () => call<{ entries: AiLogEntry[] }>('GET', '/api/ai/log').then((r) => r.entries),
     dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
     // Render MP4 (W08)
     renderTools: () => call<RenderTools>('GET', '/api/render/tools'),

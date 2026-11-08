@@ -14,6 +14,9 @@ export type HttpErrorCode =
   | 'INSUFFICIENT_STORAGE'
   | 'METHOD_NOT_ALLOWED'
   | 'BUSY'
+  | 'AI_UNAVAILABLE'
+  | 'AI_OUTPUT_INVALID'
+  | 'BUDGET_EXCEEDED'
   | 'INTERNAL';
 
 /** Typed API error: `{ error: { code, message } }` with a fitting HTTP status. */
