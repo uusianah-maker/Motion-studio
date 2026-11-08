@@ -22,7 +22,7 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 **CHECKPOINT E** — dipindah ke setelah W11 (5 task: W06–W09 + W11) karena W10 batal
 
 ## Fase 3 — Copilot & AI
-- [ ] W11 Copilot planner lokal → edit plan JSON tervalidasi → diff → setujui → terapkan → undo.
+- [x] W11 Copilot planner lokal → edit plan JSON tervalidasi → diff → setujui → terapkan → undo. *Selesai 2026-11-09: mesin aturan lokal (tanpa LLM), skema `EditPlan` v1, setujui sebagian, idempotent, satu langkah undo; hook AiPlanner untuk W12.*
 - [ ] W12 AI Provider Manager (API key manual, rahasia di server) + router & failover resmi.
 - [ ] W13 Usage/biaya, batas anggaran keras, audit.
 - [ ] W14 Caption/STT + edit transkrip.

@@ -31,4 +31,22 @@ export { type CycleResult, GcScheduler } from './storage/scheduler.js';
 export { recoverOnStartup, type RecoveryReport } from './storage/recovery.js';
 export { StorageService, describeOps } from './storage/service.js';
 export { type EditOp, MIN_CLIP_MS, UNDO_LIMIT, historyCounts } from './storage/timeline.js';
+export {
+  type DiffItem,
+  type EditPlan,
+  LOCAL_EXAMPLES,
+  MAX_PROMPT_LEN,
+  PLAN_SCHEMA_VERSION,
+  type PlanContext,
+  type PlanOperation,
+  type PlanSource,
+  checkPlan,
+  describeOps as describePlanOps,
+  diffTimelines,
+  fmtTime,
+  parseTime,
+  pickOps,
+  planLocal,
+  timelineEndMs,
+} from './storage/copilot.js';
 export { type Workspace, type WorkspaceOptions, createProject, initWorkspace, listProjectIds, openWorkspace, readProject } from './storage/workspace.js';

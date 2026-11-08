@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-08T17:35:42.285Z",
+  "at": "2026-11-08T17:46:27.065Z",
   "passed": 14,
   "total": 14,
   "results": [
@@ -11,7 +11,7 @@
     {
       "id": "LG-02 Klik → Google → kembali ke app; alamat bersih (tanpa code/state)",
       "ok": true,
-      "detail": "http://127.0.0.1:58690/"
+      "detail": "http://127.0.0.1:60443/"
     },
     {
       "id": "LG-03 Sesi = cookie HttpOnly + SameSite=Strict; JS & storage tidak melihat token apa pun",
@@ -46,7 +46,7 @@
     {
       "id": "LG-09 Email di luar daftar: ditolak dengan pesan jelas, tanpa sesi; kode error dihapus dari alamat",
       "ok": true,
-      "detail": "http://127.0.0.1:58690/"
+      "detail": "http://127.0.0.1:60443/"
     },
     {
       "id": "LG-10 Batal di Google: pesan \"Login dibatalkan\"",

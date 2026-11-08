@@ -19,7 +19,7 @@ Satu paket npm (bukan npm workspaces): drive D: memakai exFAT yang tidak menduku
 | `npm run verify` | build + typecheck + lint + test + smoke |
 | `npm run start:server` | build lalu jalankan server; set `MOTION_WORKSPACE` (folder workspace yang sudah di-init), opsional `MOTION_PORT` (default 4317), `MOTION_UPLOAD_TMP` (temp upload, di luar workspace), `MOTION_GC` (`on` default, `scan-only`, `off`), `MOTION_FFPROBE` (path ffprobe, default dari PATH), `MOTION_FFMPEG` (path ffmpeg ≥7, default dari PATH), `MOTION_RENDER_TMP` (folder kerja render, di luar workspace; default temp OS), `MOTION_FONT` (font teks/subtitle; default Arial Bold/DejaVu Sans Bold). Login Google (W09): `MOTION_GOOGLE_CLIENT_ID` + `MOTION_GOOGLE_CLIENT_SECRET` + `MOTION_ALLOWED_EMAILS` (ketiganya = login Google wajib; sebagian = server menolak start), opsional `MOTION_PUBLIC_URL`, `MOTION_STATE_DIR`, `MOTION_SECRET_KEY`; bisa ditaruh di `.env.local` (lihat `.env.example`, panduan `docs/SETUP_GOOGLE_LOGIN.md`). Tanpa Google: URL berisi token dicetak di terminal. Daftar endpoint: `PROGRESS.md` baris W04 |
 | `npm test` | unit/integration test |
-| `npm run test:ui` | build lalu uji UI di Chrome nyata (W05 halaman + W06 editor timeline + W07 pratinjau + W08 render MP4 + W09 login Google; bukti + screenshot ke `audit/W05|W06/evidence`) |
+| `npm run test:ui` | build lalu uji UI di Chrome nyata (W05 halaman + W06 editor timeline + W07 pratinjau + W08 render MP4 + W09 login Google + W11 Copilot; bukti + screenshot ke `audit/W05|W06/evidence`) |
 | `npm run test:e2e` | build lalu acceptance run dengan MP4 nyata |
 | `npm run test:prototype` | audit browser prototype (butuh Google Chrome); bukti ke `.tmp/prototype-evidence` |
 

@@ -222,3 +222,19 @@ table.list tr:hover td { background: #191d29; }
 .gMark { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #fff; color: #4f6df5; font-weight: 900; font-size: 13px; }
 .small { font-size: 12px; }
 .nav.account .avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #2c3350; color: #d9def0; font-weight: 800; font-size: 13px; }
+
+/* ---------- copilot (W11) ---------- */
+.copilot { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
+.copilotHead { display: flex; align-items: center; gap: 8px; }
+.copilot textarea { width: 100%; resize: vertical; border: 1px solid var(--line); background: #10141e; border-radius: 9px; padding: 9px 10px; font: inherit; font-size: 12px; line-height: 1.5; color: inherit; }
+.copilotQuick { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { border: 1px solid #3b4260; background: #1a1f2e; color: #b9c1d6; border-radius: 999px; padding: 4px 9px; font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { background: #242a3d; }
+.planCard { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+.planCard p { margin: 0; }
+.planOps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.planOps label { display: flex; gap: 7px; align-items: flex-start; line-height: 1.45; }
+.planDiff { display: flex; flex-direction: column; gap: 2px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+.diff.add { color: #8fe3b4; }
+.diff.remove { color: #ff9e9e; }
+.diff.change, .diff.canvas { color: #f3d08a; }

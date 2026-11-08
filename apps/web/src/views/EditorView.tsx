@@ -1,3 +1,4 @@
+import { CopilotPanel } from './CopilotPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Track } from '../api';
 import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration } from '../lib';
@@ -282,9 +283,21 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
               Sebagian media belum terbaca durasinya (ffprobe belum jalan untuk file itu). Klip dari media tersebut masuk 5 detik dan trim-nya belum dibatasi panjang sumber.
             </p>
           )}
-          <div className="notice info">
-            <b>Motion Copilot</b> belum aktif. Asisten AI yang menyusun rencana edit (dengan persetujuan lo) dibangun di tahap W11.
-          </div>
+          {project && (
+            <CopilotPanel
+              api={api}
+              project={project}
+              selectedClipId={selected}
+              playheadMs={playhead}
+              busy={busy}
+              onApplied={(p) => {
+                setProject(p);
+                onSavedRef.current?.(p);
+                setSelected((s) => (s && p.timeline.tracks.some((t) => t.clips.some((c) => c.clip_id === s)) ? s : null));
+              }}
+              onUndo={() => void step('undo')}
+            />
+          )}
         </div>
       </aside>
 

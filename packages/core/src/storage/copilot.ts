@@ -1,0 +1,425 @@
+import { StorageError } from './errors.js';
+import { CANVAS_RATIOS, type CanvasRatio, MAX_TEXT_LEN, type TrackKind } from './project.js';
+import { type EditOp, MIN_CLIP_MS, type SourceDuration, type Timeline, applyOps, validateOps } from './timeline.js';
+
+/**
+ * Motion Copilot (W11, PRD §8 + "Provider-neutral planning schema"). A planner turns a prompt
+ * into an EDIT PLAN: typed timeline operations (the same `EditOp`s the manual editor uses),
+ * validated against the current revision, shown as a diff, and applied only after the user
+ * approves — as ONE undo step. Planners (the local rule engine here, an LLM in W12) never
+ * touch files or the database; they only return JSON.
+ */
+
+export const PLAN_SCHEMA_VERSION = 1;
+export const MAX_PLAN_OPS = 60;
+export const MAX_PROMPT_LEN = 1000;
+
+export type PlanSource = 'local' | 'ai' | 'transcript';
+
+export interface PlanOperation {
+  op: EditOp;
+  /** Human description (Indonesian), computed by the server, never trusted from a planner. */
+  label: string;
+}
+
+export interface EditPlan {
+  schema_version: typeof PLAN_SCHEMA_VERSION;
+  plan_id: string;
+  project_id: string;
+  /** Revision the plan was made for: applying to any other revision is refused (stale plan). */
+  project_revision: number;
+  source: PlanSource;
+  prompt: string;
+  operations: PlanOperation[];
+  rationale: string;
+  warnings: string[];
+  cost_estimate: { usd: number; note: string };
+  requires_approval: true;
+  provider: { connection_id: string; provider: string; model: string } | null;
+  created_at: number;
+}
+
+export interface DiffItem {
+  kind: 'add' | 'remove' | 'change' | 'canvas';
+  track_kind: TrackKind | null;
+  clip_id: string | null;
+  before: { start_ms: number; end_ms: number; text?: string } | null;
+  after: { start_ms: number; end_ms: number; text?: string } | null;
+  summary: string;
+}
+
+const bad = (msg: string, details: Record<string, unknown> = {}): never => {
+  throw new StorageError('EDIT_INVALID', msg, details);
+};
+
+export const fmtTime = (ms: number) => {
+  const s = Math.max(0, Math.round(ms / 100) / 10);
+  const m = Math.floor(s / 60);
+  const rest = s - m * 60;
+  const sec = Number.isInteger(rest) ? String(rest).padStart(2, '0') : rest.toFixed(1).padStart(4, '0');
+  return `${m}:${sec}`;
+};
+const TRACK_NAME: Record<TrackKind, string> = { video: 'video', broll: 'b-roll', text: 'teks', subtitle: 'subtitle', audio: 'audio', effects: 'efek' };
+const quote = (t: string) => `“${t.length > 40 ? `${t.slice(0, 39)}…` : t}”`;
+
+function findClip(t: Timeline, id: string) {
+  for (const track of t.tracks) {
+    const clip = track.clips.find((c) => c.clip_id === id);
+    if (clip) return { track, clip };
+  }
+  return null;
+}
+
+/** One line per op, against the timeline the op will run on. */
+export function describeOp(op: EditOp, t: Timeline): string {
+  const ref = (id: string) => {
+    const f = findClip(t, id);
+    if (!f) return `klip ${id}`;
+    return `klip ${TRACK_NAME[f.track.kind]}${f.clip.text ? ` ${quote(f.clip.text)}` : ''} (${fmtTime(f.clip.start_ms)}–${fmtTime(f.clip.end_ms)})`;
+  };
+  switch (op.op) {
+    case 'add_clip':
+      return op.text !== undefined
+        ? `Tambah ${TRACK_NAME[op.track_kind]} ${quote(op.text)} di ${fmtTime(op.start_ms)}–${fmtTime(op.start_ms + op.duration_ms)}`
+        : `Tambah klip ${TRACK_NAME[op.track_kind]} di ${fmtTime(op.start_ms)}–${fmtTime(op.start_ms + op.duration_ms)}`;
+    case 'move_clip':
+      return `Geser ${ref(op.clip_id)} ke ${fmtTime(op.start_ms)}`;
+    case 'trim_clip':
+      return `Pangkas ${op.edge === 'start' ? 'awal' : 'akhir'} ${ref(op.clip_id)} ke ${fmtTime(op.to_ms)}`;
+    case 'split_clip':
+      return `Potong ${ref(op.clip_id)} di ${fmtTime(op.at_ms)}`;
+    case 'delete_clip':
+      return `Hapus ${ref(op.clip_id)}`;
+    case 'set_text':
+      return `Ubah teks ${ref(op.clip_id)} → ${quote(op.text)}`;
+    case 'set_canvas':
+      return `Ubah rasio ke ${op.ratio}`;
+  }
+}
+
+/** Labels for a whole op list, each described against the timeline as it is before that op. */
+export function describeOps(ops: EditOp[], t: Timeline): string[] {
+  const labels: string[] = [];
+  let cur = t;
+  let n = 0;
+  for (const op of ops) {
+    labels.push(describeOp(op, cur));
+    try {
+      cur = applyOps(cur, [op], () => `plan_new_${++n}`);
+    } catch {
+      /* the full validation reports it */
+    }
+  }
+  return labels;
+}
+
+/** What changes between two timelines (clip identity by id; new clips are "add"). */
+export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
+  const items: DiffItem[] = [];
+  const index = (t: Timeline) => {
+    const m = new Map<string, { kind: TrackKind; start_ms: number; end_ms: number; text?: string }>();
+    for (const tr of t.tracks) for (const c of tr.clips) m.set(c.clip_id, { kind: tr.kind, start_ms: c.start_ms, end_ms: c.end_ms, ...(c.text !== undefined ? { text: c.text } : {}) });
+    return m;
+  };
+  const a = index(before);
+  const b = index(after);
+  const shape = (x: { start_ms: number; end_ms: number; text?: string }) => ({ start_ms: x.start_ms, end_ms: x.end_ms, ...(x.text !== undefined ? { text: x.text } : {}) });
+  for (const [id, x] of a) {
+    const y = b.get(id);
+    if (!y) {
+      items.push({ kind: 'remove', track_kind: x.kind, clip_id: id, before: shape(x), after: null, summary: `− ${TRACK_NAME[x.kind]}${x.text ? ` ${quote(x.text)}` : ''} ${fmtTime(x.start_ms)}–${fmtTime(x.end_ms)}` });
+    } else if (x.start_ms !== y.start_ms || x.end_ms !== y.end_ms || x.text !== y.text) {
+      const parts: string[] = [];
+      if (x.start_ms !== y.start_ms || x.end_ms !== y.end_ms) parts.push(`${fmtTime(x.start_ms)}–${fmtTime(x.end_ms)} → ${fmtTime(y.start_ms)}–${fmtTime(y.end_ms)}`);
+      if (x.text !== y.text) parts.push(`${quote(x.text ?? '')} → ${quote(y.text ?? '')}`);
+      items.push({ kind: 'change', track_kind: x.kind, clip_id: id, before: shape(x), after: shape(y), summary: `~ ${TRACK_NAME[x.kind]}: ${parts.join(', ')}` });
+    }
+  }
+  for (const [id, y] of b) {
+    if (!a.has(id)) items.push({ kind: 'add', track_kind: y.kind, clip_id: null, before: null, after: shape(y), summary: `+ ${TRACK_NAME[y.kind]}${y.text ? ` ${quote(y.text)}` : ''} ${fmtTime(y.start_ms)}–${fmtTime(y.end_ms)}` });
+  }
+  const ra = before.canvas?.ratio ?? '9:16';
+  const rb = after.canvas?.ratio ?? '9:16';
+  if (ra !== rb) items.push({ kind: 'canvas', track_kind: null, clip_id: null, before: null, after: null, summary: `Rasio ${ra} → ${rb}` });
+  return items;
+}
+
+/**
+ * Validate planner output (untrusted, from rules or an LLM) against the current timeline:
+ * shape (same validator as HTTP edits), op count, and a dry-run of the whole list — an invalid
+ * plan is rejected as a whole, never half-applied. Returns the ops, their labels and the diff.
+ */
+export function checkPlan(timeline: Timeline, rawOps: unknown, sourceDuration?: SourceDuration): { ops: EditOp[]; labels: string[]; diff: DiffItem[] } {
+  if (Array.isArray(rawOps) && rawOps.length > MAX_PLAN_OPS) bad(`Rencana maksimal ${MAX_PLAN_OPS} operasi`);
+  const ops = validateOps(rawOps);
+  let n = 0;
+  const after = applyOps(timeline, ops, () => `plan_new_${++n}`, sourceDuration);
+  return { ops, labels: describeOps(ops, timeline), diff: diffTimelines(timeline, after) };
+}
+
+/** Selected subset (approve some operations only). Indices must be unique and in range. */
+export function pickOps(ops: EditOp[], accept: unknown): EditOp[] {
+  if (accept === undefined) return ops;
+  if (!Array.isArray(accept) || !accept.length || accept.length > ops.length || !accept.every((i) => Number.isInteger(i) && i >= 0 && i < ops.length) || new Set(accept).size !== accept.length) {
+    bad('Pilihan operasi tidak valid');
+  }
+  return [...(accept as number[])].sort((a, b) => a - b).map((i) => ops[i]!);
+}
+
+// ------------------------------------------------------------------ local rule planner
+
+export interface PlanContext {
+  timeline: Timeline;
+  selected_clip_ids?: string[];
+  playhead_ms?: number;
+}
+
+export type LocalPlanResult = { ok: true; ops: EditOp[]; rationale: string; warnings: string[] } | { ok: false; message: string };
+
+/** Commands the local planner understands (shown when a prompt is not recognised). */
+export const LOCAL_EXAMPLES = [
+  'hook "Diskon 50% hari ini!" 2 detik',
+  'tambah teks "Cek keranjang kuning" detik 3-6',
+  'subtitle "Halo semua" 0:01-0:04',
+  'CTA "Join live jam 7" di akhir',
+  'ubah rasio ke 1:1',
+  'potong di detik 3',
+  'geser klip terpilih ke detik 5',
+  'ganti teks jadi "Promo terbatas"',
+  'durasi klip terpilih 4 detik',
+  'hapus klip terpilih',
+  'hapus semua teks',
+];
+
+const QUOTE_RE = /"([^"]{1,500})"|“([^”]{1,500})”|'([^']{1,500})'/;
+const NUM = String.raw`(\d{1,2}:\d{2}(?:[.,]\d)?|\d+(?:[.,]\d+)?)`;
+
+/** "3", "2.5", "2,5", "0:04", "1:05.5" → ms. */
+export function parseTime(raw: string): number {
+  const s = raw.replace(',', '.');
+  if (s.includes(':')) {
+    const [m, sec] = s.split(':');
+    return Math.round((Number(m) * 60 + Number(sec)) * 1000);
+  }
+  return Math.round(Number(s) * 1000);
+}
+
+function timeRange(text: string): { start: number; end: number } | null {
+  const re = new RegExp(String.raw`${NUM}\s*(?:s|dtk|detik)?\s*(?:-|–|sampai|sd|s\.d\.|hingga|to|until)\s*${NUM}`, 'i');
+  const m = re.exec(text);
+  if (!m) return null;
+  const start = parseTime(m[1]!);
+  const end = parseTime(m[2]!);
+  return end > start ? { start, end } : null;
+}
+
+function atTime(text: string): number | null {
+  const m = new RegExp(String.raw`(?:detik(?:\s+ke)?|di|pada|at|ke|to)\s*${NUM}\s*(?:s|dtk|detik)?`, 'i').exec(text) ?? new RegExp(String.raw`${NUM}\s*(?:s|dtk|detik)\b`, 'i').exec(text);
+  return m ? parseTime(m[1]!) : null;
+}
+
+function lengthOf(text: string): number | null {
+  const m = new RegExp(String.raw`${NUM}\s*(?:s|dtk|detik|second|seconds)\b`, 'i').exec(text);
+  return m ? parseTime(m[1]!) : null;
+}
+
+const RATIO_WORDS: [RegExp, CanvasRatio][] = [
+  [/\b(9:16|vertikal|vertical|portrait|tiktok|reels|shorts)\b/i, '9:16'],
+  [/\b(1:1|persegi|kotak|square)\b/i, '1:1'],
+  [/\b(16:9|landscape|horizontal|youtube)\b/i, '16:9'],
+  [/\b(3:4)\b/i, '3:4'],
+];
+
+export const timelineEndMs = (t: Timeline) => Math.max(0, ...t.tracks.flatMap((tr) => tr.clips.map((c) => c.end_ms)));
+
+/** Overlap check on one track, so the planner can explain the clash instead of failing later. */
+function clash(t: Timeline, kind: TrackKind, start: number, end: number) {
+  const tr = t.tracks.find((x) => x.kind === kind);
+  return tr?.clips.find((c) => c.start_ms < end && start < c.end_ms) ?? null;
+}
+
+/** Split a prompt into commands: ";", new lines, " lalu ", " kemudian ", " then ". Quotes are kept intact. */
+function splitCommands(prompt: string): string[] {
+  const parts: string[] = [];
+  let buf = '';
+  let q: string | null = null;
+  const closers: Record<string, string> = { '"': '"', '“': '”', "'": "'" };
+  for (let i = 0; i < prompt.length; i++) {
+    const ch = prompt[i]!;
+    if (q) {
+      if (ch === q) q = null;
+      buf += ch;
+      continue;
+    }
+    if (ch in closers && (ch !== "'" || /[\s:=]/.test(prompt[i - 1] ?? ' '))) {
+      q = closers[ch]!;
+      buf += ch;
+      continue;
+    }
+    if (ch === ';' || ch === '\n') {
+      parts.push(buf);
+      buf = '';
+      continue;
+    }
+    const rest = prompt.slice(i).toLowerCase();
+    const sep = [' lalu ', ' kemudian ', ' then '].find((s) => rest.startsWith(s));
+    if (sep) {
+      parts.push(buf);
+      buf = '';
+      i += sep.length - 1;
+      continue;
+    }
+    buf += ch;
+  }
+  parts.push(buf);
+  return parts.map((p) => p.trim()).filter(Boolean);
+}
+
+/**
+ * Zero-LLM planner (PRD "Local mode": no external call, documented subset of instructions).
+ * Indonesian + English patterns. Unknown commands are reported, never guessed.
+ */
+export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
+  const text = prompt.trim();
+  if (!text) return { ok: false, message: 'Perintah kosong.' };
+  if (text.length > MAX_PROMPT_LEN) return { ok: false, message: `Perintah maksimal ${MAX_PROMPT_LEN} karakter.` };
+  let t = ctx.timeline;
+  const ops: EditOp[] = [];
+  const warnings: string[] = [];
+  const reasons: string[] = [];
+  const selected = (ctx.selected_clip_ids ?? []).map((id) => findClip(t, id)).filter((x): x is NonNullable<typeof x> => !!x);
+  let n = 0;
+  const push = (op: EditOp, why: string) => {
+    t = applyOps(t, [op], () => `plan_new_${++n}`); // throws EDIT_INVALID with a clear message
+    ops.push(op);
+    reasons.push(why);
+  };
+
+  for (const cmd of splitCommands(text)) {
+    const qm = QUOTE_RE.exec(cmd);
+    const quoted = qm ? (qm[1] ?? qm[2] ?? qm[3] ?? '').trim() : null;
+    if (quoted !== null && (!quoted || quoted.length > MAX_TEXT_LEN)) return { ok: false, message: `Teks dalam tanda kutip wajib 1–${MAX_TEXT_LEN} karakter.` };
+    const bare = qm ? cmd.replace(qm[0], ' ') : cmd; // numbers inside the quoted text are not times
+    const lowBare = bare.toLowerCase();
+
+    try {
+      // ---- ratio
+      if (/\b(rasio|ratio|aspect|format|ukuran canvas|kanvas)\b/i.test(lowBare)) {
+        const hit = RATIO_WORDS.find(([re]) => re.test(lowBare));
+        if (!hit) return { ok: false, message: `Rasio tidak dikenali. Pilihan: ${CANVAS_RATIOS.join(', ')}.` };
+        push({ op: 'set_canvas', ratio: hit[1] }, `rasio ${hit[1]}`);
+        continue;
+      }
+
+      // ---- delete all text / subtitles
+      const all = /\b(hapus|delete|remove|bersihkan)\b.*\b(semua|all)\b.*\b(teks|text|subtitle|caption|takarir)\b/i.exec(lowBare);
+      if (all) {
+        const kind: TrackKind = /subtitle|caption|takarir/.test(all[3]!) ? 'subtitle' : 'text';
+        const clips = t.tracks.find((x) => x.kind === kind)?.clips ?? [];
+        if (!clips.length) return { ok: false, message: `Tidak ada klip ${TRACK_NAME[kind]} untuk dihapus.` };
+        for (const c of [...clips]) push({ op: 'delete_clip', clip_id: c.clip_id }, `hapus ${TRACK_NAME[kind]}`);
+        warnings.push(`Menghapus ${clips.length} klip ${TRACK_NAME[kind]} sekaligus (bisa di-undo).`);
+        continue;
+      }
+
+      const needOneSelected = (what: string) => {
+        if (selected.length !== 1) throw new StorageError('EDIT_INVALID', `Pilih satu klip di linimasa dulu untuk "${what}".`);
+        const f = findClip(t, selected[0]!.clip.clip_id);
+        if (!f) throw new StorageError('EDIT_INVALID', 'Klip terpilih sudah tidak ada di rencana ini.');
+        return f;
+      };
+
+      // ---- delete selected
+      if (/\b(hapus|delete|remove|buang)\b/.test(lowBare) && /\b(klip|clip|ini|this|terpilih|selected|yang dipilih)\b/.test(lowBare) && quoted === null) {
+        const f = needOneSelected('hapus klip');
+        push({ op: 'delete_clip', clip_id: f.clip.clip_id }, 'hapus klip terpilih');
+        continue;
+      }
+
+      // ---- replace text of the selected clip
+      if (/\b(ganti|ubah|edit|change|replace)\b/.test(lowBare) && /\b(teks|text|tulisan|subtitle|caption)\b/.test(lowBare) && quoted !== null && !/\b(tambah|add|buat)\b/.test(lowBare)) {
+        const f = needOneSelected('ganti teks');
+        if (f.track.kind !== 'text' && f.track.kind !== 'subtitle') throw new StorageError('EDIT_INVALID', 'Klip terpilih bukan klip teks/subtitle.');
+        push({ op: 'set_text', clip_id: f.clip.clip_id, text: quoted }, 'ganti teks');
+        continue;
+      }
+
+      // ---- split
+      if (/\b(potong|split|belah|cut)\b/.test(lowBare) && !/\b(sampai|hingga|-|–)\b/.test(lowBare.replace(/\b(potong|split|belah|cut)\b/, ''))) {
+        const at = /\b(di sini|disini|playhead|here)\b/.test(lowBare) ? (ctx.playhead_ms ?? null) : atTime(lowBare);
+        if (at === null) return { ok: false, message: 'Sebutkan waktunya, mis. "potong di detik 3".' };
+        let target = selected.length === 1 ? findClip(t, selected[0]!.clip.clip_id) : null;
+        if (!target) {
+          for (const kind of ['video', 'broll', 'audio', 'text', 'subtitle'] as TrackKind[]) {
+            const tr = t.tracks.find((x) => x.kind === kind);
+            const c = tr?.clips.find((x) => x.start_ms < at && at < x.end_ms);
+            if (tr && c) {
+              target = { track: tr, clip: c };
+              break;
+            }
+          }
+        }
+        if (!target || !(target.clip.start_ms < at && at < target.clip.end_ms)) return { ok: false, message: `Tidak ada klip yang bisa dipotong di ${fmtTime(at)}.` };
+        push({ op: 'split_clip', clip_id: target.clip.clip_id, at_ms: at }, `potong di ${fmtTime(at)}`);
+        continue;
+      }
+
+      // ---- move selected
+      if (/\b(geser|pindah|pindahkan|move)\b/.test(lowBare)) {
+        const f = needOneSelected('geser klip');
+        const to = atTime(lowBare);
+        if (to === null) return { ok: false, message: 'Sebutkan tujuan, mis. "geser klip terpilih ke detik 5".' };
+        push({ op: 'move_clip', clip_id: f.clip.clip_id, start_ms: to }, `geser ke ${fmtTime(to)}`);
+        continue;
+      }
+
+      // ---- duration of selected
+      if (/\b(durasi|panjang|duration|perpanjang|perpendek|pendekkan|length)\b/.test(lowBare) && quoted === null) {
+        const f = needOneSelected('ubah durasi');
+        const len = lengthOf(lowBare);
+        if (!len || len < MIN_CLIP_MS) return { ok: false, message: 'Sebutkan durasinya, mis. "durasi klip terpilih 4 detik".' };
+        push({ op: 'trim_clip', clip_id: f.clip.clip_id, edge: 'end', to_ms: f.clip.start_ms + len }, `durasi ${len / 1000} dtk`);
+        continue;
+      }
+
+      // ---- add text / hook / CTA / subtitle
+      const isSub = /\b(subtitle|caption|takarir)\b/.test(lowBare);
+      const isHook = /\bhook\b/.test(lowBare);
+      const isCta = /\b(cta|call to action|ajakan)\b/.test(lowBare);
+      const isText = /\b(teks|text|tulisan|judul|title|headline|tambah|tambahkan|add)\b/.test(lowBare);
+      if (quoted !== null && (isSub || isHook || isCta || isText)) {
+        const kind: TrackKind = isSub ? 'subtitle' : 'text';
+        let start: number;
+        let end: number;
+        const range = timeRange(lowBare);
+        const len = lengthOf(lowBare);
+        if (range) {
+          ({ start, end } = range);
+        } else if (isHook) {
+          start = 0;
+          end = len ?? 2000;
+        } else if (isCta || /\b(di akhir|akhir video|at the end|ending|penutup)\b/.test(lowBare)) {
+          const endAll = timelineEndMs(t);
+          if (endAll <= 0) return { ok: false, message: 'Linimasa masih kosong, jadi "di akhir" belum ada. Sebutkan waktunya, mis. detik 5-8.' };
+          const d = Math.min(len ?? 3000, endAll);
+          start = endAll - d;
+          end = endAll;
+        } else {
+          const at = atTime(lowBare);
+          start = at ?? ctx.playhead_ms ?? 0;
+          end = start + (len ?? 3000);
+          if (at === null) warnings.push(`Waktu tidak disebut: ${TRACK_NAME[kind]} ditaruh di ${fmtTime(start)} (posisi playhead).`);
+        }
+        const c = clash(t, kind, start, end);
+        if (c) return { ok: false, message: `Bentrok dengan ${TRACK_NAME[kind]} yang sudah ada di ${fmtTime(c.start_ms)}–${fmtTime(c.end_ms)}. Pilih waktu lain atau hapus dulu.` };
+        push({ op: 'add_clip', track_kind: kind, text: quoted, start_ms: start, duration_ms: end - start }, isHook ? 'hook' : isCta ? 'CTA' : kind);
+        continue;
+      }
+    } catch (e) {
+      if (e instanceof StorageError && e.code === 'EDIT_INVALID') return { ok: false, message: e.message };
+      throw e;
+    }
+    return { ok: false, message: `Perintah "${cmd.length > 60 ? `${cmd.slice(0, 59)}…` : cmd}" belum dikenali planner lokal (tanpa AI).` };
+  }
+  return { ok: true, ops, rationale: `Planner lokal (tanpa AI): ${reasons.join(', ')}.`, warnings };
+}

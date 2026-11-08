@@ -139,6 +139,40 @@ export interface RenderTools {
   font: boolean;
 }
 
+// ------------------------------------------------------------ Copilot (W11)
+export interface PlanOperation {
+  op: EditOp;
+  label: string;
+}
+export interface EditPlan {
+  schema_version: 1;
+  plan_id: string;
+  project_id: string;
+  project_revision: number;
+  source: 'local' | 'ai' | 'transcript';
+  prompt: string;
+  operations: PlanOperation[];
+  rationale: string;
+  warnings: string[];
+  cost_estimate: { usd: number; note: string };
+  requires_approval: true;
+  provider: { connection_id: string; provider: string; model: string } | null;
+  created_at: number;
+}
+export interface DiffItem {
+  kind: 'add' | 'remove' | 'change' | 'canvas';
+  summary: string;
+}
+export type PlanReply = { plan: EditPlan; diff: DiffItem[]; unsupported?: undefined } | { plan: null; diff?: undefined; unsupported: { message: string; examples: string[]; ai_available: boolean } };
+export interface ApplyReply {
+  project: Project;
+  plan: EditPlan;
+  status: 'applied';
+  applied_revision: number;
+  accepted: number[];
+  already_applied: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -239,6 +273,11 @@ export function createApi(token: string | null, base = '') {
       }).then((r) => r.result),
     /** Short-lived signed playback URL for one media version (W07). */
     streamUrl: (versionId: string) => call<{ url: string; expires_at: number; mime: string }>('GET', `/api/media/${encodeURIComponent(versionId)}/stream-url`),
+    copilotPlan: (id: string, body: { prompt: string; selected_clip_ids?: string[]; playhead_ms?: number; mode?: 'local' | 'auto' | 'ai' }) =>
+      call<PlanReply>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plan`, { json: body }),
+    copilotApply: (id: string, planId: string, expected_revision: number, accept?: number[]) =>
+      call<ApplyReply>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plans/${encodeURIComponent(planId)}/apply`, { json: { expected_revision, ...(accept ? { accept } : {}) } }),
+    copilotReject: (id: string, planId: string) => call<{ status: string }>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plans/${encodeURIComponent(planId)}/reject`, { json: {} }),
     dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
     // Render MP4 (W08)
     renderTools: () => call<RenderTools>('GET', '/api/render/tools'),

@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
 import { type GoogleAuth, createGoogleAuth, parseAllowlist } from './auth.js';
 import { type CycleResult, RENDER_TMP_PREFIX, type RecoveryReport, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
+import { createCopilot } from './copilot.js';
 import { createRenderJobs } from './render.js';
 import { apiRoutes, sweepUploadTemp } from './routes.js';
 import { createStreamSigner } from './stream.js';
@@ -70,6 +71,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   const releasedLeases = await releaseOrphanLeases(ws);
   const jobs = createRenderJobs(ws, { tmpRoot: renderTmp }, (e) => process.stderr.write(`[server] render: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}
 `));
+  const copilot = createCopilot(ws);
   let auth: GoogleAuth | undefined;
   const stateDir = env.MOTION_STATE_DIR ? path.resolve(env.MOTION_STATE_DIR) : defaultStateDir();
   if (googleSet.length) {
@@ -91,7 +93,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs),
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes],
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 
@@ -137,6 +139,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     scheduler,
     jobs,
     auth: auth ?? null,
+    copilot,
     stateDir,
     async stop() {
       scheduler?.stop();

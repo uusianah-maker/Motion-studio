@@ -34,9 +34,9 @@ import { type StreamSigner, createStreamSigner, mimeFor, sendBytes } from './str
 
 // ------------------------------------------------------------------ input helpers
 
-const bad = (message: string) => new ApiError(400, 'BAD_REQUEST', message);
+export const bad = (message: string) => new ApiError(400, 'BAD_REQUEST', message);
 
-function str(body: Record<string, unknown>, key: string, opts: { optional?: boolean; max?: number } = {}): string | undefined {
+export function str(body: Record<string, unknown>, key: string, opts: { optional?: boolean; max?: number } = {}): string | undefined {
   const v = body[key];
   if (v === undefined && opts.optional) return undefined;
   if (typeof v !== 'string' || !v.trim() || v.length > (opts.max ?? 200)) throw bad(`Field "${key}" wajib teks 1–${opts.max ?? 200} karakter`);
@@ -52,7 +52,7 @@ function strList(body: Record<string, unknown>, key: string, max = 200): string[
 }
 
 /** Only fields the route knows are accepted (typos and smuggled fields are rejected, not ignored). */
-function onlyKeys(body: Record<string, unknown>, allowed: string[]): void {
+export function onlyKeys(body: Record<string, unknown>, allowed: string[]): void {
   const extra = Object.keys(body).filter((k) => !allowed.includes(k));
   if (extra.length) throw bad(`Field tidak dikenal: ${extra.join(', ')}`);
 }
@@ -132,13 +132,13 @@ function mediaList(reg: Registry, filter: (scope: MediaScope) => boolean) {
 }
 
 /** Project for the editor: timeline + undo/redo counts; stored history timelines stay on the server. */
-const projectView = (m: ProjectManifest) => {
+export const projectView = (m: ProjectManifest) => {
   const { snapshots: _snapshots, ...rest } = m;
   void _snapshots;
   return { ...rest, history: historyCounts(m) };
 };
 
-function revision(body: Record<string, unknown>): number {
+export function revision(body: Record<string, unknown>): number {
   const r = body.expected_revision;
   if (typeof r !== 'number' || !Number.isSafeInteger(r) || r < 0) throw bad('expected_revision wajib angka revisi');
   return r;
