@@ -4,7 +4,7 @@ import { StorageError } from './errors.js';
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const WIN_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
 
-export const newId = (prefix: 'm' | 'v' | 'op' | 'lease' | 'pr' | 'ws' | 'snap' | 'c'): string =>
+export const newId = (prefix: 'm' | 'v' | 'op' | 'lease' | 'pr' | 'ws' | 'snap' | 'c' | 'cue' | 'tr'): string =>
   `${prefix}_${randomBytes(8).toString('hex')}`;
 
 /** IDs end up as directory names, so they must be safe path segments everywhere. */

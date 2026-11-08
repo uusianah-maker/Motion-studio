@@ -18,6 +18,7 @@ import { createRouter } from './ai/router.js';
 import { aiRoutes } from './ai/routes.js';
 import { openAiStore } from './ai/store.js';
 import { createCopilot } from './copilot.js';
+import { STT_TMP_PREFIX, transcribeRoutes } from './transcribe.js';
 import { createRenderJobs } from './render.js';
 import { apiRoutes, sweepUploadTemp } from './routes.js';
 import { createStreamSigner } from './stream.js';
@@ -77,6 +78,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   // Render (W08): job folders outside the workspace; a crashed render leaves its folder + lease.
   const renderTmp = env.MOTION_RENDER_TMP ? path.resolve(env.MOTION_RENDER_TMP) : os.tmpdir();
   const sweptRenders = await sweepUploadTemp(renderTmp, 6 * 3_600_000, Date.now(), RENDER_TMP_PREFIX);
+  await sweepUploadTemp(renderTmp, 6 * 3_600_000, Date.now(), STT_TMP_PREFIX);
   const releasedLeases = await releaseOrphanLeases(ws);
   const jobs = createRenderJobs(ws, { tmpRoot: renderTmp }, (e) => process.stderr.write(`[server] render: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}
 `));
@@ -106,7 +108,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger)],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp })],
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 

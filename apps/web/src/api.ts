@@ -238,6 +238,44 @@ export interface AiUsage {
   by_model: { provider: string; model: string; calls: number; failed: number; usd: number; input_tokens: number; output_tokens: number; audio_seconds: number }[];
 }
 
+// ------------------------------------------------------------ Transcripts (W14)
+export interface Cue {
+  cue_id: string;
+  start_ms: number;
+  end_ms: number;
+  text: string;
+}
+export interface TranscriptSummary {
+  transcript_id: string;
+  project_id: string;
+  media_id: string;
+  version_id: string;
+  language: string | null;
+  provider: string;
+  model: string;
+  source_duration_ms: number;
+  created_at: number;
+  updated_at: number;
+  rev: number;
+  edited: boolean;
+  cue_count: number;
+}
+export interface TranscriptFull extends Omit<TranscriptSummary, 'cue_count'> {
+  cues: Cue[];
+  word_count: number;
+}
+export interface SttJob {
+  job_id: string;
+  project_id: string;
+  version_id: string;
+  status: 'running' | 'completed' | 'failed';
+  phase: 'extracting' | 'transcribing' | 'saving';
+  transcript_id: string | null;
+  error: { code: string; message: string } | null;
+  created_at: number;
+  finished_at: number | null;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -357,6 +395,16 @@ export function createApi(token: string | null, base = '') {
     aiSettings: (patch: Partial<Omit<AiSettings, 'budget'>> & { budget?: Partial<AiSettings['budget']> }) => call<{ settings: AiSettings }>('POST', '/api/ai/settings', { json: patch }).then((r) => r.settings),
     aiUsage: () => call<{ usage: AiUsage }>('GET', '/api/ai/usage').then((r) => r.usage),
     aiLog: () => call<{ entries: AiLogEntry[] }>('GET', '/api/ai/log').then((r) => r.entries),
+    // Captions / speech-to-text (W14)
+    transcripts: (id: string) => call<{ transcripts: TranscriptSummary[]; jobs: SttJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/transcripts`),
+    transcriptEstimate: (id: string, version_id: string) =>
+      call<{ minutes: number; estimate_usd: number | null; provider: { connection_id: string; provider: string; model: string; label: string } | null; unavailable: string | null }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts/estimate`, { json: { version_id } }),
+    transcriptStart: (id: string, version_id: string, language: 'id' | 'en' | 'auto', confirm_usd: number) =>
+      call<{ job: SttJob }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts`, { json: { version_id, language, confirm_usd } }).then((r) => r.job),
+    transcript: (id: string, tid: string) => call<{ transcript: TranscriptFull }>('GET', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}`).then((r) => r.transcript),
+    transcriptSave: (id: string, tid: string, expected_rev: number, cues: { cue_id?: string; start_ms: number; end_ms: number; text: string }[]) =>
+      call<{ transcript: TranscriptFull }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}`, { json: { expected_rev, cues } }).then((r) => r.transcript),
+    transcriptSubtitles: (id: string, tid: string) => call<PlanReply>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}/subtitles`, { json: {} }),
     dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
     // Render MP4 (W08)
     renderTools: () => call<RenderTools>('GET', '/api/render/tools'),

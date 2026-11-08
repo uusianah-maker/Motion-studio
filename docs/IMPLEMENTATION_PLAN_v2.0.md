@@ -25,7 +25,7 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 - [x] W11 Copilot planner lokal → edit plan JSON tervalidasi → diff → setujui → terapkan → undo. *Selesai 2026-11-09: mesin aturan lokal (tanpa LLM), skema `EditPlan` v1, setujui sebagian, idempotent, satu langkah undo; hook AiPlanner untuk W12.*
 - [x] W12 AI Provider Manager (API key manual, rahasia di server) + router & failover resmi. *Selesai 2026-11-09: Anthropic/OpenAI/Gemini/kompatibel-OpenAI lewat HTTP resmi, key disegel, failover hanya lintas provider; diuji dengan provider tiruan.*
 - [x] W13 Usage/biaya, batas anggaran keras, audit. *Selesai 2026-11-09: reservasi perkiraan terhadap batas per permintaan/harian/bulanan sebelum kirim, biaya nyata dari usage provider ke buku pemakaian.*
-- [ ] W14 Caption/STT + edit transkrip.
+- [x] W14 Caption/STT + edit transkrip. *Selesai 2026-11-09: STT word timestamps lewat router AI + anggaran (biaya dikonfirmasi dulu, audio tanpa metadata), edit cue tervalidasi, subtitle lewat rencana + satu undo.*
 - [ ] W15 Uji E2E UI (Playwright) + paket deploy VPS (deploy nyata menunggu izin owner).
 **CHECKPOINT F**
 

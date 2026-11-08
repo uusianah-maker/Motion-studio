@@ -11,7 +11,7 @@ import { restoreVersion } from './restore.js';
 import { GcScheduler } from './scheduler.js';
 import { scanCandidates } from './scanner.js';
 import { runAutoTrash } from './trash.js';
-import { type EditOp, editManifest, stepHistory, validateOps } from './timeline.js';
+import { type EditOp, MAX_EDIT_OPS, MAX_SERVER_OPS, editManifest, stepHistory, validateOps } from './timeline.js';
 import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { newId } from './ids.js';
@@ -65,9 +65,9 @@ export class StorageService {
    * timeline as a retained undo step, then commit through the normal path (revision check,
    * media usable, clocks reconciled). Atomic: an invalid op changes nothing.
    */
-  async editTimeline(input: { project_id: string; expected_revision: number; ops: unknown; label?: string; actor: Actor }) {
+  async editTimeline(input: { project_id: string; expected_revision: number; ops: unknown; label?: string; actor: Actor; max_ops?: number }) {
     await guard(this.ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'edit' });
-    const ops = validateOps(input.ops);
+    const ops = validateOps(input.ops, Math.min(input.max_ops ?? MAX_EDIT_OPS, MAX_SERVER_OPS));
     const current = await this.revisionOrConflict(input.project_id, input.expected_revision);
     const reg = await registry.loadRegistry(this.ws);
     const sourceDuration = (ref: { version_id: string }) => reg.versions[ref.version_id]?.probe?.duration_ms;

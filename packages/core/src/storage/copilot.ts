@@ -149,9 +149,9 @@ export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
  * shape (same validator as HTTP edits), op count, and a dry-run of the whole list — an invalid
  * plan is rejected as a whole, never half-applied. Returns the ops, their labels and the diff.
  */
-export function checkPlan(timeline: Timeline, rawOps: unknown, sourceDuration?: SourceDuration): { ops: EditOp[]; labels: string[]; diff: DiffItem[] } {
-  if (Array.isArray(rawOps) && rawOps.length > MAX_PLAN_OPS) bad(`Rencana maksimal ${MAX_PLAN_OPS} operasi`);
-  const ops = validateOps(rawOps);
+export function checkPlan(timeline: Timeline, rawOps: unknown, sourceDuration?: SourceDuration, maxOps = MAX_PLAN_OPS): { ops: EditOp[]; labels: string[]; diff: DiffItem[] } {
+  if (Array.isArray(rawOps) && rawOps.length > maxOps) bad(`Rencana maksimal ${maxOps} operasi`);
+  const ops = validateOps(rawOps, maxOps);
   // Checkpoint E E1: a plan may only touch clips that exist now. Clips created by the plan get
   // their real ids only when applied, so referring to them would validate here and fail later
   // (and break "approve some operations").

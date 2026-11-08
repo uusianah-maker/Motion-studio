@@ -4,6 +4,7 @@ import {
   type EditOp,
   type EditPlan,
   LOCAL_EXAMPLES,
+  MAX_SERVER_OPS,
   MAX_PROMPT_LEN,
   PLAN_SCHEMA_VERSION,
   type PlanSource,
@@ -60,6 +61,8 @@ export interface PlanRecord {
 }
 
 const PLAN_TTL_MS = 6 * 3_600_000;
+/** Plans built by the server from a transcript may be long (one subtitle per cue). */
+const maxOpsFor = (source: PlanSource) => (source === 'transcript' ? MAX_SERVER_OPS : undefined);
 const MAX_PLANS = 300;
 const notFound = () => new ApiError(404, 'NOT_FOUND', 'Rencana tidak ada atau sudah kedaluwarsa; buat rencana baru');
 
@@ -92,7 +95,7 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
     cost_usd?: number;
   }): Promise<{ plan: EditPlan; diff: DiffItem[] }> {
     const project = await readProject(ws, input.project_id);
-    const checked = checkPlan(project.timeline, input.ops, await sourceDuration());
+    const checked = checkPlan(project.timeline, input.ops, await sourceDuration(), maxOpsFor(input.source));
     // Checkpoint E E8: planner output beyond the ops is untrusted too (an LLM can return anything).
     const rationale = typeof input.rationale === 'string' ? input.rationale : '';
     const warnings = Array.isArray(input.warnings) ? input.warnings.filter((w): w is string => typeof w === 'string') : [];
@@ -194,7 +197,8 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
         r.status = 'applying';
         try {
           const label = `Copilot: ${r.plan.prompt}`.slice(0, 80);
-          const saved = await svc.editTimeline({ project_id: r.plan.project_id, expected_revision: expected, ops, label, actor });
+          const max = maxOpsFor(r.plan.source);
+          const saved = await svc.editTimeline({ project_id: r.plan.project_id, expected_revision: expected, ops, label, actor, ...(max ? { max_ops: max } : {}) });
           // Committed: from here on the plan IS applied, whatever happens to the audit write (Checkpoint E E6).
           r.status = 'applied';
           r.applied_revision = saved.result.revision;
@@ -222,7 +226,7 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
           r.plan.operations.map((o) => o.op),
           body.accept,
         );
-        return { diff: checkPlan(project.timeline, ops, await sourceDuration()).diff };
+        return { diff: checkPlan(project.timeline, ops, await sourceDuration(), maxOpsFor(r.plan.source)).diff };
       },
     },
     {

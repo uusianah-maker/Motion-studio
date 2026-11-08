@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-08T18:19:42.568Z",
+  "passed": 11,
+  "total": 11,
+  "results": [
+    {
+      "id": "TR-01 Tombol CC mati untuk media tanpa suara",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "TR-02 Perkiraan biaya tampil sebelum apa pun dikirim (0,14 menit × $0.006)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "TR-03 Transkripsi selesai → cue dari timestamp kata; audio terkirim tanpa metadata",
+      "ok": true,
+      "detail": "Halo semua, ini promo spesial."
+    },
+    {
+      "id": "TR-04 Cue tumpang tindih ditolak dengan pesan jelas",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "TR-05 Edit tersimpan (rev 1, 2 cue)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "TR-06 Rencana subtitle: geser +1 dtk sesuai posisi klip, belum mengubah proyek",
+      "ok": true,
+      "detail": "+ subtitle “Halo semua!” 0:01.2–0:02.1 | + subtitle “Ini promo spesial.” 0:02.4–0:03.6"
+    },
+    {
+      "id": "TR-07 Diterapkan: 2 subtitle di linimasa, satu revisi",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "TR-08 Undo menghapus semua subtitle dari transkrip sekaligus",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "TR-09 Buka lagi: transkrip yang sudah diedit langsung tampil (tanpa bayar lagi)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "TR-10 HP 390px: dialog transkrip tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "TR-11 0 error JS (CSP tetap aktif)",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

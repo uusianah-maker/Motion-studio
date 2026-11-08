@@ -6,7 +6,7 @@ export { StorageError, type StorageErrorCode, isStorageError } from './storage/e
 export { LocalFsBackend } from './storage/localfs.js';
 export { type Actor, type Area, MEDIA_AREAS, type Operation } from './storage/permissions.js';
 export { BROWSER_VIDEO_CODECS, type MediaProbe } from './storage/probe.js';
-export { type CleanCheck, type ToolCheck, checkTools, findFont, verifyCleanOutput } from './storage/ffmpeg.js';
+export { type CleanCheck, type ToolCheck, checkTools, findFont, runFfmpeg, verifyCleanOutput } from './storage/ffmpeg.js';
 export {
   DEFAULT_RENDER,
   RENDER_TMP_PREFIX,
@@ -30,7 +30,20 @@ export type { RestoreResult } from './storage/restore.js';
 export { type CycleResult, GcScheduler } from './storage/scheduler.js';
 export { recoverOnStartup, type RecoveryReport } from './storage/recovery.js';
 export { StorageService, describeOps } from './storage/service.js';
-export { type EditOp, MIN_CLIP_MS, UNDO_LIMIT, historyCounts } from './storage/timeline.js';
+export { type EditOp, MAX_SERVER_OPS, MIN_CLIP_MS, UNDO_LIMIT, historyCounts } from './storage/timeline.js';
+export {
+  type Cue,
+  MAX_CUES,
+  type Transcript,
+  type Word,
+  buildCues,
+  cuesToSubtitleOps,
+  listTranscripts,
+  readTranscript,
+  saveNewTranscript,
+  updateCues,
+  validateCues,
+} from './storage/transcript.js';
 export {
   type DiffItem,
   type EditPlan,

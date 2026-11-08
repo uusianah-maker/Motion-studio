@@ -42,8 +42,12 @@ const clipId = (x: unknown): string => (isSafeId(x) ? x : bad('clip_id tidak val
 const textOf = (x: unknown): string => (typeof x === 'string' && x.trim().length > 0 && x.length <= MAX_TEXT_LEN ? x : bad(`Teks wajib 1-${MAX_TEXT_LEN} karakter`));
 
 /** Validate the shape of untrusted ops (HTTP / AI plans) before anything is applied. */
-export function validateOps(x: unknown): EditOp[] {
-  if (!Array.isArray(x) || x.length === 0 || x.length > 100) bad('ops harus daftar 1–100 operasi');
+/** Ops per edit from the browser; server-made plans (transcript → subtitles, W14) may go up to MAX_SERVER_OPS. */
+export const MAX_EDIT_OPS = 100;
+export const MAX_SERVER_OPS = 1000;
+
+export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
+  if (!Array.isArray(x) || x.length === 0 || x.length > max) bad(`ops harus daftar 1–${max} operasi`);
   return (x as unknown[]).map((raw, i) => {
     const o = (raw ?? {}) as Record<string, unknown>;
     const keys = (allowed: string[]) => {

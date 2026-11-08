@@ -68,7 +68,7 @@ export function createRouter(opts: RouterOptions) {
   async function call<T>(
     cap: Capability,
     meta: { project_id: string | null; estimate: (c: Connection) => number },
-    fn: (target: CallTarget, signal: AbortSignal) => Promise<{ value: T; usage: Usage; request_id: string | null }>,
+    fn: (target: CallTarget, signal: AbortSignal, connection: Connection) => Promise<{ value: T; usage: Usage; request_id: string | null }>,
   ): Promise<{ value: T; connection: Connection; cost_usd: number; usage: Usage; attempts: number }> {
     const settings = opts.store.settings();
     const { list, reasons } = eligible(cap);
@@ -85,7 +85,7 @@ export function createRouter(opts: RouterOptions) {
         const reservation = opts.gate ? await opts.gate.reserve({ connection: c, estimate_usd: meta.estimate(c), capability: cap, project_id: meta.project_id }) : null;
         const signal = AbortSignal.timeout(settings.timeout_ms);
         try {
-          const out = await fn(target, signal);
+          const out = await fn(target, signal, c);
           const cost = costOf(c, out.usage);
           if (reservation) await opts.gate!.settle(reservation, { connection: c, cost_usd: cost, usage: out.usage, capability: cap, project_id: meta.project_id, request_id: out.request_id, outcome: 'ok' });
           if (c.status !== 'ok' || c.last_error) {
@@ -128,6 +128,9 @@ export function createRouter(opts: RouterOptions) {
     throw new ApiError(503, 'AI_UNAVAILABLE', `Semua koneksi AI gagal, tidak ada perubahan yang dibuat. ${failures.join('; ')}`);
   }
 
-  return { call, available };
+  /** First connection the router would try for this capability (cost preview). */
+  const first = (cap: Capability) => eligible(cap).list[0] ?? null;
+
+  return { call, available, first };
 }
 export type AiRouter = ReturnType<typeof createRouter>;

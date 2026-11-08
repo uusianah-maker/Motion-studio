@@ -5,6 +5,7 @@ import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, dragSpan, ellipsize, 
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import { RenderDialog } from './RenderDialog';
+import { TranscriptDialog } from './TranscriptDialog';
 
 const TEXT_CLIP_MS = 3000;
 
@@ -38,6 +39,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
   const [media, setMedia] = useState<Media[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [renderOpen, setRenderOpen] = useState(false);
+  const [sttMedia, setSttMedia] = useState<Media | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -218,6 +220,18 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
         </button>
       </header>
       {renderOpen && project && <RenderDialog api={api} project={project} onClose={() => setRenderOpen(false)} />}
+      {sttMedia && project && (
+        <TranscriptDialog
+          api={api}
+          project={project}
+          media={sttMedia}
+          onClose={() => setSttMedia(null)}
+          onApplied={(p) => {
+            setProject(p);
+            onSavedRef.current?.(p);
+          }}
+        />
+      )}
 
       <main className="editor">
         {mobileProjects && (
@@ -272,6 +286,9 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
                     </button>
                     <button className="btn small" disabled={busy || !project || cur?.probe === null || (!!cur?.probe && !cur.probe.audio_codec)} onClick={() => addToTimeline(m, 'audio')} aria-label={`Tambah audio ${m.display_name}`}>
                       ＋ Audio
+                    </button>
+                    <button className="btn small" disabled={busy || !project || !cur?.probe?.audio_codec} onClick={() => setSttMedia(m)} aria-label={`Transkrip ${m.display_name}`} title="Transkrip & subtitle dari suara media ini">
+                      CC
                     </button>
                   </span>
                 </div>
