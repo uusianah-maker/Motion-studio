@@ -16,7 +16,9 @@
     "verify": "npm run build && npm run typecheck && npm run lint && npm test && npm run smoke",
     "test:e2e": "npm run build && node audit/E2E/e2e.mjs",
     "start:server": "npm run build && node apps/server/dist/main.js",
-    "test:ui": "npm run build && node audit/W05/ui.mjs && node audit/W06/ui.mjs && node audit/W07/ui.mjs && node audit/W08/ui.mjs && node audit/W09/ui.mjs && node audit/W11/ui.mjs && node audit/W12/ui.mjs && node audit/W13/ui.mjs && node audit/W14/ui.mjs"
+    "start": "node apps/server/dist/main.js",
+    "check:deploy": "node scripts/check-deploy.mjs",
+    "test:ui": "npm run build && node audit/W05/ui.mjs && node audit/W06/ui.mjs && node audit/W07/ui.mjs && node audit/W08/ui.mjs && node audit/W09/ui.mjs && node audit/W11/ui.mjs && node audit/W12/ui.mjs && node audit/W13/ui.mjs && node audit/W14/ui.mjs && node audit/W15/e2e-online.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

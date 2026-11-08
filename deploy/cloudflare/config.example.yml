@@ -1,0 +1,14 @@
+# ALTERNATIF tanpa VPS: Cloudflare Tunnel langsung dari PC owner (cloudflared).
+# Syarat: DNS domain dikelola Cloudflare. BATASAN PENTING: paket gratis Cloudflare menolak
+# upload > 100 MB per permintaan → video besar gagal diupload lewat jalur ini. Untuk video,
+# jalur utama tetap VPS + SSH tunnel (deploy/README.md).
+#
+# Langkah singkat (dijalankan owner): cloudflared tunnel login; cloudflared tunnel create motion;
+# cloudflared tunnel route dns motion motion.domainlo.com; lalu jalankan dengan file ini:
+#   cloudflared tunnel --config deploy\cloudflare\config.yml run motion
+tunnel: motion
+credentials-file: C:\Users\NAMA-USER\.cloudflared\<TUNNEL-ID>.json
+ingress:
+  - hostname: motion.domainlo.com
+    service: http://127.0.0.1:4317
+  - service: http_status:404

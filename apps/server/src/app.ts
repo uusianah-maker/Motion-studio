@@ -125,6 +125,8 @@ export function createApp(opts: AppOptions) {
     if (!allowedHosts().has((req.headers.host ?? '').toLowerCase())) throw new ApiError(403, 'HOST_REJECTED', 'Host tidak diizinkan');
     const origin = req.headers.origin;
     if (origin !== undefined && !allowedOrigins().has(origin)) throw new ApiError(403, 'ORIGIN_REJECTED', 'Origin tidak diizinkan');
+    // Online behind HTTPS (W15): browsers must keep using HTTPS for this host.
+    if (pub?.protocol === 'https:') res.setHeader('Strict-Transport-Security', 'max-age=15552000');
     const url = new URL(req.url ?? '/', `http://${HOST}:${port}`);
     if (opts.staticDir && !url.pathname.startsWith('/api/') && (req.method === 'GET' || req.method === 'HEAD')) {
       if (await serveStatic(opts.staticDir, url.pathname, res, req.method === 'HEAD')) return;

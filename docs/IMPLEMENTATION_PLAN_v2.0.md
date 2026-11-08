@@ -26,7 +26,7 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 - [x] W12 AI Provider Manager (API key manual, rahasia di server) + router & failover resmi. *Selesai 2026-11-09: Anthropic/OpenAI/Gemini/kompatibel-OpenAI lewat HTTP resmi, key disegel, failover hanya lintas provider; diuji dengan provider tiruan.*
 - [x] W13 Usage/biaya, batas anggaran keras, audit. *Selesai 2026-11-09: reservasi perkiraan terhadap batas per permintaan/harian/bulanan sebelum kirim, biaya nyata dari usage provider ke buku pemakaian.*
 - [x] W14 Caption/STT + edit transkrip. *Selesai 2026-11-09: STT word timestamps lewat router AI + anggaran (biaya dikonfirmasi dulu, audio tanpa metadata), edit cue tervalidasi, subtitle lewat rencana + satu undo.*
-- [ ] W15 Uji E2E UI (Playwright) + paket deploy VPS (deploy nyata menunggu izin owner).
+- [x] W15 Uji E2E UI (Playwright) + paket deploy VPS (deploy nyata menunggu izin owner). *Selesai 2026-11-09: E2E online lewat HTTPS + proxy (16/16); paket `deploy/` sesuai PC-14 (VPS = pintu Caddy + SSH reverse tunnel, file & render tetap di PC owner); `npm run check:deploy`.*
 **CHECKPOINT F**
 
 ## Catatan Drive owner

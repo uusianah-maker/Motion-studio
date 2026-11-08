@@ -1,0 +1,87 @@
+{
+  "at": "2026-11-08T18:56:37.644Z",
+  "passed": 16,
+  "total": 16,
+  "results": [
+    {
+      "id": "DP-01 setup-vps.sh: sintaks bash valid",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "DP-02 Terowongan dikunci: key hanya boleh 127.0.0.1:14317, tanpa shell/TTY/agent/X11, GatewayPorts no",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "DP-03 Caddy: HTTPS otomatis, Host diteruskan apa adanya ke 127.0.0.1:14317, HSTS; firewall hanya SSH/80/443",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "DP-04 Skrip Windows: sintaks PowerShell valid; terowongan wajib kenal sidik jari VPS + sambung ulang",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "EJ-01 Lewat https://domain: halaman masuk Google, HSTS aktif, CSP aktif",
+      "ok": true,
+      "detail": "HSTS max-age=15552000"
+    },
+    {
+      "id": "EJ-02 Login Google lewat domain: cookie __Host- + Secure + HttpOnly + Strict",
+      "ok": true,
+      "detail": "https://motion.example.test/"
+    },
+    {
+      "id": "EJ-03 Upload lewat proxy: tersimpan di workspace PC, ukuran & durasi terbaca",
+      "ok": true,
+      "detail": "121707 B, 8000 ms"
+    },
+    {
+      "id": "EJ-04 Pratinjau video diputar lewat domain (link bertanda tangan + Range)",
+      "ok": true,
+      "detail": "durasi 8"
+    },
+    {
+      "id": "EJ-05 Copilot lokal: hook masuk linimasa",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "EJ-06 Caption: transkrip → subtitle di linimasa; audio ke provider tanpa metadata",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "EJ-07 Render 720p lalu unduh lewat domain: H.264/AAC, metadata bersih",
+      "ok": true,
+      "detail": "tag compatible_brands,major_brand,minor_version; bocor -"
+    },
+    {
+      "id": "EJ-08 Situs lain tidak bisa memakai sesi lewat domain",
+      "ok": true,
+      "detail": "blocked"
+    },
+    {
+      "id": "EJ-09 check:deploy: konfigurasi online lulus (login Google wajib, HSTS, API menolak tanpa login)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "EJ-10 Keluar: sesi mati",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "EJ-11 HP lewat domain: login + editor tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "EJ-12 0 error JS (CSP tetap aktif)",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

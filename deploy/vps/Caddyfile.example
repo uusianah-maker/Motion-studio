@@ -1,0 +1,17 @@
+# Contoh Caddyfile di VPS (setup-vps.sh menulis blok Motion Studio otomatis).
+# Satu VPS bisa melayani beberapa app: tiap subdomain satu blok.
+
+# Motion Studio: diteruskan ke terowongan SSH dari PC owner (file & render tetap di PC).
+motion.domainlo.com {
+	reverse_proxy 127.0.0.1:14317 {
+		flush_interval -1
+	}
+	header Strict-Transport-Security "max-age=15552000"
+	log
+}
+
+# Contoh app lain di VPS yang sama (mis. Affiliate OS yang jalan di VPS port 3000).
+# affiliate.domainlo.com {
+# 	reverse_proxy 127.0.0.1:3000
+# 	header Strict-Transport-Security "max-age=15552000"
+# }
