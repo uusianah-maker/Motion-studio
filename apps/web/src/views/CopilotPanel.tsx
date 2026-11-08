@@ -46,6 +46,25 @@ export function CopilotPanel({
   // A plan made for an older revision cannot be applied (the server refuses it too).
   const stale = !!plan && plan.project_revision !== project.revision;
 
+  // The diff always shows what WILL be applied: recomputed by the server for the ticked subset.
+  const tickKey = checked.map((c) => (c ? '1' : '0')).join('');
+  useEffect(() => {
+    if (!plan || stale) return;
+    const sel = checked.flatMap((c, i) => (c ? [i] : []));
+    if (!sel.length) {
+      setDiff([]);
+      return;
+    }
+    let live = true;
+    api.copilotPreview(project.project_id, plan.plan_id, sel).then(
+      (d) => live && setDiff(d),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [tickKey, plan?.plan_id]);
+
   const makePlan = async () => {
     if (!prompt.trim() || working) return;
     setWorking(true);
@@ -171,7 +190,7 @@ export function CopilotPanel({
             ))}
           </ul>
           <div className="planDiff" aria-label="Perubahan">
-            <div className="muted small">Perubahan di linimasa (semua operasi):</div>
+            <div className="muted small">Perubahan di linimasa (operasi yang dicentang):</div>
             {diff.map((d, i) => (
               <div key={i} className={`diff ${d.kind}`}>
                 {d.summary}

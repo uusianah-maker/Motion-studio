@@ -145,6 +145,11 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Review independen: 1 High (jam 30 hari tidak reset bila referensi dibuat saat index invalid → Trash terlalu cepat), 5 Medium, 5 Low. High + semua Medium + L1/L3 diperbaiki dengan tes regresi.
 - Owner (2026-11-04): "jalankan dulu semua end to end, konfirmasi nanti kalau sudah 90%" → lanjut tanpa jeda konfirmasi; PC dikumpulkan di akhir.
 
+### Checkpoint E (W06–W09 + W11): LULUS setelah perbaikan (2026-11-09)
+- Laporan: `audit/CHECKPOINT_E/CHECKPOINT_E_REPORT.md`. Review independen (subagent read-only): 0 High, 2 Medium, 9 Low, 1 Info.
+- Diperbaiki + tes regresi: E1 rencana merujuk klip buatan sendiri, E2 URL publik tanpa login (fail-open → server menolak start), E3 banjir login (state disegel di cookie), E4 batas 200 segmen render, E5 batal saat menyimpan, E6–E10, E12, E13. E11 (PID dipakai ulang) diterima sebagian.
+- Suite setelah perbaikan: core 197 pass / 1 skip, server 58/58, web 11/11, smoke, UI W05–W11, E2E 18/18, prototype 56/56.
+
 ### Checkpoint C (T11–T15, audit akhir): LULUS setelah perbaikan
 - Suite: verify 133 pass / 1 skip (stabil 3x), E2E 18/18 (build + MP4 nyata: GC-01..GC-12, design check M-1..M-5, crash recovery), prototype 56/56. Laporan: `audit/CHECKPOINT_C/CHECKPOINT_C_REPORT.md`.
 - Review independen: 2 High (recovery bisa menghapus satu-satunya salinan di Trash; recovery bisa menghapus file user / mengikuti path journal di luar area), 4 Medium (purge abaikan journal korup; crash purge tanpa jejak; overwrite render oleh non-user; nama output render bentrok), 5 Low. Semua diperbaiki + tes regresi.

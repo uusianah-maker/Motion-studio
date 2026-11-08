@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import {
+  type Actor,
   type PreflightProblem,
   type RenderOutput,
   type RenderPhase,
@@ -35,6 +36,7 @@ export interface RenderJobView {
 interface Job extends RenderJobView {
   controller: AbortController;
   settings: Partial<RenderSettings>;
+  actor: Actor;
 }
 
 export interface RenderJobsOptions {
@@ -62,9 +64,10 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
   let running = false;
 
   const view = (j: Job): RenderJobView => {
-    const { controller: _c, settings: _s, ...v } = j;
+    const { controller: _c, settings: _s, actor: _a, ...v } = j;
     void _c;
     void _s;
+    void _a;
     return { ...v, problems: [...v.problems], output: v.output ? { ...v.output } : null };
   };
 
@@ -77,7 +80,7 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
     try {
       const r = await renderProject(
         ws,
-        { project_id: next.project_id, output_name: next.output_name, actor: 'user' },
+        { project_id: next.project_id, output_name: next.output_name, actor: next.actor },
         {
           tmpRoot: opts.tmpRoot,
           settings: { ...opts.settings, ...next.settings },
@@ -116,7 +119,8 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
   }
 
   return {
-    start(input: { project_id: string; output_name: string; settings?: Partial<RenderSettings> }): RenderJobView {
+    /** `actor` comes from the caller (Checkpoint E E9); the core refuses render for AI. */
+    start(input: { project_id: string; output_name: string; actor: Actor; settings?: Partial<RenderSettings> }): RenderJobView {
       const job: Job = {
         job_id: `job_${randomBytes(8).toString('hex')}`,
         project_id: input.project_id,
@@ -131,6 +135,7 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
         error: null,
         controller: new AbortController(),
         settings: input.settings ?? {},
+        actor: input.actor,
       };
       jobs.push(job);
       void pump();

@@ -13,6 +13,8 @@ export const MIN_CLIP_MS = 100;
 export const UNDO_LIMIT = 50;
 /** Media clips may live on these tracks; text/subtitle/effects carry no media. */
 export const MEDIA_TRACKS: readonly TrackKind[] = ['video', 'broll', 'audio'];
+/** Checkpoint E E10: bound the manifest (each edit stores up to UNDO_LIMIT full snapshots). */
+export const MAX_TIMELINE_CLIPS = 2000;
 /** Text clips (overlay / subtitle) carry `text` and never media. */
 export const TEXT_TRACKS: readonly TrackKind[] = ['text', 'subtitle'];
 const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'effects'];
@@ -110,6 +112,8 @@ function locate(t: Timeline, id: string): { track: Track; clip: Clip; index: num
 /** Every track: clips sorted, long enough, never overlapping (deterministic timeline). */
 function assertConsistent(t: Timeline, sourceDuration?: SourceDuration): void {
   const ids = new Set<string>();
+  const count = t.tracks.reduce((n, tr) => n + tr.clips.length, 0);
+  if (count > MAX_TIMELINE_CLIPS) bad(`Linimasa maksimal ${MAX_TIMELINE_CLIPS} klip`, { clips: count });
   for (const track of t.tracks) {
     track.clips.sort((a, b) => a.start_ms - b.start_ms);
     let prevEnd = -1;

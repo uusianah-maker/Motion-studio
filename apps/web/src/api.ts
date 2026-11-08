@@ -277,6 +277,9 @@ export function createApi(token: string | null, base = '') {
       call<PlanReply>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plan`, { json: body }),
     copilotApply: (id: string, planId: string, expected_revision: number, accept?: number[]) =>
       call<ApplyReply>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plans/${encodeURIComponent(planId)}/apply`, { json: { expected_revision, ...(accept ? { accept } : {}) } }),
+    /** Diff of exactly the ticked operations (Checkpoint E E7). */
+    copilotPreview: (id: string, planId: string, accept: number[]) =>
+      call<{ diff: DiffItem[] }>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plans/${encodeURIComponent(planId)}/preview`, { json: { accept } }).then((r) => r.diff),
     copilotReject: (id: string, planId: string) => call<{ status: string }>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plans/${encodeURIComponent(planId)}/reject`, { json: {} }),
     dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
     // Render MP4 (W08)

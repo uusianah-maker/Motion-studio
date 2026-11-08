@@ -324,8 +324,9 @@ describe('W09 login Google', () => {
     const r = await call(port2, '/api/auth/login', { host: 'motion.example.com' });
     expect(r.status).toBe(302);
     expect(new URL(r.headers.location!).searchParams.get('redirect_uri')).toBe('https://motion.example.com/api/auth/callback');
-    const sc = cookieNamed(r, '__Secure-motion_oauth')!;
+    const sc = cookieNamed(r, '__Host-motion_oauth')!; // Checkpoint E E12
     expect(sc).toContain('; Secure');
+    expect(sc).toContain('Path=/;');
     expect((await call(port2, '/api/health', { host: 'evil.example' })).status).toBe(403);
     const back = new URL((await fetch(r.headers.location!, { redirect: 'manual' })).headers.get('location')!);
     const done = await call(port2, `${back.pathname}${back.search}`, { host: 'motion.example.com', headers: { cookie: pair(sc) } });

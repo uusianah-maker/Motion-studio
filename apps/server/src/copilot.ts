@@ -93,6 +93,12 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
   }): Promise<{ plan: EditPlan; diff: DiffItem[] }> {
     const project = await readProject(ws, input.project_id);
     const checked = checkPlan(project.timeline, input.ops, await sourceDuration());
+    // Checkpoint E E8: planner output beyond the ops is untrusted too (an LLM can return anything).
+    const rationale = typeof input.rationale === 'string' ? input.rationale : '';
+    const warnings = Array.isArray(input.warnings) ? input.warnings.filter((w): w is string => typeof w === 'string') : [];
+    const cost = typeof input.cost_usd === 'number' && Number.isFinite(input.cost_usd) && input.cost_usd >= 0 ? input.cost_usd : 0;
+    const short = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
+    const provider = input.provider ? { connection_id: short(input.provider.connection_id, 64), provider: short(input.provider.provider, 40), model: short(input.provider.model, 100) } : null;
     prune();
     const plan: EditPlan = {
       schema_version: PLAN_SCHEMA_VERSION,
@@ -102,11 +108,11 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
       source: input.source,
       prompt: input.prompt,
       operations: checked.ops.map((op, i) => ({ op, label: checked.labels[i]! })),
-      rationale: input.rationale.slice(0, 500),
-      warnings: input.warnings.slice(0, 10).map((w) => String(w).slice(0, 200)),
-      cost_estimate: { usd: input.cost_usd ?? 0, note: input.source === 'ai' ? 'biaya panggilan AI untuk menyusun rencana ini' : 'tanpa AI, tanpa biaya API' },
+      rationale: rationale.slice(0, 500),
+      warnings: warnings.slice(0, 10).map((w) => w.slice(0, 200)),
+      cost_estimate: { usd: cost, note: input.source === 'ai' ? 'biaya panggilan AI untuk menyusun rencana ini' : 'tanpa AI, tanpa biaya API' },
       requires_approval: true,
-      provider: input.provider ?? null,
+      provider,
       created_at: now(),
     };
     plans.set(plan.plan_id, { plan, status: 'proposed', applied_revision: null, accepted: null, decided_at: null });
@@ -189,16 +195,34 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
         try {
           const label = `Copilot: ${r.plan.prompt}`.slice(0, 80);
           const saved = await svc.editTimeline({ project_id: r.plan.project_id, expected_revision: expected, ops, label, actor });
+          // Committed: from here on the plan IS applied, whatever happens to the audit write (Checkpoint E E6).
           r.status = 'applied';
           r.applied_revision = saved.result.revision;
           r.accepted = Array.isArray(body.accept) ? (body.accept as number[]) : r.plan.operations.map((_, i) => i);
           r.decided_at = now();
-          await audit(ws, { op: 'copilot.apply', actor, outcome: 'ok', project_id: r.plan.project_id, plan_id: r.plan.plan_id, source: r.plan.source, applied: ops.length, of: r.plan.operations.length, revision: saved.result.revision });
+          await audit(ws, { op: 'copilot.apply', actor, outcome: 'ok', project_id: r.plan.project_id, plan_id: r.plan.plan_id, source: r.plan.source, applied: ops.length, of: r.plan.operations.length, revision: saved.result.revision }).catch(() => undefined);
           return { project: projectView(saved.result), ...view(r), already_applied: false };
         } catch (e) {
-          r.status = 'proposed';
+          if (r.status === 'applying') r.status = 'proposed';
           throw e;
         }
+      },
+    },
+    {
+      // Checkpoint E E7: the diff of exactly the operations the user ticked.
+      method: 'POST',
+      path: '/api/projects/:project_id/copilot/plans/:plan_id/preview',
+      handle: async ({ req, params }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['accept']);
+        const r = record(params.project_id!, params.plan_id!);
+        const project = await readProject(ws, r.plan.project_id);
+        if (project.revision !== r.plan.project_revision) throw new ApiError(409, 'CONFLICT', 'Proyek sudah berubah sejak rencana dibuat. Buat rencana baru.');
+        const ops = pickOps(
+          r.plan.operations.map((o) => o.op),
+          body.accept,
+        );
+        return { diff: checkPlan(project.timeline, ops, await sourceDuration()).diff };
       },
     },
     {

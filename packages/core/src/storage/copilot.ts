@@ -152,6 +152,13 @@ export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
 export function checkPlan(timeline: Timeline, rawOps: unknown, sourceDuration?: SourceDuration): { ops: EditOp[]; labels: string[]; diff: DiffItem[] } {
   if (Array.isArray(rawOps) && rawOps.length > MAX_PLAN_OPS) bad(`Rencana maksimal ${MAX_PLAN_OPS} operasi`);
   const ops = validateOps(rawOps);
+  // Checkpoint E E1: a plan may only touch clips that exist now. Clips created by the plan get
+  // their real ids only when applied, so referring to them would validate here and fail later
+  // (and break "approve some operations").
+  const existing = new Set(timeline.tracks.flatMap((t) => t.clips.map((c) => c.clip_id)));
+  for (const op of ops) {
+    if ('clip_id' in op && !existing.has(op.clip_id)) bad(`Rencana merujuk klip yang tidak ada di linimasa sekarang (${op.clip_id}). Pisahkan jadi dua perintah: jalankan yang pertama dulu.`, { clip_id: op.clip_id });
+  }
   let n = 0;
   const after = applyOps(timeline, ops, () => `plan_new_${++n}`, sourceDuration);
   return { ops, labels: describeOps(ops, timeline), diff: diffTimelines(timeline, after) };
@@ -420,6 +427,10 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
       throw e;
     }
     return { ok: false, message: `Perintah "${cmd.length > 60 ? `${cmd.slice(0, 59)}…` : cmd}" belum dikenali planner lokal (tanpa AI).` };
+  }
+  const original = new Set(ctx.timeline.tracks.flatMap((tr) => tr.clips.map((c) => c.clip_id)));
+  if (ops.some((o) => 'clip_id' in o && !original.has(o.clip_id))) {
+    return { ok: false, message: 'Perintah ini mengubah klip yang baru dibuat oleh perintah sebelumnya dalam satu rencana. Jalankan perintah pertama dulu, lalu ketik perintah berikutnya.' };
   }
   return { ok: true, ops, rationale: `Planner lokal (tanpa AI): ${reasons.join(', ')}.`, warnings };
 }

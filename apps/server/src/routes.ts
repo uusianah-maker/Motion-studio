@@ -375,7 +375,7 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
     {
       method: 'POST',
       path: '/api/projects/:project_id/render',
-      handle: async ({ req, ws, params }) => {
+      handle: async ({ req, ws, params, actor }) => {
         const body = await readJsonBody(req);
         onlyKeys(body, ['output_name', 'short_side']);
         const project = await readProject(ws, params.project_id!);
@@ -384,7 +384,7 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         if (short !== undefined && short !== 720 && short !== 1080) throw bad('short_side wajib 720 atau 1080');
         const j = jobsFor(ws);
         if (j.list().filter((x) => x.status === 'queued' || x.status === 'running').length >= 5) throw new ApiError(409, 'BUSY', 'Antrean render penuh; tunggu yang berjalan selesai');
-        const job = j.start({ project_id: project.project_id, output_name: renderOutputName(raw ?? project.name), ...(short ? { settings: { short_side: short } } : {}) });
+        const job = j.start({ project_id: project.project_id, output_name: renderOutputName(raw ?? project.name), actor, ...(short ? { settings: { short_side: short } } : {}) });
         return { job };
       },
     },

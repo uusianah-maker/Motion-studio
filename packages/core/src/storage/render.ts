@@ -158,6 +158,9 @@ export const STRIP_METADATA_ARGS: readonly string[] = [
  * audio; audio-track clips are mixed on top at their timeline position; text/subtitle clips are
  * burned in with drawtext (text from files: no escaping, no `%` expansion). Pure function.
  */
+/** Upper bound on visual segments per render (Checkpoint E E4). */
+export const MAX_RENDER_SEGMENTS = 200;
+
 export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInput>, settings: RenderSettings, font: string | null): RenderPlan {
   const fps = settings.fps;
   const ratio = t.canvas?.ratio ?? '9:16';
@@ -165,6 +168,11 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   const segments = visualSegments(t, fps);
   const total_frames = segments.length ? segments[segments.length - 1]!.to_frame : 0;
   if (total_frames < 1) throw new StorageError('PRECONDITION', 'Linimasa kosong, tidak ada yang dirender');
+  // Checkpoint E E4: one FFmpeg input per visual segment; Windows caps a command line at 32,767
+  // characters, so a very fragmented timeline is refused up front with a clear reason.
+  if (segments.length > MAX_RENDER_SEGMENTS) {
+    throw new StorageError('PRECONDITION', `Linimasa terlalu banyak potongan (${segments.length} segmen visual); maksimal ${MAX_RENDER_SEGMENTS} per render. Gabungkan sebagian klip dulu.`, { segments: segments.length });
+  }
   const total_ms = Math.round((total_frames * 1000) / fps);
   const samplesPerFrame = AUDIO_RATE / fps;
 
@@ -406,6 +414,11 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       await ws.blobs.discard(staged);
       throw new StorageError('INTEGRITY', 'Byte output berubah antara verifikasi dan penyimpanan', { stage: 'save' });
     }
+    // Checkpoint E E5: a cancel that arrives while staging still wins — nothing is saved.
+    if (hooks.signal?.aborted) {
+      await ws.blobs.discard(staged);
+      throw new StorageError('CANCELLED', 'Render dibatalkan');
+    }
     let rel: string;
     try {
       rel = await ws.blobs.commit(staged, preflight.output_rel);
@@ -443,7 +456,16 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     throw e;
   } finally {
     if (tmp) await fsp.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-    await finishRender(ws, { lease_id: lease.lease_id, outcome, actor: input.actor }).catch(() => undefined);
+    // Checkpoint E E11: retry the lease release (a transient lock/EPERM must not pin media).
+    for (let i = 0; i < 4; i++) {
+      try {
+        await finishRender(ws, { lease_id: lease.lease_id, outcome, actor: input.actor });
+        break;
+      } catch (e) {
+        if (isStorageError(e, 'NOT_FOUND')) break;
+        await new Promise((r) => setTimeout(r, 100 * (i + 1)));
+      }
+    }
   }
 }
 

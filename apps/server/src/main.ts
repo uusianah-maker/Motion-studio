@@ -57,6 +57,10 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   if (publicUrl && !/^(https:\/\/[A-Za-z0-9.-]+(:\d{1,5})?|http:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?)$/.test(publicUrl)) {
     throw new Error('MOTION_PUBLIC_URL harus https://domain (atau http://127.0.0.1:<port> / http://localhost:<port>), tanpa path');
   }
+  // Checkpoint E E2: never serve a public origin with only the URL token (fail closed).
+  if (publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) && !googleSet.length) {
+    throw new Error('MOTION_PUBLIC_URL publik butuh login Google (MOTION_GOOGLE_CLIENT_ID, MOTION_GOOGLE_CLIENT_SECRET, MOTION_ALLOWED_EMAILS). Mode token URL hanya untuk komputer ini.');
+  }
   if (googleSet.length && !publicUrl && port === 0) throw new Error('Login Google butuh port tetap (redirect URI terdaftar di Google): set MOTION_PORT atau MOTION_PUBLIC_URL');
 
   const ws = await openWorkspace(path.resolve(root));

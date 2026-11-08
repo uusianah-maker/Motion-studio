@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Route } from './app.js';
+import { createSecretBox } from './secrets.js';
 import { type Workspace, audit } from './core.js';
 
 /**
@@ -19,7 +20,7 @@ const GOOGLE_ISSUERS = new Set(['https://accounts.google.com', 'accounts.google.
 export const SESSION_IDLE_MS = 12 * 3_600_000;
 export const SESSION_MAX_MS = 7 * 24 * 3_600_000;
 export const LOGIN_TTL_MS = 10 * 60_000;
-const MAX_PENDING = 500;
+const MAX_USED_STATES = 10_000;
 const MAX_SESSIONS = 200;
 const CLOCK_SKEW_MS = 5 * 60_000;
 
@@ -112,10 +113,12 @@ export interface GoogleAuthOptions {
   fetch?: typeof fetch;
 }
 
+/** Login-in-progress data, sealed into the browser's own state cookie (no server map to flood). */
 interface Pending {
-  verifier: string;
-  nonce: string;
-  created: number;
+  s: string;
+  v: string;
+  n: string;
+  e: number;
 }
 interface Session extends SessionUser {
   created: number;
@@ -128,12 +131,18 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
   const now = opts.now ?? Date.now;
   const doFetch = opts.fetch ?? fetch;
   const allowed = new Set(opts.allowedEmails.map((e) => e.toLowerCase()));
-  const pending = new Map<string, Pending>();
+  // Checkpoint E E3: no server-side map of pending logins that anonymous callers could fill to
+  // evict real ones. PKCE verifier + nonce travel sealed (AES-GCM, key per server start) in the
+  // state cookie; only *finished* states are remembered (to refuse replays), and only until expiry.
+  const stateBox = createSecretBox(randomBytes(32));
+  const used = new Map<string, number>(); // sha256(state) → expiry
   const sessions = new Map<string, Session>(); // key: hex sha256(session id)
 
   const secure = () => opts.publicUrl().startsWith('https://');
   const sidCookie = () => (secure() ? '__Host-motion_sid' : 'motion_sid');
-  const stateCookie = () => (secure() ? '__Secure-motion_oauth' : 'motion_oauth');
+  // Checkpoint E E12: `__Host-` (no Domain, Path=/) on https so a sibling subdomain cannot plant it.
+  const stateCookie = () => (secure() ? '__Host-motion_oauth' : 'motion_oauth');
+  const statePath = () => (secure() ? '/' : '/api/auth');
   const redirectUri = () => `${opts.publicUrl()}/api/auth/callback`;
   const cookie = (name: string, value: string, attrs: string) => `${name}=${value}; HttpOnly; ${attrs}${secure() ? '; Secure' : ''}`;
 
@@ -144,8 +153,8 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
 
   function prune(): void {
     const t = now();
-    for (const [k, p] of pending) if (t - p.created > LOGIN_TTL_MS) pending.delete(k);
-    while (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value!);
+    for (const [k, exp] of used) if (exp < t) used.delete(k);
+    while (used.size >= MAX_USED_STATES) used.delete(used.keys().next().value!);
     for (const [k, s] of sessions) if (expired(s, t)) sessions.delete(k);
   }
   const expired = (s: Session, t: number) => t - s.last > SESSION_IDLE_MS || t - s.created > SESSION_MAX_MS;
@@ -155,7 +164,7 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
     const state = b64u(randomBytes(32));
     const verifier = b64u(randomBytes(48));
     const nonce = b64u(randomBytes(24));
-    pending.set(state, { verifier, nonce, created: now() });
+    const sealed = stateBox.seal(JSON.stringify({ s: state, v: verifier, n: nonce, e: now() + LOGIN_TTL_MS } satisfies Pending), 'oauth-state');
     const q = new URLSearchParams({
       client_id: opts.clientId,
       redirect_uri: redirectUri(),
@@ -167,10 +176,20 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
       code_challenge_method: 'S256',
       prompt: 'select_account',
     });
-    redirect(res, `${opts.authEndpoint ?? GOOGLE_AUTH_ENDPOINT}?${q}`, [cookie(stateCookie(), state, `SameSite=Lax; Path=/api/auth; Max-Age=${LOGIN_TTL_MS / 1000}`)]);
+    redirect(res, `${opts.authEndpoint ?? GOOGLE_AUTH_ENDPOINT}?${q}`, [cookie(stateCookie(), sealed, `SameSite=Lax; Path=${statePath()}; Max-Age=${LOGIN_TTL_MS / 1000}`)]);
   }
 
-  const clearState = () => cookie(stateCookie(), '', 'SameSite=Lax; Path=/api/auth; Max-Age=0');
+  const clearState = () => cookie(stateCookie(), '', `SameSite=Lax; Path=${statePath()}; Max-Age=0`);
+
+  function openState(raw: string): Pending | null {
+    if (!raw || raw.length > 2000) return null;
+    try {
+      const p = JSON.parse(stateBox.open(raw, 'oauth-state')) as Pending;
+      return typeof p.s === 'string' && typeof p.v === 'string' && typeof p.n === 'string' && typeof p.e === 'number' ? p : null;
+    } catch {
+      return null;
+    }
+  }
 
   async function deny(res: ServerResponse, code: AuthErrorCode, details: Record<string, unknown> = {}): Promise<void> {
     await audit(opts.ws, { op: 'auth.login', actor: 'user', outcome: 'blocked', reason: code, ...details }).catch(() => undefined);
@@ -195,11 +214,13 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
   async function callback(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     prune();
     const state = url.searchParams.get('state') ?? '';
-    const bound = parseCookies(req.headers.cookie)[stateCookie()] ?? '';
-    const p = state ? pending.get(state) : undefined;
-    if (p) pending.delete(state); // single use, whatever happens next
-    // Login CSRF: the callback must come back to the same browser that started the login.
-    if (!p || !bound || !sameText(bound, state)) return deny(res, 'STATE_INVALID');
+    const p = openState(parseCookies(req.headers.cookie)[stateCookie()] ?? '');
+    // Login CSRF: the callback must come back to the same browser that started the login,
+    // within the time limit, and only once.
+    if (!p || !state || !sameText(p.s, state) || p.e < now()) return deny(res, 'STATE_INVALID');
+    const key = sha(state).toString('hex');
+    if (used.has(key)) return deny(res, 'STATE_INVALID');
+    used.set(key, p.e);
     const gErr = url.searchParams.get('error');
     if (gErr) return deny(res, gErr === 'access_denied' ? 'ACCESS_DENIED' : 'GOOGLE_ERROR');
     const code = url.searchParams.get('code');
@@ -207,13 +228,13 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
 
     let tok: Awaited<ReturnType<typeof exchange>>;
     try {
-      tok = await exchange(code, p.verifier);
+      tok = await exchange(code, p.v);
     } catch (e) {
       return deny(res, 'TOKEN_EXCHANGE_FAILED', { detail: e instanceof Error ? e.message.slice(0, 120) : 'unknown' });
     }
     let user: ReturnType<typeof checkIdToken>;
     try {
-      user = checkIdToken(decodeIdToken(tok.id_token), { clientId: opts.clientId, nonce: p.nonce, now: now() });
+      user = checkIdToken(decodeIdToken(tok.id_token), { clientId: opts.clientId, nonce: p.n, now: now() });
     } catch (e) {
       return deny(res, 'ID_TOKEN_INVALID', { claim: e instanceof Error ? e.message.slice(0, 40) : 'unknown' });
     }
