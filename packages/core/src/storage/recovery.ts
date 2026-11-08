@@ -5,6 +5,7 @@ import { type JournalEntry, listJournal } from './journal.js';
 import { writeJsonAtomic } from './jsonStore.js';
 import type { Area } from './permissions.js';
 import { loadRegistry, saveRegistry } from './registry.js';
+import { isSafeId } from './ids.js';
 import { LAYOUT, META_FILES, type Workspace, listProjectIds, metaPath, withWorkspaceLock } from './workspace.js';
 
 export interface RecoveryReport {
@@ -14,10 +15,14 @@ export interface RecoveryReport {
   removed_temp_files: string[];
   /** Media-looking files with no registry record. Reported only — never deleted (could be data). */
   orphan_files: string[];
+  /** Areas (or files) the sweep could not inspect safely (links, unreadable): reported, never touched. */
+  skipped: { path: string; reason: string }[];
   expired_purge_requests: number;
 }
 
 export const STALE_TEMP_MS = 24 * 60 * 60 * 1000;
+/** Exact name of an import staging file (`.importing-` + newId('op')). Anything else is never swept (Checkpoint D F1). */
+export const IMPORT_TEMP_RE = /^\.importing-op_[0-9a-f]{16}$/;
 
 /** Area each journal path must be in; a tampered journal can never point recovery elsewhere (review C-H2). */
 const MEDIA = ['shared_media', 'shared_assets', 'project_input', 'project_assets'] as const;
@@ -146,7 +151,7 @@ async function sweep(dir: string, onFile: (p: string, name: string) => Promise<v
 /** Startup recovery (ST-09). Safe to run repeatedly (idempotent). */
 export async function recoverOnStartup(ws: Workspace): Promise<RecoveryReport> {
   return withWorkspaceLock(ws, 'recovery', async () => {
-    const report: RecoveryReport = { journal: [], corrupt_journal: [], removed_temp_files: [], orphan_files: [], expired_purge_requests: 0 };
+    const report: RecoveryReport = { journal: [], corrupt_journal: [], removed_temp_files: [], orphan_files: [], skipped: [], expired_purge_requests: 0 };
 
     for (const j of await listJournal(ws)) {
       if (!j.entry || typeof j.entry.version_id !== 'string' || !['trash', 'restore', 'purge'].includes(j.entry.kind)) {
@@ -166,16 +171,30 @@ export async function recoverOnStartup(ws: Workspace): Promise<RecoveryReport> {
     // Temp files from interrupted imports/atomic writes, plus orphan media files.
     const reg = await loadRegistry(ws);
     const known = new Set(Object.values(reg.versions).map((v) => v.rel_path.toLowerCase()));
-    const areas = [LAYOUT.sharedMedia, ...(await listProjectIds(ws)).map((p) => `${LAYOUT.projects}/${p}/01_INPUT`)];
+    const projectIds = await listProjectIds(ws);
+    for (const bad of projectIds.filter((p) => !isSafeId(p))) report.skipped.push({ path: `${LAYOUT.projects}/${bad}`, reason: 'nama folder bukan ID proyek yang valid' });
+    const areas = [LAYOUT.sharedMedia, ...projectIds.filter(isSafeId).map((p) => `${LAYOUT.projects}/${p}/01_INPUT`)];
     for (const area of areas) {
-      for (const f of await ws.blobs.listFiles(area, 4)) {
-        if (f.name.startsWith('.importing-')) {
-          // Imports stage outside the lock: only sweep temps untouched for a day (review C-L2).
-          if (Date.now() - f.mtimeMs < STALE_TEMP_MS) continue;
-          await ws.blobs.remove(f.rel, { missingOk: true });
-          report.removed_temp_files.push(f.rel);
-        } else if (/^v_[0-9a-f]{16}/.test(f.name) && !known.has(f.rel.toLowerCase())) {
-          report.orphan_files.push(f.rel);
+      let files;
+      try {
+        files = await ws.blobs.listFiles(area, 4);
+      } catch (e) {
+        report.skipped.push({ path: area, reason: String((e as { code?: string }).code ?? e) });
+        continue;
+      }
+      for (const f of files) {
+        try {
+          if (IMPORT_TEMP_RE.test(f.name) && !known.has(f.rel.toLowerCase())) {
+            // Imports stage outside the lock: only sweep temps untouched for a day (review C-L2).
+            // Never a registered file, whatever its name (Checkpoint D F1).
+            if (Date.now() - f.mtimeMs < STALE_TEMP_MS) continue;
+            await ws.blobs.remove(f.rel, { missingOk: true });
+            report.removed_temp_files.push(f.rel);
+          } else if (/^v_[0-9a-f]{16}/.test(f.name) && !known.has(f.rel.toLowerCase())) {
+            report.orphan_files.push(f.rel);
+          }
+        } catch (e) {
+          report.skipped.push({ path: f.rel, reason: String((e as { code?: string }).code ?? e) });
         }
       }
     }
@@ -197,8 +216,8 @@ export async function recoverOnStartup(ws: Workspace): Promise<RecoveryReport> {
       // Invalid purge file is reported by preparePurge itself (fail closed there).
     }
 
-    const notable = report.journal.length + report.corrupt_journal.length + report.removed_temp_files.length + report.orphan_files.length;
-    await audit(ws, { op: 'recovery.startup', actor: 'system', outcome: report.corrupt_journal.length || report.orphan_files.length ? 'alert' : 'info', ...report, notable });
+    const notable = report.journal.length + report.corrupt_journal.length + report.removed_temp_files.length + report.orphan_files.length + report.skipped.length;
+    await audit(ws, { op: 'recovery.startup', actor: 'system', outcome: report.corrupt_journal.length || report.orphan_files.length || report.skipped.length ? 'alert' : 'info', ...report, notable });
     return report;
   });
 }

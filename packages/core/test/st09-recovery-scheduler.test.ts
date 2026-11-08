@@ -114,18 +114,18 @@ describe('ST-09 crash recovery', () => {
   it('sweeps temp files, reports (never deletes) orphan media files; idempotent', async () => {
     const { ws, src } = await fixtureWorkspace();
     await importShared(ws, src);
-    const tmp = path.join(ws.root, 'SHARED_MEDIA', '.importing-op_dead');
+    const tmp = path.join(ws.root, 'SHARED_MEDIA', '.importing-op_00000000deadbeef');
     const orphanDir = path.join(ws.root, 'SHARED_MEDIA', 'm_aaaaaaaaaaaaaaaa');
     await fsp.writeFile(tmp, 'partial');
     const old = new Date(Date.now() - 2 * 24 * 3_600_000); // stale: untouched for 2 days
     await fsp.utimes(tmp, old, old);
-    const fresh = path.join(ws.root, 'SHARED_MEDIA', '.importing-op_running');
+    const fresh = path.join(ws.root, 'SHARED_MEDIA', '.importing-op_0000000000000001');
     await fsp.writeFile(fresh, 'an import still copying');
     await fsp.mkdir(orphanDir);
     await fsp.writeFile(path.join(orphanDir, 'v_bbbbbbbbbbbbbbbb.mp4'), 'orphan bytes');
     await fsp.writeFile(path.join(ws.root, '.motionstudio', 'registry.json.123.abcd.tmp'), '{');
     const r = await recoverOnStartup(ws);
-    expect(r.removed_temp_files.sort()).toEqual(['.motionstudio/registry.json.123.abcd.tmp', 'SHARED_MEDIA/.importing-op_dead']);
+    expect(r.removed_temp_files.sort()).toEqual(['.motionstudio/registry.json.123.abcd.tmp', 'SHARED_MEDIA/.importing-op_00000000deadbeef']);
     expect(r.orphan_files).toEqual(['SHARED_MEDIA/m_aaaaaaaaaaaaaaaa/v_bbbbbbbbbbbbbbbb.mp4']);
     expect(await exists(path.join(orphanDir, 'v_bbbbbbbbbbbbbbbb.mp4'))).toBe(true);
     expect(await exists(fresh)).toBe(true); // a running import is never broken (review C-L2)

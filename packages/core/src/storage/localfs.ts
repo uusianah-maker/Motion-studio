@@ -8,7 +8,7 @@ import { StorageError } from './errors.js';
 import { hashFile } from './hash.js';
 import { newId } from './ids.js';
 import { readJson, withFsRetry, writeJsonAtomic } from './jsonStore.js';
-import { relativeSegments, resolveCanonical } from './paths.js';
+import { resolveCanonical } from './paths.js';
 import { type Area, resolveInArea } from './permissions.js';
 
 const isEnoent = (e: unknown) => (e as NodeJS.ErrnoException)?.code === 'ENOENT';
@@ -33,6 +33,32 @@ async function copyHashing(src: string, dest: string): Promise<{ hash: string; s
     await fh.close();
   }
   return { hash: `sha256:${h.digest('hex')}`, size };
+}
+
+const CONFLICT = (rel: string) => new StorageError('CONFLICT', 'Tujuan sudah ada; tidak ditimpa', { rel });
+
+/**
+ * Rename that never replaces (Checkpoint D F8: `rename` overwrites on Windows and POSIX).
+ * Hard link fails atomically with EEXIST, then the old name is unlinked; the file mode is kept.
+ * Where links are unsupported (exFAT, some network shares) fall back to check + rename — the
+ * callers hold the workspace lock and use fresh random names, so that gap is not reachable by
+ * concurrent writers of this app. EXDEV is rethrown for the caller's copy + verify path.
+ */
+async function renameNoReplace(fromAbs: string, toAbs: string, rel: string): Promise<void> {
+  const mode = (await fsp.lstat(fromAbs)).mode & 0o777;
+  try {
+    await fsp.link(fromAbs, toAbs);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST') throw CONFLICT(rel);
+    if (code !== 'EPERM' && code !== 'ENOTSUP' && code !== 'ENOSYS') throw e;
+    if (await fsp.lstat(toAbs).then(() => true, () => false)) throw CONFLICT(rel);
+    await withFsRetry(() => fsp.rename(fromAbs, toAbs));
+    return;
+  }
+  await fsp.chmod(fromAbs, 0o666).catch(() => undefined); // Windows: read-only names cannot be unlinked
+  await withFsRetry(() => fsp.unlink(fromAbs));
+  await fsp.chmod(toAbs, mode).catch(() => undefined); // read-only flag is per file: restore it
 }
 
 /**
@@ -92,10 +118,7 @@ export class LocalFsBackend implements StorageBackend {
   async commit(staged: StagedBlob, rel: string): Promise<string> {
     const target = await resolveCanonical(this.root, rel, { allowMissing: true });
     await fsp.mkdir(path.dirname(target.abs), { recursive: true });
-    if (await fsp.lstat(target.abs).then(() => true, () => false)) {
-      throw new StorageError('CONFLICT', 'Tujuan sudah ada; tidak ditimpa', { rel: target.rel });
-    }
-    await fsp.rename(staged.token, target.abs);
+    await renameNoReplace(staged.token, target.abs, target.rel);
     await fsp.chmod(target.abs, 0o444); // media are read-only for the app (PRD v0.8 §C)
     return target.rel;
   }
@@ -109,7 +132,7 @@ export class LocalFsBackend implements StorageBackend {
     const toAbs = await this.abs(toRel, true);
     await fsp.mkdir(path.dirname(toAbs), { recursive: true });
     try {
-      await withFsRetry(() => fsp.rename(fromAbs, toAbs));
+      await renameNoReplace(fromAbs, toAbs, toRel);
       return { renamed: true };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e;
@@ -213,7 +236,8 @@ export class LocalFsBackend implements StorageBackend {
         }
       }
     };
-    await walk(path.join(this.root, ...relativeSegments(dirRel)), 0);
+    // Start from a canonical, link-free path (a junctioned area is refused, not followed: Checkpoint D F2).
+    await walk(await this.abs(dirRel, true), 0);
     return out;
   }
 

@@ -48,7 +48,7 @@ export interface StorageBackend {
   commit(staged: StagedBlob, rel: string): Promise<string>;
   discard(staged: StagedBlob): Promise<void>;
 
-  /** Move (destination is a fresh path). Cross-device: copy → verify hash → remove source. */
+  /** Move to a fresh path; never replaces (CONFLICT). Cross-device: copy → verify hash → remove source. */
   move(fromRel: string, toRel: string, expectedHash: string): Promise<{ renamed: boolean }>;
   /** Move that fails with CONFLICT if anything exists at the destination; result is read-only. */
   moveNoOverwrite(fromRel: string, toRel: string, expectedHash: string): Promise<void>;
@@ -62,7 +62,7 @@ export interface StorageBackend {
   writeJson(rel: string, data: unknown): Promise<void>;
   readJson<T>(rel: string, validate: (x: unknown) => T, code: 'INDEX_INVALID' | 'PROJECT_INVALID'): Promise<T>;
 
-  /** Every regular file under `dirRel` (links skipped, bounded depth). Missing folder = none. */
+  /** Every regular file under `dirRel` (links skipped, bounded depth). Missing folder = none; a linked/invalid folder throws. */
   listFiles(dirRel: string, maxDepth: number): Promise<{ rel: string; name: string; size: number; mtimeMs: number }[]>;
   /** Total bytes under `dirRel` (0 when missing). */
   usage(dirRel: string): Promise<number>;

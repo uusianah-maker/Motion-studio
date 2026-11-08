@@ -7,6 +7,7 @@ import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Route } from './app.js';
 import {
+  type Dashboard,
   type MediaScope,
   type ProjectManifest,
   type Registry,
@@ -139,13 +140,17 @@ async function receiveUpload(ws: Workspace, req: IncomingMessage, opts: UploadOp
   if (!req.headers['content-length'] || !Number.isSafeInteger(declared) || declared < 0) throw new ApiError(411, 'LENGTH_REQUIRED', 'Content-Length wajib');
   if (declared === 0) throw bad('File kosong');
   if (declared > opts.maxBytes) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'File melebihi batas upload');
-  const ws_space = await estimateSpace(ws, { bytes_needed: declared });
+  // Same volume: the temp copy and the workspace staging copy exist at the same time (Checkpoint D F4).
+  const sameVolume = await Promise.all([fsp.stat(opts.tmpDir), fsp.stat(ws.root)]).then(([a, b]) => a.dev === b.dev, () => true);
+  const ws_space = await estimateSpace(ws, { bytes_needed: sameVolume ? declared * 2 : declared });
   if (!ws_space.ok) throw new ApiError(507, 'INSUFFICIENT_STORAGE', ws_space.reason ?? 'Ruang workspace tidak cukup');
   const tmpSpace = await diskSpace(opts.tmpDir);
   if (!tmpSpace || tmpSpace.free_bytes < declared) throw new ApiError(507, 'INSUFFICIENT_STORAGE', 'Ruang folder upload sementara tidak cukup');
+  // Large videos may take long: no total time limit, but a stalled sender is dropped (Checkpoint D F3).
+  req.setTimeout(UPLOAD_IDLE_MS, () => req.destroy(new Error('upload idle timeout')));
 
   const name = safeUploadName(req.headers['x-file-name'] as string | undefined);
-  const dir = await fsp.mkdtemp(path.join(opts.tmpDir, 'motion-upload-'));
+  const dir = await fsp.mkdtemp(path.join(opts.tmpDir, UPLOAD_PREFIX));
   const file = path.join(dir, name);
   let size = 0;
   const counter = new Transform({
@@ -166,10 +171,37 @@ async function receiveUpload(ws: Workspace, req: IncomingMessage, opts: UploadOp
   }
 }
 
+export const UPLOAD_PREFIX = 'motion-upload-';
+export const UPLOAD_IDLE_MS = 2 * 60_000;
+
+/**
+ * Remove upload temp folders left by a crash (startup). Only our own prefix, and only when
+ * nothing inside changed for `maxAgeMs` (another server instance may share the temp folder).
+ */
+export async function sweepUploadTemp(tmpDir: string, maxAgeMs = 6 * 3_600_000, now = Date.now()): Promise<string[]> {
+  const removed: string[] = [];
+  for (const e of await fsp.readdir(tmpDir, { withFileTypes: true }).catch(() => [])) {
+    if (!e.isDirectory() || !e.name.startsWith(UPLOAD_PREFIX)) continue;
+    const dir = path.join(tmpDir, e.name);
+    try {
+      let newest = (await fsp.lstat(dir)).mtimeMs;
+      for (const f of await fsp.readdir(dir)) newest = Math.max(newest, (await fsp.lstat(path.join(dir, f))).mtimeMs);
+      if (now - newest < maxAgeMs) continue;
+      await fsp.rm(dir, { recursive: true, force: true });
+      removed.push(e.name);
+    } catch {
+      /* in use or vanished: leave it */
+    }
+  }
+  return removed;
+}
+
 // ------------------------------------------------------------------ routes
 
 export function apiRoutes(upload: Partial<UploadOptions> = {}): Route[] {
   const uploadOpts: UploadOptions = { tmpDir: upload.tmpDir ?? os.tmpdir(), maxBytes: upload.maxBytes ?? 50 * 1024 ** 3 };
+  // One import at a time per server: parallel uploads would each pass the free-space check (Checkpoint D F4).
+  let importing = false;
   return [
     // Projects
     {
@@ -216,12 +248,19 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}): Route[] {
         const scope = scopeFrom(url);
         const display_name = url.searchParams.get('display_name') ?? undefined;
         if (display_name !== undefined && (!display_name.trim() || display_name.length > 200)) throw bad('display_name tidak valid');
-        const up = await receiveUpload(ws, req, uploadOpts);
+        if (scope.kind === 'project') await readProject(ws, scope.project_id); // 404 before receiving any bytes
+        if (importing) throw new ApiError(409, 'BUSY', 'Upload lain sedang berjalan; tunggu sampai selesai');
+        importing = true;
         try {
-          const r = await svc.importMedia({ sourcePath: up.file, scope, actor, ...(display_name ? { display_name } : {}) });
-          return { media_id: r.media.media_id, version: versionView(r.version), duplicate: r.duplicate };
+          const up = await receiveUpload(ws, req, uploadOpts);
+          try {
+            const r = await svc.importMedia({ sourcePath: up.file, scope, actor, ...(display_name ? { display_name } : {}) });
+            return { media_id: r.media.media_id, version: versionView(r.version), duplicate: r.duplicate };
+          } finally {
+            await fsp.rm(up.dir, { recursive: true, force: true });
+          }
         } finally {
-          await fsp.rm(up.dir, { recursive: true, force: true });
+          importing = false;
         }
       },
     },
@@ -244,11 +283,11 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}): Route[] {
       path: '/api/trash/:version_id/restore',
       handle: async ({ req, params, svc, actor }) => {
         const body = await readJsonBody(req);
-        onlyKeys(body, ['destination', 'on_conflict']);
-        const destination = str(body, 'destination', { optional: true, max: 1024 });
+        // No free destination over HTTP: original path, or the server-suggested alternate (Checkpoint D F1).
+        onlyKeys(body, ['on_conflict']);
         const on_conflict = body.on_conflict;
         if (on_conflict !== undefined && on_conflict !== 'ask' && on_conflict !== 'alternate') throw bad('on_conflict wajib "ask" atau "alternate"');
-        const r = await svc.restore({ version_id: params.version_id!, actor, ...(destination ? { destination } : {}), ...(on_conflict ? { onConflict: on_conflict } : {}) });
+        const r = await svc.restore({ version_id: params.version_id!, actor, ...(on_conflict ? { onConflict: on_conflict } : {}) });
         return { result: r.result, clocks_ok: r.clocks.ok };
       },
     },
@@ -279,6 +318,15 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}): Route[] {
     },
 
     // Storage dashboard (read-only)
-    { method: 'GET', path: '/api/dashboard', handle: async ({ ws }) => ({ dashboard: await getDashboard(ws) }) },
+    {
+      method: 'GET',
+      path: '/api/dashboard',
+      handle: async ({ ws }) => {
+        // The audit trail stays on the server (it can hold absolute paths, Checkpoint D F5).
+        const dashboard: Partial<Dashboard> = await getDashboard(ws, { audit_limit: 0 });
+        delete dashboard.recent_audit;
+        return { dashboard };
+      },
+    },
   ];
 }

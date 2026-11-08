@@ -4,9 +4,25 @@ import { StorageError } from './errors.js';
 import { newId } from './ids.js';
 import { resolveInside } from './paths.js';
 import { type Actor, MEDIA_AREAS, areaOf, assertAllowed, isAllowed } from './permissions.js';
-import { loadRegistry, saveRegistry } from './registry.js';
+import { type MediaScope, loadRegistry, saveRegistry } from './registry.js';
 import { type JournalEntry, clearJournal, readTrashManifest, writeJournal } from './trash.js';
 import { type Workspace, withWorkspaceLock } from './workspace.js';
+
+const ioCode = (e: unknown): string => (e as NodeJS.ErrnoException)?.code ?? 'IO_ERROR';
+
+/**
+ * An explicit restore destination must stay in the media's own scope (shared → SHARED_MEDIA,
+ * project → that project's 01_INPUT) and may not be a hidden/temp-looking name: recovery sweeps
+ * `.importing-*` names, so a restored file there could later be removed (Checkpoint D F1).
+ */
+function assertDestinationFits(rel: string, scope: MediaScope | undefined): void {
+  const name = path.posix.basename(rel);
+  if (name.startsWith('.')) throw new StorageError('PATH_INVALID', 'Nama file tujuan tidak boleh diawali titik', { rel });
+  const root = !scope ? null : scope.kind === 'shared' ? 'SHARED_MEDIA/' : `PROJECTS/${scope.project_id}/01_INPUT/`;
+  if (!root || !rel.toLowerCase().startsWith(root.toLowerCase())) {
+    throw new StorageError('FORBIDDEN', 'Tujuan restore harus di lokasi media itu sendiri (media bersama / input proyeknya)', { rel });
+  }
+}
 
 /** First free sibling name: `<base>.restored-1<ext>`, `-2`, … */
 async function alternatePath(ws: Workspace, rel: string): Promise<string> {
@@ -60,11 +76,12 @@ export async function restoreVersion(
       srcRel = await ws.blobs.resolve(v.rel_path, ['trash']);
       if ((await ws.blobs.hash(srcRel)).hash !== v.content_hash) return failed('File di Trash rusak (hash tidak cocok)');
     } catch (e) {
-      return failed(e instanceof StorageError ? `${e.code}: ${e.message}` : `File Trash hilang/tidak terbaca: ${String(e)}`);
+      return failed(e instanceof StorageError ? `${e.code}: ${e.message}` : `File Trash hilang/tidak terbaca (${ioCode(e)})`);
     }
 
     // Destination: default original path; must be a media area; project folder must still exist.
     const wanted = await ws.blobs.resolve(input.destination ?? manifest.original_rel_path, MEDIA_AREAS, { allowMissing: true });
+    if (input.destination !== undefined) assertDestinationFits(wanted, reg.media[v.media_id]?.scope);
     if (areaOf(wanted) !== 'shared_media' && areaOf(wanted) !== 'shared_assets') {
       // Projects are metadata (local); their folder must still exist.
       const projDir = wanted.split('/').slice(0, 2).join('/');
@@ -95,7 +112,7 @@ export async function restoreVersion(
         const suggested = await alternatePath(ws, dest);
         return { status: 'conflict', op_id, version_id: v.version_id, wanted: dest, suggested };
       }
-      return failed(String(e));
+      return failed(e instanceof StorageError ? `${e.code}: ${e.message}` : `Gagal memindahkan file (${ioCode(e)})`);
     }
     const manifestRel = await ws.blobs.resolve(v.trash.manifest_rel_path, ['trash']);
     const now = ws.clock.now();

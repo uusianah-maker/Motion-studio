@@ -122,6 +122,11 @@ export function createApp(opts: AppOptions) {
     });
   });
 
+  // Node's default 5-minute total request limit cuts off large video uploads (Checkpoint D F3).
+  // Instead: no total limit, but any socket idle for 2 minutes is closed (stalled/slow-loris senders).
+  server.requestTimeout = 0;
+  server.timeout = 2 * 60_000;
+
   return {
     server,
     token,

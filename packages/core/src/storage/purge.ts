@@ -195,7 +195,7 @@ export async function executePurge(ws: Workspace, input: { request_id: string; c
           else if (st.multiLinked) blockers.push('HARD_LINKED');
           else if ((await ws.blobs.hash(fileRel)).hash !== v.content_hash) blockers.push('HASH_MISMATCH');
         } catch (e) {
-          blockers.push(`UNVERIFIABLE: ${e instanceof StorageError ? e.code : String(e)}`);
+          blockers.push(`UNVERIFIABLE: ${e instanceof StorageError ? e.code : ((e as NodeJS.ErrnoException)?.code ?? "IO_ERROR")}`);
         }
       }
       if (blockers.length || !v || !fileRel || !manifestRel) {

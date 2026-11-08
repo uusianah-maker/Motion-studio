@@ -95,6 +95,11 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 ### PC-8: Persetujuan urutan rencana v2.0 — DIJAWAB 2026-11-04: **B (UI dulu, Drive menyusul)**
 - Owner: "Gas jalankan Point B". Urutan baru di `docs/IMPLEMENTATION_PLAN_v2.0.md`: W01–W05 fondasi lokal + UI web (tanpa Google) → W06–W08 editor/preview/render → W09–W10 Login Google + Drive → W11–W15 AI.
 
+### Keputusan owner 2026-11-08: metadata hasil render wajib dihapus
+- Owner: "setiap sebelum jadi pastikan hasil video di remove metadatanya" (rujukan repo D-Ogi/WatermarkRemover-AI).
+- Hasil pelajari repo itu: tidak menghapus metadata secara eksplisit. Video ditulis ulang via OpenCV (`cv2.VideoWriter`, mp4v) lalu audio digabung FFmpeg `-c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest` tanpa `-map_metadata`/`-bitexact` → metadata asli hilang kebetulan, tapi tag `encoder=Lavf…`/`handler_name` tetap ada. Bagian penghapus watermark tidak diambil (di luar scope).
+- Diterapkan di W08 (lihat rencana): flag pembersih eksplisit + verifikasi `ffprobe`; gagal verifikasi = render gagal. Hanya untuk output render; file asli tetap tidak disentuh (PRD: media imutabel).
+
 ### PC-9: Link share folder Drive owner terbuka untuk publik (EDIT)
 - Konteks: folder "video motion folder" (`1pls4-EtmxPa09oxctKgaTx352OOMqWnF`) di-share **"Siapa saja yang punya link: Editor"** (dicek 2026-11-04 via konektor Drive). Siapa pun yang dapat link bisa lihat, tambah, ubah, atau hapus video di folder itu. App tidak butuh link share (akses lewat Login Google + Picker), dan Claude membaca lewat konektor akun owner, bukan lewat link.
 - Task terdampak: W10 (folder ini calon workspace). Tidak memblokir W01–W09.
@@ -115,6 +120,11 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 ### Checkpoint C (T11–T15, audit akhir): LULUS setelah perbaikan
 - Suite: verify 133 pass / 1 skip (stabil 3x), E2E 18/18 (build + MP4 nyata: GC-01..GC-12, design check M-1..M-5, crash recovery), prototype 56/56. Laporan: `audit/CHECKPOINT_C/CHECKPOINT_C_REPORT.md`.
 - Review independen: 2 High (recovery bisa menghapus satu-satunya salinan di Trash; recovery bisa menghapus file user / mengikuti path journal di luar area), 4 Medium (purge abaikan journal korup; crash purge tanpa jejak; overwrite render oleh non-user; nama output render bentrok), 5 Low. Semua diperbaiki + tes regresi.
+
+### Checkpoint D (W01–W05, fondasi lokal + UI web): LULUS setelah perbaikan
+- Suite: core 150 pass / 1 skip (+7 regresi), server 29/29 (+6), web 4/4, smoke, UI Chrome 20/20, E2E 18/18, prototype 56/56. Laporan: `audit/CHECKPOINT_D/CHECKPOINT_D_REPORT.md`.
+- Review independen: 1 High (recovery bisa menghapus media aktif yang di-restore ke nama `.importing-*` lewat HTTP), 3 Medium (folder aneh/junction bikin server gagal start; upload >5 menit putus; upload paralel/ruang 2×/proyek dicek telat/temp sisa crash), 5 Low. High + semua Medium + F5/F8/F9 diperbaiki dengan tes regresi.
+- Masih terbuka (Low, diterima sementara): F6 dashboard scan sebagai aktor `ai` + rehash tiap muat → paling lambat W07; F7 purge cukup token sesi → aturan W11: AI tidak boleh pakai sesi user, pertimbangkan konfirmasi kedua khusus UI.
 
 ## Bug
 | Bug | Ditemukan di | Status (fixed/open) | Catatan |
@@ -142,4 +152,13 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | Tempel URL ber-token di tab yang sedang di layar gerbang tidak memuat ulang (hanya ganti #) | W05 (tes UI) | fixed | listener `hashchange` → reload |
 | Request favicon 404 di console | W05 (tes UI) | fixed | ikon `data:,` |
 | Tes prototype I04 rapuh: jeda tetap 1,5 dtk, start video kadang >0,5 dtk → 00:00 | W05 (suite penuh) | fixed | tunggu sampai waktu ≥1 dtk (maks 6 dtk); kriteria sama; 56/56 tiga kali |
+| Recovery menghapus media aktif bernama `.importing-*` (restore `destination` bebas via HTTP) (F1-D) | Checkpoint D | fixed | regex nama temp persis + cek registry; tujuan restore wajib di scope sendiri; `destination` dicabut dari API |
+| Folder `PROJECTS` tak valid / junction bikin dashboard error & server gagal start (F2-D, regresi W02) | Checkpoint D | fixed | path kanonik di `listFiles`, skip + lapor per area/file |
+| Upload >5 menit diputus (F3-D) | Checkpoint D | fixed | `requestTimeout=0`, idle 2 menit |
+| Upload paralel lolos cek ruang, temp 2×, proyek dicek telat, temp sisa crash (F4-D) | Checkpoint D | fixed | satu import/server, cek 2×, cek proyek dulu, sweep startup |
+| Path absolut bocor di alasan error & audit dashboard (F5-D) | Checkpoint D | fixed | kode error, `recent_audit` tidak dikirim |
+| Dashboard scan sebagai `ai` + rehash tiap muat (F6-D) | Checkpoint D | open (Low) | target W07 |
+| Purge cukup token sesi (F7-D) | Checkpoint D | open (Low) | constraint W11 |
+| `commit`/`move` backend bisa menimpa (F8-D) | Checkpoint D | fixed | hard link + unlink, fallback exFAT |
+| Tes lock H2 sekali gagal saat suite penuh berat | Checkpoint D | open (flaky) | 5/5 terisolasi, 3× suite penuh lulus |
 | `<video>` hitam menutupi placeholder | T02 (self-review screenshot) | fixed | tes A04 ditambah |

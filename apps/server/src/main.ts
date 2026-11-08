@@ -6,11 +6,12 @@
  * which browsers never send to servers or proxies.
  */
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
 import { type CycleResult, type RecoveryReport, openWorkspace, recoverOnStartup } from './core.js';
-import { apiRoutes } from './routes.js';
+import { apiRoutes, sweepUploadTemp } from './routes.js';
 
 export const DEFAULT_PORT = 4317;
 
@@ -32,11 +33,13 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   const webDir = env.MOTION_WEB_DIR ? path.resolve(env.MOTION_WEB_DIR) : WEB_DIST;
   const devOrigin = env.MOTION_DEV_ORIGIN;
   if (devOrigin && !/^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/.test(devOrigin)) throw new Error('MOTION_DEV_ORIGIN hanya boleh http://127.0.0.1:<port> atau http://localhost:<port>');
+  const uploadTmp = env.MOTION_UPLOAD_TMP ? path.resolve(env.MOTION_UPLOAD_TMP) : os.tmpdir();
+  const sweptUploads = await sweepUploadTemp(uploadTmp);
   const app = createApp({
     ws,
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: apiRoutes(env.MOTION_UPLOAD_TMP ? { tmpDir: path.resolve(env.MOTION_UPLOAD_TMP) } : {}),
+    routes: apiRoutes({ tmpDir: uploadTmp }),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 
@@ -66,6 +69,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     app,
     port: bound,
     recovery,
+    sweptUploads,
     firstCycle,
     scheduler,
     async stop() {

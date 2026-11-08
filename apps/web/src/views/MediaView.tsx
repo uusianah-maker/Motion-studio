@@ -39,7 +39,7 @@ export function MediaView({ api, projects, selectedProject }: { api: Api; projec
   }, [load]);
 
   useEffect(() => {
-    if (selectedProject && usable.some((p) => p.project_id === selectedProject)) setTarget(`project:${selectedProject}`);
+    if (selectedProject && projects.some((p) => !p.error && p.project_id === selectedProject)) setTarget(`project:${selectedProject}`);
   }, [selectedProject, projects]);
 
   const patch = (id: number, p: Partial<UploadItem>) => setUploads((list) => list.map((u) => (u.id === id ? { ...u, ...p } : u)));

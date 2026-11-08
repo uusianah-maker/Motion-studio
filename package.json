@@ -10,7 +10,7 @@
     "build": "tsc -b apps/server && vite build apps/web --logLevel warn",
     "typecheck": "tsc -p packages/core/tsconfig.test.json && tsc -p apps/server/tsconfig.test.json && tsc -p apps/web/tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run --root packages/core && vitest run --root apps/server && vitest run --root apps/web",
+    "test": "tsc -b apps/server && vitest run --root packages/core && vitest run --root apps/server && vitest run --root apps/web",
     "smoke": "node scripts/smoke-layout.mjs",
     "test:prototype": "node audit/T01/audit.mjs",
     "verify": "npm run build && npm run typecheck && npm run lint && npm test && npm run smoke",

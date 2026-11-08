@@ -4,6 +4,7 @@ import { type AuditEntry, audit, readAudit } from './audit.js';
 import { backupStatusOf } from './backup.js';
 import { StorageError } from './errors.js';
 import { guard } from './guard.js';
+import { isSafeId } from './ids.js';
 import { listJournal } from './journal.js';
 import { type Actor, resolveInArea } from './permissions.js';
 import { loadRegistry } from './registry.js';
@@ -25,7 +26,8 @@ export type StorageWarning =
   | { code: 'LOW_FREE_SPACE'; free_bytes: number; reserve_bytes: number; advice: string }
   | { code: 'MEDIA_SOFT_QUOTA'; media_bytes: number; soft_bytes: number; advice: string }
   | { code: 'CACHE_OVER_LIMIT'; cache_bytes: number; max_bytes: number; advice: string }
-  | { code: 'TRASH_REVIEW_SUGGESTED'; trash_bytes: number; advice: string };
+  | { code: 'TRASH_REVIEW_SUGGESTED'; trash_bytes: number; advice: string }
+  | { code: 'AREA_UNREADABLE'; path: string; reason: string; advice: string };
 
 export interface StorageStats {
   at: number;
@@ -69,27 +71,41 @@ export async function diskSpace(dir: string): Promise<{ free_bytes: number; tota
  */
 export async function getStorageStats(ws: Workspace, opts: { disk?: { free_bytes: number; total_bytes: number } | null } = {}): Promise<StorageStats> {
   const policy = (await readPolicy(ws)).quota;
+  const warnings: StorageWarning[] = [];
+  // One odd folder or a linked area must not break the whole dashboard (Checkpoint D F2): count it
+  // as 0 and say so, instead of throwing.
+  const blobUsage = async (rel: string): Promise<number> => {
+    try {
+      return await ws.blobs.usage(rel);
+    } catch (e) {
+      warnings.push({ code: 'AREA_UNREADABLE', path: rel, reason: String((e as { code?: string }).code ?? e), advice: 'Folder ini tidak bisa diperiksa dengan aman (link/nama tidak valid). Periksa manual.' });
+      return 0;
+    }
+  };
   const usage: AreaUsage = {
     // Blob areas (media, Trash, output) through the backend; backups + cache are local metadata.
-    shared_media: await ws.blobs.usage(LAYOUT.sharedMedia),
-    shared_assets: await ws.blobs.usage(LAYOUT.sharedAssets),
+    shared_media: await blobUsage(LAYOUT.sharedMedia),
+    shared_assets: await blobUsage(LAYOUT.sharedAssets),
     project_input: 0,
     project_assets: 0,
     project_cache: 0,
     project_output: 0,
-    trash: await ws.blobs.usage(LAYOUT.trash),
+    trash: await blobUsage(LAYOUT.trash),
     backup_projects: await dirSize(path.join(ws.root, LAYOUT.backups)),
   };
   for (const p of await listProjectIds(ws)) {
     const base = `${LAYOUT.projects}/${p}`;
-    usage.project_input += await ws.blobs.usage(`${base}/01_INPUT`);
-    usage.project_assets += await ws.blobs.usage(`${base}/02_ASSETS`);
+    if (!isSafeId(p)) {
+      warnings.push({ code: 'AREA_UNREADABLE', path: base, reason: 'PATH_INVALID', advice: 'Nama folder proyek tidak valid; tidak dihitung. Periksa manual.' });
+      continue;
+    }
+    usage.project_input += await blobUsage(`${base}/01_INPUT`);
+    usage.project_assets += await blobUsage(`${base}/02_ASSETS`);
     usage.project_cache += await dirSize(path.join(ws.root, LAYOUT.projects, p, '04_CACHE'));
-    usage.project_output += await ws.blobs.usage(`${base}/05_OUTPUT`);
+    usage.project_output += await blobUsage(`${base}/05_OUTPUT`);
   }
   const media_bytes = usage.shared_media + usage.shared_assets + usage.project_input + usage.project_assets;
   const disk = opts.disk !== undefined ? opts.disk : await diskSpace(ws.root);
-  const warnings: StorageWarning[] = [];
   if (disk && disk.free_bytes < policy.free_space_reserve_bytes) {
     warnings.push({ code: 'LOW_FREE_SPACE', free_bytes: disk.free_bytes, reserve_bytes: policy.free_space_reserve_bytes, advice: 'Ruang disk menipis. Tinjau cache, output lama, atau Trash secara manual.' });
     if (usage.trash > 0) {
@@ -124,7 +140,7 @@ export async function cleanupCache(ws: Workspace, input: { actor: Actor; target_
   return withWorkspaceLock(ws, 'cleanupCache', async () => {
     const limit = input.target_bytes ?? (await readPolicy(ws)).quota.cache_max_bytes;
     const files: { rel: string; abs: string; size: number; mtime: number }[] = [];
-    for (const p of await listProjectIds(ws)) {
+    for (const p of (await listProjectIds(ws)).filter(isSafeId)) {
       const walk = async (dirRel: string, depth: number): Promise<void> => {
         if (depth > 8) return;
         const dir = path.join(ws.root, dirRel);

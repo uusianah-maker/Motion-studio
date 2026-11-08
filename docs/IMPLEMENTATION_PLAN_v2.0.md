@@ -11,12 +11,12 @@ Alasan urutan B: owner bisa mencoba app dan memberi masukan UI/UX secepatnya; se
 - [x] W03 Server API dasar (Node/TS): hanya listen di 127.0.0.1, health, sesi lokal (token acak per start, belum Google), error bertipe, aktor ditegakkan di server (browser tidak bisa mengaku "user" untuk aksi AI/scheduler).
 - [x] W04 Endpoint proyek & media (backend lokal): buat/buka proyek, import file (upload dari browser), daftar media, Trash/restore/purge manual (token + frasa), dashboard storage.
 - [x] W05 UI web dari prototype (React): daftar proyek, media library, layout editor, Trash/purge/restore, dashboard storage.
-**CHECKPOINT D**
+**CHECKPOINT D** — LULUS setelah perbaikan (2026-11-08, `audit/CHECKPOINT_D/CHECKPOINT_D_REPORT.md`)
 
 ## Fase 2 — Editor + sambung Google Drive
 - [ ] W06 Editor timeline inti: pilih, geser, trim, split, undo/redo di atas skema proyek.
 - [ ] W07 Preview: proxy/cache lokal, playhead sinkron teks/video/audio, rasio & safe area.
-- [ ] W08 Render MP4 nyata (FFmpeg lokal): preflight + lease (T15), status job, output versioned di 05_OUTPUT.
+- [ ] W08 Render MP4 nyata (FFmpeg lokal): preflight + lease (T15), status job, output versioned di 05_OUTPUT. **Wajib (owner 2026-11-08): metadata hasil render dibersihkan sebelum output dinyatakan jadi** — FFmpeg `-map_metadata -1 -map_chapters -1 -fflags +bitexact -flags:v +bitexact -flags:a +bitexact` + kosongkan `handler_name`/`encoder` stream; lalu `ffprobe` memverifikasi tidak ada tag tersisa (selain yang wajib secara teknis, mis. bahasa `und`). Gagal verifikasi = render gagal, bukan output kotor. File asli (import) tidak pernah diubah.
 - [ ] W09 Login Google (OAuth "External", scope `openid email profile drive.file`) + allowlist email + token terenkripsi di server. *Uji nyata butuh OAuth Client ID dari owner (langkah manual, dipandu).*
 - [ ] W10 Backend `GoogleDrive`: owner memilih folder workspace via Google Picker sekali; layout folder, upload/download stream, `.trash` milik app, purge manual, checksum Drive; import via Picker; hasil render di-upload ke Drive. Diuji dengan Drive tiruan + uji nyata ke folder owner.
 **CHECKPOINT E**
