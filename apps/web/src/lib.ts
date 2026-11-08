@@ -89,6 +89,8 @@ export interface ClipSpan {
   end_ms: number;
   in_ms?: number;
   hasMedia?: boolean;
+  /** Length of the source media when known (W07): trim-end never runs past it. */
+  sourceMs?: number;
 }
 
 export const snap = (ms: number, step = SNAP_MS): number => Math.max(0, Math.round(ms / step) * step);
@@ -104,7 +106,8 @@ export function dragSpan(mode: DragMode, c: ClipSpan, deltaMs: number): { start_
     return { start_ms: start, end_ms: start + len };
   }
   if (mode === 'trim-end') {
-    return { start_ms: c.start_ms, end_ms: Math.max(c.start_ms + MIN_CLIP_MS, snap(c.end_ms + deltaMs)) };
+    const latest = c.hasMedia && c.sourceMs !== undefined ? c.start_ms + c.sourceMs - (c.in_ms ?? 0) : Infinity;
+    return { start_ms: c.start_ms, end_ms: Math.min(latest, Math.max(c.start_ms + MIN_CLIP_MS, snap(c.end_ms + deltaMs))) };
   }
   const earliest = c.hasMedia ? c.start_ms - (c.in_ms ?? 0) : 0;
   const start = Math.min(c.end_ms - MIN_CLIP_MS, Math.max(Math.max(0, earliest), snap(c.start_ms + deltaMs)));
@@ -122,3 +125,26 @@ export function rulerTicks(durationMs: number): number[] {
 
 /** Timeline length shown: at least 30 s and always 5 s of room after the last clip. */
 export const visibleDuration = (endMs: number): number => Math.max(30_000, Math.ceil((endMs + 5000) / 5000) * 5000);
+
+// ------------------------------------------------------------------ preview (W07)
+
+export type CanvasRatio = '9:16' | '3:4' | '1:1' | '16:9';
+export const CANVAS_RATIOS: CanvasRatio[] = ['9:16', '3:4', '1:1', '16:9'];
+
+/** The clip under the playhead (start inclusive, end exclusive). */
+export function clipAt<T extends { start_ms: number; end_ms: number }>(clips: readonly T[], t: number): T | null {
+  return clips.find((c) => t >= c.start_ms && t < c.end_ms) ?? null;
+}
+
+/** Position inside the source media (seconds) for timeline time `t`. */
+export const sourceSeconds = (c: { start_ms: number; in_ms?: number }, t: number): number => ((c.in_ms ?? 0) + (t - c.start_ms)) / 1000;
+
+/**
+ * Safe area as insets in % of the canvas (top, right, bottom, left). 9:16 keeps clear of the
+ * usual short-video UI (caption bottom, action buttons right); other ratios use a 5% title-safe margin.
+ */
+export function safeInsets(ratio: CanvasRatio): [number, number, number, number] {
+  return ratio === '9:16' ? [12, 14, 20, 6] : [5, 5, 5, 5];
+}
+
+export const aspectCss = (ratio: CanvasRatio): string => ratio.replace(':', ' / ');

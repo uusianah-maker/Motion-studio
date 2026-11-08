@@ -177,3 +177,22 @@ table.list tr:hover td { background: #191d29; }
 .editorHeader .time { font-variant-numeric: tabular-nums; color: #b0b8c9; }
 .timelineTop { flex-wrap: wrap; height: auto; min-height: 47px; padding: 6px 17px; }
 .timelineTop .smallbtn:disabled { opacity: 0.45; }
+
+/* ---------- preview (W07) ---------- */
+.canvas.live { background: #000; padding: 0; display: block; }
+.canvas.live video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.canvas.live video.off { visibility: hidden; }
+.emptyFrame { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; color: #8d97aa; font-size: 12px; background: radial-gradient(circle at 50% 40%, #1c2947, #0b0d13 70%); }
+.emptyFrame.warnFrame { background: #000c; color: var(--gold); }
+.overlayText { position: absolute; left: 8%; right: 8%; text-align: center; font-size: clamp(14px, 2vw, 24px); font-weight: 850; line-height: 1.15; text-shadow: 0 3px 14px #000d; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: none; z-index: 2; }
+.overlayText.subtitle { font-size: clamp(12px, 1.4vw, 17px); font-weight: 700; background: #000a; border-radius: 8px; padding: 6px 10px; left: 12%; right: 12%; }
+.safeArea { position: absolute; border: 1.5px dashed #59d0ceaa; border-radius: 6px; pointer-events: none; z-index: 3; }
+.player { height: 53px; display: flex; align-items: center; justify-content: center; gap: 16px; border-top: 1px solid var(--line); background: #151923; flex: none; }
+.player .play { background: #7863f2; border: 0; height: 34px; width: 34px; border-radius: 50%; color: #fff; }
+.player .tiny { background: none; border: 0; color: #c3cada; font-size: 15px; }
+.player .time { font-variant-numeric: tabular-nums; color: #b0b8c9; }
+.textEdit { display: flex; align-items: center; gap: 10px; padding: 8px 17px; border-bottom: 1px solid #303545; }
+.textEdit input { flex: 1; min-width: 0; background: #10141e; border: 1px solid #45415e; border-radius: 8px; padding: 7px 10px; }
+@media (max-width: 600px) {
+  .ruler .tick:nth-child(even) { display: none; } /* half the labels on phones so they never collide */
+}

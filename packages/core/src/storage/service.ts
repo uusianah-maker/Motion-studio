@@ -69,7 +69,9 @@ export class StorageService {
     await guard(this.ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'edit' });
     const ops = validateOps(input.ops);
     const current = await this.revisionOrConflict(input.project_id, input.expected_revision);
-    const next = editManifest(current, ops, input.label?.slice(0, 80) || describeOps(ops), { now: this.ws.clock.now(), newId: () => newId('snap'), newClipId: () => newId('c') });
+    const reg = await registry.loadRegistry(this.ws);
+    const sourceDuration = (ref: { version_id: string }) => reg.versions[ref.version_id]?.probe?.duration_ms;
+    const next = editManifest(current, ops, input.label?.slice(0, 80) || describeOps(ops), { now: this.ws.clock.now(), newId: () => newId('snap'), newClipId: () => newId('c'), sourceDuration });
     return this.commitProject({ manifest: next, expected_revision: input.expected_revision, actor: input.actor });
   }
 
@@ -141,6 +143,11 @@ export class StorageService {
     return backup.verifyBackupLocation(this.ws, input);
   }
 
+  /** Probe versions imported before W07 / without ffprobe (metadata only, bounded). */
+  backfillProbes(opts?: { limit?: number }) {
+    return registry.backfillProbes(this.ws, opts);
+  }
+
   recover() {
     return recoverOnStartup(this.ws);
   }
@@ -174,6 +181,8 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   trim_clip: 'Trim klip',
   split_clip: 'Split klip',
   delete_clip: 'Hapus klip',
+  set_text: 'Ubah teks',
+  set_canvas: 'Ubah rasio',
 };
 
 /** Short human label for the undo history ("Geser klip", "3 perubahan"). */

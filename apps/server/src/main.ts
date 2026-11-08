@@ -53,6 +53,10 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     recovery = await recoverOnStartup(ws);
   }
 
+  // Probe media imported before W07 in the background (metadata only; never blocks startup).
+  void app.svc.backfillProbes({ limit: 500 }).catch((e: unknown) => process.stderr.write(`[server] backfill probe: ${String(e)}
+`));
+
   let bound: number;
   try {
     bound = await app.listen(port);

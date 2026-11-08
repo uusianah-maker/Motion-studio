@@ -136,7 +136,12 @@ async function createLock(lockPath: string, info: LockInfo): Promise<boolean> {
   try {
     fh = await fsp.open(lockPath, 'wx');
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    const code = (e as NodeJS.ErrnoException).code;
+    // EEXIST: held. EPERM/EBUSY: Windows reports these while the previous holder's lock file is
+    // still being deleted ("delete pending") — the slot is not free yet, so retry like EEXIST.
+    // A genuinely unwritable folder therefore ends in WORKSPACE_LOCKED at the deadline (typed,
+    // fail closed) instead of an untyped crash (found in W07 under real contention).
+    if (code === 'EEXIST' || code === 'EPERM' || code === 'EBUSY') return false;
     throw e;
   }
   try {

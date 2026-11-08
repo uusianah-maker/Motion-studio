@@ -10,6 +10,8 @@ import { guard } from './guard.js';
 import type { Actor } from './permissions.js';
 import { LAYOUT, META_FILES, type Workspace, metaPath, projectRel, readProject, withWorkspaceLock } from './workspace.js';
 
+import { type MediaProbe, probeFile, validateProbe } from './probe.js';
+
 export { hashFile } from './hash.js';
 
 export const REGISTRY_SCHEMA_VERSION = 1;
@@ -50,6 +52,8 @@ export interface VersionRecord {
   legal_hold: boolean;
   restored_at: number | null;
   trash: TrashInfo | null;
+  /** ffprobe result (W07): undefined = not probed yet, null = probed but not playable media. */
+  probe?: MediaProbe | null;
 }
 
 export interface TrashInfo {
@@ -87,6 +91,13 @@ function validateRegistry(x: unknown): Registry {
     if (!HASH_RE.test(v.content_hash) || typeof v.size !== 'number' || typeof v.rel_path !== 'string') bad(`version ${id} hash/size/path`);
     if (!['active', 'trashed', 'purged'].includes(v.lifecycle) || !['ok', 'missing', 'changed'].includes(v.integrity)) bad(`version ${id} status`);
     if (typeof v.ever_referenced !== 'boolean' || !(v.unreferenced_since === null || typeof v.unreferenced_since === 'number')) bad(`version ${id} clock`);
+    if (v.probe !== undefined) {
+      try {
+        validateProbe(v.probe);
+      } catch {
+        bad(`version ${id} probe`);
+      }
+    }
   }
   for (const m of Object.values(reg.media)) {
     if (reg.versions[m.current_version_id]?.media_id !== m.media_id) bad(`current version ${m.media_id}`);
@@ -152,7 +163,7 @@ function findDuplicate(reg: Registry, hash: string, accept: (v: VersionRecord) =
   return undefined;
 }
 
-function newVersion(ws: Workspace, mediaId: string, versionId: string, staged: StagedBlob, rel: string, originalName: string): VersionRecord {
+function newVersion(ws: Workspace, mediaId: string, versionId: string, staged: StagedBlob, rel: string, originalName: string, probe: MediaProbe | null | undefined): VersionRecord {
   const now = ws.clock.now();
   return {
     version_id: versionId,
@@ -171,6 +182,7 @@ function newVersion(ws: Workspace, mediaId: string, versionId: string, staged: S
     pin: false,
     legal_hold: false,
     restored_at: null,
+    ...(probe !== undefined ? { probe } : {}),
     trash: null,
   };
 }
@@ -187,6 +199,8 @@ export async function importMedia(
   }
   const source = await validateSource(ws, input.sourcePath);
   const dirRel = scopeDir(input.scope);
+  // Metadata only (duration/size/codec); the stored bytes are still identified by the staged hash.
+  const probe = await probeFile(source);
   const staged = await ws.blobs.stage(dirRel, source);
   try {
     return await withWorkspaceLock(ws, 'importMedia', async () => {
@@ -204,7 +218,7 @@ export async function importMedia(
       const versionId = newId('v');
       const rel = await ws.blobs.commit(staged, `${dirRel}/${mediaId}/${versionId}${safeExt(source)}`);
       const originalName = path.basename(source);
-      const version = newVersion(ws, mediaId, versionId, staged, rel, originalName);
+      const version = newVersion(ws, mediaId, versionId, staged, rel, originalName, probe);
       const media: MediaRecord = {
         media_id: mediaId,
         scope: input.scope,
@@ -235,6 +249,7 @@ export async function addVersion(
   const m0 = before.media[mediaId];
   if (!m0) throw new StorageError('NOT_FOUND', 'Media tidak ditemukan', { media_id: mediaId });
   const dirRel = scopeDir(m0.scope);
+  const probe = await probeFile(source);
   const staged = await ws.blobs.stage(dirRel, source);
   try {
     return await withWorkspaceLock(ws, 'addVersion', async () => {
@@ -248,7 +263,7 @@ export async function addVersion(
       }
       const versionId = newId('v');
       const rel = await ws.blobs.commit(staged, `${dirRel}/${mediaId}/${versionId}${safeExt(source)}`);
-      const version = newVersion(ws, mediaId, versionId, staged, rel, path.basename(source));
+      const version = newVersion(ws, mediaId, versionId, staged, rel, path.basename(source), probe);
       reg.versions[versionId] = version;
       const previous = media.current_version_id;
       if (input.makeCurrent ?? true) media.current_version_id = versionId;
@@ -354,4 +369,34 @@ export async function verifyVersion(ws: Workspace, versionId: string, actor: Act
     }
     return { ...result, recorded: true };
   });
+}
+
+/**
+ * Fill in the probe of versions imported before W07 (or when ffprobe was missing). Runs the
+ * probe outside the lock on a local copy from the backend, then records it only if the version
+ * still has no probe. Never touches the media bytes.
+ */
+export async function backfillProbes(ws: Workspace, opts: { limit?: number } = {}): Promise<{ probed: string[]; failed: string[] }> {
+  const reg0 = await loadRegistry(ws);
+  const todo = Object.values(reg0.versions).filter((v) => v.lifecycle === 'active' && v.integrity === 'ok' && v.probe === undefined).slice(0, opts.limit ?? 50);
+  const probed: string[] = [];
+  const failed: string[] = [];
+  for (const v of todo) {
+    let probe: MediaProbe | null | undefined;
+    try {
+      probe = await ws.blobs.withLocalFile(v.rel_path, (file) => probeFile(file));
+    } catch {
+      failed.push(v.version_id);
+      continue;
+    }
+    await withWorkspaceLock(ws, 'backfillProbe', async () => {
+      const reg = await loadRegistry(ws);
+      const cur = reg.versions[v.version_id];
+      if (probe === undefined || !cur || cur.probe !== undefined || cur.rel_path !== v.rel_path) return;
+      cur.probe = probe;
+      await saveRegistry(ws, reg);
+      probed.push(v.version_id);
+    });
+  }
+  return { probed, failed };
 }

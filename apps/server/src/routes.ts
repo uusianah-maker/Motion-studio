@@ -16,6 +16,8 @@ import {
   createProject,
   diskSpace,
   estimateSpace,
+  BROWSER_VIDEO_CODECS,
+  MEDIA_AREAS,
   getDashboard,
   historyCounts,
   listProjectIds,
@@ -24,6 +26,7 @@ import {
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
+import { type StreamSigner, createStreamSigner, mimeFor, sendBytes } from './stream.js';
 
 // ------------------------------------------------------------------ input helpers
 
@@ -94,7 +97,19 @@ function versionView(v: VersionRecord) {
     pin: v.pin,
     legal_hold: v.legal_hold,
     trashed_at: v.trash?.trashed_at ?? null,
+    /** null = not playable media; undefined probe = not probed yet. */
+    probe: v.probe === undefined ? undefined : v.probe,
+    preview: !!v.probe && (v.probe.video_codec === null || BROWSER_VIDEO_CODECS.has(v.probe.video_codec)),
   };
+}
+
+/** A version that may be played right now: active, intact, inside a media area. */
+async function playable(ws: Workspace, versionId: string): Promise<VersionRecord> {
+  const v = (await loadRegistry(ws)).versions[versionId];
+  if (!v) throw new ApiError(404, 'NOT_FOUND', 'Versi media tidak ditemukan');
+  if (v.lifecycle !== 'active') throw new ApiError(409, 'CONFLICT', 'Media ada di Trash / sudah dihapus');
+  if (v.integrity !== 'ok') throw new ApiError(409, 'INTEGRITY', 'Media berubah/hilang; perlu verifikasi');
+  return v;
 }
 
 function mediaList(reg: Registry, filter: (scope: MediaScope) => boolean) {
@@ -212,7 +227,7 @@ export async function sweepUploadTemp(tmpDir: string, maxAgeMs = 6 * 3_600_000, 
 
 // ------------------------------------------------------------------ routes
 
-export function apiRoutes(upload: Partial<UploadOptions> = {}): Route[] {
+export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSigner = createStreamSigner()): Route[] {
   const uploadOpts: UploadOptions = { tmpDir: upload.tmpDir ?? os.tmpdir(), maxBytes: upload.maxBytes ?? 50 * 1024 ** 3 };
   // One import at a time per server: parallel uploads would each pass the free-space check (Checkpoint D F4).
   let importing = false;
@@ -298,6 +313,30 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}): Route[] {
         } finally {
           importing = false;
         }
+      },
+    },
+
+    // Preview playback (W07): token-authenticated URL issue, then signed byte-range streaming.
+    {
+      method: 'GET',
+      path: '/api/media/:version_id/stream-url',
+      handle: async ({ ws, params }) => {
+        const v = await playable(ws, params.version_id!);
+        return { ...signer.sign(v.version_id), mime: mimeFor(v.rel_path), probe: v.probe ?? null };
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/stream/:version_id',
+      public: true, // <video> cannot send Authorization; the HMAC signature is the credential
+      handle: async ({ req, res, url, ws, params }) => {
+        signer.verify(params.version_id!, url.searchParams.get('exp'), url.searchParams.get('sig'));
+        const v = await playable(ws, params.version_id!);
+        const rel = await ws.blobs.resolve(v.rel_path, MEDIA_AREAS);
+        const st = await ws.blobs.stat(rel);
+        if (!st?.isFile) throw new ApiError(404, 'NOT_FOUND', 'File media tidak ditemukan');
+        await sendBytes(req, res, { size: st.size, mime: mimeFor(rel), open: (range) => ws.blobs.readStream(rel, range) });
+        return undefined;
       },
     },
 

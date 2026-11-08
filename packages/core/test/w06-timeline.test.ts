@@ -79,7 +79,7 @@ describe('W06 timeline reducer', () => {
     expect(code(() => applyOps(t1, [{ op: 'move_clip', clip_id: id, start_ms: 9000 }, { op: 'delete_clip', clip_id: 'c_none' }], ids))).toBe('EDIT_INVALID');
     expect(clipsOf(t1)[0]!.start_ms).toBe(0);
     // Same clip on another track is fine; text clips have no media.
-    const t2 = applyOps(t1, [{ op: 'add_clip', track_kind: 'audio', media: M, start_ms: 1000, duration_ms: 3000 }, { op: 'add_clip', track_kind: 'text', start_ms: 0, duration_ms: 1000 }], ids);
+    const t2 = applyOps(t1, [{ op: 'add_clip', track_kind: 'audio', media: M, start_ms: 1000, duration_ms: 3000 }, { op: 'add_clip', track_kind: 'text', text: 'Hook', start_ms: 0, duration_ms: 1000 }], ids);
     expect(t2.tracks.map((t) => t.kind)).toEqual(['video', 'text', 'audio']);
   });
 
@@ -170,5 +170,30 @@ describe('W06 service: edits commit server-side', () => {
     const reg = await loadRegistry(fx.ws);
     const v = reg.versions[ref.version_id]!;
     expect(evaluateVersion(v, reg.media[v.media_id]!, { now: fx.clock.now(), index: idx.index }).eligible).toBe(false);
+  });
+});
+
+describe('PC-10 (A): damaged media in undo history never locks the project', () => {
+  it('editing continues; undoing back to the damaged step is refused with a clear error', async () => {
+    const fx = await fixtureWorkspace();
+    const svc = new StorageService(fx.ws);
+    await createProject(fx.ws, { project_id: 'p', name: 'P' });
+    const a = await importShared(fx.ws, fx.src, 'a');
+    const b = await importShared(fx.ws, fx.src, 'b');
+    await svc.editTimeline({ project_id: 'p', expected_revision: 0, ops: [{ op: 'add_clip', track_kind: 'video', media: a, start_ms: 0, duration_ms: 2000 }], actor: 'user' });
+    const clip = (await readProject(fx.ws, 'p')).timeline.tracks[0]!.clips[0]!;
+    await svc.editTimeline({ project_id: 'p', expected_revision: 1, ops: [{ op: 'delete_clip', clip_id: clip.clip_id }], actor: 'user' });
+    // The bytes of `a` change outside the app (GC-11): registry marks it CHANGED.
+    const reg = await loadRegistry(fx.ws);
+    reg.versions[a.version_id]!.integrity = 'changed';
+    const { saveRegistry } = await import('../src/storage/registry.js');
+    await saveRegistry(fx.ws, reg);
+    const r = await svc.editTimeline({ project_id: 'p', expected_revision: 2, ops: [{ op: 'add_clip', track_kind: 'video', media: b, start_ms: 0, duration_ms: 2000 }], actor: 'user' });
+    expect(r.result.revision).toBe(3); // not locked
+    await svc.undoTimeline({ project_id: 'p', expected_revision: 3, actor: 'user' }); // back to the empty timeline: fine
+    expect(await acode(svc.undoTimeline({ project_id: 'p', expected_revision: 4, actor: 'user' }))).toBe('INTEGRITY'); // would bring `a` back
+    // `a` is still held by the history: never an Auto Trash candidate.
+    const idx = await buildIndex(fx.ws);
+    expect(idx.ok && holdersOf(idx.index, a.version_id).length).toBeGreaterThan(0);
   });
 });

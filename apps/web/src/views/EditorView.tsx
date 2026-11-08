@@ -1,7 +1,10 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Track } from '../api';
-import { DEFAULT_CLIP_MS, type DragMode, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration } from '../lib';
+import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration } from '../lib';
 import { ErrorNotice } from '../ui';
+import { Preview } from './Preview';
+
+const TEXT_CLIP_MS = 3000;
 
 const TRACKS: { kind: Track['kind']; label: string }[] = [
   { kind: 'video', label: '▤  Video' },
@@ -37,6 +40,8 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
   const [selected, setSelected] = useState<string | null>(null);
   const [playhead, setPlayhead] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [textDraft, setTextDraft] = useState('');
   const surfaceRef = useRef<HTMLDivElement>(null);
   // Parent callback kept in a ref: it is a new function each render and must not retrigger loads.
   const onSavedRef = useRef(onSaved);
@@ -54,6 +59,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
     setProject(null);
     setSelected(null);
     setPlayhead(0);
+    setPlaying(false);
     setError(null);
     setNotice(null);
     load().catch(setError);
@@ -101,6 +107,11 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target) || !project) return;
       const k = e.key.toLowerCase();
+      if (k === ' ') {
+        e.preventDefault();
+        setPlaying((p) => !p);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && k === 'z') {
         e.preventDefault();
         if (e.shiftKey ? project.history.redo : project.history.undo) void step(e.shiftKey ? 'redo' : 'undo');
@@ -140,7 +151,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
     if (!drag || e.pointerId !== drag.pointerId) return;
     const d = drag;
     setDrag(null);
-    const span = dragSpan(d.mode, { ...d.clip, hasMedia: !!d.clip.media }, d.deltaMs);
+    const span = dragSpan(d.mode, { ...d.clip, hasMedia: !!d.clip.media, sourceMs: sourceMs(d.clip) }, d.deltaMs);
     if (span.start_ms === d.clip.start_ms && span.end_ms === d.clip.end_ms) return; // a click, not a drag
     const op: EditOp =
       d.mode === 'move'
@@ -154,13 +165,27 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
   const seek = (e: React.MouseEvent) => {
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
+    setPlaying(false); // seeking stops playback; press play again from the new position
     setPlayhead(snap(Math.min(duration, Math.max(0, (e.clientX - rect.left) * msPerPx()))));
     setSelected(null);
   };
 
-  const addToTimeline = (m: Media) => {
-    const videoEnd = Math.max(0, ...(tracks.find((t) => t.kind === 'video')?.clips.map((c) => c.end_ms) ?? [0]));
-    void edit([{ op: 'add_clip', track_kind: 'video', media: { media_id: m.media_id, version_id: m.current_version_id }, start_ms: videoEnd, duration_ms: DEFAULT_CLIP_MS }]);
+  const versionOf = (versionId: string) => media.flatMap((m) => m.versions).find((v) => v.version_id === versionId);
+  /** Source length from the import probe (W07); undefined = unknown (not probed / no ffprobe). */
+  const sourceMs = (c: Clip) => (c.media ? versionOf(c.media.version_id)?.probe?.duration_ms : undefined);
+
+  const addToTimeline = (m: Media, kind: 'video' | 'audio') => {
+    const trackEnd = Math.max(0, ...(tracks.find((t) => t.kind === kind)?.clips.map((c) => c.end_ms) ?? [0]));
+    const probe = versionOf(m.current_version_id)?.probe;
+    void edit([{ op: 'add_clip', track_kind: kind, media: { media_id: m.media_id, version_id: m.current_version_id }, start_ms: trackEnd, duration_ms: probe?.duration_ms ?? DEFAULT_CLIP_MS }]);
+  };
+
+  const addText = (kind: 'text' | 'subtitle') =>
+    void edit([{ op: 'add_clip', track_kind: kind, text: kind === 'text' ? 'Teks baru' : 'Subtitle baru', start_ms: playhead, duration_ms: TEXT_CLIP_MS }]);
+
+  useEffect(() => setTextDraft(sel?.text ?? ''), [sel?.clip_id, sel?.text]);
+  const saveText = () => {
+    if (sel && sel.text !== undefined && textDraft.trim() && textDraft !== sel.text) void edit([{ op: 'set_text', clip_id: sel.clip_id, text: textDraft }]);
   };
 
   if (!projectId) {
@@ -174,7 +199,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
 
   const names = new Map(media.map((m) => [m.media_id, m.display_name]));
   const usable = media.filter((m) => (m.scope.kind === 'shared' || m.scope.project_id === projectId) && m.versions.some((v) => v.version_id === m.current_version_id && v.lifecycle === 'active' && v.integrity === 'ok'));
-  const clipName = (c: Clip) => (c.media ? names.get(c.media.media_id) ?? c.media.media_id : 'Klip');
+  const clipName = (c: Clip) => (c.media ? names.get(c.media.media_id) ?? c.media.media_id : c.text ?? 'Klip');
 
   return (
     <div className="editorGrid">
@@ -200,17 +225,19 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
         )}
         {error ? <div style={{ padding: '12px 16px 0' }}><ErrorNotice error={error} /></div> : null}
         {notice && <div style={{ padding: '12px 16px 0' }}><div className="notice warn" role="status">{notice}</div></div>}
-        <div className="editorHeader">
-          <span>PRATINJAU 9:16 · {formatDuration(lastEnd)}</span>
-          <span className="time">{formatDuration(playhead)}</span>
-        </div>
-        <div className="canvasArea">
-          <div className="canvas" aria-label="Area pratinjau">
-            <span className="canvasTag">● PREVIEW</span>
-            <h3>Pratinjau belum tersedia</h3>
-            <span>Pemutaran video dengan playhead dibangun di tahap W07. Linimasa di bawah sudah bisa diedit dan tersimpan di server.</span>
-          </div>
-        </div>
+        {project && (
+          <Preview
+            api={api}
+            project={project}
+            media={media}
+            playhead={playhead}
+            setPlayhead={setPlayhead}
+            playing={playing}
+            setPlaying={setPlaying}
+            busy={busy}
+            onRatio={(ratio: CanvasRatio) => void edit([{ op: 'set_canvas', ratio }])}
+          />
+        )}
       </main>
 
       <aside className="sidePanel" aria-label="Media untuk proyek">
@@ -231,18 +258,26 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
                     {m.display_name}
                     <small className="muted" style={{ display: 'block' }}>
                       {m.scope.kind === 'shared' ? 'Bersama' : 'Proyek ini'} · {cur ? formatBytes(cur.size) : '–'}
+                      {cur?.probe ? ` · ${formatDuration(cur.probe.duration_ms)}` : cur?.probe === null ? ' · bukan video/audio' : ''}
                     </small>
                   </span>
-                  <button className="btn small" disabled={busy || !project} onClick={() => addToTimeline(m)} aria-label={`Tambah ${m.display_name} ke linimasa`}>
-                    ＋ Video
-                  </button>
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn small" disabled={busy || !project || cur?.probe === null} onClick={() => addToTimeline(m, 'video')} aria-label={`Tambah ${m.display_name} ke linimasa`}>
+                      ＋ Video
+                    </button>
+                    <button className="btn small" disabled={busy || !project || cur?.probe === null || (!!cur?.probe && !cur.probe.audio_codec)} onClick={() => addToTimeline(m, 'audio')} aria-label={`Tambah audio ${m.display_name}`}>
+                      ＋ Audio
+                    </button>
+                  </span>
                 </div>
               );
             })
           )}
-          <p className="muted" style={{ fontSize: 11, lineHeight: 1.6, margin: 0 }}>
-            Klip baru masuk dengan durasi awal 5 detik. Durasi asli video baru dibaca di tahap W07 (pratinjau); sampai itu trim belum dibatasi panjang file sumber.
-          </p>
+          {usable.some((m) => versionOf(m.current_version_id)?.probe === undefined) && (
+            <p className="muted" style={{ fontSize: 11, lineHeight: 1.6, margin: 0 }}>
+              Sebagian media belum terbaca durasinya (ffprobe belum jalan untuk file itu). Klip dari media tersebut masuk 5 detik dan trim-nya belum dibatasi panjang sumber.
+            </p>
+          )}
           <div className="notice info">
             <b>Motion Copilot</b> belum aktif. Asisten AI yang menyusun rencana edit (dengan persetujuan lo) dibangun di tahap W11.
           </div>
@@ -254,6 +289,12 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
           <b>Linimasa</b>
           <small className="muted hideNarrow">{allClips.length} klip</small>
           <div className="spacer" />
+          <button className="smallbtn" disabled={busy || !project} onClick={() => addText('text')} title="Tambah teks di playhead">
+            ＋ Teks
+          </button>
+          <button className="smallbtn" disabled={busy || !project} onClick={() => addText('subtitle')} title="Tambah subtitle di playhead">
+            ＋ Subtitle
+          </button>
           <button className="smallbtn" disabled={busy || !project?.history.undo} onClick={() => step('undo')} title={project?.history.undo_label ? `Undo: ${project.history.undo_label} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}>
             ↶ Undo
           </button>
@@ -267,6 +308,23 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
             🗑 Hapus
           </button>
         </div>
+        {sel?.text !== undefined && (
+          <div className="textEdit">
+            <label htmlFor="clipText" className="muted">
+              Teks klip
+            </label>
+            <input
+              id="clipText"
+              value={textDraft}
+              maxLength={500}
+              onChange={(e) => setTextDraft(e.target.value)}
+              onBlur={saveText}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+            />
+          </div>
+        )}
         <div className="tracks">
           <div className="track rulerRow">
             <div className="trackLabel muted">{formatDuration(playhead)}</div>
@@ -287,7 +345,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
                 <div className="trackSurface" onClick={seek}>
                   <div className="playhead" style={{ left: pct(playhead) }} />
                   {clips.map((c) => {
-                    const live = drag && drag.clip.clip_id === c.clip_id ? dragSpan(drag.mode, { ...c, hasMedia: !!c.media }, drag.deltaMs) : c;
+                    const live = drag && drag.clip.clip_id === c.clip_id ? dragSpan(drag.mode, { ...c, hasMedia: !!c.media, sourceMs: sourceMs(c) }, drag.deltaMs) : c;
                     const isSel = c.clip_id === selected;
                     return (
                       <div
@@ -323,7 +381,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
         <div className="footerNote">
           {allClips.length === 0
             ? 'Linimasa kosong. Tambahkan media dari panel kanan (＋ Video).'
-            : 'Klik klip untuk memilih · seret untuk geser · seret pinggirnya untuk trim · klik linimasa untuk memindah playhead · S split · Del hapus · ←/→ geser 0,1 dtk (Shift 1 dtk) · Ctrl+Z / Ctrl+Shift+Z.'}
+            : 'Spasi putar/jeda · klik klip untuk memilih · seret untuk geser · seret pinggirnya untuk trim · klik linimasa untuk memindah playhead · S split · Del hapus · ←/→ geser 0,1 dtk (Shift 1 dtk) · Ctrl+Z / Ctrl+Shift+Z.'}
         </div>
       </section>
     </div>

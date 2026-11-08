@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-08T04:41:53.314Z",
+  "at": "2026-11-08T05:24:47.583Z",
   "summary": {
     "PASS": 16
   },
@@ -7,27 +7,27 @@
     {
       "id": "ED-01 Tambah dua klip berurutan",
       "ok": true,
-      "detail": "[[0,5000],[5000,10000]]"
+      "detail": "[[0,8000],[8000,16000]]"
     },
     {
       "id": "ED-02 Seret klip → geser (snap 100 ms)",
       "ok": true,
-      "detail": "start=8000"
+      "detail": "start=11000"
     },
     {
       "id": "ED-03 Seret pinggir kanan → trim akhir",
       "ok": true,
-      "detail": "end=3500"
+      "detail": "end=6500"
     },
     {
       "id": "ED-04 Seret pinggir kiri → trim awal + in-point sumber ikut",
       "ok": true,
-      "detail": "start=9000 in=1000"
+      "detail": "start=12000 in=1000"
     },
     {
       "id": "ED-05 Playhead + S → split",
       "ok": true,
-      "detail": "[[0,1500,0],[1500,3500,1500],[9000,13000,1000]]"
+      "detail": "[[0,1500,0],[1500,6500,1500],[12000,19000,1000]]"
     },
     {
       "id": "ED-06 Del → hapus klip",
@@ -52,7 +52,7 @@
     {
       "id": "ED-10 → geser 100 ms",
       "ok": true,
-      "detail": "9000→9100"
+      "detail": "12000→12100"
     },
     {
       "id": "ED-11 Tumpang tindih ditolak + pesan jelas",

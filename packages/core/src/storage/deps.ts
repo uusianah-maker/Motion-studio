@@ -63,6 +63,11 @@ function assertUsable(reg: Registry, ref: MediaRef, busy: ReadonlySet<string>): 
   if (v.integrity !== 'ok') throw new StorageError('INTEGRITY', `Versi media ${v.integrity}: perlu relink/verifikasi, tidak diganti diam-diam`, { ...ref });
 }
 
+function assertKnown(reg: Registry, ref: MediaRef): void {
+  const v = reg.versions[ref.version_id];
+  if (!v || v.media_id !== ref.media_id) throw new StorageError('PRECONDITION', 'Referensi media di riwayat tidak dikenal', { ...ref });
+}
+
 /** Create a job lease pinning exact versions + hashes (immutable dependency snapshot). */
 export async function createLease(ws: Workspace, input: { job: JobKind; label: string; media: MediaRef[]; actor: Actor; output_rel?: string }): Promise<Lease> {
   await guard(ws, input.actor, 'manage_lease', { job: input.job });
@@ -255,7 +260,13 @@ export async function commitProject(
     const reg = await loadRegistry(ws);
     const refs = manifestReferences(next);
     const busy = await journalBusy(ws);
-    for (const r of refs) assertUsable(reg, r.ref, busy);
+    // PC-10 (owner: A): only the live timeline must be usable. Undo/redo/snapshot history still
+    // holds its media (never trashed) but may point at a version that later changed/missing; that
+    // must not lock the whole project. Undoing *to* such a step is refused by this same check.
+    for (const r of refs) {
+      if (r.source === 'timeline') assertUsable(reg, r.ref, busy);
+      else assertKnown(reg, r.ref);
+    }
     const saved: ProjectManifest = { ...next, revision: current.revision + 1, created_at: current.created_at, updated_at: ws.clock.now() };
     await writeJsonAtomic(await resolveInside(ws.root, manifestRel(next.project_id)), saved);
     for (const r of refs) {

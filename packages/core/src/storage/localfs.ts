@@ -245,6 +245,15 @@ export class LocalFsBackend implements StorageBackend {
     return (await this.listFiles(dirRel, 16)).reduce((a, f) => a + f.size, 0);
   }
 
+  async withLocalFile<T>(rel: string, fn: (absPath: string) => Promise<T>): Promise<T> {
+    return fn(await this.abs(rel));
+  }
+
+  async readStream(rel: string, range?: { start: number; end: number }): Promise<NodeJS.ReadableStream> {
+    const abs = await this.abs(rel);
+    return createReadStream(abs, range ? { start: range.start, end: range.end } : {});
+  }
+
   async probeWritable(dirRel: string): Promise<void> {
     const probe = await this.abs(`${dirRel}/.write-probe-${newId('op')}`, true);
     await fsp.writeFile(probe, '', { flag: 'wx' });

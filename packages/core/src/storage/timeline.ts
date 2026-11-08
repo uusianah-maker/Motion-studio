@@ -1,6 +1,6 @@
 import { StorageError } from './errors.js';
 import { isSafeId } from './ids.js';
-import type { Clip, MediaRef, ProjectManifest, Snapshot, Track, TrackKind } from './project.js';
+import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
 
 /**
  * Timeline editing core (plan v2.0 W06, PRD: "action reducer, undo history; authoritative
@@ -13,14 +13,21 @@ export const MIN_CLIP_MS = 100;
 export const UNDO_LIMIT = 50;
 /** Media clips may live on these tracks; text/subtitle/effects carry no media. */
 export const MEDIA_TRACKS: readonly TrackKind[] = ['video', 'broll', 'audio'];
+/** Text clips (overlay / subtitle) carry `text` and never media. */
+export const TEXT_TRACKS: readonly TrackKind[] = ['text', 'subtitle'];
 const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'effects'];
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; start_ms: number; duration_ms: number; in_ms?: number }
+  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; start_ms: number; duration_ms: number; in_ms?: number }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
-  | { op: 'delete_clip'; clip_id: string };
+  | { op: 'delete_clip'; clip_id: string }
+  | { op: 'set_text'; clip_id: string; text: string }
+  | { op: 'set_canvas'; ratio: CanvasRatio };
+
+/** Source length per media version (from the registry probe); unknown -> not enforced. */
+export type SourceDuration = (ref: MediaRef) => number | undefined;
 
 export type Timeline = ProjectManifest['timeline'];
 
@@ -30,6 +37,7 @@ const bad = (msg: string, details: Record<string, unknown> = {}): never => {
 const isMs = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 24 * 3_600_000;
 const ms = (n: unknown, what: string): number => (isMs(n) ? Math.round(n) : bad(`${what} harus angka ms 0–24 jam`, { [what]: n }));
 const clipId = (x: unknown): string => (isSafeId(x) ? x : bad('clip_id tidak valid'));
+const textOf = (x: unknown): string => (typeof x === 'string' && x.trim().length > 0 && x.length <= MAX_TEXT_LEN ? x : bad(`Teks wajib 1-${MAX_TEXT_LEN} karakter`));
 
 /** Validate the shape of untrusted ops (HTTP / AI plans) before anything is applied. */
 export function validateOps(x: unknown): EditOp[] {
@@ -42,7 +50,7 @@ export function validateOps(x: unknown): EditOp[] {
     };
     switch (o.op) {
       case 'add_clip': {
-        keys(['op', 'track_kind', 'media', 'start_ms', 'duration_ms', 'in_ms']);
+        keys(['op', 'track_kind', 'media', 'text', 'start_ms', 'duration_ms', 'in_ms']);
         if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
         let media: MediaRef | undefined;
         if (o.media !== undefined) {
@@ -54,6 +62,7 @@ export function validateOps(x: unknown): EditOp[] {
           op: 'add_clip',
           track_kind: o.track_kind as TrackKind,
           ...(media ? { media } : {}),
+          ...(o.text !== undefined ? { text: textOf(o.text) } : {}),
           start_ms: ms(o.start_ms, 'start_ms'),
           duration_ms: ms(o.duration_ms, 'duration_ms'),
           ...(o.in_ms !== undefined ? { in_ms: ms(o.in_ms, 'in_ms') } : {}),
@@ -72,13 +81,23 @@ export function validateOps(x: unknown): EditOp[] {
       case 'delete_clip':
         keys(['op', 'clip_id']);
         return { op: 'delete_clip', clip_id: clipId(o.clip_id) };
+      case 'set_text':
+        keys(['op', 'clip_id', 'text']);
+        return { op: 'set_text', clip_id: clipId(o.clip_id), text: textOf(o.text) };
+      case 'set_canvas':
+        keys(['op', 'ratio']);
+        if (!CANVAS_RATIOS.includes(o.ratio as CanvasRatio)) bad(`ops[${i}]: rasio harus ${CANVAS_RATIOS.join(', ')}`);
+        return { op: 'set_canvas', ratio: o.ratio as CanvasRatio };
       default:
         return bad(`ops[${i}]: operasi tidak dikenal`);
     }
   });
 }
 
-const clone = (t: Timeline): Timeline => ({ tracks: t.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => ({ ...c, ...(c.media ? { media: { ...c.media } } : {}) })) })) });
+const clone = (t: Timeline): Timeline => ({
+  tracks: t.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => ({ ...c, ...(c.media ? { media: { ...c.media } } : {}) })) })),
+  ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
+});
 
 function locate(t: Timeline, id: string): { track: Track; clip: Clip; index: number } {
   for (const track of t.tracks) {
@@ -89,7 +108,7 @@ function locate(t: Timeline, id: string): { track: Track; clip: Clip; index: num
 }
 
 /** Every track: clips sorted, long enough, never overlapping (deterministic timeline). */
-function assertConsistent(t: Timeline): void {
+function assertConsistent(t: Timeline, sourceDuration?: SourceDuration): void {
   const ids = new Set<string>();
   for (const track of t.tracks) {
     track.clips.sort((a, b) => a.start_ms - b.start_ms);
@@ -100,6 +119,13 @@ function assertConsistent(t: Timeline): void {
       if (c.end_ms - c.start_ms < MIN_CLIP_MS) bad(`Klip minimal ${MIN_CLIP_MS} ms`, { clip_id: c.clip_id });
       if (c.start_ms < prevEnd) bad('Klip saling tumpang tindih di track yang sama', { clip_id: c.clip_id, track_id: track.track_id });
       if (c.media && !MEDIA_TRACKS.includes(track.kind)) bad(`Media tidak boleh di track ${track.kind}`, { clip_id: c.clip_id });
+      if (c.text !== undefined && !TEXT_TRACKS.includes(track.kind)) bad('Teks hanya di track teks/subtitle', { clip_id: c.clip_id });
+      if (c.media && sourceDuration) {
+        const total = sourceDuration(c.media);
+        if (total !== undefined && (c.in_ms ?? 0) + (c.end_ms - c.start_ms) > total) {
+          bad(`Klip melebihi panjang video sumber (${(total / 1000).toFixed(1)} dtk)`, { clip_id: c.clip_id });
+        }
+      }
       prevEnd = c.end_ms;
     }
   }
@@ -119,13 +145,16 @@ function trackFor(t: Timeline, kind: TrackKind): Track {
  * Apply ops atomically: either every op succeeds and the result is consistent, or nothing
  * changes (EDIT_INVALID). `newClipId` is injected so tests and replays are deterministic.
  */
-export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => string): Timeline {
+export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => string, sourceDuration?: SourceDuration): Timeline {
   const t = clone(timeline);
   for (const op of ops) {
     switch (op.op) {
       case 'add_clip': {
         if (op.media && !MEDIA_TRACKS.includes(op.track_kind)) bad(`Media tidak boleh di track ${op.track_kind}`);
+        if (op.media && op.text !== undefined) bad('Klip media tidak boleh punya teks');
+        if (TEXT_TRACKS.includes(op.track_kind) && op.text === undefined) bad('Klip teks wajib berisi teks');
         const clip: Clip = { clip_id: newClipId(), start_ms: op.start_ms, end_ms: op.start_ms + op.duration_ms };
+        if (op.text !== undefined) clip.text = op.text;
         if (op.media) {
           clip.media = { ...op.media };
           clip.in_ms = op.in_ms ?? 0;
@@ -174,9 +203,18 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         track.clips.splice(index, 1);
         break;
       }
+      case 'set_text': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (!TEXT_TRACKS.includes(track.kind)) bad('Hanya klip teks/subtitle yang punya teks', { clip_id: op.clip_id });
+        clip.text = op.text;
+        break;
+      }
+      case 'set_canvas':
+        t.canvas = { ratio: op.ratio };
+        break;
     }
   }
-  assertConsistent(t);
+  assertConsistent(t, sourceDuration);
   return t;
 }
 
@@ -205,8 +243,8 @@ export interface HistoryContext {
 }
 
 /** Apply an edit: previous timeline becomes the newest undo step; the redo stack is cleared. */
-export function editManifest(m: ProjectManifest, ops: EditOp[], label: string, ctx: HistoryContext & { newClipId: () => string }): ProjectManifest {
-  const timeline = applyOps(m.timeline, ops, ctx.newClipId);
+export function editManifest(m: ProjectManifest, ops: EditOp[], label: string, ctx: HistoryContext & { newClipId: () => string; sourceDuration?: SourceDuration }): ProjectManifest {
+  const timeline = applyOps(m.timeline, ops, ctx.newClipId, ctx.sourceDuration);
   const others = m.snapshots.filter((s) => s.kind !== 'undo' && s.kind !== 'redo');
   const undo = [...m.snapshots.filter((s) => s.kind === 'undo'), historyEntry('undo', m.timeline, label, ctx.now, ctx.newId())].slice(-UNDO_LIMIT);
   return { ...m, timeline, snapshots: [...others, ...undo] };

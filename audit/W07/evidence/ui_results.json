@@ -1,0 +1,103 @@
+{
+  "at": "2026-11-08T05:24:55.017Z",
+  "summary": {
+    "PASS": 19
+  },
+  "results": [
+    {
+      "id": "PV-00 Probe saat import (ffprobe)",
+      "ok": true,
+      "detail": "{\"duration_ms\":8000,\"width\":360,\"height\":640,\"video_codec\":\"h264\",\"audio_codec\":\"aac\"}"
+    },
+    {
+      "id": "PV-01 Klip masuk dengan durasi asli 8 dtk",
+      "ok": true,
+      "detail": "end=8000"
+    },
+    {
+      "id": "PV-02 Trim kanan mentok di ujung sumber",
+      "ok": true,
+      "detail": "end=8000"
+    },
+    {
+      "id": "PV-03 Putar: video jalan + jam timeline maju",
+      "ok": true,
+      "detail": "{\"t\":1.031941,\"paused\":false,\"ready\":4,\"src\":true} time=00:01 / 00:08"
+    },
+    {
+      "id": "PV-04 Jeda: video berhenti",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-05 Seek setelah split: waktu sumber tepat (in_ms + offset)",
+      "ok": true,
+      "detail": "t=5.500"
+    },
+    {
+      "id": "PV-06 Overlay teks tampil di playhead",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-07 Overlay teks hilang di luar klipnya",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-08 Rasio 1:1 → canvas persegi + tersimpan",
+      "ok": true,
+      "detail": "459x459"
+    },
+    {
+      "id": "PV-09 Undo mengembalikan rasio 9:16",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-10 Garis area aman tampil",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-11 Area aman bisa disembunyikan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-12a ＋ Audio mati untuk file tanpa stream audio",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-12 Track audio ikut playhead",
+      "ok": true,
+      "detail": "{\"t\":1.5,\"src\":true}"
+    },
+    {
+      "id": "PV-13 Spasi = putar",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-14 Spasi lagi = jeda",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-15 Stream tanpa tanda tangan sah ditolak",
+      "ok": true,
+      "detail": "status=401"
+    },
+    {
+      "id": "PV-16 HP 390px tanpa scroll horizontal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "PV-17 Tidak ada error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

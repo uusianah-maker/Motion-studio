@@ -2,7 +2,7 @@
 import { promises as fsp } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { isStorageError } from '../src/storage/errors.js';
 import { LOCK_TIMING, withLock, writeJsonAtomic } from '../src/storage/jsonStore.js';
 import { normalizeRelative, resolveCanonical } from '../src/storage/paths.js';
@@ -135,5 +135,24 @@ describe('workspace metadata & root links', () => {
     await fsp.mkdir(path.join(outsideDir, 'd'));
     expect(await tryLink(path.join(outsideDir, 'd'), reg, 'junction')).toBe(true);
     expect(await code(openWorkspace(real))).toBe('WORKSPACE_INVALID');
+  });
+});
+
+describe('W07 finding: Windows "delete pending" while acquiring the lock', () => {
+  it('EPERM/EBUSY from creating the lock file means "retry", not a crash', async () => {
+    const dir = await tempDir();
+    const lock = path.join(dir, 'x.lock');
+    const real = fsp.open.bind(fsp);
+    let calls = 0;
+    const spy = vi.spyOn(fsp, 'open').mockImplementation(async (...args: Parameters<typeof fsp.open>) => {
+      if (String(args[0]) === lock && calls++ < 2) throw Object.assign(new Error(calls === 1 ? 'EPERM' : 'EBUSY'), { code: calls === 1 ? 'EPERM' : 'EBUSY' });
+      return real(...args);
+    });
+    try {
+      expect(await withLock(lock, 't', async () => 'ran')).toBe('ran');
+      expect(calls).toBeGreaterThanOrEqual(3);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

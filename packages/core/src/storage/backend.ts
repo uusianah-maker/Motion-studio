@@ -66,6 +66,13 @@ export interface StorageBackend {
   listFiles(dirRel: string, maxDepth: number): Promise<{ rel: string; name: string; size: number; mtimeMs: number }[]>;
   /** Total bytes under `dirRel` (0 when missing). */
   usage(dirRel: string): Promise<number>;
+  /**
+   * Give `fn` a local file path holding these exact bytes (LocalFs: the file itself, read-only;
+   * Drive in W10: a verified copy in the local cache). Used by ffprobe and, later, render.
+   */
+  withLocalFile<T>(rel: string, fn: (absPath: string) => Promise<T>): Promise<T>;
+  /** Stream a byte range (inclusive `end`) for playback. */
+  readStream(rel: string, range?: { start: number; end: number }): Promise<NodeJS.ReadableStream>;
   /** Throws when a new object cannot be created in `dirRel`. */
   probeWritable(dirRel: string): Promise<void>;
 }

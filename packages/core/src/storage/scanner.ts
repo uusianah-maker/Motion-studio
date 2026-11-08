@@ -92,3 +92,34 @@ export async function scanCandidates(ws: Workspace, opts: { actor: Actor; busy?:
   });
   return { op_id, at, dry_run: true, ok: true, errors: [], candidates, rejected, summary, evaluations };
 }
+
+export interface GcStatusView {
+  ok: boolean;
+  errors: string[];
+  summary: Partial<Record<GcState, number>>;
+  /** Pass every rule now; bytes are re-hashed only when Auto Trash actually runs. */
+  candidates: number;
+  evaluations: Evaluation[];
+}
+
+/**
+ * Read-only GC status for dashboards (Checkpoint D F6): no audit entry, no hashing, no writes.
+ * Clocks are reconciled on an in-memory copy, exactly like the AI-safe scan, so a page view
+ * never shows up as an actor in the audit log and never re-reads gigabytes of video.
+ */
+export async function gcStatusView(ws: Workspace): Promise<GcStatusView> {
+  const at = ws.clock.now();
+  const r = await buildIndex(ws);
+  if (!r.ok) return { ok: false, errors: r.errors, summary: {}, candidates: 0, evaluations: [] };
+  let reg: Registry;
+  try {
+    reg = await loadRegistry(ws);
+  } catch (e) {
+    return { ok: false, errors: [String(e)], summary: {}, candidates: 0, evaluations: [] };
+  }
+  reconcileClocks(reg, r.index, at);
+  const evaluations = evaluateAll(reg, { now: at, index: r.index, busy: await journalBusy(ws) });
+  const summary: GcStatusView['summary'] = {};
+  for (const e of evaluations) summary[e.state] = (summary[e.state] ?? 0) + 1;
+  return { ok: true, errors: [], summary, candidates: evaluations.filter((e) => e.eligible).length, evaluations };
+}

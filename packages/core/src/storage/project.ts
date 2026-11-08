@@ -19,6 +19,19 @@ export interface Clip {
   /** Offset into the source media where this clip starts (trim-start / split). Default 0. */
   in_ms?: number;
   media?: MediaRef;
+  /** Text of a text/subtitle clip (W07). Never on media clips. */
+  text?: string;
+}
+
+export const CANVAS_RATIOS = ['9:16', '3:4', '1:1', '16:9'] as const;
+export type CanvasRatio = (typeof CANVAS_RATIOS)[number];
+export const MAX_TEXT_LEN = 500;
+
+/** Timeline = tracks + output canvas; both are part of undo/redo. */
+export interface Timeline {
+  tracks: Track[];
+  /** Default 9:16 when absent. */
+  canvas?: { ratio: CanvasRatio };
 }
 
 export interface Track {
@@ -35,7 +48,7 @@ export interface Snapshot {
   retained: boolean;
   created_at: number;
   media: MediaRef[];
-  timeline?: { tracks: Track[] };
+  timeline?: Timeline;
   label?: string;
 }
 
@@ -47,7 +60,7 @@ export interface ProjectManifest {
   revision: number;
   created_at: number;
   updated_at: number;
-  timeline: { tracks: Track[] };
+  timeline: Timeline;
   snapshots: Snapshot[];
 }
 
@@ -88,7 +101,7 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
   if (o.schema_version !== PROJECT_SCHEMA_VERSION) fail('schema_version', `harus ${PROJECT_SCHEMA_VERSION}`);
   const status = o.status;
   if (status !== 'active' && status !== 'archived') fail('status', 'harus active|archived');
-  const tracks = validateTracks(o.timeline, 'timeline');
+  const timeline = validateTimeline(o.timeline, 'timeline');
   const snapshots = arr(o.snapshots, 'snapshots').map((s, i) => {
     const w = `snapshots[${i}]`;
     const so = obj(s, w);
@@ -102,7 +115,7 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
     };
     if (so.label !== undefined) snap.label = str(so.label, `${w}.label`);
     if (so.timeline !== undefined) {
-      snap.timeline = { tracks: validateTracks(so.timeline, `${w}.timeline`) };
+      snap.timeline = validateTimeline(so.timeline, `${w}.timeline`);
       // The GC must see every media the stored timeline would bring back (PRD: retained undo holds media).
       const held = new Set(snap.media.map((m) => m.version_id));
       for (const t of snap.timeline.tracks) for (const c of t.clips) if (c.media && !held.has(c.media.version_id)) fail(`${w}.media`, 'tidak memuat semua media timeline');
@@ -117,13 +130,23 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
     revision: num(o.revision, 'revision'),
     created_at: num(o.created_at, 'created_at'),
     updated_at: num(o.updated_at, 'updated_at'),
-    timeline: { tracks },
+    timeline,
     snapshots,
   };
 }
 
-function validateTracks(x: unknown, where: string): Track[] {
-  const timeline = obj(x, where);
+function validateTimeline(x: unknown, where: string): Timeline {
+  const o = obj(x, where);
+  const out: Timeline = { tracks: validateTracks(o, where) };
+  if (o.canvas !== undefined) {
+    const c = obj(o.canvas, `${where}.canvas`);
+    if (!CANVAS_RATIOS.includes(c.ratio as CanvasRatio)) fail(`${where}.canvas.ratio`, `harus salah satu ${CANVAS_RATIOS.join(', ')}`);
+    out.canvas = { ratio: c.ratio as CanvasRatio };
+  }
+  return out;
+}
+
+function validateTracks(timeline: Obj, where: string): Track[] {
   return arr(timeline.tracks, `${where}.tracks`).map((t, i) => {
     const w = `${where}.tracks[${i}]`;
     const to = obj(t, w);
@@ -138,6 +161,12 @@ function validateTracks(x: unknown, where: string): Track[] {
       const clip: Clip = { clip_id: id(co.clip_id, `${cw}.clip_id`), start_ms: start, end_ms: end };
       if (co.in_ms !== undefined) clip.in_ms = num(co.in_ms, `${cw}.in_ms`);
       if (co.media !== undefined) clip.media = mediaRef(co.media, `${cw}.media`);
+      if (co.text !== undefined) {
+        const text = str(co.text, `${cw}.text`);
+        if (text.length > MAX_TEXT_LEN) fail(`${cw}.text`, `maks ${MAX_TEXT_LEN} karakter`);
+        if (clip.media) fail(`${cw}.text`, 'klip media tidak boleh punya teks');
+        clip.text = text;
+      }
       return clip;
     });
     return { track_id: id(to.track_id, `${w}.track_id`), kind, clips };

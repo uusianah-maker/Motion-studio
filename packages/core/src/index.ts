@@ -4,7 +4,8 @@ export type { BlobStat, StagedBlob, StorageBackend } from './storage/backend.js'
 export { type Clock, DAY_MS, ManualClock, systemClock } from './storage/clock.js';
 export { StorageError, type StorageErrorCode, isStorageError } from './storage/errors.js';
 export { LocalFsBackend } from './storage/localfs.js';
-export type { Actor, Area, Operation } from './storage/permissions.js';
+export { type Actor, type Area, MEDIA_AREAS, type Operation } from './storage/permissions.js';
+export { BROWSER_VIDEO_CODECS, type MediaProbe } from './storage/probe.js';
 export type { Clip, ProjectManifest, Track } from './storage/project.js';
 export { PURGE_PHRASE, type PurgePlan, type PurgeResult } from './storage/purge.js';
 export { type Dashboard, diskSpace, estimateSpace, getDashboard } from './storage/quota.js';

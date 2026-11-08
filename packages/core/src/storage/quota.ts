@@ -8,7 +8,7 @@ import { isSafeId } from './ids.js';
 import { listJournal } from './journal.js';
 import { type Actor, resolveInArea } from './permissions.js';
 import { loadRegistry } from './registry.js';
-import { type ScanReport, scanCandidates } from './scanner.js';
+import { type ScanReport, gcStatusView } from './scanner.js';
 import { LAYOUT, type Policy, type Workspace, listProjectIds, readPolicy, withWorkspaceLock } from './workspace.js';
 
 export interface AreaUsage {
@@ -183,10 +183,10 @@ export interface Dashboard {
   recent_audit: AuditEntry[];
 }
 
-/** Read-only storage dashboard data (uses the AI-safe dry-run scan: writes nothing but its audit line). */
+/** Read-only storage dashboard data: writes nothing, hashes nothing (Checkpoint D F6). */
 export async function getDashboard(ws: Workspace, opts: { disk?: { free_bytes: number; total_bytes: number } | null; audit_limit?: number } = {}): Promise<Dashboard> {
   const stats = await getStorageStats(ws, opts.disk !== undefined ? { disk: opts.disk } : {});
-  const scan = await scanCandidates(ws, { actor: 'ai' });
+  const scan = await gcStatusView(ws);
   const reg = await loadRegistry(ws).catch(() => null);
   if (!reg) throw new StorageError('INDEX_INVALID', 'Registry tidak bisa dibaca');
   const trash = [];
@@ -211,7 +211,7 @@ export async function getDashboard(ws: Workspace, opts: { disk?: { free_bytes: n
   const all = await readAudit(ws);
   return {
     stats,
-    gc: { ok: scan.ok, errors: scan.errors, summary: scan.summary, candidates: scan.candidates.length, next_eligible },
+    gc: { ok: scan.ok, errors: scan.errors, summary: scan.summary, candidates: scan.candidates, next_eligible },
     trash: trash.sort((a, b) => b.trashed_at - a.trashed_at),
     pending_operations: journal.filter((j) => j.entry).length,
     corrupt_journal: journal.filter((j) => !j.entry).length,

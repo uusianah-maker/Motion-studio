@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockerText, dragSpan, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeTokenFromHash, visibleDuration } from '../src/lib';
+import { aspectCss, blockerText, clipAt, dragSpan, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeTokenFromHash, visibleDuration } from '../src/lib';
 
 const TOKEN = 'a'.repeat(64);
 
@@ -56,5 +56,25 @@ describe('timeline drag math (W06)', () => {
     expect(rulerTicks(8000)).toHaveLength(9);
     expect(visibleDuration(0)).toBe(30_000);
     expect(visibleDuration(41_200)).toBe(50_000);
+  });
+});
+
+describe('preview helpers (W07)', () => {
+  const clips = [{ start_ms: 0, end_ms: 2000, in_ms: 500 }, { start_ms: 2000, end_ms: 5000 }];
+  it('picks the clip under the playhead (end exclusive) and maps to source time', () => {
+    expect(clipAt(clips, 0)).toBe(clips[0]);
+    expect(clipAt(clips, 1999)).toBe(clips[0]);
+    expect(clipAt(clips, 2000)).toBe(clips[1]);
+    expect(clipAt(clips, 5000)).toBeNull();
+    expect(sourceSeconds(clips[0]!, 1000)).toBe(1.5);
+    expect(sourceSeconds(clips[1]!, 2500)).toBe(0.5);
+  });
+  it('trim-end stops at the end of the source', () => {
+    expect(dragSpan('trim-end', { start_ms: 1000, end_ms: 3000, in_ms: 2000, hasMedia: true, sourceMs: 8000 }, 99_000)).toEqual({ start_ms: 1000, end_ms: 7000 });
+  });
+  it('safe area and aspect', () => {
+    expect(safeInsets('9:16')).toEqual([12, 14, 20, 6]);
+    expect(safeInsets('16:9')).toEqual([5, 5, 5, 5]);
+    expect(aspectCss('3:4')).toBe('3 / 4');
   });
 });

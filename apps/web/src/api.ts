@@ -16,21 +16,24 @@ export interface Clip {
   end_ms: number;
   in_ms?: number;
   media?: { media_id: string; version_id: string };
+  text?: string;
 }
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; start_ms: number; duration_ms: number; in_ms?: number }
+  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; start_ms: number; duration_ms: number; in_ms?: number }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
-  | { op: 'delete_clip'; clip_id: string };
+  | { op: 'delete_clip'; clip_id: string }
+  | { op: 'set_text'; clip_id: string; text: string }
+  | { op: 'set_canvas'; ratio: '9:16' | '3:4' | '1:1' | '16:9' };
 export interface Track {
   track_id: string;
   kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'effects';
   clips: Clip[];
 }
 export interface Project extends Required<Omit<ProjectSummary, 'error'>> {
-  timeline: { tracks: Track[] };
+  timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' } };
   history: { undo: number; redo: number; undo_label: string | null; redo_label: string | null };
 }
 
@@ -47,6 +50,9 @@ export interface Version {
   pin: boolean;
   legal_hold: boolean;
   trashed_at: number | null;
+  probe?: { duration_ms: number; width: number | null; height: number | null; video_codec: string | null; audio_codec: string | null } | null;
+  /** Browser can preview this codec. */
+  preview?: boolean;
 }
 
 export interface Media {
@@ -179,6 +185,8 @@ export function createApi(token: string, base = '') {
       call<{ result: { purged: string[]; blocked: { version_id: string; reasons: string[] }[]; freed_bytes: number } }>('POST', '/api/purge/execute', {
         json: { request_id: plan.request_id, confirmation_token: plan.confirmation_token, typed_phrase: typedPhrase },
       }).then((r) => r.result),
+    /** Short-lived signed playback URL for one media version (W07). */
+    streamUrl: (versionId: string) => call<{ url: string; expires_at: number; mime: string }>('GET', `/api/media/${encodeURIComponent(versionId)}/stream-url`),
     dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
   };
 }

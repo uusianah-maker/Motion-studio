@@ -55,7 +55,9 @@ try {
   await clip('Produk.mp4').waitFor();
   await saved();
   let v = await video();
-  check('ED-01 Tambah dua klip berurutan', v.length === 2 && v[0].start_ms === 0 && v[1].start_ms === 5000 && (await proj()).revision === 2, JSON.stringify(v.map((c) => [c.start_ms, c.end_ms])));
+  // Clip length = the real source duration since W07 (8 s fixture), or 5 s when ffprobe is unavailable.
+  const LEN = v[0].end_ms - v[0].start_ms;
+  check('ED-01 Tambah dua klip berurutan', v.length === 2 && v[0].start_ms === 0 && v[1].start_ms === LEN && (await proj()).revision === 2, JSON.stringify(v.map((c) => [c.start_ms, c.end_ms])));
 
   const surface = await page.locator('.trackSurface.ruler').boundingBox();
   const pxPerMs = surface.width / 30_000; // empty-ish project: visible duration 30 s → but last end 10 s + 5 s → 30 s
@@ -71,16 +73,17 @@ try {
   };
 
   // Move B right by 3 s.
+  const bBefore = v[1].start_ms;
   await dragBy(clip('Produk.mp4'), 3000 * pxPerMs);
   await saved();
   v = await video();
-  check('ED-02 Seret klip → geser (snap 100 ms)', v[1].start_ms >= 7800 && v[1].start_ms <= 8200 && v[1].end_ms - v[1].start_ms === 5000 && v[1].start_ms % 100 === 0, `start=${v[1].start_ms}`);
+  check('ED-02 Seret klip → geser (snap 100 ms)', Math.abs(v[1].start_ms - (bBefore + 3000)) <= 200 && v[1].end_ms - v[1].start_ms === LEN && v[1].start_ms % 100 === 0, `start=${v[1].start_ms}`);
 
   // Trim end of A by -1.5 s using its end handle.
   await dragBy(clip('Hook.mp4').locator('.handle.end'), -1500 * pxPerMs);
   await saved();
   v = await video();
-  check('ED-03 Seret pinggir kanan → trim akhir', v[0].start_ms === 0 && v[0].end_ms >= 3300 && v[0].end_ms <= 3700, `end=${v[0].end_ms}`);
+  check('ED-03 Seret pinggir kanan → trim akhir', v[0].start_ms === 0 && Math.abs(v[0].end_ms - (LEN - 1500)) <= 200, `end=${v[0].end_ms}`);
 
   // Trim start of B by +1 s using its start handle: in-point moves too.
   const bStart = v[1].start_ms;
