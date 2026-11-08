@@ -89,7 +89,7 @@ try {
 
   await page.screenshot({ path: path.join(EVID, 'signed-in.png') });
   const account = page.getByRole('button', { name: 'Keluar (owner@example.com)' });
-  check('LG-04 Akun tampil di rail (owner@example.com) + tidak ada peringatan Drive', (await account.isVisible()) && !(await page.getByText(/Izin Google Drive belum diberikan/).isVisible()));
+  check('LG-04 Akun tampil di rail (owner@example.com)', await account.isVisible());
 
   const apiOk = await page.evaluate(async () => {
     const h = { 'x-motion-request': '1', 'content-type': 'application/json' };
@@ -149,23 +149,14 @@ try {
   check('LG-10 Batal di Google: pesan "Login dibatalkan"', true);
   g.state.deny = false;
 
-  // Drive permission unticked on the consent page.
-  g.state.grantDrive = false;
-  await loginButton(page).click();
-  await page.getByText(/Izin Google Drive belum diberikan/).waitFor({ timeout: 15_000 });
-  await page.screenshot({ path: path.join(EVID, 'no-drive.png') });
-  check('LG-11 Izin Drive tidak dicentang: tetap masuk + peringatan jelas', await page.getByRole('button', { name: 'Keluar (owner@example.com)' }).isVisible());
-  g.state.grantDrive = true;
+  // PC-13: sign-in only — Google is asked for name + email, nothing else, and no offline access.
+  const scopes = [...new Set(g.state.authRequests.map((r) => `${r.scope}|${r.access_type ?? '-'}`))];
+  check('LG-11 Izin Google hanya nama + email (tanpa Drive, tanpa akses offline)', scopes.length === 1 && scopes[0] === 'openid email profile|-', scopes.join(' / '));
 
-  // Secrets at rest.
-  const files = await fsp.readdir(stateDir);
-  const blob = (await Promise.all(files.map((f) => fsp.readFile(path.join(stateDir, f), 'utf8')))).join('\n');
+  // Nothing from Google is kept: no token files, no tokens in the audit log.
+  const files = await fsp.readdir(stateDir).catch(() => []);
   const auditRaw = JSON.stringify(await core.readAudit(await core.openWorkspace(wsRoot)));
-  check(
-    'LG-12 Refresh token tersimpan terenkripsi; tidak ada token di audit log',
-    files.includes('google-tokens.json') && blob.includes('"refresh": "v1.') && !blob.includes('fake-refresh') && !/fake-refresh|ya29/.test(auditRaw) && auditRaw.includes('auth.login'),
-    `file state: ${files.join(', ')}`,
-  );
+  check('LG-12 Token Google tidak disimpan di mana pun (disk server & audit log)', !files.some((f) => f.includes('google')) && !/fake-refresh|ya29/.test(auditRaw) && auditRaw.includes('auth.login'), `file state: ${files.join(', ') || '(kosong)'}`);
 
   // Phone.
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true })).newPage();

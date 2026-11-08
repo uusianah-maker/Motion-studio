@@ -222,4 +222,3 @@ table.list tr:hover td { background: #191d29; }
 .gMark { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #fff; color: #4f6df5; font-weight: 900; font-size: 13px; }
 .small { font-size: 12px; }
 .nav.account .avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #2c3350; color: #d9def0; font-weight: 800; font-size: 13px; }
-.driveNotice { margin: 12px 18px 0; }

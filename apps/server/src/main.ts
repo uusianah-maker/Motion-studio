@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
-import { type GoogleAuth, createGoogleAuth, createSecretBox, loadSecretKey, openTokenStore, parseAllowlist } from './auth.js';
+import { type GoogleAuth, createGoogleAuth, parseAllowlist } from './auth.js';
 import { type CycleResult, RENDER_TMP_PREFIX, type RecoveryReport, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
 import { createRenderJobs } from './render.js';
 import { apiRoutes, sweepUploadTemp } from './routes.js';
@@ -31,7 +31,7 @@ function endpoint(raw: string | undefined, name: string): string | undefined {
   return u.toString();
 }
 
-/** Default server state folder (secret key, sealed Google tokens): outside the workspace. */
+/** Default server state folder (secret key, sealed AI provider keys): outside the workspace. */
 export const defaultStateDir = () => path.join(os.homedir(), '.motion-studio');
 
 /** MOTION_GC: "on" (default, PRD: Auto Trash runs while the app runs), "scan-only", "off" (recovery only). */
@@ -71,11 +71,8 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   const jobs = createRenderJobs(ws, { tmpRoot: renderTmp }, (e) => process.stderr.write(`[server] render: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}
 `));
   let auth: GoogleAuth | undefined;
-  let stateDir: string | null = null;
+  const stateDir = env.MOTION_STATE_DIR ? path.resolve(env.MOTION_STATE_DIR) : defaultStateDir();
   if (googleSet.length) {
-    stateDir = env.MOTION_STATE_DIR ? path.resolve(env.MOTION_STATE_DIR) : defaultStateDir();
-    const { key } = await loadSecretKey(env.MOTION_SECRET_KEY, stateDir);
-    const tokens = await openTokenStore(stateDir, createSecretBox(key));
     const authEndpoint = endpoint(env.MOTION_GOOGLE_AUTH_ENDPOINT, 'MOTION_GOOGLE_AUTH_ENDPOINT');
     const tokenEndpoint = endpoint(env.MOTION_GOOGLE_TOKEN_ENDPOINT, 'MOTION_GOOGLE_TOKEN_ENDPOINT');
     auth = createGoogleAuth({
@@ -84,7 +81,6 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
       clientSecret: env.MOTION_GOOGLE_CLIENT_SECRET!.trim(),
       allowedEmails,
       publicUrl: () => publicUrl ?? `http://${HOST}:${port}`,
-      tokens,
       ...(authEndpoint ? { authEndpoint } : {}),
       ...(tokenEndpoint ? { tokenEndpoint } : {}),
     });

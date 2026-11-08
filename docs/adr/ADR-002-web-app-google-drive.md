@@ -36,3 +36,9 @@ Browser (React)  ──HTTPS/localhost──►  Server (Node/TS)
 - **PC-7 = A:** scope `drive.file` (+ `openid email profile`), non-sensitive. App hanya melihat file buatannya atau yang dipilih via Google Picker; import = Picker atau upload dari app.
 
 - **PC-8 = B:** UI web + editor dulu di atas backend lokal; Login Google + Drive di W09–W10.
+
+## Perubahan 2026-11-09 — PC-13: tanpa Google Drive
+- Owner: "filenya kita fokus di file lokal aja jadi apps ini hanya bisa online aja, tapi semua file tetap lokal".
+- **Penyimpanan:** backend `LocalFs` (disk mesin yang menjalankan server) menjadi penyimpanan final. W10 (backend GoogleDrive) dibatalkan. Bagian ADR ini tentang Drive (checksum Drive, `.trash` di Drive, Picker) tidak berlaku.
+- **Akses online:** app tetap web; login Google + allowlist (W09) menjaga akses. Scope dikurangi menjadi `openid email profile`; tidak ada token Google yang disimpan.
+- **Konsekuensi deploy (W15):** "lokal" = disk mesin server. Opsi: (a) server tetap di PC owner (D: SSD) dan dibuka online lewat tunnel/reverse proxy → file benar-benar di PC owner; (b) VPS → file di disk VPS. Dipilih di W15.

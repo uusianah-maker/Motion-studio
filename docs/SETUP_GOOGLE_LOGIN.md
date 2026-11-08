@@ -1,11 +1,11 @@
 # Setup Login Google (W09) — langkah manual owner
 
-Login Google butuh **OAuth Client ID** milik akun Google owner. Ini cuma bisa dibuat owner sendiri di Google Cloud Console, sekali saja, sekitar 10 menit. Client secret jangan pernah dikirim ke chat atau di-commit.
+Login Google (untuk mengamankan app saat dibuka online) butuh **OAuth Client ID** milik akun Google owner. Ini cuma bisa dibuat owner sendiri di Google Cloud Console, sekali saja, sekitar 10 menit. Client secret jangan pernah dikirim ke chat atau di-commit.
 
 ## 1. Buat project di Google Cloud
-1. Buka https://console.cloud.google.com/ dan login dengan Gmail yang punya Drive 2 TB (PC-6).
+1. Buka https://console.cloud.google.com/ dan login dengan Gmail lo.
 2. Klik pemilih project di atas, lalu **New Project**. Isi nama `Motion Studio`, lalu **Create**. Setelah itu pastikan project ini yang aktif.
-3. Buka menu **APIs & Services → Library**. Aktifkan **Google Drive API** dan **Google Picker API**. Dua API ini baru dipakai di W10, tapi aktifkan sekarang supaya beres sekali jalan.
+3. Tidak perlu mengaktifkan API apa pun (Drive tidak dipakai, PC-13).
 
 ## 2. Layar persetujuan (Google Auth Platform)
 1. Buka menu **Google Auth Platform**. Kalau diminta, klik **Get started**.
@@ -15,14 +15,13 @@ Login Google butuh **OAuth Client ID** milik akun Google owner. Ini cuma bisa di
    - Developer contact: Gmail lo.
    - Logo **jangan diisi**. Kalau ada logo, Google minta verifikasi.
 3. **Audience**: pilih **External**. Lalu klik **Publish app** sampai statusnya **In production** (PC-6).
-   - Kalau statusnya masih *Testing*, izin Drive kedaluwarsa tiap 7 hari dan lo harus login ulang.
-4. **Data Access → Add or remove scopes**: centang empat scope ini, lalu **Save**:
+   - Status *Testing* juga bisa dipakai, tapi akunnya harus didaftarkan sebagai test user.
+4. **Data Access → Add or remove scopes**: centang tiga scope ini, lalu **Save**:
    - `openid`
    - `.../auth/userinfo.email`
    - `.../auth/userinfo.profile`
-   - `.../auth/drive.file`. Artinya app cuma bisa akses file yang dibuat atau dipilih lewat app, bukan seluruh Drive.
 
-   Keempatnya scope *non-sensitive*, jadi tidak perlu verifikasi Google.
+   Ketiganya scope *non-sensitive* (cuma nama + email), jadi tidak perlu verifikasi Google. App tidak minta akses Drive, Gmail, atau data Google lain.
 
 ## 3. Buat OAuth Client
 1. Buka **Google Auth Platform → Clients → Create client**.
@@ -51,18 +50,14 @@ MOTION_ALLOWED_EMAILS=email-lo@gmail.com
 npm run start:server
 ```
 1. Buka `http://127.0.0.1:4317/`, lalu klik **Masuk dengan Google** dan pilih akun.
-2. Di halaman izin Google, **centang izin Google Drive**. Kalau tidak dicentang, app tetap bisa dibuka, tapi muncul peringatan dan W10 tidak bisa jalan.
-3. Kalau muncul "Google hasn't verified this app", klik **Advanced → Go to Motion Studio**. Itu wajar karena app ini milik lo sendiri.
+2. Kalau muncul "Google hasn't verified this app", klik **Advanced → Go to Motion Studio**. Itu wajar karena app ini milik lo sendiri.
 
 ## Yang disimpan di mana
 - **Client secret**: hanya di `.env.local` di komputer server. Di VPS nanti disimpan sebagai env server.
-- **Refresh token Google** (izin Drive untuk W10):
-  - Lokasi: `%USERPROFILE%\.motion-studio\google-tokens.json`, di luar workspace dan tidak ikut ke Drive.
-  - Dienkripsi AES-256-GCM.
-  - Kuncinya ada di `secret.key` di folder yang sama, atau di `MOTION_SECRET_KEY` kalau di-set (disarankan untuk VPS).
-  - Kalau kunci hilang, cukup login ulang.
-- **Browser**: hanya menyimpan cookie sesi HttpOnly. Token Google tidak pernah sampai ke browser.
+- **Token Google**: tidak disimpan sama sekali. Server cuma membaca email dari Google sekali saat login, lalu membuat sesinya sendiri.
+- **Browser**: hanya menyimpan cookie sesi HttpOnly.
 - **Sesi**:
   - Habis setelah 12 jam tidak dipakai, atau paling lama 7 hari.
   - Restart server berarti login ulang, cukup satu klik.
+- **File video**: tetap di disk komputer/server yang menjalankan app (PC-13), bukan di Google.
 - **Cabut akses kapan saja**: https://myaccount.google.com/permissions → Motion Studio → Remove access.

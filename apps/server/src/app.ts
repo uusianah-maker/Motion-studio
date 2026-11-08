@@ -92,7 +92,7 @@ export function createApp(opts: AppOptions) {
         workspace_id: ws.meta.workspace_id,
         storage_backend: ws.blobs.kind,
         auth: opts.auth ? 'google' : 'local',
-        user: user ? { email: user.email, name: user.name, drive_granted: user.drive_granted } : null,
+        user: user ? { email: user.email, name: user.name } : null,
       }),
     },
     ...(opts.auth?.routes ?? []),

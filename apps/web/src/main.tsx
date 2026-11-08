@@ -65,7 +65,7 @@ function LoginGate({ error, signedOut }: { error: string | null; signedOut: bool
           <span aria-hidden="true" className="gMark">G</span> Masuk dengan Google
         </a>
         <p className="muted small">
-          Izin yang diminta: nama &amp; email (untuk mencocokkan daftar izin) dan Google Drive <b>khusus file yang dibuat atau dipilih di app ini</b> (bukan seluruh Drive Anda).
+          Izin yang diminta hanya nama &amp; email (untuk mencocokkan daftar izin). App tidak mengakses Google Drive, Gmail, atau data Google lain; semua file tetap di server.
         </p>
       </div>
     </div>

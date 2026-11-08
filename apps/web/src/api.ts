@@ -154,7 +154,7 @@ export interface Session {
   workspace_id: string;
   storage_backend: string;
   auth: 'local' | 'google';
-  user: { email: string; name: string; drive_granted: boolean } | null;
+  user: { email: string; name: string } | null;
 }
 
 /** Public: which login the server uses. */

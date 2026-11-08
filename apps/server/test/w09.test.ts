@@ -7,9 +7,10 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type FakeGoogle, startFakeGoogle } from '../../../scripts/fake-google.mjs';
 import { HOST, createApp } from '../src/app.js';
-import { SESSION_IDLE_MS, SESSION_MAX_MS, checkIdToken, createGoogleAuth, createSecretBox, loadSecretKey, maskEmail, openTokenStore, parseAllowlist, parseCookies } from '../src/auth.js';
+import { SESSION_IDLE_MS, SESSION_MAX_MS, checkIdToken, createGoogleAuth, maskEmail, parseAllowlist, parseCookies } from '../src/auth.js';
 import { initWorkspace, readAudit } from '../src/core.js';
 import { start } from '../src/main.js';
+import { createSecretBox, loadSecretKey } from '../src/secrets.js';
 import { apiRoutes } from '../src/routes.js';
 import { createStreamSigner } from '../src/stream.js';
 
@@ -75,9 +76,6 @@ async function setup(o: { allowed?: string[]; now?: () => number; dir?: string; 
   const dir = o.dir ?? (await tmp());
   const g = o.g ?? (await google());
   const ws = await initWorkspace(path.join(dir, `ws-${randomBytes(3).toString('hex')}`));
-  const stateDir = path.join(dir, 'state');
-  const { key } = await loadSecretKey(undefined, stateDir);
-  const tokens = await openTokenStore(stateDir, createSecretBox(key));
   let port = 0;
   const auth = createGoogleAuth({
     ws,
@@ -85,7 +83,6 @@ async function setup(o: { allowed?: string[]; now?: () => number; dir?: string; 
     clientSecret: CLIENT_SECRET,
     allowedEmails: o.allowed ?? ['owner@example.com'],
     publicUrl: () => `http://${HOST}:${port}`,
-    tokens,
     authEndpoint: g.authUrl,
     tokenEndpoint: g.tokenUrl,
     ...(o.now ? { now: o.now } : {}),
@@ -95,27 +92,22 @@ async function setup(o: { allowed?: string[]; now?: () => number; dir?: string; 
   cleanup.push(() => app.close());
 
   /** Drive the browser part: our /login → Google → our /callback (following our redirects to Google). */
-  async function login(extraCookie = ''): Promise<{ final: Reply; sid: string; rounds: number }> {
-    let r = await call(port, '/api/auth/login');
-    let rounds = 0;
-    for (;;) {
-      rounds++;
-      expect(r.status).toBe(302);
-      const state = pair(cookieNamed(r, 'motion_oauth'));
-      const atGoogle = await fetch(r.headers.location!, { redirect: 'manual' });
-      const back = new URL(atGoogle.headers.get('location')!);
-      r = await call(port, `${back.pathname}${back.search}`, { headers: { cookie: [state, extraCookie].filter(Boolean).join('; ') } });
-      if (r.headers.location?.startsWith(g.authUrl)) continue; // server asked Google again (consent)
-      return { final: r, sid: pair(cookieNamed(r, 'motion_sid')), rounds };
-    }
+  async function login(): Promise<{ final: Reply; sid: string }> {
+    const r = await call(port, '/api/auth/login');
+    expect(r.status).toBe(302);
+    const state = pair(cookieNamed(r, 'motion_oauth'));
+    const atGoogle = await fetch(r.headers.location!, { redirect: 'manual' });
+    const back = new URL(atGoogle.headers.get('location')!);
+    const final = await call(port, `${back.pathname}${back.search}`, { headers: { cookie: state } });
+    return { final, sid: pair(cookieNamed(final, 'motion_sid')) };
   }
   const api = (p: string, sid: string, o2: { method?: string; body?: string; headers?: Record<string, string> } = {}) =>
     call(port, p, { ...o2, headers: { cookie: sid, 'x-motion-request': '1', ...(o2.body ? { 'content-type': 'application/json' } : {}), ...o2.headers } });
-  return { app, port, ws, g, auth, tokens, stateDir, login, api };
+  return { app, port, ws, g, auth, login, api };
 }
 
 describe('W09 login Google', () => {
-  it('login: PKCE + state cookie, session cookie only, refresh token sealed on the server', async () => {
+  it('login: PKCE + state cookie, sign-in scopes only, session cookie only, no Google token kept', async () => {
     const s = await setup();
     const r = await call(s.port, '/api/auth/login');
     expect(r.status).toBe(302);
@@ -126,11 +118,11 @@ describe('W09 login Google', () => {
       client_id: CLIENT_ID,
       redirect_uri: `http://${HOST}:${s.port}/api/auth/callback`,
       response_type: 'code',
-      scope: 'openid email profile https://www.googleapis.com/auth/drive.file',
+      scope: 'openid email profile',
       code_challenge_method: 'S256',
-      access_type: 'offline',
       prompt: 'select_account',
     });
+    expect(q.access_type).toBeUndefined(); // no offline access: nothing to refresh or store
     expect(q.state).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(q.nonce).toBeTruthy();
     expect(q.code_challenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -154,7 +146,7 @@ describe('W09 login Google', () => {
 
     const me = await s.api('/api/session', sid);
     expect(me.status).toBe(200);
-    expect(me.json).toMatchObject({ auth: 'google', actor: 'user', user: { email: 'owner@example.com', name: 'Owner', drive_granted: true } });
+    expect(me.json).toMatchObject({ auth: 'google', actor: 'user', user: { email: 'owner@example.com', name: 'Owner' } });
     expect((await s.api('/api/projects', sid)).status).toBe(200);
     expect((await s.api('/api/projects', sid, { method: 'POST', body: JSON.stringify({ name: 'Promo' }) })).status).toBe(200);
 
@@ -163,39 +155,18 @@ describe('W09 login Google', () => {
     expect((await call(s.port, '/api/session', { headers: { authorization: `Bearer ${s.app.token}`, 'x-motion-request': '1' } })).status).toBe(401);
     expect((await call(s.port, '/api/session', { headers: { cookie: 'motion_sid=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'x-motion-request': '1' } })).status).toBe(401);
 
-    // Refresh token: on disk only sealed, never in any reply, decrypts on the server.
-    const raw = await fsp.readFile(s.tokens.file, 'utf8');
-    expect(raw).not.toContain('fake-refresh');
-    expect(raw).toContain('"refresh": "v1.');
-    const stored = s.tokens.get('1001')!;
-    expect(stored.refresh_token).toMatch(/^1\/\/fake-refresh-/);
-    expect(stored.scope).toContain('drive.file');
-    for (const reply of [final, me]) expect(JSON.stringify(reply.headers) + reply.text).not.toContain('fake-refresh');
+    // Google's tokens (the fake issues access + refresh tokens) never reach a reply, the audit or the disk.
+    for (const reply of [final, me]) expect(JSON.stringify(reply.headers) + reply.text).not.toMatch(/fake-refresh|ya29/);
     const log = await readAudit(s.ws, (e) => e.op === 'auth.login');
-    expect(log.at(-1)).toMatchObject({ outcome: 'ok', email: 'owner@example.com', drive_granted: true, offline_access: true });
-    expect(JSON.stringify(log)).not.toContain('fake-refresh');
+    expect(log.at(-1)).toMatchObject({ outcome: 'ok', email: 'owner@example.com' });
+    expect(JSON.stringify(await readAudit(s.ws))).not.toMatch(/fake-refresh|ya29/);
   });
 
-  it('later logins reuse the stored refresh token; a server without one asks Google for consent once', async () => {
-    const dir = await tmp();
-    const g = await google();
-    const s = await setup({ dir, g });
-    expect((await s.login()).rounds).toBe(1);
-    const first = s.tokens.get('1001')!.refresh_token;
-    const again = await s.login();
-    expect(again.rounds).toBe(1); // Google sent no refresh token this time; the stored one stays
-    expect(again.sid).toMatch(/^motion_sid=/);
-    expect(s.tokens.get('1001')!.refresh_token).toBe(first);
-
-    // A fresh server (empty token store) for an account that already consented before.
-    const s2 = await setup({ g });
-    const r = await s2.login();
-    expect(r.rounds).toBe(2);
-    const retry = g.state.authRequests.at(-1)!;
-    expect(retry.prompt).toBe('consent');
-    expect(retry.login_hint).toBe('owner@example.com');
-    expect(r.sid).toMatch(/^motion_sid=/);
-    expect(s2.tokens.get('1001')!.refresh_token).toMatch(/^1\/\/fake-refresh-/);
+  it('logging in again works without a consent screen (nothing to refresh)', async () => {
+    const s = await setup();
+    expect((await s.login()).sid).toMatch(/^motion_sid=/);
+    expect((await s.login()).sid).toMatch(/^motion_sid=/);
+    expect(s.g.state.authRequests.every((r) => r.prompt === 'select_account' && !r.access_type)).toBe(true);
   });
 
   it('refuses: login CSRF/replay, cancel, unlisted or unverified email, bad id_token, Google errors', async () => {
@@ -227,7 +198,6 @@ describe('W09 login Google', () => {
 
     s.g.state.user = { sub: '2002', email: 'stranger@example.com', email_verified: true, name: 'Stranger' };
     await denied('EMAIL_NOT_ALLOWED', (await s.login()).final);
-    expect(s.tokens.has('2002')).toBe(false);
     const audits = JSON.stringify(await readAudit(s.ws, (e) => e.op === 'auth.login' && e.outcome === 'blocked'));
     expect(audits).toContain('s***@example.com');
     expect(audits).not.toContain('stranger@');
@@ -285,15 +255,7 @@ describe('W09 login Google', () => {
     expect((await s.api('/api/session', old)).status).toBe(401);
   });
 
-  it('Drive permission unticked: signed in, but drive_granted is false', async () => {
-    const s = await setup();
-    s.g.state.grantDrive = false;
-    const { sid } = await s.login();
-    expect((await s.api('/api/session', sid)).json.user).toMatchObject({ email: 'owner@example.com', drive_granted: false });
-    expect(s.tokens.get('1001')!.scope).not.toContain('drive.file');
-  });
-
-  it('secrets at rest: AES-GCM bound to the account, key file created once, bad keys fail closed', async () => {
+  it('secrets at rest (for W12 API keys): AES-GCM bound to its owner, key file created once, bad keys fail closed', async () => {
     const dir = await tmp();
     const box = createSecretBox(randomBytes(32));
     const sealed = box.seal('1//refresh-abc', 'sub-1');
@@ -315,10 +277,6 @@ describe('W09 login Google', () => {
     await expect(loadSecretKey('abc', stateDir)).rejects.toThrow(/64 karakter hex/);
     expect((await loadSecretKey('a'.repeat(64), stateDir)).source).toBe('env');
 
-    const store = await openTokenStore(stateDir, createSecretBox(k1.key));
-    await store.put('sub-1', { email: 'owner@example.com', scope: 'openid', refresh_token: '1//r' });
-    await expect(openTokenStore(stateDir, createSecretBox(randomBytes(32)))).rejects.toThrow(/kunci enkripsi berbeda/);
-    expect((await openTokenStore(stateDir, createSecretBox(k1.key))).get('sub-1')!.refresh_token).toBe('1//r');
   });
 
   it('pure helpers: allowlist, cookies, id_token claims, masking', () => {
@@ -347,7 +305,6 @@ describe('W09 login Google', () => {
     await expect(start({ ...full, MOTION_PORT: '0' }, quiet)).rejects.toThrow(/port tetap/);
     await expect(start({ ...full, MOTION_PORT: '1', MOTION_PUBLIC_URL: 'https://motion.example.com/app' }, quiet)).rejects.toThrow(/tanpa path/);
     await expect(start({ ...full, MOTION_PORT: '1', MOTION_GOOGLE_TOKEN_ENDPOINT: 'http://evil.example/token' }, quiet)).rejects.toThrow(/https/);
-    await expect(start({ ...full, MOTION_PORT: '1', MOTION_SECRET_KEY: 'short' }, quiet)).rejects.toThrow(/64 karakter hex/);
 
     const port = await freePort();
     const lines: string[] = [];
@@ -377,9 +334,6 @@ describe('W09 login Google', () => {
     expect(sid).toContain('Path=/');
     await s2.stop();
     cleanup.pop();
-
-    // Tokens sealed with one key cannot be opened with another: refuse to start.
-    await expect(start({ ...full, MOTION_PORT: String(port2), MOTION_SECRET_KEY: 'b'.repeat(64) }, quiet)).rejects.toThrow(/kunci enkripsi berbeda/);
   });
 
   it('local mode is unchanged: URL token works, no Google routes', async () => {
