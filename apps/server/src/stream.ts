@@ -13,18 +13,32 @@ export const STREAM_TTL_MS = 10 * 60_000;
 
 export function createStreamSigner(now: () => number = Date.now) {
   const key = randomBytes(32);
-  const mac = (versionId: string, exp: number) => createHmac('sha256', key).update(`${versionId}.${exp}`).digest('hex');
+  const mac = (subject: string, exp: number) => createHmac('sha256', key).update(`${subject}.${exp}`).digest('hex');
+  const check = (subject: string, expRaw: string | null, sig: string | null, what: string): void => {
+    const exp = Number(expRaw);
+    if (!expRaw || !Number.isSafeInteger(exp) || !sig || !/^[0-9a-f]{64}$/.test(sig)) throw new ApiError(401, 'UNAUTHORIZED', `Link ${what} tidak valid`);
+    if (exp < now()) throw new ApiError(401, 'UNAUTHORIZED', `Link ${what} kedaluwarsa`);
+    const want = Buffer.from(mac(subject, exp), 'hex');
+    if (!timingSafeEqual(want, Buffer.from(sig, 'hex'))) throw new ApiError(401, 'UNAUTHORIZED', `Link ${what} tidak valid`);
+  };
   return {
     sign(versionId: string, ttlMs = STREAM_TTL_MS): { url: string; expires_at: number } {
       const exp = now() + ttlMs;
       return { url: `/api/stream/${encodeURIComponent(versionId)}?exp=${exp}&sig=${mac(versionId, exp)}`, expires_at: exp };
     },
     verify(versionId: string, expRaw: string | null, sig: string | null): void {
-      const exp = Number(expRaw);
-      if (!expRaw || !Number.isSafeInteger(exp) || !sig || !/^[0-9a-f]{64}$/.test(sig)) throw new ApiError(401, 'UNAUTHORIZED', 'Link pemutaran tidak valid');
-      if (exp < now()) throw new ApiError(401, 'UNAUTHORIZED', 'Link pemutaran kedaluwarsa');
-      const want = Buffer.from(mac(versionId, exp), 'hex');
-      if (!timingSafeEqual(want, Buffer.from(sig, 'hex'))) throw new ApiError(401, 'UNAUTHORIZED', 'Link pemutaran tidak valid');
+      check(versionId, expRaw, sig, 'pemutaran');
+    },
+    /** Render output link (W08): bound to one project + file name (+ download flag). */
+    signOutput(projectId: string, name: string, download: boolean, ttlMs = STREAM_TTL_MS): { url: string; expires_at: number } {
+      const exp = now() + ttlMs;
+      const d = download ? '1' : '0';
+      const q = new URLSearchParams({ project_id: projectId, name, download: d, exp: String(exp), sig: mac(`out:${projectId}:${d}:${name}`, exp) });
+      return { url: `/api/output?${q.toString()}`, expires_at: exp };
+    },
+    verifyOutput(projectId: string, name: string, download: string | null, expRaw: string | null, sig: string | null): void {
+      if (download !== '0' && download !== '1') throw new ApiError(401, 'UNAUTHORIZED', 'Link output tidak valid');
+      check(`out:${projectId}:${download}:${name}`, expRaw, sig, 'output');
     },
   };
 }
@@ -68,7 +82,7 @@ export function parseRange(header: string | undefined, size: number): { start: n
 export async function sendBytes(
   req: IncomingMessage,
   res: ServerResponse,
-  file: { size: number; mime: string; open: (range?: { start: number; end: number }) => Promise<NodeJS.ReadableStream> },
+  file: { size: number; mime: string; open: (range?: { start: number; end: number }) => Promise<NodeJS.ReadableStream>; headers?: Record<string, string> },
 ): Promise<void> {
   const range = parseRange(req.headers.range, file.size);
   const headers: Record<string, string | number> = {
@@ -77,6 +91,7 @@ export async function sendBytes(
     'Cache-Control': 'private, max-age=600',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
+    ...file.headers,
   };
   if (range) {
     res.writeHead(206, { ...headers, 'Content-Range': `bytes ${range.start}-${range.end}/${file.size}`, 'Content-Length': range.end - range.start + 1 });

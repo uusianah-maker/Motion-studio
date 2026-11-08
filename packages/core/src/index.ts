@@ -6,6 +6,22 @@ export { StorageError, type StorageErrorCode, isStorageError } from './storage/e
 export { LocalFsBackend } from './storage/localfs.js';
 export { type Actor, type Area, MEDIA_AREAS, type Operation } from './storage/permissions.js';
 export { BROWSER_VIDEO_CODECS, type MediaProbe } from './storage/probe.js';
+export { type CleanCheck, type ToolCheck, checkTools, findFont, verifyCleanOutput } from './storage/ffmpeg.js';
+export {
+  DEFAULT_RENDER,
+  RENDER_TMP_PREFIX,
+  type RenderOutcome,
+  type RenderOutput,
+  type RenderPhase,
+  type RenderSettings,
+  buildRenderPlan,
+  canvasSize,
+  listOutputs,
+  renderProject,
+  visualSegments,
+} from './storage/render.js';
+export { loadLeases, releaseOrphanLeases } from './storage/deps.js';
+export type { PreflightProblem, PreflightResult } from './storage/preflight.js';
 export type { Clip, ProjectManifest, Track } from './storage/project.js';
 export { PURGE_PHRASE, type PurgePlan, type PurgeResult } from './storage/purge.js';
 export { type Dashboard, diskSpace, estimateSpace, getDashboard } from './storage/quota.js';

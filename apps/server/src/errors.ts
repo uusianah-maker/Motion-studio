@@ -38,6 +38,9 @@ const STORAGE_STATUS: Record<StorageErrorCode, number> = {
   INTEGRITY: 409,
   PRECONDITION: 422,
   EDIT_INVALID: 422,
+  RENDER_UNAVAILABLE: 503,
+  RENDER_FAILED: 500,
+  CANCELLED: 409,
   WORKSPACE_LOCKED: 503,
   // Data problems: fail closed and tell the user, never guess.
   WORKSPACE_INVALID: 500,

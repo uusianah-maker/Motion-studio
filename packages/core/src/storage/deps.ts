@@ -31,6 +31,8 @@ export interface Lease {
   media: LeasedMedia[];
   /** Render output path reserved by this job (no two queued renders share a final name). */
   output_rel?: string;
+  /** Process running the job (W08). A lease whose worker died is released at server start. */
+  worker_pid?: number;
 }
 
 interface LeaseFile {
@@ -47,6 +49,7 @@ function validateLeases(x: unknown): LeaseFile {
   for (const l of o!.leases!) {
     if (!isSafeId(l.lease_id) || (l.job !== 'render' && l.job !== 'ai') || (l.status !== 'queued' && l.status !== 'running') || !Array.isArray(l.media)) bad(`lease ${String(l?.lease_id)}`);
     if (l.output_rel !== undefined && typeof l.output_rel !== 'string') bad(`lease ${l.lease_id} output`);
+    if (l.worker_pid !== undefined && (!Number.isSafeInteger(l.worker_pid) || l.worker_pid <= 0)) bad(`lease ${l.lease_id} worker`);
     for (const m of l.media) if (!isSafeId(m.media_id) || !isSafeId(m.version_id) || typeof m.content_hash !== 'string') bad(`lease ${l.lease_id} media`);
   }
   return o as LeaseFile;
@@ -69,7 +72,7 @@ function assertKnown(reg: Registry, ref: MediaRef): void {
 }
 
 /** Create a job lease pinning exact versions + hashes (immutable dependency snapshot). */
-export async function createLease(ws: Workspace, input: { job: JobKind; label: string; media: MediaRef[]; actor: Actor; output_rel?: string }): Promise<Lease> {
+export async function createLease(ws: Workspace, input: { job: JobKind; label: string; media: MediaRef[]; actor: Actor; output_rel?: string; worker_pid?: number }): Promise<Lease> {
   await guard(ws, input.actor, 'manage_lease', { job: input.job });
   return withWorkspaceLock(ws, 'createLease', async () => {
     const reg = await loadRegistry(ws);
@@ -84,6 +87,7 @@ export async function createLease(ws: Workspace, input: { job: JobKind; label: s
       created_at: ws.clock.now(),
       media: input.media.map((r) => ({ ...r, content_hash: reg.versions[r.version_id]!.content_hash })),
       ...(input.output_rel ? { output_rel: input.output_rel } : {}),
+      ...(input.worker_pid !== undefined ? { worker_pid: input.worker_pid } : {}),
     };
     if (lease.output_rel && file.leases.some((l) => l.output_rel?.toLowerCase() === lease.output_rel!.toLowerCase())) {
       throw new StorageError('CONFLICT', 'Nama output sedang dipakai render lain', { output_rel: lease.output_rel });
@@ -128,6 +132,35 @@ export async function releaseLease(ws: Workspace, input: { lease_id: string; out
     await saveLeases(ws, file);
     await audit(ws, { op: 'lease.release', actor: input.actor, outcome: 'ok', lease_id: input.lease_id, result: input.outcome });
   });
+}
+
+/** True when a process with this pid exists (EPERM = exists, owned by someone else). */
+export function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * Server start (W08): release job leases whose worker process is gone (crash / killed while
+ * rendering), so their media can age normally again. Leases without a worker pid (CLI, tests,
+ * older files) and leases of another live process are never touched. A lease carrying this
+ * process's own pid is orphaned too: a freshly started server has no jobs yet.
+ */
+export async function releaseOrphanLeases(ws: Workspace, opts: { selfPid?: number; alive?: (pid: number) => boolean } = {}): Promise<string[]> {
+  const self = opts.selfPid ?? process.pid;
+  const alive = opts.alive ?? pidAlive;
+  const orphans = (await loadLeases(ws)).leases.filter((l) => l.worker_pid !== undefined && (l.worker_pid === self || !alive(l.worker_pid)));
+  for (const l of orphans) {
+    await releaseLease(ws, { lease_id: l.lease_id, outcome: 'failed', actor: 'scheduler' }).catch((e: unknown) => {
+      if (!isStorageError(e, 'NOT_FOUND')) throw e;
+    });
+  }
+  if (orphans.length) await audit(ws, { op: 'lease.orphans_released', actor: 'system', outcome: 'info', leases: orphans.map((l) => ({ lease_id: l.lease_id, job: l.job, label: l.label })) });
+  return orphans.map((l) => l.lease_id);
 }
 
 // ------------------------------------------------------------------ index

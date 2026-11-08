@@ -18,7 +18,10 @@ import {
   estimateSpace,
   BROWSER_VIDEO_CODECS,
   MEDIA_AREAS,
+  checkTools,
+  findFont,
   getDashboard,
+  listOutputs,
   historyCounts,
   listProjectIds,
   loadRegistry,
@@ -26,6 +29,7 @@ import {
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
+import { type RenderJobs, createRenderJobs } from './render.js';
 import { type StreamSigner, createStreamSigner, mimeFor, sendBytes } from './stream.js';
 
 // ------------------------------------------------------------------ input helpers
@@ -207,10 +211,10 @@ export const UPLOAD_IDLE_MS = 2 * 60_000;
  * Remove upload temp folders left by a crash (startup). Only our own prefix, and only when
  * nothing inside changed for `maxAgeMs` (another server instance may share the temp folder).
  */
-export async function sweepUploadTemp(tmpDir: string, maxAgeMs = 6 * 3_600_000, now = Date.now()): Promise<string[]> {
+export async function sweepUploadTemp(tmpDir: string, maxAgeMs = 6 * 3_600_000, now = Date.now(), prefix = UPLOAD_PREFIX): Promise<string[]> {
   const removed: string[] = [];
   for (const e of await fsp.readdir(tmpDir, { withFileTypes: true }).catch(() => [])) {
-    if (!e.isDirectory() || !e.name.startsWith(UPLOAD_PREFIX)) continue;
+    if (!e.isDirectory() || !e.name.startsWith(prefix)) continue;
     const dir = path.join(tmpDir, e.name);
     try {
       let newest = (await fsp.lstat(dir)).mtimeMs;
@@ -225,10 +229,29 @@ export async function sweepUploadTemp(tmpDir: string, maxAgeMs = 6 * 3_600_000, 
   return removed;
 }
 
+// ------------------------------------------------------------------ render helpers
+
+/** Output file name from the user/project name: safe single name, always `.mp4`. */
+export function renderOutputName(raw: string): string {
+  const safe = safeUploadName(encodeURIComponent(raw));
+  const base = (safe === 'upload.bin' ? 'render' : safe.replace(/\.mp4$/i, '').slice(0, 120).replace(/[. ]+$/, '')) || 'render';
+  return `${base}.mp4`;
+}
+
+/** A finished output of this project, by exact file name (never a path). */
+async function findOutput(ws: Workspace, projectId: string, name: string | null) {
+  if (!name || name.length > 200 || /[\\/]/.test(name) || name.startsWith('.')) throw bad('Nama output tidak valid');
+  const hit = (await listOutputs(ws, projectId)).find((o) => o.name === name);
+  if (!hit) throw new ApiError(404, 'NOT_FOUND', 'Output tidak ditemukan');
+  return hit;
+}
+
 // ------------------------------------------------------------------ routes
 
-export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSigner = createStreamSigner()): Route[] {
+export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSigner = createStreamSigner(), render?: RenderJobs): Route[] {
   const uploadOpts: UploadOptions = { tmpDir: upload.tmpDir ?? os.tmpdir(), maxBytes: upload.maxBytes ?? 50 * 1024 ** 3 };
+  let jobs = render;
+  const jobsFor = (ws: Workspace) => (jobs ??= createRenderJobs(ws, { tmpRoot: os.tmpdir() }));
   // One import at a time per server: parallel uploads would each pass the free-space check (Checkpoint D F4).
   let importing = false;
   return [
@@ -336,6 +359,89 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         const st = await ws.blobs.stat(rel);
         if (!st?.isFile) throw new ApiError(404, 'NOT_FOUND', 'File media tidak ditemukan');
         await sendBytes(req, res, { size: st.size, mime: mimeFor(rel), open: (range) => ws.blobs.readStream(rel, range) });
+        return undefined;
+      },
+    },
+
+    // Render MP4 (W08): queued jobs, metadata-free outputs in 05_OUTPUT.
+    {
+      method: 'GET',
+      path: '/api/render/tools',
+      handle: async () => {
+        const t = await checkTools();
+        return { ok: t.ok, version: t.version, problems: t.problems, font: findFont() !== null };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:project_id/render',
+      handle: async ({ req, ws, params }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['output_name', 'short_side']);
+        const project = await readProject(ws, params.project_id!);
+        const raw = str(body, 'output_name', { optional: true, max: 120 });
+        const short = body.short_side;
+        if (short !== undefined && short !== 720 && short !== 1080) throw bad('short_side wajib 720 atau 1080');
+        const j = jobsFor(ws);
+        if (j.list().filter((x) => x.status === 'queued' || x.status === 'running').length >= 5) throw new ApiError(409, 'BUSY', 'Antrean render penuh; tunggu yang berjalan selesai');
+        const job = j.start({ project_id: project.project_id, output_name: renderOutputName(raw ?? project.name), ...(short ? { settings: { short_side: short } } : {}) });
+        return { job };
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:project_id/renders',
+      handle: async ({ ws, params }) => {
+        const outputs = (await listOutputs(ws, params.project_id!)).map(({ name, size, mtime_ms }) => ({ name, size, mtime_ms }));
+        return { jobs: jobsFor(ws).list(params.project_id!), outputs };
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/render/jobs/:job_id',
+      handle: async ({ ws, params }) => {
+        const job = jobsFor(ws).get(params.job_id!);
+        if (!job) throw new ApiError(404, 'NOT_FOUND', 'Job render tidak ditemukan');
+        return { job };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/render/jobs/:job_id/cancel',
+      handle: async ({ ws, params }) => {
+        const job = jobsFor(ws).cancel(params.job_id!);
+        if (!job) throw new ApiError(404, 'NOT_FOUND', 'Job render tidak ditemukan');
+        return { job };
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:project_id/output-url',
+      handle: async ({ ws, url, params }) => {
+        const out = await findOutput(ws, params.project_id!, url.searchParams.get('name'));
+        return signer.signOutput(params.project_id!, out.name, url.searchParams.get('download') === '1');
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/output',
+      public: true, // <video>/download links cannot send Authorization; the HMAC signature is the credential
+      handle: async ({ req, res, url, ws }) => {
+        const projectId = url.searchParams.get('project_id') ?? '';
+        const name = url.searchParams.get('name') ?? '';
+        const download = url.searchParams.get('download');
+        signer.verifyOutput(projectId, name, download, url.searchParams.get('exp'), url.searchParams.get('sig'));
+        const out = await findOutput(ws, projectId, name);
+        const rel = await ws.blobs.resolve(out.rel, ['project_output']);
+        const st = await ws.blobs.stat(rel);
+        if (!st?.isFile) throw new ApiError(404, 'NOT_FOUND', 'Output tidak ditemukan');
+        const ascii = out.name.replace(/[^\x20-\x7e]|["\\]/g, '_');
+        await sendBytes(req, res, {
+          size: st.size,
+          mime: mimeFor(rel),
+          open: (range) => ws.blobs.readStream(rel, range),
+          ...(download === '1' ? { headers: { 'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(out.name)}` } } : {}),
+        });
         return undefined;
       },
     },

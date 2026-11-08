@@ -105,6 +105,36 @@ export interface Dashboard {
   backup: { verified: number; active_versions: number };
 }
 
+export type RenderStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'blocked';
+export type RenderPhase = 'preflight' | 'preparing' | 'encoding' | 'verifying' | 'saving';
+
+export interface RenderJob {
+  job_id: string;
+  project_id: string;
+  output_name: string;
+  status: RenderStatus;
+  phase: RenderPhase | null;
+  progress: number;
+  created_at: number;
+  finished_at: number | null;
+  output: { name: string; size: number; hash: string; duration_ms: number; width: number; height: number; metadata_clean: true; kept_tags: string[] } | null;
+  problems: { code: string; media_id?: string; version_id?: string }[];
+  error: { code: string; message: string } | null;
+}
+
+export interface RenderOutputFile {
+  name: string;
+  size: number;
+  mtime_ms: number;
+}
+
+export interface RenderTools {
+  ok: boolean;
+  version: string | null;
+  problems: string[];
+  font: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -188,6 +218,15 @@ export function createApi(token: string, base = '') {
     /** Short-lived signed playback URL for one media version (W07). */
     streamUrl: (versionId: string) => call<{ url: string; expires_at: number; mime: string }>('GET', `/api/media/${encodeURIComponent(versionId)}/stream-url`),
     dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
+    // Render MP4 (W08)
+    renderTools: () => call<RenderTools>('GET', '/api/render/tools'),
+    startRender: (id: string, opts: { output_name?: string; short_side?: 720 | 1080 }) =>
+      call<{ job: RenderJob }>('POST', `/api/projects/${encodeURIComponent(id)}/render`, { json: opts }).then((r) => r.job),
+    renders: (id: string) => call<{ jobs: RenderJob[]; outputs: RenderOutputFile[] }>('GET', `/api/projects/${encodeURIComponent(id)}/renders`),
+    cancelRender: (jobId: string) => call<{ job: RenderJob }>('POST', `/api/render/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }).then((r) => r.job),
+    /** Short-lived signed link to play (or download) one finished output. */
+    outputUrl: (id: string, name: string, download = false) =>
+      call<{ url: string; expires_at: number }>('GET', `/api/projects/${encodeURIComponent(id)}/output-url?${new URLSearchParams({ name, ...(download ? { download: '1' } : {}) })}`),
   };
 }
 

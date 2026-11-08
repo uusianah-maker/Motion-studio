@@ -10,5 +10,7 @@ Baca berurutan:
 
 Gaya kerja owner: Bahasa Indonesia santai & simpel; jalan otomatis pakai `/gasngoding`; audit mandiri (subagent reviewer); keputusan dikumpulkan dan ditanyakan di akhir (~90%), pilihan ganda + rekomendasi.
 
-Verifikasi: `npm ci` lalu `npm run verify` (core 143 pass / 1 skip, server 10/10, smoke), `npm run test:e2e` (18/18), `npm run test:prototype` (56/56, butuh Chrome).
+Status v2.0: W01–W08 selesai (Checkpoint D lulus); berikutnya W09 (login Google), W10 (backend Drive), lalu Checkpoint E. Render (W08) wajib menghapus metadata — lihat PROGRESS baris W08.
+
+Verifikasi: `npm ci` lalu `npm run verify` (core 185 pass / 1 skip, server 40/40, web 10/10, smoke), `npm run test:ui` (W05 20, W06 16, W07 19, W08 16; butuh Chrome + FFmpeg ≥7), `npm run test:e2e` (18/18), `npm run test:prototype` (56/56).
 Belum pernah push/deploy — wajib izin owner.

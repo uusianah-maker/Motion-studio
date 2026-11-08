@@ -10,8 +10,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
-import { type CycleResult, type RecoveryReport, openWorkspace, recoverOnStartup } from './core.js';
+import { type CycleResult, RENDER_TMP_PREFIX, type RecoveryReport, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
+import { createRenderJobs } from './render.js';
 import { apiRoutes, sweepUploadTemp } from './routes.js';
+import { createStreamSigner } from './stream.js';
 
 export const DEFAULT_PORT = 4317;
 
@@ -35,11 +37,17 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   if (devOrigin && !/^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/.test(devOrigin)) throw new Error('MOTION_DEV_ORIGIN hanya boleh http://127.0.0.1:<port> atau http://localhost:<port>');
   const uploadTmp = env.MOTION_UPLOAD_TMP ? path.resolve(env.MOTION_UPLOAD_TMP) : os.tmpdir();
   const sweptUploads = await sweepUploadTemp(uploadTmp);
+  // Render (W08): job folders outside the workspace; a crashed render leaves its folder + lease.
+  const renderTmp = env.MOTION_RENDER_TMP ? path.resolve(env.MOTION_RENDER_TMP) : os.tmpdir();
+  const sweptRenders = await sweepUploadTemp(renderTmp, 6 * 3_600_000, Date.now(), RENDER_TMP_PREFIX);
+  const releasedLeases = await releaseOrphanLeases(ws);
+  const jobs = createRenderJobs(ws, { tmpRoot: renderTmp }, (e) => process.stderr.write(`[server] render: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}
+`));
   const app = createApp({
     ws,
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: apiRoutes({ tmpDir: uploadTmp }),
+    routes: apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 
@@ -62,6 +70,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     bound = await app.listen(port);
   } catch (e) {
     scheduler?.stop();
+    await jobs.stopAll();
     throw e;
   }
   out(`Motion Studio server jalan di http://${HOST}:${bound} (GC: ${gc})`);
@@ -74,10 +83,14 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     port: bound,
     recovery,
     sweptUploads,
+    sweptRenders,
+    releasedLeases,
     firstCycle,
     scheduler,
+    jobs,
     async stop() {
       scheduler?.stop();
+      await jobs.stopAll();
       await app.close();
     },
   };

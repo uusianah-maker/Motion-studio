@@ -173,7 +173,8 @@ export async function recoverOnStartup(ws: Workspace): Promise<RecoveryReport> {
     const known = new Set(Object.values(reg.versions).map((v) => v.rel_path.toLowerCase()));
     const projectIds = await listProjectIds(ws);
     for (const bad of projectIds.filter((p) => !isSafeId(p))) report.skipped.push({ path: `${LAYOUT.projects}/${bad}`, reason: 'nama folder bukan ID proyek yang valid' });
-    const areas = [LAYOUT.sharedMedia, ...projectIds.filter(isSafeId).map((p) => `${LAYOUT.projects}/${p}/01_INPUT`)];
+    // 05_OUTPUT: render outputs are staged there under the same temp naming (W08).
+    const areas = [LAYOUT.sharedMedia, ...projectIds.filter(isSafeId).flatMap((p) => [`${LAYOUT.projects}/${p}/01_INPUT`, `${LAYOUT.projects}/${p}/05_OUTPUT`])];
     for (const area of areas) {
       let files;
       try {
@@ -190,7 +191,7 @@ export async function recoverOnStartup(ws: Workspace): Promise<RecoveryReport> {
             if (Date.now() - f.mtimeMs < STALE_TEMP_MS) continue;
             await ws.blobs.remove(f.rel, { missingOk: true });
             report.removed_temp_files.push(f.rel);
-          } else if (/^v_[0-9a-f]{16}/.test(f.name) && !known.has(f.rel.toLowerCase())) {
+          } else if (!area.endsWith('/05_OUTPUT') && /^v_[0-9a-f]{16}/.test(f.name) && !known.has(f.rel.toLowerCase())) {
             report.orphan_files.push(f.rel);
           }
         } catch (e) {

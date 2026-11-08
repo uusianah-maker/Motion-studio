@@ -1,0 +1,87 @@
+{
+  "at": "2026-11-08T10:50:18.862Z",
+  "passed": 16,
+  "total": 16,
+  "results": [
+    {
+      "id": "RD-01 Dialog render terbuka; alat render siap",
+      "ok": true,
+      "detail": "tombol Mulai render aktif"
+    },
+    {
+      "id": "RD-02 Info metadata dihapus tampil",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-03 Shortcut editor mati saat dialog terbuka",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-04 Ukuran sesuai rasio & resolusi",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-05 Progres tampil lalu selesai",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-06 Status \"metadata bersih (terverifikasi)\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-07 File di 05_OUTPUT: H.264 720×1280 + AAC, 3 dtk",
+      "ok": true,
+      "detail": "720×1280 3.000000s"
+    },
+    {
+      "id": "RD-08 Metadata bersih (cek ffprobe + byte, independen)",
+      "ok": true,
+      "detail": "tag format: compatible_brands,major_brand,minor_version; bocor: tidak ada; sumber punya judul: true"
+    },
+    {
+      "id": "RD-09 File asli tidak berubah",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-10 Hasil bisa diputar di dialog",
+      "ok": true,
+      "detail": "durasi 3"
+    },
+    {
+      "id": "RD-11 Unduh: nama & byte identik",
+      "ok": true,
+      "detail": "Hasil Promo.mp4"
+    },
+    {
+      "id": "RD-12 Nama sama → _v2, file pertama tidak ditimpa",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-13 Batalkan: tidak ada file, lease dilepas, temp bersih",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-14 Linimasa kosong → tertahan dengan alasan jelas",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "RD-15 HP 390px: dialog muat tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "RD-16 0 error JS (CSP tetap aktif)",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

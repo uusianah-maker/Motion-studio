@@ -3,6 +3,7 @@ import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, t
 import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration } from '../lib';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
+import { RenderDialog } from './RenderDialog';
 
 const TEXT_CLIP_MS = 3000;
 
@@ -35,6 +36,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
   const [project, setProject] = useState<Project | null>(null);
   const [media, setMedia] = useState<Media[]>([]);
   const [error, setError] = useState<unknown>(null);
+  const [renderOpen, setRenderOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -105,7 +107,8 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
   // Keyboard: S split · Del delete · ←/→ nudge (Shift = 1 s) · Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target) || !project) return;
+      // A dialog (render, …) owns the keyboard: Delete/Space must not edit the timeline behind it.
+      if (isTyping(e.target) || !project || document.querySelector('[aria-modal="true"]')) return;
       const k = e.key.toLowerCase();
       if (k === ' ') {
         e.preventDefault();
@@ -209,10 +212,11 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
         {busy ? <span className="badge">Menyimpan…</span> : project && <span className="badge ok">Tersimpan</span>}
         <div className="spacer" />
         <span className="muted hideNarrow">Diperbarui {formatDate(project?.updated_at)}</span>
-        <button className="btn primary" disabled title="Render MP4 belum tersedia (tahap W08)">
+        <button className="btn primary" disabled={!project} onClick={() => setRenderOpen(true)} title="Render proyek ke MP4 (metadata dibersihkan)">
           ↧ Render
         </button>
       </header>
+      {renderOpen && project && <RenderDialog api={api} project={project} onClose={() => setRenderOpen(false)} />}
 
       <main className="editor">
         {mobileProjects && (

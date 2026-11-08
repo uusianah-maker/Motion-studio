@@ -157,7 +157,7 @@ export async function renderPreflight(
  * lease pins, and the output name is reserved atomically (no two renders share a final).
  * External byte changes after this point are caught by `verifyRenderSnapshot` before reading.
  */
-export async function startRender(ws: Workspace, input: Parameters<typeof renderPreflight>[1]): Promise<{ preflight: PreflightResult; lease: Lease | null }> {
+export async function startRender(ws: Workspace, input: Parameters<typeof renderPreflight>[1] & { worker_pid?: number }): Promise<{ preflight: PreflightResult; lease: Lease | null }> {
   return withWorkspaceLock(ws, 'startRender', async () => {
     const preflight = await renderPreflight(ws, input);
     if (!preflight.ok) return { preflight, lease: null };
@@ -167,6 +167,7 @@ export async function startRender(ws: Workspace, input: Parameters<typeof render
       media: preflight.snapshot.map(({ media_id, version_id }) => ({ media_id, version_id })),
       output_rel: preflight.output_rel,
       actor: input.actor,
+      ...(input.worker_pid !== undefined ? { worker_pid: input.worker_pid } : {}),
     });
     return { preflight, lease };
   });

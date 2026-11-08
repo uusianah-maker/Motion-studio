@@ -12,7 +12,13 @@ export type StorageErrorCode =
   | 'INDEX_INVALID'
   | 'PRECONDITION'
   /** A timeline edit that would produce an invalid timeline (overlap, too short, unknown clip…). */
-  | 'EDIT_INVALID';
+  | 'EDIT_INVALID'
+  /** Render tools missing/too old (FFmpeg, ffprobe, font) — install/configure, then retry (W08). */
+  | 'RENDER_UNAVAILABLE'
+  /** FFmpeg failed or the output did not pass the metadata/stream verification (W08). */
+  | 'RENDER_FAILED'
+  /** A job stopped on the user's request. */
+  | 'CANCELLED';
 
 /** Typed error so callers (UI/IPC) can react without parsing messages. */
 export class StorageError extends Error {
