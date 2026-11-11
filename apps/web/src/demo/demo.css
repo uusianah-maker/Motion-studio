@@ -14,3 +14,8 @@
   font-weight: 650;
   backdrop-filter: blur(6px);
 }
+
+/* Inside the artifact viewer the page lives in a frame: size to the frame, not to 100vh. */
+html, body, #root { height: 100%; min-height: 560px; }
+.app { height: 100%; }
+.demoBoot { min-height: 100%; display: grid; place-items: center; color: #b3bbce; font: 13px Inter, ui-sans-serif, system-ui, sans-serif; padding: 16px; text-align: center; }

@@ -7,6 +7,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   root: __dirname,
   plugins: [react()],
+  // ASCII-only output: the page renders correctly whatever encoding the viewer assumes.
+  esbuild: { charset: 'ascii' },
   resolve: { alias: { 'node:crypto': path.resolve(__dirname, 'src/demo/crypto-shim.ts') } },
   build: {
     outDir: 'dist-demo',
@@ -14,6 +16,6 @@ export default defineConfig({
     sourcemap: false,
     cssCodeSplit: false,
     modulePreload: false,
-    rollupOptions: { input: path.resolve(__dirname, 'demo.html'), output: { inlineDynamicImports: true } },
+    rollupOptions: { input: path.resolve(__dirname, 'demo.html'), output: { inlineDynamicImports: true, format: 'iife' } },
   },
 });
