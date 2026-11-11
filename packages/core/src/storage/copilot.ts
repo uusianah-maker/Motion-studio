@@ -245,7 +245,7 @@ export const LOCAL_EXAMPLES = [
 export function parseStyleWords(low: string, base?: Partial<TextStyle>): Partial<TextStyle> | null {
   let style: Partial<TextStyle> = {};
   let hit = false;
-  const colorOf = (w: string) => (/^#[0-9a-f]{6}$/.test(w) ? w : COLOR_WORDS[w]);
+  const colorOf = (w: string) => (/^#[0-9a-f]{6}$/.test(w) ? w : Object.hasOwn(COLOR_WORDS, w) ? COLOR_WORDS[w] : undefined); // G-4: no inherited keys
   const preset = /\b(?:preset|jadikan|gaya|style)\s+(hook|usp|cta|sale|subtitle)\b/.exec(low);
   if (preset) {
     style = { ...presetById(preset[1] as PresetId)!.style };

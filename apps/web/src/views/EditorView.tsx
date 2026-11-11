@@ -101,6 +101,8 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
 
   const edit = useCallback((ops: EditOp[]) => run((p) => api.editProject(p.project_id, p.revision, ops)), [run, api]);
   const step = useCallback((dir: 'undo' | 'redo') => run((p) => api.stepHistory(p.project_id, p.revision, dir)), [run, api]);
+  /** X05: an archived project is read-only — every edit control is off (the server refuses too). */
+  const locked = busy || project?.status === 'archived';
 
   const tracks = project?.timeline.tracks ?? [];
   const allClips = tracks.flatMap((t) => t.clips.map((c) => ({ ...c, kind: t.kind })));
@@ -123,6 +125,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
         setPlaying((p) => !p);
         return;
       }
+      if (project.status === 'archived') return; // read-only: play/pause only
       if ((e.ctrlKey || e.metaKey) && k === 'z') {
         e.preventDefault();
         if (e.shiftKey ? project.history.redo : project.history.undo) void step(e.shiftKey ? 'redo' : 'undo');
@@ -148,7 +151,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
   }, [project, sel, canSplit, playhead, edit, step]);
 
   const beginDrag = (e: React.PointerEvent, clip: Clip, mode: DragMode) => {
-    if (busy || e.button !== 0) return;
+    if (locked || e.button !== 0) return;
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setSelected(clip.clip_id);
@@ -269,7 +272,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
             setPlayhead={setPlayhead}
             playing={playing}
             setPlaying={setPlaying}
-            busy={busy}
+            busy={locked}
             onRatio={(ratio: CanvasRatio) => void edit([{ op: 'set_canvas', ratio }])}
             selectedClipId={selected}
             onSelectClip={(id) => setSelected(id)}
@@ -295,6 +298,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
               name={clipName(sel)}
               sourceMs={sourceMs(sel)}
               busy={busy}
+              readOnly={project.status === 'archived'}
               onEdit={(ops) => edit(ops)}
               onDraft={setStyleDraft}
             />
@@ -303,7 +307,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
             <PresetPanel
               project={project}
               playhead={playhead}
-              busy={busy}
+              busy={locked}
               onAdd={(op) =>
                 void run(async (p) => {
                   const next = await api.editProject(p.project_id, p.revision, [op]);
@@ -330,13 +334,13 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
                     </small>
                   </span>
                   <span style={{ display: 'flex', gap: 4 }}>
-                    <button className="btn small" disabled={busy || !project || cur?.probe === null} onClick={() => addToTimeline(m, 'video')} aria-label={`Tambah ${m.display_name} ke linimasa`}>
+                    <button className="btn small" disabled={locked || !project || cur?.probe === null} onClick={() => addToTimeline(m, 'video')} aria-label={`Tambah ${m.display_name} ke linimasa`}>
                       ＋ Video
                     </button>
-                    <button className="btn small" disabled={busy || !project || cur?.probe === null || (!!cur?.probe && !cur.probe.audio_codec)} onClick={() => addToTimeline(m, 'audio')} aria-label={`Tambah audio ${m.display_name}`}>
+                    <button className="btn small" disabled={locked || !project || cur?.probe === null || (!!cur?.probe && !cur.probe.audio_codec)} onClick={() => addToTimeline(m, 'audio')} aria-label={`Tambah audio ${m.display_name}`}>
                       ＋ Audio
                     </button>
-                    <button className="btn small" disabled={busy || !project || !cur?.probe?.audio_codec} onClick={() => setSttMedia(m)} aria-label={`Transkrip ${m.display_name}`} title="Transkrip & subtitle dari suara media ini">
+                    <button className="btn small" disabled={locked || !project || !cur?.probe?.audio_codec} onClick={() => setSttMedia(m)} aria-label={`Transkrip ${m.display_name}`} title="Transkrip & subtitle dari suara media ini">
                       CC
                     </button>
                   </span>
@@ -355,7 +359,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
               project={project}
               selectedClipId={selected}
               playheadMs={playhead}
-              busy={busy}
+              busy={locked}
               onApplied={(p) => {
                 setProject(p);
                 onSavedRef.current?.(p);
@@ -372,22 +376,22 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
           <b>Linimasa</b>
           <small className="muted hideNarrow">{allClips.length} klip</small>
           <div className="spacer" />
-          <button className="smallbtn" disabled={busy || !project} onClick={() => addText('text')} title="Tambah teks di playhead">
+          <button className="smallbtn" disabled={locked || !project} onClick={() => addText('text')} title="Tambah teks di playhead">
             ＋ Teks
           </button>
-          <button className="smallbtn" disabled={busy || !project} onClick={() => addText('subtitle')} title="Tambah subtitle di playhead">
+          <button className="smallbtn" disabled={locked || !project} onClick={() => addText('subtitle')} title="Tambah subtitle di playhead">
             ＋ Subtitle
           </button>
-          <button className="smallbtn" disabled={busy || !project?.history.undo} onClick={() => step('undo')} title={project?.history.undo_label ? `Undo: ${project.history.undo_label} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}>
+          <button className="smallbtn" disabled={locked || !project?.history.undo} onClick={() => step('undo')} title={project?.history.undo_label ? `Undo: ${project.history.undo_label} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}>
             ↶ Undo
           </button>
-          <button className="smallbtn" disabled={busy || !project?.history.redo} onClick={() => step('redo')} title={project?.history.redo_label ? `Redo: ${project.history.redo_label} (Ctrl+Shift+Z)` : 'Redo (Ctrl+Shift+Z)'}>
+          <button className="smallbtn" disabled={locked || !project?.history.redo} onClick={() => step('redo')} title={project?.history.redo_label ? `Redo: ${project.history.redo_label} (Ctrl+Shift+Z)` : 'Redo (Ctrl+Shift+Z)'}>
             ↷ Redo
           </button>
-          <button className="smallbtn" disabled={busy || !canSplit} onClick={() => sel && edit([{ op: 'split_clip', clip_id: sel.clip_id, at_ms: playhead }])} title="Split klip terpilih di playhead (S)">
+          <button className="smallbtn" disabled={locked || !canSplit} onClick={() => sel && edit([{ op: 'split_clip', clip_id: sel.clip_id, at_ms: playhead }])} title="Split klip terpilih di playhead (S)">
             ✂ Split
           </button>
-          <button className="smallbtn" disabled={busy || !sel} onClick={() => sel && edit([{ op: 'delete_clip', clip_id: sel.clip_id }])} title="Hapus klip terpilih (Del)">
+          <button className="smallbtn" disabled={locked || !sel} onClick={() => sel && edit([{ op: 'delete_clip', clip_id: sel.clip_id }])} title="Hapus klip terpilih (Del)">
             🗑 Hapus
           </button>
         </div>
@@ -429,7 +433,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
                   {(t.kind === 'video' || t.kind === 'broll' || t.kind === 'audio') && (
                     <button
                       className={`trackMute${tracks.some((x) => x.kind === t.kind && x.muted) ? ' on' : ''}`}
-                      disabled={busy || !project}
+                      disabled={locked || !project}
                       aria-pressed={tracks.some((x) => x.kind === t.kind && x.muted)}
                       aria-label={`${tracks.some((x) => x.kind === t.kind && x.muted) ? 'Nyalakan suara' : 'Bisukan'} track ${t.label.replace(/^\S+\s+/, '')}`}
                       title="Bisukan/nyalakan suara track ini (pratinjau & render)"

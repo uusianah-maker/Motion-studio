@@ -1,5 +1,5 @@
 # Progress /gasngoding
-Update terakhir: 2026-11-04
+Update terakhir: 2026-11-11
 Progres PRD (`docs/IMPLEMENTATION_PLAN_v1.0.md`): 15/15 selesai · 0 blocked · 0 belum dikerjakan
 Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 14/15 selesai · 1 dibatalkan (W10, PC-13) · 0 blocked · 0 belum dikerjakan · Checkpoint F lulus (tinggal deploy nyata oleh owner)
 
@@ -25,7 +25,7 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | T15 | Integrasi render preflight + snapshot dependensi | DONE | verify: 126 pass/1 skip. Tes: snapshot persis (versi + hash), output versioned di 05_OUTPUT (final_v2), overwrite hanya dengan persetujuan eksplisit; media hilang/berubah → gagal eksplisit + usulan relink tanpa substitusi; versi lebih baru dilaporkan tapi TIDAK dipakai; media di Trash, disk kurang, timeline kosong, nama output traversal/subfolder, AI ditolak; GC-05 lease render 60 hari tidak di-Trash + snapshot tetap terverifikasi + jam mulai saat render selesai; bytes berubah saat render terdeteksi | Probe tulis (buat+hapus file) dipakai karena access() tidak andal di Windows. Render preflight hanya membaca timeline (bukan snapshot undo) | fe0484b |
 
 ## Log task v3.0 (`docs/IMPLEMENTATION_PLAN_v3.0.md`, paritas P0 PRD)
-Progres v3.0: 5/10 selesai · 0 blocked · 5 belum dikerjakan · Checkpoint G berjalan
+Progres v3.0: 5/10 selesai · 0 blocked · 5 belum dikerjakan · Checkpoint G lulus
 
 | # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
 |---|---|---|---|---|---|
@@ -168,6 +168,11 @@ Progres v3.0: 5/10 selesai · 0 blocked · 5 belum dikerjakan · Checkpoint G be
 - Suite: verify 98 pass / 1 skip, prototype 56/56. Laporan: `audit/CHECKPOINT_B/CHECKPOINT_B_REPORT.md`.
 - Review independen: 1 High (jam 30 hari tidak reset bila referensi dibuat saat index invalid → Trash terlalu cepat), 5 Medium, 5 Low. High + semua Medium + L1/L3 diperbaiki dengan tes regresi.
 - Owner (2026-11-04): "jalankan dulu semua end to end, konfirmasi nanti kalau sudah 90%" → lanjut tanpa jeda konfirmasi; PC dikumpulkan di akhir.
+
+### Checkpoint G (X01–X05, paritas P0 PRD): LULUS setelah perbaikan (2026-11-11)
+- Laporan: `audit/CHECKPOINT_G/CHECKPOINT_G_REPORT.md`. Review independen (subagent read-only, hanya PRD + diff): 0 High, 1 Medium, 5 Low — semua diperbaiki.
+- G-1 (Medium) media rusak memblokir ganti nama/arsip → commit tanpa perubahan linimasa cukup referensi dikenal; G-2 impor memetakan ulang versi di Trash ke salinan aktif ber-hash sama; G-3 duplikat/impor gagal selalu menghapus folder barunya; G-4 kata warna tidak membaca kunci warisan objek; G-5 proyek arsip hanya-baca juga di UI; G-6 tes yang tak bisa gagal diperketat.
+- Suite setelah perbaikan: core 226 pass / 1 skip (+3 `checkpointG-regressions`), server 86/86, web 11/11, typecheck, lint, smoke; UI Chrome W05–W15 + X01–X05 semua lulus (X05 12/12 dengan X5-07 baru); E2E 18/18; prototype 56/56; build demo OK.
 
 ### Checkpoint F (W12–W15, audit akhir v2.0): LULUS setelah perbaikan (2026-11-09)
 - Laporan: `audit/CHECKPOINT_F/CHECKPOINT_F_REPORT.md`. Review independen (subagent read-only, repro dengan provider tiruan): 2 High, 5 Medium, 4 Low — semua diperbaiki + tes regresi.

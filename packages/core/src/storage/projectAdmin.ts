@@ -68,10 +68,10 @@ async function createWithTimeline(ws: Workspace, input: { project_id: string; na
   try {
     return await commitProject(ws, { manifest: { ...fresh, timeline: input.timeline }, expected_revision: 0, actor: input.actor });
   } catch (e) {
-    // Only this function's own, just-created and never-used folder (revision 0, no media) is removed.
-    const dir = await resolveInside(ws.root, projectRel(fresh.project_id));
-    const now = await readProject(ws, fresh.project_id).catch(() => null);
-    if (now && now.revision === 0) await fsp.rm(dir, { recursive: true, force: true });
+    // Checkpoint G G-3: the folder was created by this call a moment ago (fresh, unguessable id;
+    // `createProject` refuses an existing one), so it is removed whatever step failed — even if the
+    // manifest was already written before a later step threw.
+    await fsp.rm(await resolveInside(ws.root, projectRel(fresh.project_id)), { recursive: true, force: true });
     throw e;
   }
 }
@@ -146,13 +146,15 @@ export async function importProject(ws: Workspace, input: { data: unknown; new_p
     for (const c of tr.clips) {
       if (!c.media) continue;
       const here = reg.versions[c.media.version_id];
-      if (here && here.media_id === c.media.media_id) continue;
+      // Checkpoint G G-2: keep the id only when that version is usable; otherwise try the same bytes.
+      if (here && here.media_id === c.media.media_id && here.lifecycle === 'active' && here.integrity === 'ok') continue;
       const info = hashOf.get(c.media.version_id);
       const match = info?.hash ? byHash.get(info.hash) : undefined;
       if (match) {
         c.media = { ...match };
         remapped++;
-      } else missing.add(info?.name ?? c.media.version_id);
+      } else if (!here || here.media_id !== c.media.media_id) missing.add(info?.name ?? c.media.version_id);
+      // else: known here but in Trash/damaged and no other copy — the commit below explains which.
     }
   }
   if (missing.size) throw new StorageError('PRECONDITION', `Media belum ada di workspace ini: ${[...missing].join(', ')}. Impor file videonya dulu, lalu impor proyek lagi.`, { missing: [...missing] });

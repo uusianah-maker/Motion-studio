@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-11T13:38:36.170Z",
+  "at": "2026-11-11T13:43:26.725Z",
   "passed": 12,
   "total": 12,
   "results": [
@@ -34,9 +34,9 @@
       "detail": ""
     },
     {
-      "id": "X5-07 Edit di proyek arsip ditolak dengan pesan jelas (linimasa tak berubah)",
+      "id": "X5-07 Proyek arsip hanya-baca di UI: preset, inspector, split mati; Del tidak menghapus",
       "ok": true,
-      "detail": ""
+      "detail": "preset true insp true split true"
     },
     {
       "id": "X5-08 \"Aktifkan lagi\" → bisa diedit lagi, keluar dari ARSIP",

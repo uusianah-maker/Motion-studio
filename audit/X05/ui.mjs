@@ -81,9 +81,14 @@ try {
   await menuBody.getByRole('button', { name: /Arsipkan/ }).click();
   await page.getByText('Proyek ini diarsipkan (hanya-baca)').waitFor();
   check('X5-06 Arsipkan → banner hanya-baca + bagian ARSIP (1) di daftar', (await side.getByText('ARSIP (1)').count()) === 1 && (await read(dupId)).status === 'archived');
-  await page.getByRole('region', { name: 'Preset teks' }).getByRole('button', { name: 'Tambah preset Sale' }).click();
-  await page.getByText(/diarsipkan \(hanya-baca\)\. Aktifkan lagi untuk mengedit/).waitFor();
-  check('X5-07 Edit di proyek arsip ditolak dengan pesan jelas (linimasa tak berubah)', JSON.stringify((await read(dupId)).timeline) === JSON.stringify((await read('promo')).timeline));
+  // Read-only in the UI too (Checkpoint G G-5): edit controls are off, the inspector is locked.
+  await page.locator('.track .clip.text').first().click();
+  const presetOff = await page.getByRole('region', { name: 'Preset teks' }).getByRole('button', { name: 'Tambah preset Sale' }).isDisabled();
+  const inspOff = await page.getByRole('region', { name: 'Inspector klip' }).getByLabel('Isi teks di inspector').isDisabled();
+  const splitOff = await page.getByTitle(/Split klip terpilih/).isDisabled();
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(400);
+  check('X5-07 Proyek arsip hanya-baca di UI: preset, inspector, split mati; Del tidak menghapus', presetOff && inspOff && splitOff && JSON.stringify((await read(dupId)).timeline) === JSON.stringify((await read('promo')).timeline), `preset ${presetOff} insp ${inspOff} split ${splitOff}`);
   await page.getByRole('button', { name: 'Aktifkan lagi' }).first().click();
   await page.getByText('Proyek ini diarsipkan (hanya-baca)').waitFor({ state: 'detached' });
   check('X5-08 "Aktifkan lagi" → bisa diedit lagi, keluar dari ARSIP', (await read(dupId)).status === 'active' && (await side.getByText(/ARSIP/).count()) === 0);

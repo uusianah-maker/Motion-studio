@@ -69,7 +69,7 @@ describe('X05 project management', () => {
     expect((await readProject(ws, 'promo')).timeline.canvas).toBeUndefined();
     const named = (await svc.duplicateProject({ project_id: 'promo', name: 'Versi B', actor: 'user' })).result;
     expect(named.name).toBe('Versi B');
-    expect(await code(() => svc.duplicateProject({ project_id: 'nope', actor: 'user' }))).not.toBe('OK');
+    expect(await code(() => svc.duplicateProject({ project_id: 'nope', actor: 'user' }))).toBe('NOT_FOUND');
   });
 
   it('export → import round trip: no paths or history in the file; same workspace keeps ids', async () => {

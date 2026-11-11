@@ -296,8 +296,11 @@ export async function commitProject(
     // PC-10 (owner: A): only the live timeline must be usable. Undo/redo/snapshot history still
     // holds its media (never trashed) but may point at a version that later changed/missing; that
     // must not lock the whole project. Undoing *to* such a step is refused by this same check.
+    // Checkpoint G G-1: a commit that leaves the live timeline untouched (rename, archive) adds no
+    // new use of any media, so a damaged file must not block it — it only has to be known.
+    const sameTimeline = JSON.stringify(current.timeline) === JSON.stringify(next.timeline);
     for (const r of refs) {
-      if (r.source === 'timeline') assertUsable(reg, r.ref, busy);
+      if (r.source === 'timeline' && !sameTimeline) assertUsable(reg, r.ref, busy);
       else assertKnown(reg, r.ref);
     }
     const saved: ProjectManifest = { ...next, revision: current.revision + 1, created_at: current.created_at, updated_at: ws.clock.now() };

@@ -20,7 +20,7 @@ Aturan tetap:
 - [x] X04 **Audio:** volume & mute per klip/track (pratinjau + render). *Selesai 2026-11-11: volume klip (inspector + Copilot), mute track (label linimasa), pratinjau & render ikut; render nyata diukur volumedetect; UI Chrome 12/12.*
 - [x] X05 **Kelola proyek:** ganti nama, duplikat, arsipkan, ekspor/impor JSON proyek. *Selesai 2026-11-11: menu ⋯ Proyek (nama, duplikat, arsip hanya-baca, ekspor .json) + impor .json di daftar proyek; media dicocokkan via id atau hash; UI Chrome 12/12.*
 
-**CHECKPOINT G**
+**CHECKPOINT G** — *lulus 2026-11-11 setelah perbaikan (0 High, 1 Medium, 5 Low; `audit/CHECKPOINT_G/`).*
 
 ## Fase B — P0 sisa + P1 kunci
 - [ ] X06 **Brand Kit** (font, warna, logo) dipakai preset & Copilot.

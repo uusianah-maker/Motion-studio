@@ -20,6 +20,7 @@ export function InspectorPanel({
   busy,
   onEdit,
   onDraft,
+  readOnly = false,
 }: {
   clip: SelectedClip;
   name: string;
@@ -27,6 +28,8 @@ export function InspectorPanel({
   busy: boolean;
   onEdit: (ops: EditOp[]) => Promise<void> | void;
   onDraft: (d: { clip_id: string; style: Partial<TextStyle> } | null) => void;
+  /** X05: archived project — everything is shown but nothing can be changed. */
+  readOnly?: boolean;
 }) {
   const isText = clip.kind === 'text' || clip.kind === 'subtitle';
   const [start, setStart] = useState(sec(clip.start_ms));
@@ -132,6 +135,7 @@ export function InspectorPanel({
 
   return (
     <section className="inspector" aria-label="Inspector klip">
+      <fieldset className="plain" disabled={readOnly}>
       <div className="inspHead">
         <b>Inspector</b>
         <span className="badge vio">{KIND_NAME[clip.kind]}</span>
@@ -250,6 +254,7 @@ export function InspectorPanel({
           <div className="muted small">Tips: seret teks di pratinjau untuk memindahkan posisinya.</div>
         </>
       )}
+      </fieldset>
     </section>
   );
 }
