@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkPlan, diffTimelines, parseTime, pickOps, planLocal } from '../src/storage/copilot.js';
 import { isStorageError } from '../src/storage/errors.js';
+import { presetById } from '../src/storage/textPresets.js';
 import { type Timeline, applyOps } from '../src/storage/timeline.js';
 
 const M = { media_id: 'm_1', version_id: 'v_1' };
@@ -30,7 +31,8 @@ describe('W11 local planner (zero LLM)', () => {
   });
 
   it('hook / text / subtitle / CTA with quoted text and time ranges', () => {
-    expect(ok(planLocal('hook "Diskon 50% hari ini!" 2 detik', { timeline: base })).ops).toEqual([{ op: 'add_clip', track_kind: 'text', text: 'Diskon 50% hari ini!', start_ms: 0, duration_ms: 2000 }]);
+    // X03: a hook gets the Hook preset look.
+    expect(ok(planLocal('hook "Diskon 50% hari ini!" 2 detik', { timeline: base })).ops).toEqual([{ op: 'add_clip', track_kind: 'text', text: 'Diskon 50% hari ini!', style: presetById('hook')!.style, start_ms: 0, duration_ms: 2000 }]);
     expect(ok(planLocal('tambah teks "Cek keranjang kuning" detik 6-9', { timeline: base })).ops[0]).toMatchObject({ track_kind: 'text', start_ms: 6000, duration_ms: 3000 });
     expect(ok(planLocal('subtitle "Halo semua" 0:01-0:04', { timeline: base })).ops[0]).toMatchObject({ track_kind: 'subtitle', text: 'Halo semua', start_ms: 1000, duration_ms: 3000 });
     // CTA lands on the last 3 s of the timeline; numbers inside the quote are not times.

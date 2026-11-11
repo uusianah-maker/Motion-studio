@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-11T13:20:13.856Z",
+  "passed": 11,
+  "total": 11,
+  "results": [
+    {
+      "id": "X3-01 Perpustakaan preset: Hook, USP, CTA, Sale, Subtitle",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X3-02 Sale: masuk di playhead dengan gaya preset (kotak merah) + teks contoh",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X3-03 Klip preset baru langsung terpilih di inspector",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X3-04 Pratinjau: kotak merah Sale",
+      "ok": true,
+      "detail": "rgb(229, 57, 53)"
+    },
+    {
+      "id": "X3-05 Hook di playhead yang terisi → tempat kosong berikutnya (tidak bentrok)",
+      "ok": true,
+      "detail": "2500"
+    },
+    {
+      "id": "X3-06 Subtitle masuk ke track subtitle",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X3-07 Inspector: terapkan preset CTA ke klip terpilih",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X3-08 Copilot \"warna teks merah; posisi bawah\" → rencana jelas → warna & posisi berubah",
+      "ok": true,
+      "detail": "Ubah gaya klip teks “DISKON 50%” (0:00–0:02.5): warna #e53935 | Ubah gaya klip teks “DISKON 50%” (0:00–0:02.5): posisi"
+    },
+    {
+      "id": "X3-09 Copilot \"sale …\" → klip baru bergaya Sale",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X3-10 HP 390px: tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "X3-11 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

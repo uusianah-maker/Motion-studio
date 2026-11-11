@@ -6,6 +6,7 @@ import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
+import { PresetPanel } from './PresetPanel';
 import { RenderDialog } from './RenderDialog';
 import { TranscriptDialog } from './TranscriptDialog';
 
@@ -284,6 +285,22 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
               busy={busy}
               onEdit={(ops) => edit(ops)}
               onDraft={setStyleDraft}
+            />
+          )}
+          {project && (
+            <PresetPanel
+              project={project}
+              playhead={playhead}
+              busy={busy}
+              onAdd={(op) =>
+                void run(async (p) => {
+                  const next = await api.editProject(p.project_id, p.revision, [op]);
+                  // Select the new preset clip so its words can be typed in the inspector right away.
+                  const added = next.timeline.tracks.flatMap((t) => t.clips).find((c) => !p.timeline.tracks.some((t) => t.clips.some((o) => o.clip_id === c.clip_id)));
+                  if (added) setTimeout(() => setSelected(added.clip_id), 0);
+                  return next;
+                })
+              }
             />
           )}
           {usable.length === 0 ? (

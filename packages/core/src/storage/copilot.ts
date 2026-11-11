@@ -1,5 +1,7 @@
 import { StorageError } from './errors.js';
 import { CANVAS_RATIOS, type CanvasRatio, MAX_TEXT_LEN, type TrackKind } from './project.js';
+import { COLOR_WORDS, type PresetId, TONES, presetById } from './textPresets.js';
+import type { TextStyle } from './textStyle.js';
 import { type EditOp, MIN_CLIP_MS, type SourceDuration, type Timeline, applyOps, validateOps } from './timeline.js';
 
 /**
@@ -70,6 +72,17 @@ function findClip(t: Timeline, id: string) {
   return null;
 }
 
+const STYLE_WORD: Record<keyof TextStyle, string> = { x: 'posisi', y: 'posisi', size: 'ukuran', width: 'lebar', color: 'warna', bg: 'kotak', bg_opacity: 'opasitas kotak', bold: 'tebal', outline: 'outline', align: 'perataan' };
+/** "warna #e53935, kotak, posisi" — which properties a style change touches. */
+export const styleSummary = (s: Partial<TextStyle>) =>
+  [
+    ...new Set(
+      Object.keys(s)
+        .filter((k) => !(k === 'bg_opacity' && 'bg' in s))
+        .map((k) => (k === 'color' ? `warna ${s.color}` : k === 'bg' ? (s.bg ? `kotak ${s.bg}` : 'tanpa kotak') : STYLE_WORD[k as keyof TextStyle])),
+    ),
+  ].join(', ');
+
 /** One line per op, against the timeline the op will run on. */
 export function describeOp(op: EditOp, t: Timeline): string {
   const ref = (id: string) => {
@@ -95,7 +108,7 @@ export function describeOp(op: EditOp, t: Timeline): string {
     case 'set_canvas':
       return `Ubah rasio ke ${op.ratio}`;
     case 'set_style':
-      return `Ubah gaya ${ref(op.clip_id)}`;
+      return `Ubah gaya ${ref(op.clip_id)}: ${styleSummary(op.style)}`;
   }
 }
 
@@ -119,8 +132,8 @@ export function describeOps(ops: EditOp[], t: Timeline): string[] {
 export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
   const items: DiffItem[] = [];
   const index = (t: Timeline) => {
-    const m = new Map<string, { kind: TrackKind; start_ms: number; end_ms: number; text?: string }>();
-    for (const tr of t.tracks) for (const c of tr.clips) m.set(c.clip_id, { kind: tr.kind, start_ms: c.start_ms, end_ms: c.end_ms, ...(c.text !== undefined ? { text: c.text } : {}) });
+    const m = new Map<string, { kind: TrackKind; start_ms: number; end_ms: number; text?: string; style: string }>();
+    for (const tr of t.tracks) for (const c of tr.clips) m.set(c.clip_id, { kind: tr.kind, start_ms: c.start_ms, end_ms: c.end_ms, ...(c.text !== undefined ? { text: c.text } : {}), style: JSON.stringify(c.style ?? {}) });
     return m;
   };
   const a = index(before);
@@ -130,10 +143,16 @@ export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
     const y = b.get(id);
     if (!y) {
       items.push({ kind: 'remove', track_kind: x.kind, clip_id: id, before: shape(x), after: null, summary: `− ${TRACK_NAME[x.kind]}${x.text ? ` ${quote(x.text)}` : ''} ${fmtTime(x.start_ms)}–${fmtTime(x.end_ms)}` });
-    } else if (x.start_ms !== y.start_ms || x.end_ms !== y.end_ms || x.text !== y.text) {
+    } else if (x.start_ms !== y.start_ms || x.end_ms !== y.end_ms || x.text !== y.text || x.style !== y.style) {
       const parts: string[] = [];
       if (x.start_ms !== y.start_ms || x.end_ms !== y.end_ms) parts.push(`${fmtTime(x.start_ms)}–${fmtTime(x.end_ms)} → ${fmtTime(y.start_ms)}–${fmtTime(y.end_ms)}`);
       if (x.text !== y.text) parts.push(`${quote(x.text ?? '')} → ${quote(y.text ?? '')}`);
+      if (x.style !== y.style) {
+        const a = JSON.parse(x.style) as Record<string, unknown>;
+        const b = JSON.parse(y.style) as Record<string, unknown>;
+        const changed = Object.fromEntries(Object.keys({ ...a, ...b }).filter((k) => a[k] !== b[k]).map((k) => [k, b[k]])) as Partial<TextStyle>;
+        parts.push(`${y.text ? `${quote(y.text)} ` : ''}gaya: ${styleSummary(changed)}`);
+      }
       items.push({ kind: 'change', track_kind: x.kind, clip_id: id, before: shape(x), after: shape(y), summary: `~ ${TRACK_NAME[x.kind]}: ${parts.join(', ')}` });
     }
   }
@@ -198,7 +217,64 @@ export const LOCAL_EXAMPLES = [
   'durasi klip terpilih 4 detik',
   'hapus klip terpilih',
   'hapus semua teks',
+  'sale "DISKON 70%" detik 1-3',
+  'usp "Bahan adem" detik 3-6',
+  'warna teks merah (klip teks terpilih)',
+  'kotak kuning (klip teks terpilih)',
+  'pakai preset cta (klip teks terpilih)',
+  'posisi teks bawah, lebih besar (klip teks terpilih)',
 ];
+
+/**
+ * Style words in a command (X03): preset, tone, text colour, box colour / no box, position,
+ * bigger/smaller. Returns null when the command mentions no style at all.
+ */
+export function parseStyleWords(low: string, base?: Partial<TextStyle>): Partial<TextStyle> | null {
+  let style: Partial<TextStyle> = {};
+  let hit = false;
+  const colorOf = (w: string) => (/^#[0-9a-f]{6}$/.test(w) ? w : COLOR_WORDS[w]);
+  const preset = /\b(?:preset|jadikan|gaya|style)\s+(hook|usp|cta|sale|subtitle)\b/.exec(low);
+  if (preset) {
+    style = { ...presetById(preset[1] as PresetId)!.style };
+    hit = true;
+  }
+  for (const [word, tweak] of Object.entries(TONES)) {
+    if (new RegExp(`\\b(?:tone|nuansa|gaya|style)?\\s*${word}\\b`).test(low) && new RegExp(`\\b${word}\\b`).test(low)) {
+      style = { ...style, ...tweak };
+      hit = true;
+    }
+  }
+  const color = /\b(?:warna|color|colour)\s+(?:teks\s+|tulisan\s+|huruf\s+)?(?:jadi\s+|ke\s+|menjadi\s+)?(#[0-9a-f]{6}|[a-z]+)\b/.exec(low) ?? /\b(?:teks|tulisan|huruf)\s+(?:warna\s+)?(#[0-9a-f]{6}|[a-z]+)\b/.exec(low);
+  if (color && colorOf(color[1]!)) {
+    style.color = colorOf(color[1]!)!;
+    hit = true;
+  }
+  if (/\b(?:tanpa|hapus|hilangkan|no)\s+(?:kotak|latar|background|bg)\b/.test(low)) {
+    style.bg = null;
+    hit = true;
+  } else {
+    const bg = /\b(?:kotak|latar|background|bg)\s+(?:warna\s+)?(?:jadi\s+|ke\s+|menjadi\s+)?(#[0-9a-f]{6}|[a-z]+)\b/.exec(low);
+    if (bg && colorOf(bg[1]!)) {
+      style.bg = colorOf(bg[1]!)!;
+      style.bg_opacity = style.bg_opacity ?? 1;
+      hit = true;
+    }
+  }
+  const pos = /\b(?:posisi|taruh|letakkan|pindah(?:kan)?)\b[^.;]*?\b(atas|tengah|bawah)\b/.exec(low) ?? /\b(?:di|ke)\s+(atas|tengah|bawah)\b/.exec(low);
+  if (pos) {
+    style.y = pos[1] === 'atas' ? 0.2 : pos[1] === 'tengah' ? 0.5 : 0.75;
+    hit = true;
+  }
+  const size = base?.size ?? style.size ?? 6.2;
+  if (/\b(?:lebih\s+besar|perbesar|besarkan|bigger)\b/.test(low)) {
+    style.size = Math.min(20, Math.round(size * 1.25 * 10) / 10);
+    hit = true;
+  } else if (/\b(?:lebih\s+kecil|perkecil|kecilkan|smaller)\b/.test(low)) {
+    style.size = Math.max(2, Math.round(size * 0.8 * 10) / 10);
+    hit = true;
+  }
+  return hit ? style : null;
+}
 
 const QUOTE_RE = /"([^"]{1,500})"|“([^”]{1,500})”|'([^']{1,500})'/;
 const NUM = String.raw`(\d{1,2}:\d{2}(?:[.,]\d)?|\d+(?:[.,]\d+)?)`;
@@ -238,6 +314,8 @@ const RATIO_WORDS: [RegExp, CanvasRatio][] = [
   [/\b(16:9|landscape|horizontal|youtube)\b/i, '16:9'],
   [/\b(3:4)\b/i, '3:4'],
 ];
+
+const DEFAULT_TEXT_SIZE = (kind: TrackKind): Partial<TextStyle> => ({ size: kind === 'subtitle' ? 4.5 : 6.2 });
 
 export const timelineEndMs = (t: Timeline) => Math.max(0, ...t.tracks.flatMap((tr) => tr.clips.map((c) => c.end_ms)));
 
@@ -353,6 +431,16 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
         continue;
       }
 
+      // ---- style of the selected text (X03): colour, box, preset, tone, position, size
+      if (quoted === null && /\b(warna|color|colour|kotak|latar|background|preset|jadikan|tone|nuansa|gaya|style|posisi|taruh|letakkan|besar|kecil|perbesar|perkecil|besarkan|kecilkan|minimalis|minimal|elegan|elegant|tegas|tanpa)\b/.test(lowBare) && !/\b(potong|split|geser|pindahkan klip|hapus klip|durasi|rasio|ratio)\b/.test(lowBare)) {
+        const f = needOneSelected('ubah gaya teks');
+        if (f.track.kind !== 'text' && f.track.kind !== 'subtitle') throw new StorageError('EDIT_INVALID', 'Klip terpilih bukan klip teks/subtitle.');
+        const style = parseStyleWords(lowBare, { ...DEFAULT_TEXT_SIZE(f.track.kind), ...(f.clip.style ?? {}) });
+        if (!style) return { ok: false, message: 'Gaya apa yang mau diubah? Contoh: "warna teks merah", "kotak kuning", "pakai preset cta", "posisi bawah", "lebih besar".' };
+        push({ op: 'set_style', clip_id: f.clip.clip_id, style }, 'ubah gaya');
+        continue;
+      }
+
       // ---- split
       if (/\b(potong|split|belah|cut)\b/.test(lowBare) && !/\b(sampai|hingga|-|–)\b/.test(lowBare.replace(/\b(potong|split|belah|cut)\b/, ''))) {
         const at = /\b(di sini|disini|playhead|here)\b/.test(lowBare) ? (ctx.playhead_ms ?? null) : atTime(lowBare);
@@ -396,7 +484,9 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
       const isHook = /\bhook\b/.test(lowBare);
       const isCta = /\b(cta|call to action|ajakan)\b/.test(lowBare);
       const isText = /\b(teks|text|tulisan|judul|title|headline|tambah|tambahkan|add)\b/.test(lowBare);
-      if (quoted !== null && (isSub || isHook || isCta || isText)) {
+      const isUsp = /\b(usp|keunggulan)\b/.test(lowBare);
+      const isSale = /\bsale\b/.test(lowBare);
+      if (quoted !== null && (isSub || isHook || isCta || isText || isUsp || isSale)) {
         const kind: TrackKind = isSub ? 'subtitle' : 'text';
         let start: number;
         let end: number;
@@ -407,6 +497,9 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
         } else if (isHook) {
           start = 0;
           end = len ?? 2000;
+        } else if ((isUsp || isSale) && atTime(lowBare) === null) {
+          start = ctx.playhead_ms ?? 0;
+          end = start + (len ?? presetById(isSale ? 'sale' : 'usp')!.duration_ms);
         } else if (isCta || /\b(di akhir|akhir video|at the end|ending|penutup)\b/.test(lowBare)) {
           const endAll = timelineEndMs(t);
           if (endAll <= 0) return { ok: false, message: 'Linimasa masih kosong, jadi "di akhir" belum ada. Sebutkan waktunya, mis. detik 5-8.' };
@@ -421,7 +514,12 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
         }
         const c = clash(t, kind, start, end);
         if (c) return { ok: false, message: `Bentrok dengan ${TRACK_NAME[kind]} yang sudah ada di ${fmtTime(c.start_ms)}–${fmtTime(c.end_ms)}. Pilih waktu lain atau hapus dulu.` };
-        push({ op: 'add_clip', track_kind: kind, text: quoted, start_ms: start, duration_ms: end - start }, isHook ? 'hook' : isCta ? 'CTA' : kind);
+        // X03: the preset look of the kind of text asked for, plus any colour/tone/position words.
+        const presetId: PresetId | null = isHook ? 'hook' : isCta ? 'cta' : isSale ? 'sale' : isUsp ? 'usp' : null;
+        const base = presetId ? { ...presetById(presetId)!.style } : {};
+        const extra = parseStyleWords(lowBare, base) ?? {};
+        const style = { ...base, ...extra };
+        push({ op: 'add_clip', track_kind: kind, text: quoted, ...(Object.keys(style).length ? { style } : {}), start_ms: start, duration_ms: end - start }, presetId ?? kind);
         continue;
       }
     } catch (e) {

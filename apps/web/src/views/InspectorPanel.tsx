@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { TEXT_PRESETS } from '../../../../packages/core/dist/storage/textPresets.js';
 import { DEFAULT_STYLES, type TextStyle, effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import type { Clip, EditOp, Track } from '../api';
 import { formatDuration } from '../lib';
@@ -139,6 +140,24 @@ export function InspectorPanel({
           <label className="inspFull">
             Teks
             <textarea ref={textRef} aria-label="Isi teks di inspector" rows={2} maxLength={500} value={text} onChange={(e) => setText(e.target.value)} onBlur={commitText} onKeyDown={(e) => enter(e, commitText)} />
+          </label>
+          <label className="inspFull">
+            Preset
+            <select
+              aria-label="Terapkan preset"
+              value=""
+              onChange={(e) => {
+                const p = TEXT_PRESETS.find((x) => x.id === e.target.value);
+                if (p) change({ ...DEFAULT_STYLES[clip.kind as 'text' | 'subtitle'], ...p.style });
+              }}
+            >
+              <option value="">Pilih preset…</option>
+              {TEXT_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label} — {p.hint}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="inspGrid">
             <label>

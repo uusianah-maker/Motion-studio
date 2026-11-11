@@ -1,4 +1,5 @@
 import type { AiPlanner } from '../copilot.js';
+import { TEXT_PRESETS } from '../core.js';
 import { ApiError } from '../errors.js';
 import { AiCallError, completeJson, parseJsonObject } from './adapters.js';
 import type { AiRouter } from './router.js';
@@ -11,6 +12,8 @@ import type { AiStore } from './store.js';
  * no media bytes, no file paths, no session (F7).
  */
 
+const PRESET_LINES = TEXT_PRESETS.map((p) => `${p.id}=${JSON.stringify(p.style)}`).join('; ');
+
 export const PLANNER_SYSTEM = `You are the planning engine of a short-video editor. Turn the user's instruction into timeline edit operations.
 Answer with ONE JSON object only, no prose: {"operations": [...], "rationale": "<one short sentence in the user's language>", "warnings": ["..."]}.
 Allowed operations (times in milliseconds, integers):
@@ -21,6 +24,9 @@ Allowed operations (times in milliseconds, integers):
 - {"op":"delete_clip","clip_id":"..."}
 - {"op":"set_text","clip_id":"...","text":"..."}
 - {"op":"set_canvas","ratio":"9:16"|"3:4"|"1:1"|"16:9"}
+- {"op":"set_style","clip_id":"...","style":{...}}  (text/subtitle clips only; add_clip of text may also carry "style")
+Style fields (all optional): x,y = centre 0..1 of canvas; size = % of canvas short side (2-20); width = line width 0.2-1; color/bg = "#rrggbb" (bg null = no box); bg_opacity 0-1; bold, outline = true/false; align = "left"|"center"|"right".
+Presets (use their style for hooks, USPs, CTAs, sale/price callouts, subtitles): ${PRESET_LINES}
 Rules: use only clip_id values present in the timeline; clips on one track must not overlap; text max 500 characters; at most 60 operations.
 Never invent media. If the instruction cannot be done with these operations, return {"operations": [], "rationale": "<why>", "warnings": []}.`;
 
