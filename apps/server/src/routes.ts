@@ -302,6 +302,39 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       },
     })),
 
+    // X05 project management. Export holds no files or paths (PC-13: files stay on the PC).
+    {
+      method: 'POST',
+      path: '/api/projects/:project_id/meta',
+      handle: async ({ req, params, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['expected_revision', 'name', 'status']);
+        const r = await svc.updateProjectMeta({ project_id: params.project_id!, expected_revision: revision(body), name: body.name, status: body.status, actor });
+        return { project: projectView(r.result), clocks_ok: r.clocks.ok };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:project_id/duplicate',
+      handle: async ({ req, params, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['name']);
+        const r = await svc.duplicateProject({ project_id: params.project_id!, ...(body.name !== undefined ? { name: body.name } : {}), actor });
+        return { project: projectSummary(r.result) };
+      },
+    },
+    { method: 'GET', path: '/api/projects/:project_id/export', handle: async ({ params, svc }) => ({ export: await svc.exportProject(params.project_id!) }) },
+    {
+      method: 'POST',
+      path: '/api/projects/import',
+      handle: async ({ req, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['data', 'name']);
+        const r = await svc.importProject({ data: body.data, ...(body.name !== undefined ? { name: body.name } : {}), actor });
+        return { project: projectSummary(r.result.project), remapped: r.result.remapped };
+      },
+    },
+
     // Media
     {
       method: 'GET',

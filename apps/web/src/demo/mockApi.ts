@@ -145,6 +145,7 @@ const sourceDuration = (ref: { version_id: string }) => media.flatMap((m) => m.v
 
 function commit(s: Stored, expected: number, ops: EditOp[], label: string): Project {
   if (s.p.revision !== expected) fail(409, 'CONFLICT', 'Revisi proyek sudah berubah; muat ulang dulu');
+  if (s.p.status === 'archived') fail(422, 'PRECONDITION', 'Proyek diarsipkan (hanya-baca). Aktifkan lagi untuk mengedit.');
   let next: Timeline;
   try {
     next = applyOps(s.p.timeline, ops, () => nid('c'), sourceDuration) as Timeline;
@@ -275,6 +276,34 @@ export function createDemoApi(): Api {
       return { project_id: id, name, status: 'active', revision: 0, created_at: s.p.created_at, updated_at: s.p.updated_at };
     },
     project: async (id) => view(get(id)),
+    updateProject: async (id, rev, patch) => {
+      const s = get(id);
+      if (s.p.revision !== rev) fail(409, 'CONFLICT', 'Revisi proyek sudah berubah');
+      if (patch.name !== undefined) s.p.name = patch.name.trim() || fail(422, 'EDIT_INVALID', 'Nama proyek tidak boleh kosong');
+      if (patch.status) s.p.status = patch.status;
+      s.p.revision++;
+      s.p.updated_at = now();
+      return view(s);
+    },
+    duplicateProject: async (id, name) => {
+      const s = get(id);
+      const nidp = nid('p');
+      projects.set(nidp, { p: { ...clone(s.p), project_id: nidp, name: name ?? `${s.p.name} (salinan)`, status: 'active', revision: 1, created_at: now(), updated_at: now() }, undo: [], redo: [] });
+      const p = projects.get(nidp)!.p;
+      return { project_id: p.project_id, name: p.name, status: p.status, revision: p.revision, created_at: p.created_at, updated_at: p.updated_at };
+    },
+    exportProject: async (id) => {
+      const s = get(id);
+      return { format: 'motion-studio-project', format_version: 1, exported_at: now(), project: { name: s.p.name, timeline: clone(s.p.timeline) }, media: [] };
+    },
+    importProject: async (data, name) => {
+      const d = data as { format?: string; project?: { name: string; timeline: Timeline } };
+      if (d?.format !== 'motion-studio-project' || !d.project) fail(422, 'EDIT_INVALID', 'File impor bukan proyek Motion Studio');
+      const idp = nid('p');
+      projects.set(idp, { p: { project_id: idp, name: name ?? d.project!.name, status: 'active', revision: 1, created_at: now(), updated_at: now(), timeline: clone(d.project!.timeline), history: { undo: 0, redo: 0, undo_label: null, redo_label: null } }, undo: [], redo: [] });
+      const p = projects.get(idp)!.p;
+      return { project: { project_id: p.project_id, name: p.name, status: p.status, revision: p.revision, created_at: p.created_at, updated_at: p.updated_at }, remapped: 0 };
+    },
     editProject: async (id, rev, ops) => {
       const s = get(id);
       return commit(s, rev, ops, ops.length === 1 ? OP_LABEL[ops[0]!.op] : `${ops.length} perubahan`);

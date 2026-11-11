@@ -63,17 +63,45 @@ export function ProjectList({
   selected,
   onSelect,
   onCreate,
+  onImport,
 }: {
   projects: ProjectSummary[] | null;
   selected: string | null;
   onSelect: (id: string) => void;
   onCreate: (name: string) => Promise<void>;
+  /** X05: import an exported project file (JSON). */
+  onImport?: (file: File) => Promise<void>;
 }) {
   const [q, setQ] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const shown = (projects ?? []).filter((p) => !q || (p.name ?? p.project_id).toLowerCase().includes(q.toLowerCase()));
+  const matching = (projects ?? []).filter((p) => !q || (p.name ?? p.project_id).toLowerCase().includes(q.toLowerCase()));
+  const shown = matching.filter((p) => p.status !== 'archived');
+  const archived = matching.filter((p) => p.status === 'archived');
+  const fileRef = useRef<HTMLInputElement>(null);
+  const importFile = async (f: File | undefined) => {
+    if (!f || !onImport) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onImport(f);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+  const row = (p: ProjectSummary) => (
+    <button key={p.project_id} className={`project${p.project_id === selected ? ' active' : ''}`} onClick={() => onSelect(p.project_id)} disabled={!!p.error}>
+      <span className="thumb" aria-hidden="true">{p.status === 'archived' ? '🗄' : '🎬'}</span>
+      <span>
+        <b>{p.name ?? p.project_id}</b>
+        <small>{p.error ? 'Manifest rusak — tidak bisa dibuka' : `${p.status === 'archived' ? 'Arsip · ' : ''}Revisi ${p.revision} · ${formatDate(p.updated_at)}`}</small>
+      </span>
+    </button>
+  );
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,19 +131,25 @@ export function ProjectList({
           ＋
         </button>
       </form>
+      {onImport && (
+        <div className="importRow">
+          <button className="linkbtn" disabled={busy} onClick={() => fileRef.current?.click()} title="Impor proyek dari file .json hasil Ekspor (media harus sudah ada di workspace ini)">
+            ⇪ Impor proyek (.json)
+          </button>
+          <input ref={fileRef} type="file" accept="application/json,.json" aria-label="File proyek untuk diimpor" hidden onChange={(e) => void importFile(e.target.files?.[0])} />
+        </div>
+      )}
       {error ? <div style={{ padding: '0 15px 10px' }}><ErrorNotice error={error} /></div> : null}
       <div className="sideh">SEMUA PROYEK</div>
       {projects === null && <div className="sectionNote">Memuat…</div>}
       {projects?.length === 0 && <div className="sectionNote">Belum ada proyek. Ketik nama di atas lalu tekan ＋.</div>}
-      {shown.map((p) => (
-        <button key={p.project_id} className={`project${p.project_id === selected ? ' active' : ''}`} onClick={() => onSelect(p.project_id)} disabled={!!p.error}>
-          <span className="thumb" aria-hidden="true">🎬</span>
-          <span>
-            <b>{p.name ?? p.project_id}</b>
-            <small>{p.error ? 'Manifest rusak — tidak bisa dibuka' : `Revisi ${p.revision} · ${formatDate(p.updated_at)}`}</small>
-          </span>
-        </button>
-      ))}
+      {shown.map(row)}
+      {archived.length > 0 && (
+        <details className="archived" open={archived.some((p) => p.project_id === selected) || undefined}>
+          <summary className="sideh">ARSIP ({archived.length})</summary>
+          {archived.map(row)}
+        </details>
+      )}
     </>
   );
 }

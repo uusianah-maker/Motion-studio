@@ -30,6 +30,7 @@ export type { RestoreResult } from './storage/restore.js';
 export { type CycleResult, GcScheduler } from './storage/scheduler.js';
 export { recoverOnStartup, type RecoveryReport } from './storage/recovery.js';
 export { StorageService, describeOps } from './storage/service.js';
+export { EXPORT_FORMAT, MAX_PROJECT_NAME, type ProjectExport, assertEditable, cleanName } from './storage/projectAdmin.js';
 export { COLOR_WORDS, type PresetId, TEXT_PRESETS, TONES, type TextPreset, presetById } from './storage/textPresets.js';
 export {
   DEFAULT_STYLES,

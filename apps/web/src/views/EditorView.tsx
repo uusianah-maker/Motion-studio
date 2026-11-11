@@ -6,6 +6,7 @@ import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
+import { ProjectMenu } from './ProjectMenu';
 import { PresetPanel } from './PresetPanel';
 import { RenderDialog } from './RenderDialog';
 import { TranscriptDialog } from './TranscriptDialog';
@@ -37,7 +38,7 @@ const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isCon
  * the server keeps the undo history. Video preview (W07), render (W08) and Copilot (W11)
  * are not built yet and are labelled as such, never faked.
  */
-export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: Api; projectId: string | null; mobileProjects: ReactNode; onSaved?: (p: Project) => void }) {
+export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectCreated }: { api: Api; projectId: string | null; mobileProjects: ReactNode; onSaved?: (p: Project) => void; onProjectCreated?: (id: string) => Promise<void> | void }) {
   const [project, setProject] = useState<Project | null>(null);
   const [media, setMedia] = useState<Media[]>([]);
   const [error, setError] = useState<unknown>(null);
@@ -219,6 +220,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
         {busy ? <span className="badge">Menyimpan…</span> : project && <span className="badge ok">Tersimpan</span>}
         <div className="spacer" />
         <span className="muted hideNarrow">Diperbarui {formatDate(project?.updated_at)}</span>
+        {project && <ProjectMenu api={api} project={project} busy={busy} run={run} onDuplicated={(id) => onProjectCreated?.(id)} />}
         <button className="btn primary" disabled={!project} onClick={() => setRenderOpen(true)} title="Render proyek ke MP4 (metadata dibersihkan)">
           ↧ Render
         </button>
@@ -248,6 +250,16 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
         )}
         {error ? <div style={{ padding: '12px 16px 0' }}><ErrorNotice error={error} /></div> : null}
         {notice && <div style={{ padding: '12px 16px 0' }}><div className="notice warn" role="status">{notice}</div></div>}
+        {project?.status === 'archived' && (
+          <div style={{ padding: '12px 16px 0' }}>
+            <div className="notice warn" role="status">
+              Proyek ini diarsipkan (hanya-baca). Medianya tetap dilindungi dari Auto Trash.{' '}
+              <button className="btn small" disabled={busy} onClick={() => void run((p) => api.updateProject(p.project_id, p.revision, { status: 'active' }))}>
+                Aktifkan lagi
+              </button>
+            </div>
+          </div>
+        )}
         {project && (
           <Preview
             api={api}

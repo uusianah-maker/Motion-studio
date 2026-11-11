@@ -1,0 +1,67 @@
+{
+  "at": "2026-11-11T13:38:36.170Z",
+  "passed": 12,
+  "total": 12,
+  "results": [
+    {
+      "id": "X5-01 Ganti nama → judul editor + daftar proyek ikut, tersimpan di disk",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X5-02 Undo history tetap setelah ganti nama",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X5-03 Ekspor .json: format proyek, nama file rapi, 1 media dengan hash",
+      "ok": true,
+      "detail": "Promo-Ramadan.motion.json"
+    },
+    {
+      "id": "X5-04 Ekspor tanpa path lokal, tanpa riwayat, tanpa file video",
+      "ok": true,
+      "detail": "667 byte"
+    },
+    {
+      "id": "X5-05 Duplikat → proyek baru terbuka, linimasa sama, riwayat kosong",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X5-06 Arsipkan → banner hanya-baca + bagian ARSIP (1) di daftar",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X5-07 Edit di proyek arsip ditolak dengan pesan jelas (linimasa tak berubah)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X5-08 \"Aktifkan lagi\" → bisa diedit lagi, keluar dari ARSIP",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X5-09 Impor .json → proyek baru (nama dari file) terbuka, linimasa sama",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X5-10 Impor file salah → pesan jelas, tidak ada proyek baru",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X5-11 HP 390px: menu proyek muat di layar, tanpa scroll samping",
+      "ok": true,
+      "detail": "menu x=16 w=358, overflow 0px"
+    },
+    {
+      "id": "X5-12 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

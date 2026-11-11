@@ -5,6 +5,15 @@ import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js
  * carries `x-motion-request: 1`, which the server requires (a cross-site page cannot send it).
  */
 
+/** X05: a project file (timeline + which media versions it uses; never files or paths). */
+export interface ProjectExport {
+  format: 'motion-studio-project';
+  format_version: 1;
+  exported_at: number;
+  project: { name: string; timeline: Project['timeline'] };
+  media: { media_id: string; version_id: string; content_hash: string; display_name: string; duration_ms: number | null }[];
+}
+
 export interface ProjectSummary {
   project_id: string;
   name?: string;
@@ -338,6 +347,13 @@ export function createApi(token: string | null, base = '') {
     projects: () => call<{ projects: ProjectSummary[] }>('GET', '/api/projects').then((r) => r.projects),
     createProject: (name: string) => call<{ project: ProjectSummary }>('POST', '/api/projects', { json: { name } }).then((r) => r.project),
     project: (id: string) => call<{ project: Project }>('GET', `/api/projects/${encodeURIComponent(id)}`).then((r) => r.project),
+    /** X05: rename and/or archive (read-only) / activate. */
+    updateProject: (id: string, expected_revision: number, patch: { name?: string; status?: 'active' | 'archived' }) =>
+      call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/meta`, { json: { expected_revision, ...patch } }).then((r) => r.project),
+    duplicateProject: (id: string, name?: string) =>
+      call<{ project: ProjectSummary }>('POST', `/api/projects/${encodeURIComponent(id)}/duplicate`, { json: name ? { name } : {} }).then((r) => r.project),
+    exportProject: (id: string) => call<{ export: ProjectExport }>('GET', `/api/projects/${encodeURIComponent(id)}/export`).then((r) => r.export),
+    importProject: (data: unknown, name?: string) => call<{ project: ProjectSummary; remapped: number }>('POST', '/api/projects/import', { json: name ? { data, name } : { data } }),
     /** Server applies the ops atomically and returns the new revision (409 CONFLICT if stale). */
     editProject: (id: string, expected_revision: number, ops: EditOp[]) =>
       call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/edit`, { json: { expected_revision, ops } }).then((r) => r.project),

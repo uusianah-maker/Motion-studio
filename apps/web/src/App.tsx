@@ -54,8 +54,26 @@ export function App({ api, workspaceId, account = null }: { api: Api; workspaceI
     setView('editor');
   };
 
+  /** X05: a duplicated/imported project appears in the list and opens in the editor. */
+  const openNew = async (id: string) => {
+    await loadProjects();
+    setSelected(id);
+    setView('editor');
+  };
+  const importProject = async (file: File) => {
+    if (file.size > 900 * 1024) throw new Error('File proyek terlalu besar (maks ±900 KB).');
+    let data: unknown;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      throw new Error('File ini bukan JSON proyek Motion Studio.');
+    }
+    const r = await api.importProject(data);
+    await openNew(r.project.project_id);
+  };
+
   const sideList = (
-    <ProjectList projects={projects} selected={selected} onSelect={(id) => { setSelected(id); setView('editor'); }} onCreate={createProject} />
+    <ProjectList projects={projects} selected={selected} onSelect={(id) => { setSelected(id); setView('editor'); }} onCreate={createProject} onImport={importProject} />
   );
 
   return (
@@ -91,7 +109,7 @@ export function App({ api, workspaceId, account = null }: { api: Api; workspaceI
       {view === 'editor' && !narrow && <aside className="side" aria-label="Proyek">{sideList}</aside>}
       <div className="page">
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
-        {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, revision: p.revision, updated_at: p.updated_at } : x)) ?? list)} />}
+        {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at } : x)) ?? list)} onProjectCreated={openNew} />}
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
         {view === 'trash' && <TrashView api={api} />}
         {view === 'storage' && <StorageView api={api} />}

@@ -15,6 +15,7 @@ import { type EditOp, MAX_EDIT_OPS, MAX_SERVER_OPS, editManifest, stepHistory, v
 import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { newId } from './ids.js';
+import * as admin from './projectAdmin.js';
 import { type Workspace, readProject, withWorkspaceLock } from './workspace.js';
 
 /**
@@ -36,6 +37,9 @@ async function mutate<T>(ws: Workspace, op: string, actor: Actor, fn: () => Prom
     return { result, clocks };
   });
 }
+
+/** Same id shape as `POST /api/projects` (safe folder name, unguessable). */
+const newProjectId = () => `p-${newId('c').slice(2, 14)}`;
 
 export class StorageService {
   constructor(readonly ws: Workspace) {}
@@ -69,6 +73,7 @@ export class StorageService {
     await guard(this.ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'edit' });
     const ops = validateOps(input.ops, Math.min(input.max_ops ?? MAX_EDIT_OPS, MAX_SERVER_OPS));
     const current = await this.revisionOrConflict(input.project_id, input.expected_revision);
+    admin.assertEditable(current);
     const reg = await registry.loadRegistry(this.ws);
     const sourceDuration = (ref: { version_id: string }) => reg.versions[ref.version_id]?.probe?.duration_ms;
     const next = editManifest(current, ops, input.label?.slice(0, 80) || describeOps(ops), { now: this.ws.clock.now(), newId: () => newId('snap'), newClipId: () => newId('c'), sourceDuration });
@@ -86,8 +91,26 @@ export class StorageService {
   private async step(input: { project_id: string; expected_revision: number; actor: Actor }, direction: 'undo' | 'redo') {
     await guard(this.ws, input.actor, 'commit_project', { project_id: input.project_id, step: direction });
     const current = await this.revisionOrConflict(input.project_id, input.expected_revision);
+    admin.assertEditable(current);
     const next = stepHistory(current, direction, { now: this.ws.clock.now(), newId: () => newId('snap') });
     return this.commitProject({ manifest: next, expected_revision: input.expected_revision, actor: input.actor });
+  }
+
+  // ---- X05 project management (rename/archive, duplicate, export/import)
+  updateProjectMeta(input: Parameters<typeof admin.updateProjectMeta>[1]) {
+    return mutate(this.ws, 'svc.updateProjectMeta', input.actor, () => admin.updateProjectMeta(this.ws, input));
+  }
+
+  duplicateProject(input: Omit<Parameters<typeof admin.duplicateProject>[1], 'new_project_id'> & { new_project_id?: string }) {
+    return mutate(this.ws, 'svc.duplicateProject', input.actor, () => admin.duplicateProject(this.ws, { ...input, new_project_id: input.new_project_id ?? newProjectId() }));
+  }
+
+  exportProject(projectId: string) {
+    return admin.exportProject(this.ws, projectId, this.ws.clock.now());
+  }
+
+  importProject(input: Omit<Parameters<typeof admin.importProject>[1], 'new_project_id'> & { new_project_id?: string }) {
+    return mutate(this.ws, 'svc.importProject', input.actor, () => admin.importProject(this.ws, { ...input, new_project_id: input.new_project_id ?? newProjectId() }));
   }
 
   private async revisionOrConflict(projectId: string, expected: number) {
