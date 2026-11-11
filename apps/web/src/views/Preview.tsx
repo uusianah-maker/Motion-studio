@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, Clip, Media, Project } from '../api';
+import { TextOverlay } from './TextOverlay';
 import { CANVAS_RATIOS, type CanvasRatio, aspectCss, clipAt, formatDuration, safeInsets, sourceSeconds } from '../lib';
 
 type Layer = 'visual' | 'audio';
@@ -37,6 +38,20 @@ export function Preview({
   const [problem, setProblem] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasPx, setCanvasPx] = useState({ w: 360, h: 640 });
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height) setCanvasPx({ w: r.width, h: r.height });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const urls = useRef(new Map<string, { url: string; expires_at: number }>());
   const clock = useRef<{ wall: number; base: number } | null>(null);
 
@@ -152,20 +167,16 @@ export function Preview({
         </label>
       </div>
       <div className="canvasArea">
-        <div className="canvas live" style={{ aspectRatio: aspectCss(ratio) }} aria-label="Area pratinjau">
+        <div className="canvas live" ref={canvasRef} style={{ aspectRatio: aspectCss(ratio) }} aria-label="Area pratinjau">
           <video ref={videoRef} playsInline preload="auto" aria-label="Video pratinjau" className={visual?.media && !unsupported ? '' : 'off'} />
           <audio ref={audioRef} preload="auto" />
           {!visual && <div className="emptyFrame">{end === 0 ? 'Tambahkan media ke linimasa' : 'Tidak ada video di titik ini'}</div>}
           {(unsupported || problem) && <div className="emptyFrame warnFrame">{unsupported ?? problem}</div>}
           {texts.map((c) => (
-            <div key={c.clip_id} className="overlayText" style={{ top: `${st + 2}%` }}>
-              {c.text}
-            </div>
+            <TextOverlay key={c.clip_id} clip={c} kind="text" ratio={ratio} canvas={canvasPx} />
           ))}
           {subs.map((c) => (
-            <div key={c.clip_id} className="overlayText subtitle" style={{ bottom: `${sb + 2}%` }}>
-              {c.text}
-            </div>
+            <TextOverlay key={c.clip_id} clip={c} kind="subtitle" ratio={ratio} canvas={canvasPx} />
           ))}
           {safe && <div className="safeArea" style={{ top: `${st}%`, right: `${sr}%`, bottom: `${sb}%`, left: `${sl}%` }} aria-hidden="true" />}
           <span className="canvasTag">● PREVIEW</span>

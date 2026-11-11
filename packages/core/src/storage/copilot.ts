@@ -94,6 +94,8 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return `Ubah teks ${ref(op.clip_id)} → ${quote(op.text)}`;
     case 'set_canvas':
       return `Ubah rasio ke ${op.ratio}`;
+    case 'set_style':
+      return `Ubah gaya ${ref(op.clip_id)}`;
   }
 }
 

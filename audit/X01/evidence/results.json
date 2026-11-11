@@ -1,0 +1,52 @@
+{
+  "at": "2026-11-11T13:04:23.144Z",
+  "passed": 9,
+  "total": 9,
+  "results": [
+    {
+      "id": "X1-desktop-01 Teks bergaya: pusat di (0.30, 0.70), ukuran 9% sisi pendek, merah di kotak kuning, rata kiri, tebal",
+      "ok": true,
+      "detail": "cx 0.302 cy 0.699 font 23.2/23.2"
+    },
+    {
+      "id": "X1-desktop-02 Baris pratinjau = baris render (fungsi layout yang sama)",
+      "ok": true,
+      "detail": "\"Diskon\\nbesar\\nhari ini\\nuntuk\\nsemua\""
+    },
+    {
+      "id": "X1-desktop-03 Subtitle tanpa gaya pakai bawaan (bawah tengah, kotak hitam)",
+      "ok": true,
+      "detail": "cx 0.500 cy 0.779 rgba(0, 0, 0, 0.62)"
+    },
+    {
+      "id": "X1-phone-01 Teks bergaya: pusat di (0.30, 0.70), ukuran 9% sisi pendek, merah di kotak kuning, rata kiri, tebal",
+      "ok": true,
+      "detail": "cx 0.302 cy 0.699 font 14.4/14.4"
+    },
+    {
+      "id": "X1-phone-02 Baris pratinjau = baris render (fungsi layout yang sama)",
+      "ok": true,
+      "detail": "\"Diskon\\nbesar\\nhari ini\\nuntuk\\nsemua\""
+    },
+    {
+      "id": "X1-phone-03 Subtitle tanpa gaya pakai bawaan (bawah tengah, kotak hitam)",
+      "ok": true,
+      "detail": "cx 0.500 cy 0.778 rgba(0, 0, 0, 0.62)"
+    },
+    {
+      "id": "X1-04 set_style lewat API: pratinjau ikut (y 0.30, hijau, tanpa kotak)",
+      "ok": true,
+      "detail": "0.301 rgb(0, 255, 0) rgba(0, 0, 0, 0)"
+    },
+    {
+      "id": "X1-05 Undo mengembalikan gaya lama",
+      "ok": true,
+      "detail": "0.699 rgb(255, 0, 0)"
+    },
+    {
+      "id": "X1-06 0 error JS (CSP tetap aktif)",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

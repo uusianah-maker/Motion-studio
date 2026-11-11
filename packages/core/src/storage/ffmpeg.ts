@@ -67,11 +67,25 @@ async function runCheck(bin: string, probe: string): Promise<ToolCheck> {
   return { ok: problems.length === 0, version, problems };
 }
 
-/** Bold sans font for text/subtitle burn-in. `MOTION_FONT` overrides. */
-export function findFont(): string | null {
+/** Sans font for text/subtitle burn-in (bold by default). `MOTION_FONT` / `MOTION_FONT_REGULAR` override. */
+export function findFont(weight: 'bold' | 'regular' = 'bold'): string | null {
+  const windir = process.env.WINDIR ?? 'C:/Windows';
+  if (weight === 'regular') {
+    const env = process.env.MOTION_FONT_REGULAR;
+    if (env) return existsSync(env) ? env : null;
+    const regular = [
+      `${windir}/Fonts/arial.ttf`,
+      `${windir}/Fonts/segoeui.ttf`,
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+      '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+      '/usr/share/fonts/TTF/DejaVuSans.ttf',
+      '/System/Library/Fonts/Supplemental/Arial.ttf',
+      '/Library/Fonts/Arial.ttf',
+    ];
+    return regular.find((f) => existsSync(f)) ?? findFont('bold');
+  }
   const env = process.env.MOTION_FONT;
   if (env) return existsSync(env) ? env : null;
-  const windir = process.env.WINDIR ?? 'C:/Windows';
   const candidates = [
     `${windir}/Fonts/arialbd.ttf`,
     `${windir}/Fonts/segoeuib.ttf`,

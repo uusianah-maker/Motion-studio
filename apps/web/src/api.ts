@@ -1,3 +1,4 @@
+import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js';
 /**
  * Typed client for the server API (apps/server). Local mode: URL token (memory/sessionStorage only).
  * Google mode (W09): no token at all; the HttpOnly session cookie travels by itself, and every call
@@ -21,16 +22,19 @@ export interface Clip {
   in_ms?: number;
   media?: { media_id: string; version_id: string };
   text?: string;
+  /** X01: text/subtitle look; missing fields = track default. */
+  style?: Partial<TextStyle>;
 }
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; start_ms: number; duration_ms: number; in_ms?: number }
+  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
   | { op: 'delete_clip'; clip_id: string }
   | { op: 'set_text'; clip_id: string; text: string }
-  | { op: 'set_canvas'; ratio: '9:16' | '3:4' | '1:1' | '16:9' };
+  | { op: 'set_canvas'; ratio: '9:16' | '3:4' | '1:1' | '16:9' }
+  | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> };
 export interface Track {
   track_id: string;
   kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'effects';

@@ -9,6 +9,7 @@ import { checkTools, findFont, runFfmpeg, sourceMetadataMarkers, verifyCleanOutp
 import type { Actor } from './permissions.js';
 import { MEDIA_AREAS } from './permissions.js';
 import { type PreflightResult, finishRender, startRender, verifyRenderSnapshot } from './preflight.js';
+import { effectiveStyle, layoutText } from './textStyle.js';
 import { type MediaProbe, probeFile } from './probe.js';
 import { type CanvasRatio, type Clip, type Timeline } from './project.js';
 import { loadRegistry } from './registry.js';
@@ -87,33 +88,7 @@ export function visualSegments(t: Timeline, fps: number): VisualSegment[] {
 
 // ------------------------------------------------------------------ text layout
 
-/** Greedy word wrap; words longer than a line are broken. */
-export function wrapText(text: string, maxChars: number): string {
-  const lines: string[] = [];
-  for (const para of text.replace(/\r\n?/g, '\n').replace(/\t/g, ' ').split('\n')) {
-    let line = '';
-    for (let word of para.split(/ +/).filter(Boolean)) {
-      while (word.length > maxChars) {
-        if (line) {
-          lines.push(line);
-          line = '';
-        }
-        lines.push(word.slice(0, maxChars));
-        word = word.slice(maxChars);
-      }
-      if (!word) continue;
-      if (!line) line = word;
-      else if (line.length + 1 + word.length <= maxChars) line += ` ${word}`;
-      else {
-        lines.push(line);
-        line = word;
-      }
-    }
-    lines.push(line);
-  }
-  while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
-  return lines.join('\n');
-}
+export { wrapText } from './textStyle.js';
 
 // ------------------------------------------------------------------ FFmpeg plan
 
@@ -161,7 +136,7 @@ export const STRIP_METADATA_ARGS: readonly string[] = [
 /** Upper bound on visual segments per render (Checkpoint E E4). */
 export const MAX_RENDER_SEGMENTS = 200;
 
-export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInput>, settings: RenderSettings, font: string | null): RenderPlan {
+export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInput>, settings: RenderSettings, font: string | null, regularFont: string | null = font): RenderPlan {
   const fps = settings.fps;
   const ratio = t.canvas?.ratio ?? '9:16';
   const { width: W, height: H } = canvasSize(ratio, settings.short_side);
@@ -230,26 +205,28 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   }
   graph.push(mixes.length ? `[acat]${mixes.join('')}amix=inputs=${mixes.length + 1}:duration=first:normalize=0:dropout_transition=0,${AFMT}[aout]` : `[acat]anull[aout]`);
 
-  // Text + subtitles (preview: text near the safe-area top, subtitles boxed above its bottom).
+  // Text + subtitles (X01): each clip's own style — the same layout function as the preview
+  // (textStyle.ts), so line breaks, size and placement match what the editor shows.
   const files: { name: string; content: string }[] = [];
-  const [st, , sb] = safeInsets(ratio);
   const short = Math.min(W, H);
   const draws: string[] = [];
+  const hex = (c: string) => `0x${c.slice(1)}`;
   for (const kind of ['text', 'subtitle'] as const) {
     for (const c of clipsOf(t, kind)) {
       if (!c.text?.trim() || c.start_ms >= total_ms) continue;
       if (!font) throw new StorageError('RENDER_UNAVAILABLE', 'Font untuk teks tidak ditemukan (set MOTION_FONT)');
-      const sub = kind === 'subtitle';
-      const fs = Math.round(short * (sub ? 0.045 : 0.062));
-      const width = W * (sub ? 0.76 : 0.84);
+      const s = effectiveStyle(kind, c.style);
+      const fs = Math.max(8, Math.round((short * s.size) / 100));
       const name = `t${files.length}.txt`;
-      files.push({ name, content: wrapText(c.text.trim(), Math.max(8, Math.floor(width / (fs * 0.56)))) });
-      const y = sub ? `h-${Math.round((H * (sb + 2)) / 100)}-text_h` : `${Math.round((H * (st + 2)) / 100)}`;
-      const look = sub
-        ? `box=1:boxcolor=black@0.62:boxborderw=${Math.round(fs * 0.4)}`
-        : `borderw=${Math.max(2, Math.round(fs * 0.06))}:bordercolor=black@0.8:shadowcolor=black@0.6:shadowy=${Math.round(fs * 0.08)}`;
+      files.push({ name, content: layoutText(c.text, s, ratio) });
+      const look = [
+        ...(s.bg ? [`box=1:boxcolor=${hex(s.bg)}@${s.bg_opacity}:boxborderw=${Math.round(fs * 0.4)}`] : []),
+        ...(s.outline ? [`borderw=${Math.max(2, Math.round(fs * 0.06))}:bordercolor=black@0.8:shadowcolor=black@0.6:shadowy=${Math.round(fs * 0.08)}`] : []),
+      ].join(':');
+      const face = s.bold || !regularFont ? font : regularFont;
+      const fontFile = `${s.bold || !regularFont ? 'fontb' : 'fontr'}${path.extname(face).toLowerCase()}`;
       draws.push(
-        `drawtext=fontfile=font${path.extname(font).toLowerCase()}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=white:line_spacing=${Math.round(fs * 0.15)}:text_align=C:x=(w-text_w)/2:y=${y}:${look}:enable='gte(t,${s6(c.start_ms / 1000)})*lt(t,${s6(c.end_ms / 1000)})'`,
+        `drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}:enable='gte(t,${s6(c.start_ms / 1000)})*lt(t,${s6(c.end_ms / 1000)})'`,
       );
     }
   }
@@ -342,6 +319,7 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
   const before = await readProject(ws, input.project_id);
   const hasText = [...clipsOf(before.timeline, 'text'), ...clipsOf(before.timeline, 'subtitle')].some((c) => c.text?.trim());
   const font = hasText ? findFont() : null;
+  const regularFont = hasText ? findFont('regular') : null;
   if (hasText && !font) throw new StorageError('RENDER_UNAVAILABLE', 'Font untuk teks tidak ditemukan (set MOTION_FONT)');
   const size = canvasSize(before.timeline.canvas?.ratio ?? '9:16', settings.short_side);
 
@@ -381,10 +359,11 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
         inputs.set(v.version_id, { path: abs[i]!, probe });
         for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
       }
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font);
+      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont);
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
-      if (font) await fsp.copyFile(font, path.join(jobDir, `font${path.extname(font).toLowerCase()}`));
+      if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));
+      if (regularFont) await fsp.copyFile(regularFont, path.join(jobDir, `fontr${path.extname(regularFont).toLowerCase()}`));
 
       hooks.onPhase?.('encoding');
       hooks.onProgress?.(0);

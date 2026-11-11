@@ -146,7 +146,9 @@ table.list tr:hover td { background: #191d29; }
   .side { display: none; }
   .rail { padding: 10px 2px; position: sticky; top: 0; height: 100vh; }
   .nav { width: 46px; font-size: 9px; }
-  .editorGrid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 380px auto auto; height: auto; }
+  /* The editor row grows with its content (project list open = preview keeps its own height). */
+  .editorGrid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; height: auto; }
+  .canvasArea { flex: none; height: 300px; }
   .editorGrid > .top { grid-column: 1; }
   .editor, .timeline, .sidePanel { grid-column: 1; grid-row: auto; }
   .sidePanel { border-left: 0; border-top: 1px solid var(--line); }
@@ -267,3 +269,6 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; }
 .cues input.t { width: 64px; flex: none; font-family: ui-monospace, Consolas, monospace; }
 .cues input.txt { flex: 1; }
 .sttStart select { border: 1px solid var(--line); background: #10141e; border-radius: 8px; padding: 6px 8px; color: inherit; }
+
+/* ---------- styled text overlays (X01): geometry comes from the clip style ---------- */
+.overlayText.styled { right: auto; bottom: auto; transform: translate(-50%, -50%); white-space: pre; overflow-wrap: normal; border-radius: 0.12em; font-family: Arial, 'DejaVu Sans', 'Liberation Sans', sans-serif; max-width: none; }

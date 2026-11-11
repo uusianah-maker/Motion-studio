@@ -30,6 +30,17 @@ export type { RestoreResult } from './storage/restore.js';
 export { type CycleResult, GcScheduler } from './storage/scheduler.js';
 export { recoverOnStartup, type RecoveryReport } from './storage/recovery.js';
 export { StorageService, describeOps } from './storage/service.js';
+export {
+  DEFAULT_STYLES,
+  type TextAlign,
+  type TextKind,
+  type TextStyle,
+  aspectOverShort,
+  effectiveStyle,
+  layoutText,
+  validateStyle,
+  wrapCharsFor,
+} from './storage/textStyle.js';
 export { type EditOp, MAX_SERVER_OPS, MIN_CLIP_MS, UNDO_LIMIT, historyCounts } from './storage/timeline.js';
 export {
   type Cue,

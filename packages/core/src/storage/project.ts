@@ -1,4 +1,5 @@
 import { StorageError } from './errors.js';
+import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 
 export const PROJECT_SCHEMA_VERSION = 1;
@@ -21,6 +22,8 @@ export interface Clip {
   media?: MediaRef;
   /** Text of a text/subtitle clip (W07). Never on media clips. */
   text?: string;
+  /** Look of a text/subtitle clip (X01); missing fields fall back to the track default. */
+  style?: Partial<TextStyle>;
 }
 
 export const CANVAS_RATIOS = ['9:16', '3:4', '1:1', '16:9'] as const;
@@ -166,6 +169,14 @@ function validateTracks(timeline: Obj, where: string): Track[] {
         if (text.length > MAX_TEXT_LEN) fail(`${cw}.text`, `maks ${MAX_TEXT_LEN} karakter`);
         if (clip.media) fail(`${cw}.text`, 'klip media tidak boleh punya teks');
         clip.text = text;
+      }
+      if (co.style !== undefined) {
+        if (kind !== 'text' && kind !== 'subtitle') fail(`${cw}.style`, 'gaya hanya untuk klip teks/subtitle');
+        try {
+          clip.style = validateStyle(co.style, `${cw}.style`);
+        } catch (e) {
+          fail(`${cw}.style`, e instanceof Error ? e.message : 'tidak valid');
+        }
       }
       return clip;
     });

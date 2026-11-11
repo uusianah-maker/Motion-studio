@@ -1,4 +1,5 @@
 import { StorageError } from './errors.js';
+import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
 
@@ -20,13 +21,14 @@ export const TEXT_TRACKS: readonly TrackKind[] = ['text', 'subtitle'];
 const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'effects'];
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; start_ms: number; duration_ms: number; in_ms?: number }
+  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
   | { op: 'delete_clip'; clip_id: string }
   | { op: 'set_text'; clip_id: string; text: string }
-  | { op: 'set_canvas'; ratio: CanvasRatio };
+  | { op: 'set_canvas'; ratio: CanvasRatio }
+  | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -56,7 +58,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
     };
     switch (o.op) {
       case 'add_clip': {
-        keys(['op', 'track_kind', 'media', 'text', 'start_ms', 'duration_ms', 'in_ms']);
+        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms']);
         if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
         let media: MediaRef | undefined;
         if (o.media !== undefined) {
@@ -69,6 +71,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           track_kind: o.track_kind as TrackKind,
           ...(media ? { media } : {}),
           ...(o.text !== undefined ? { text: textOf(o.text) } : {}),
+          ...(o.style !== undefined ? { style: validateStyle(o.style, `ops[${i}].style`) } : {}),
           start_ms: ms(o.start_ms, 'start_ms'),
           duration_ms: ms(o.duration_ms, 'duration_ms'),
           ...(o.in_ms !== undefined ? { in_ms: ms(o.in_ms, 'in_ms') } : {}),
@@ -94,6 +97,12 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         keys(['op', 'ratio']);
         if (!CANVAS_RATIOS.includes(o.ratio as CanvasRatio)) bad(`ops[${i}]: rasio harus ${CANVAS_RATIOS.join(', ')}`);
         return { op: 'set_canvas', ratio: o.ratio as CanvasRatio };
+      case 'set_style': {
+        keys(['op', 'clip_id', 'style']);
+        const style = validateStyle(o.style, `ops[${i}].style`);
+        if (!Object.keys(style).length) bad(`ops[${i}]: style kosong`);
+        return { op: 'set_style', clip_id: clipId(o.clip_id), style };
+      }
       default:
         return bad(`ops[${i}]: operasi tidak dikenal`);
     }
@@ -101,7 +110,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
 }
 
 const clone = (t: Timeline): Timeline => ({
-  tracks: t.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => ({ ...c, ...(c.media ? { media: { ...c.media } } : {}) })) })),
+  tracks: t.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => ({ ...c, ...(c.media ? { media: { ...c.media } } : {}), ...(c.style ? { style: { ...c.style } } : {}) })) })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
 });
 
@@ -163,6 +172,10 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         if (TEXT_TRACKS.includes(op.track_kind) && op.text === undefined) bad('Klip teks wajib berisi teks');
         const clip: Clip = { clip_id: newClipId(), start_ms: op.start_ms, end_ms: op.start_ms + op.duration_ms };
         if (op.text !== undefined) clip.text = op.text;
+        if (op.style) {
+          if (!TEXT_TRACKS.includes(op.track_kind)) bad('Gaya hanya untuk klip teks/subtitle');
+          clip.style = { ...op.style };
+        }
         if (op.media) {
           clip.media = { ...op.media };
           clip.in_ms = op.in_ms ?? 0;
@@ -198,6 +211,8 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         const { track, clip, index } = locate(t, op.clip_id);
         if (op.at_ms <= clip.start_ms || op.at_ms >= clip.end_ms) bad('Titik split harus di dalam klip', { clip_id: clip.clip_id });
         const right: Clip = { clip_id: newClipId(), start_ms: op.at_ms, end_ms: clip.end_ms };
+        if (clip.text !== undefined) right.text = clip.text;
+        if (clip.style) right.style = { ...clip.style };
         if (clip.media) {
           right.media = { ...clip.media };
           right.in_ms = (clip.in_ms ?? 0) + (op.at_ms - clip.start_ms);
@@ -220,6 +235,12 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
       case 'set_canvas':
         t.canvas = { ratio: op.ratio };
         break;
+      case 'set_style': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (!TEXT_TRACKS.includes(track.kind)) bad('Hanya klip teks/subtitle yang punya gaya', { clip_id: op.clip_id });
+        clip.style = { ...(clip.style ?? {}), ...op.style };
+        break;
+      }
     }
   }
   assertConsistent(t, sourceDuration);

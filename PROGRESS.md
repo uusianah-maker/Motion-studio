@@ -24,6 +24,13 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | T14 | ST-10 disk quota + storage dashboard | SELESAI (backend + CLI); UI dashboard menunggu PC-1 | verify: 120 pass/1 skip. Tes: pemakaian per area + statfs nyata; disk penuh/kuota hanya memberi peringatan, tidak pernah Trash/purge (design check 5); estimasi ruang import/render vs cadangan, fail closed bila tak terbaca; cleanup cache hanya 04_CACHE, terlama dulu, lewati file dipakai job, original & output aman, AI ditolak; dashboard (ringkasan GC, kapan versi jadi eligible, Trash + status backup, operasi tertunda, audit terbaru); CLI init/dashboard/scan/recover dijalankan nyata dari dist | Dashboard memakai scan dry-run aktor AI (read-only). CLI sengaja TIDAK membuka Auto Trash/restore/purge. Tampilan dashboard di app desktop belum dibuat karena shell belum diputuskan (PC-1) | 228aa8c |
 | T15 | Integrasi render preflight + snapshot dependensi | DONE | verify: 126 pass/1 skip. Tes: snapshot persis (versi + hash), output versioned di 05_OUTPUT (final_v2), overwrite hanya dengan persetujuan eksplisit; media hilang/berubah → gagal eksplisit + usulan relink tanpa substitusi; versi lebih baru dilaporkan tapi TIDAK dipakai; media di Trash, disk kurang, timeline kosong, nama output traversal/subfolder, AI ditolak; GC-05 lease render 60 hari tidak di-Trash + snapshot tetap terverifikasi + jam mulai saat render selesai; bytes berubah saat render terdeteksi | Probe tulis (buat+hapus file) dipakai karena access() tidak andal di Windows. Render preflight hanya membaca timeline (bukan snapshot undo) | fe0484b |
 
+## Log task v3.0 (`docs/IMPLEMENTATION_PLAN_v3.0.md`, paritas P0 PRD)
+Progres v3.0: 1/10 selesai · 0 blocked · 9 belum dikerjakan
+
+| # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
+|---|---|---|---|---|---|
+| X01 | Gaya teks (posisi, ukuran, warna, kotak, tebal, outline, perataan) | DONE | verify: core 207 pass / 1 skip (+6 `x01-text-style`: validasi gaya, layout bebas skala, `set_style` merge + pure (undo), split teks mempertahankan teks + gaya, gaya ditolak di klip media & manifest rusak, rencana render per klip (warna, kotak, outline, font tebal/biasa, perataan, pusat), **render FFmpeg nyata: kotak kuning muncul di posisi gaya, tidak di posisi bawaan**), server 85/85, web 11/11, smoke; **UI Chrome `audit/X01/ui.mjs` 9/9**: pratinjau desktop + HP menaruh teks di pusat (0.30, 0.70), ukuran 9% sisi pendek, merah di kotak kuning, rata kiri; baris pratinjau = baris render; subtitle bawaan; `set_style` via API diikuti pratinjau; Undo mengembalikan gaya; 0 error JS; semua UI W05–W15 + E2E hijau | Modul murni `textStyle.ts` dipakai server (render) dan web (pratinjau) → baris & posisi identik; geometri relatif kanvas (pusat x/y 0..1, ukuran % sisi pendek, lebar baris) supaya satu gaya berlaku di semua rasio; font tetap Arial/DejaVu (tebal/biasa) — font kustom menyusul di Brand Kit X06; warna #rrggbb saja (tanpa nama warna) | (commit task X01) |
+
 ## Log task v2.0
 | # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
 |---|---|---|---|---|---|
@@ -144,13 +151,10 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Opsi B (tidak direkomendasikan sekarang): web app di VPS + "agen lokal" di PC yang memegang file & render — arsitektur baru, jauh lebih besar.
 - Yang perlu dipilih di W15: jenis terowongan (SSH reverse tunnel / WireGuard ke VPS sendiri, atau Cloudflare Tunnel tanpa VPS) dan domain.
 
-### PC-15: Gap fitur editor vs PRD — MENUNGGU OWNER (2026-11-11)
-- Audit `audit/PRD_GAP_AUDIT.md`: fondasi/keamanan/render/Copilot/AI sesuai PRD, tapi fitur kreatif P0 belum ada (gaya & preset teks, inspector, volume audio, kelola proyek, Brand Kit, peran) + PRD T15 silence detection tidak pernah dijadwalkan.
-- Opsi A (rekomendasi): kerjakan rencana v3 X01–X05 (P0 inti) dulu → Checkpoint G; owner menyiapkan domain/VPS paralel; deploy setelah X05. Alasan: app yang online sebaiknya sudah layak dipakai sebagai editor sesuai MVP PRD.
-- Opsi B: deploy dulu (app sekarang), lalu v3 bertahap — cepat online, tapi editor masih minim gaya.
-- Opsi C: owner memilih subset/urutan sendiri dari X01–X10.
+### PC-15: Gap fitur editor vs PRD — DIANGGAP A (2026-11-11, `/gasngoding`)
+- Owner menjalankan `/gasngoding` setelah audit gap; pilihan PC-15 belum dijawab eksplisit. Dipakai **A** (P0 dulu): urutan sesuai rekomendasi, deploy tetap menunggu langkah owner. Owner bisa mengubah urutan kapan saja (B = deploy dulu, C = subset sendiri).
+- Rencana: `docs/IMPLEMENTATION_PLAN_v3.0.md` (X01–X10, Checkpoint G & H).
 
-## Audit
 ### Checkpoint A (T01–T05): LULUS setelah perbaikan
 - Suite: verify 48 pass / 1 skip (stabil 5x), prototype 56/56. Laporan: `audit/CHECKPOINT_A/CHECKPOINT_A_REPORT.md`.
 - Review independen (subagent): 2 High (alias area via case/8.3; dua penulis saat bobol lock basi), 5 Medium, beberapa Low. Semua High/Medium kode diperbaiki + diberi tes.
@@ -184,6 +188,8 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 ## Bug
 | Bug | Ditemukan di | Status (fixed/open) | Catatan |
 |---|---|---|---|
+| Split klip teks: potongan kanan kehilangan teksnya | X01 (review reducer) | fixed | split kini menyalin teks + gaya ke potongan kanan; tes `x01-text-style` |
+| HP: buka "Ganti proyek" menekan area pratinjau sampai tinggi 0 | X01 (UI HP) | fixed | baris editor di layar sempit ikut tinggi isi; area kanvas 300px tetap; UI X01 + W07 hijau |
 | F-01..F-11, I03 | T01 | fixed | T02, lihat laporan |
 | Media query HP kalah urutan CSS | T02 (self-review screenshot) | fixed | tes J-*b ditambah |
 | Baris mati di audit.mjs | T04 (lint) | fixed | |

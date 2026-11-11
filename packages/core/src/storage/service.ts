@@ -183,6 +183,7 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   delete_clip: 'Hapus klip',
   set_text: 'Ubah teks',
   set_canvas: 'Ubah rasio',
+  set_style: 'Ubah gaya teks',
 };
 
 /** Short human label for the undo history ("Geser klip", "3 perubahan"). */

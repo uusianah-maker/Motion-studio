@@ -1,0 +1,38 @@
+# IMPLEMENTATION PLAN v3.0 — Paritas P0 PRD (fitur editor kreatif)
+
+**Status:** dijalankan lewat `/gasngoding` (2026-11-11). PC-15 dianggap **A** (P0 dulu, deploy setelah X05), karena deploy memang menunggu langkah owner (domain, VPS, OAuth). Owner bisa mengubah urutan kapan saja.
+
+**Dasar:** `audit/PRD_GAP_AUDIT.md` (gap P0/P1 terhadap `docs/PRD_MASTER_v1.0.md` §7, §8, §10).
+
+Aturan tetap:
+- satu task aktif;
+- tes otomatis per task (core + server + UI Chrome);
+- checkpoint audit independen tiap 5 task;
+- tidak ada push/deploy tanpa izin owner.
+
+## Fase A — P0 inti
+- [x] X01 **Gaya teks** di skema: posisi (pusat x/y), ukuran (% sisi pendek), lebar baris, warna, kotak latar + opasitas, tebal, outline, perataan. Op `set_style` (+ `style` di `add_clip`), ikut undo; split mempertahankan teks + gaya. Pratinjau dan render memakai fungsi layout yang sama (`textStyle.ts`).
+  - *Selesai 2026-11-11.* Tes:
+    - core: render nyata, posisi kotak dicek per piksel;
+    - UI Chrome 9/9: posisi/ukuran/warna/baris pratinjau = gaya, desktop + HP.
+- [ ] X02 **Inspector klip:** panel properti klip terpilih (waktu, teks, gaya: posisi drag, ukuran, warna, kotak, perataan; volume untuk klip media setelah X04).
+- [ ] X03 **Preset teks Hook / USP / CTA / Sale / Subtitle** (perpustakaan + tambah ke playhead) dan Copilot "tone/warna" (mis. `warna teks merah`, `pakai preset sale`).
+- [ ] X04 **Audio:** volume & mute per klip/track (pratinjau + render).
+- [ ] X05 **Kelola proyek:** ganti nama, duplikat, arsipkan, ekspor/impor JSON proyek.
+
+**CHECKPOINT G**
+
+## Fase B — P0 sisa + P1 kunci
+- [ ] X06 **Brand Kit** (font, warna, logo) dipakai preset & Copilot.
+- [ ] X07 **Deteksi hening & adegan → review potongan** (FFmpeg, tanpa LLM), sesuai PRD T15.
+- [ ] X08 **Brand guard** sebelum render: harga kedaluwarsa dan daftar klaim terlarang.
+- [ ] X09 **Varian:** rasio / hook / CTA → antrean render.
+- [ ] X10 **Peran Owner / Editor / Reviewer** + komentar di timecode + approval.
+
+**CHECKPOINT H**
+
+## Ditunda
+- Reframing otomatis, auto B-roll.
+- Transisi/efek lanjutan.
+- Template marketplace, avatar/TTS/dubbing (P2).
+- Deploy nyata (menunggu owner).
