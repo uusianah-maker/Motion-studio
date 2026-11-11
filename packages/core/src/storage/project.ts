@@ -24,6 +24,8 @@ export interface Clip {
   text?: string;
   /** Look of a text/subtitle clip (X01); missing fields fall back to the track default. */
   style?: Partial<TextStyle>;
+  /** Sound level of a media clip, 0..1 (X04). Missing = 1 (full). 0 = muted. */
+  volume?: number;
 }
 
 export const CANVAS_RATIOS = ['9:16', '3:4', '1:1', '16:9'] as const;
@@ -41,6 +43,8 @@ export interface Track {
   track_id: string;
   kind: TrackKind;
   clips: Clip[];
+  /** Media tracks only (X04): the whole track is silent in preview and render. */
+  muted?: boolean;
 }
 
 /** Retained history entry. `retained:true` snapshots/undo records hold their media (PRD v0.8 §B). */
@@ -170,6 +174,12 @@ function validateTracks(timeline: Obj, where: string): Track[] {
         if (clip.media) fail(`${cw}.text`, 'klip media tidak boleh punya teks');
         clip.text = text;
       }
+      if (co.volume !== undefined) {
+        const v = co.volume;
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) fail(`${cw}.volume`, 'harus angka 0–1');
+        if (!clip.media) fail(`${cw}.volume`, 'volume hanya untuk klip media');
+        clip.volume = v as number;
+      }
       if (co.style !== undefined) {
         if (kind !== 'text' && kind !== 'subtitle') fail(`${cw}.style`, 'gaya hanya untuk klip teks/subtitle');
         try {
@@ -180,7 +190,13 @@ function validateTracks(timeline: Obj, where: string): Track[] {
       }
       return clip;
     });
-    return { track_id: id(to.track_id, `${w}.track_id`), kind, clips };
+    const track: Track = { track_id: id(to.track_id, `${w}.track_id`), kind, clips };
+    if (to.muted !== undefined) {
+      if (typeof to.muted !== 'boolean') fail(`${w}.muted`, 'harus true/false');
+      if (!['video', 'broll', 'audio'].includes(kind)) fail(`${w}.muted`, 'mute hanya untuk track media');
+      track.muted = to.muted as boolean;
+    }
+    return track;
   });
 }
 

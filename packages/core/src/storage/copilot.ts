@@ -109,6 +109,10 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return `Ubah rasio ke ${op.ratio}`;
     case 'set_style':
       return `Ubah gaya ${ref(op.clip_id)}: ${styleSummary(op.style)}`;
+    case 'set_volume':
+      return op.volume === 0 ? `Bisukan ${ref(op.clip_id)}` : `Volume ${ref(op.clip_id)} → ${Math.round(op.volume * 100)}%`;
+    case 'set_track_mute':
+      return `${op.muted ? 'Bisukan' : 'Nyalakan suara'} track ${TRACK_NAME[op.track_kind]}`;
   }
 }
 
@@ -132,8 +136,8 @@ export function describeOps(ops: EditOp[], t: Timeline): string[] {
 export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
   const items: DiffItem[] = [];
   const index = (t: Timeline) => {
-    const m = new Map<string, { kind: TrackKind; start_ms: number; end_ms: number; text?: string; style: string }>();
-    for (const tr of t.tracks) for (const c of tr.clips) m.set(c.clip_id, { kind: tr.kind, start_ms: c.start_ms, end_ms: c.end_ms, ...(c.text !== undefined ? { text: c.text } : {}), style: JSON.stringify(c.style ?? {}) });
+    const m = new Map<string, { kind: TrackKind; start_ms: number; end_ms: number; text?: string; style: string; volume: number }>();
+    for (const tr of t.tracks) for (const c of tr.clips) m.set(c.clip_id, { kind: tr.kind, start_ms: c.start_ms, end_ms: c.end_ms, ...(c.text !== undefined ? { text: c.text } : {}), style: JSON.stringify(c.style ?? {}), volume: c.volume ?? 1 });
     return m;
   };
   const a = index(before);
@@ -143,7 +147,7 @@ export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
     const y = b.get(id);
     if (!y) {
       items.push({ kind: 'remove', track_kind: x.kind, clip_id: id, before: shape(x), after: null, summary: `− ${TRACK_NAME[x.kind]}${x.text ? ` ${quote(x.text)}` : ''} ${fmtTime(x.start_ms)}–${fmtTime(x.end_ms)}` });
-    } else if (x.start_ms !== y.start_ms || x.end_ms !== y.end_ms || x.text !== y.text || x.style !== y.style) {
+    } else if (x.start_ms !== y.start_ms || x.end_ms !== y.end_ms || x.text !== y.text || x.style !== y.style || x.volume !== y.volume) {
       const parts: string[] = [];
       if (x.start_ms !== y.start_ms || x.end_ms !== y.end_ms) parts.push(`${fmtTime(x.start_ms)}–${fmtTime(x.end_ms)} → ${fmtTime(y.start_ms)}–${fmtTime(y.end_ms)}`);
       if (x.text !== y.text) parts.push(`${quote(x.text ?? '')} → ${quote(y.text ?? '')}`);
@@ -153,11 +157,18 @@ export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
         const changed = Object.fromEntries(Object.keys({ ...a, ...b }).filter((k) => a[k] !== b[k]).map((k) => [k, b[k]])) as Partial<TextStyle>;
         parts.push(`${y.text ? `${quote(y.text)} ` : ''}gaya: ${styleSummary(changed)}`);
       }
+      if (x.volume !== y.volume) parts.push(`volume ${Math.round(x.volume * 100)}% → ${Math.round(y.volume * 100)}%`);
       items.push({ kind: 'change', track_kind: x.kind, clip_id: id, before: shape(x), after: shape(y), summary: `~ ${TRACK_NAME[x.kind]}: ${parts.join(', ')}` });
     }
   }
   for (const [id, y] of b) {
     if (!a.has(id)) items.push({ kind: 'add', track_kind: y.kind, clip_id: null, before: null, after: shape(y), summary: `+ ${TRACK_NAME[y.kind]}${y.text ? ` ${quote(y.text)}` : ''} ${fmtTime(y.start_ms)}–${fmtTime(y.end_ms)}` });
+  }
+  // X04: track mute on/off.
+  for (const kind of ['video', 'broll', 'audio'] as const) {
+    const ma = before.tracks.some((t) => t.kind === kind && t.muted);
+    const mb = after.tracks.some((t) => t.kind === kind && t.muted);
+    if (ma !== mb) items.push({ kind: 'change', track_kind: kind, clip_id: null, before: null, after: null, summary: `~ track ${TRACK_NAME[kind]}: ${mb ? 'dibisukan' : 'suara dinyalakan'}` });
   }
   const ra = before.canvas?.ratio ?? '9:16';
   const rb = after.canvas?.ratio ?? '9:16';
@@ -223,6 +234,8 @@ export const LOCAL_EXAMPLES = [
   'kotak kuning (klip teks terpilih)',
   'pakai preset cta (klip teks terpilih)',
   'posisi teks bawah, lebih besar (klip teks terpilih)',
+  'volume 40% (klip video/audio terpilih)',
+  'bisukan track video',
 ];
 
 /**
@@ -428,6 +441,22 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
         const f = needOneSelected('ganti teks');
         if (f.track.kind !== 'text' && f.track.kind !== 'subtitle') throw new StorageError('EDIT_INVALID', 'Klip terpilih bukan klip teks/subtitle.');
         push({ op: 'set_text', clip_id: f.clip.clip_id, text: quoted }, 'ganti teks');
+        continue;
+      }
+
+      // ---- sound (X04): "bisukan track musik/audio/video/b-roll", "volume 40%", "bisukan klip"
+      const trackMute = /\b(bisukan|mute|matikan suara|nyalakan suara|unmute)\b.*\btrack\s+(video|b-?roll|audio|musik)\b/.exec(lowBare);
+      if (trackMute) {
+        const kind = trackMute[2] === 'video' ? 'video' : trackMute[2]!.startsWith('b') ? 'broll' : 'audio';
+        push({ op: 'set_track_mute', track_kind: kind, muted: !/nyalakan suara|unmute/.test(trackMute[1]!) }, 'mute track');
+        continue;
+      }
+      const vol = /\bvolume\b[^0-9]*(\d{1,3})\s*%/.exec(lowBare);
+      if (vol || /\b(bisukan|mute)\b/.test(lowBare)) {
+        const f = needOneSelected('ubah volume');
+        if (!f.clip.media) throw new StorageError('EDIT_INVALID', 'Volume hanya untuk klip video/audio. Pilih klipnya dulu.');
+        const v = vol ? Math.min(100, Number(vol[1])) / 100 : 0;
+        push({ op: 'set_volume', clip_id: f.clip.clip_id, volume: v }, 'volume');
         continue;
       }
 

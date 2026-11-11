@@ -33,6 +33,8 @@ export function InspectorPanel({
   const [dur, setDur] = useState(sec(clip.end_ms - clip.start_ms));
   const [text, setText] = useState(clip.text ?? '');
   const [draft, setDraft] = useState<Partial<TextStyle>>({});
+  const [vol, setVol] = useState(Math.round((clip.volume ?? 1) * 100));
+  const volTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyRef = useRef(busy);
   busyRef.current = busy;
@@ -54,7 +56,27 @@ export function InspectorPanel({
     setDraft({});
     onDraft(null);
   }, [clip.clip_id, JSON.stringify(clip.style ?? {})]);
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+  useEffect(() => setVol(Math.round((clip.volume ?? 1) * 100)), [clip.clip_id, clip.volume]);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+      if (volTimer.current) clearTimeout(volTimer.current);
+    },
+    [],
+  );
+  /** Volume slider: one `set_volume` edit after the hand stops (one undo step). */
+  const changeVolume = (pct: number) => {
+    setVol(pct);
+    if (volTimer.current) clearTimeout(volTimer.current);
+    const fire = () => {
+      if (busyRef.current) {
+        volTimer.current = setTimeout(fire, 250);
+        return;
+      }
+      void onEditRef.current([{ op: 'set_volume', clip_id: clip.clip_id, volume: pct / 100 }]);
+    };
+    volTimer.current = setTimeout(fire, 450);
+  };
 
   const s = isText ? { ...effectiveStyle(clip.kind as 'text' | 'subtitle', clip.style), ...draft } : null;
 
@@ -132,6 +154,19 @@ export function InspectorPanel({
         <div className="muted small">
           Sumber mulai {formatDuration(clip.in_ms ?? 0)}
           {sourceMs !== undefined ? ` dari ${formatDuration(sourceMs)}` : ''}
+        </div>
+      )}
+      {clip.media && (
+        <div className="inspGrid">
+          <label>
+            Volume {vol}%
+            <input type="range" aria-label="Volume klip" min={0} max={100} value={vol} onChange={(e) => changeVolume(Number(e.target.value))} />
+          </label>
+          <span className="row" style={{ gap: 6, alignItems: 'end' }}>
+            <button className="btn small" aria-label={vol === 0 ? 'Nyalakan suara klip' : 'Bisukan klip'} onClick={() => changeVolume(vol === 0 ? 100 : 0)}>
+              {vol === 0 ? '🔇 Nyalakan' : '🔊 Bisukan'}
+            </button>
+          </span>
         </div>
       )}
 

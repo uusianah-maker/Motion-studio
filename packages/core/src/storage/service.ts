@@ -184,6 +184,8 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_text: 'Ubah teks',
   set_canvas: 'Ubah rasio',
   set_style: 'Ubah gaya teks',
+  set_volume: 'Ubah volume',
+  set_track_mute: 'Bisukan/nyalakan track',
 };
 
 /** Short human label for the undo history ("Geser klip", "3 perubahan"). */

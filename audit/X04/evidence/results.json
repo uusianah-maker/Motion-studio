@@ -1,0 +1,67 @@
+{
+  "at": "2026-11-11T13:27:31.389Z",
+  "passed": 12,
+  "total": 12,
+  "results": [
+    {
+      "id": "X4-01 Inspector klip video: slider volume 100%",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X4-02 Geser slider → tersimpan sebagai satu edit volume 0.4",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X4-03 Pratinjau ikut: elemen video volume 0.4",
+      "ok": true,
+      "detail": "0.4"
+    },
+    {
+      "id": "X4-04 Tombol \"Bisukan klip\" → volume 0",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X4-05 Tombol mute di label track Video → track.muted = true",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X4-06 Pratinjau: track dibisukan → volume video 0",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X4-07 Tombol berubah jadi \"Nyalakan suara track Video\" (aria-pressed)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X4-08 Ctrl+Z membatalkan mute track (satu langkah undo)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X4-09 Copilot \"volume 25%; bisukan track audio\" → rencana jelas → volume & mute berubah",
+      "ok": true,
+      "detail": "Volume klip video (0:00–0:06) → 25% | Bisukan track audio"
+    },
+    {
+      "id": "X4-10 Riwayat bertambah per edit (bukan per gerakan slider)",
+      "ok": true,
+      "detail": "2 → 5"
+    },
+    {
+      "id": "X4-11 HP 390px: tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "X4-12 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

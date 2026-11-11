@@ -11,7 +11,7 @@ import { MEDIA_AREAS } from './permissions.js';
 import { type PreflightResult, finishRender, startRender, verifyRenderSnapshot } from './preflight.js';
 import { effectiveStyle, layoutText } from './textStyle.js';
 import { type MediaProbe, probeFile } from './probe.js';
-import { type CanvasRatio, type Clip, type Timeline } from './project.js';
+import { type CanvasRatio, type Clip, type Timeline, type Track } from './project.js';
 import { loadRegistry } from './registry.js';
 import { type Workspace, projectRel, readProject } from './workspace.js';
 
@@ -165,6 +165,12 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     return src;
   };
 
+  // X04: sound level per clip (0..1) and muted tracks.
+  const trackOf = new Map<string, Track>();
+  for (const tr of t.tracks) for (const c of tr.clips) trackOf.set(c.clip_id, tr);
+  const gainOf = (c: Clip) => (trackOf.get(c.clip_id)?.muted ? 0 : (c.volume ?? 1));
+  const gainFilter = (g: number) => (g === 1 ? '' : `,volume=${g.toFixed(2)}`);
+
   segments.forEach((seg, k) => {
     const frames = seg.to_frame - seg.from_frame;
     const durMs = (frames * 1000) / fps;
@@ -184,7 +190,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     );
     graph.push(
       hasA
-        ? `[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT},apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${k}]`
+        ? `[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(seg.clip!))},apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${k}]`
         : `anullsrc=r=${AUDIO_RATE}:cl=stereo,${AFMT},atrim=end_sample=${samples}[a${k}]`,
     );
   });
@@ -196,11 +202,11 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     const src = media(c);
     const startFrame = Math.round((c.start_ms * fps) / 1000);
     const endFrame = Math.min(total_frames, Math.round((c.end_ms * fps) / 1000));
-    if (!src?.probe.audio_codec || endFrame <= startFrame) continue;
+    if (!src?.probe.audio_codec || endFrame <= startFrame || gainOf(c) === 0) continue;
     const durMs = ((endFrame - startFrame) * 1000) / fps;
     const idx = input(src, c.in_ms ?? 0, durMs);
     const delay = Math.round((startFrame * 1000) / fps);
-    graph.push(`[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT},apad,atrim=end_sample=${(endFrame - startFrame) * samplesPerFrame},adelay=delays=${delay}:all=1[m${mixes.length}]`);
+    graph.push(`[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(c))},apad,atrim=end_sample=${(endFrame - startFrame) * samplesPerFrame},adelay=delays=${delay}:all=1[m${mixes.length}]`);
     mixes.push(`[m${mixes.length}]`);
   }
   graph.push(mixes.length ? `[acat]${mixes.join('')}amix=inputs=${mixes.length + 1}:duration=first:normalize=0:dropout_transition=0,${AFMT}[aout]` : `[acat]anull[aout]`);

@@ -28,7 +28,9 @@ export type EditOp =
   | { op: 'delete_clip'; clip_id: string }
   | { op: 'set_text'; clip_id: string; text: string }
   | { op: 'set_canvas'; ratio: CanvasRatio }
-  | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> };
+  | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
+  | { op: 'set_volume'; clip_id: string; volume: number }
+  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio'; muted: boolean };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -97,6 +99,17 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         keys(['op', 'ratio']);
         if (!CANVAS_RATIOS.includes(o.ratio as CanvasRatio)) bad(`ops[${i}]: rasio harus ${CANVAS_RATIOS.join(', ')}`);
         return { op: 'set_canvas', ratio: o.ratio as CanvasRatio };
+      case 'set_volume': {
+        keys(['op', 'clip_id', 'volume']);
+        const v = o.volume;
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) bad(`ops[${i}]: volume harus angka 0–1`);
+        return { op: 'set_volume', clip_id: clipId(o.clip_id), volume: Math.round((v as number) * 100) / 100 };
+      }
+      case 'set_track_mute':
+        keys(['op', 'track_kind', 'muted']);
+        if (o.track_kind !== 'video' && o.track_kind !== 'broll' && o.track_kind !== 'audio') bad(`ops[${i}]: track_kind harus video | broll | audio`);
+        if (typeof o.muted !== 'boolean') bad(`ops[${i}]: muted harus true/false`);
+        return { op: 'set_track_mute', track_kind: o.track_kind as 'video' | 'broll' | 'audio', muted: o.muted as boolean };
       case 'set_style': {
         keys(['op', 'clip_id', 'style']);
         const style = validateStyle(o.style, `ops[${i}].style`);
@@ -213,6 +226,7 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         const right: Clip = { clip_id: newClipId(), start_ms: op.at_ms, end_ms: clip.end_ms };
         if (clip.text !== undefined) right.text = clip.text;
         if (clip.style) right.style = { ...clip.style };
+        if (clip.volume !== undefined) right.volume = clip.volume;
         if (clip.media) {
           right.media = { ...clip.media };
           right.in_ms = (clip.in_ms ?? 0) + (op.at_ms - clip.start_ms);
@@ -235,6 +249,19 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
       case 'set_canvas':
         t.canvas = { ratio: op.ratio };
         break;
+      case 'set_volume': {
+        const { clip } = locate(t, op.clip_id);
+        if (!clip.media) bad('Volume hanya untuk klip video/audio', { clip_id: op.clip_id });
+        if (op.volume === 1) delete clip.volume;
+        else clip.volume = op.volume;
+        break;
+      }
+      case 'set_track_mute': {
+        const track = trackFor(t, op.track_kind);
+        if (op.muted) track.muted = true;
+        else delete track.muted;
+        break;
+      }
       case 'set_style': {
         const { track, clip } = locate(t, op.clip_id);
         if (!TEXT_TRACKS.includes(track.kind)) bad('Hanya klip teks/subtitle yang punya gaya', { clip_id: op.clip_id });

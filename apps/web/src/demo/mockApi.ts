@@ -159,7 +159,7 @@ function commit(s: Stored, expected: number, ops: EditOp[], label: string): Proj
   return view(s);
 }
 
-const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks' };
+const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_track_mute: 'Bisukan/nyalakan track' };
 
 // ------------------------------------------------------------------ copilot plans
 const plans = new Map<string, { plan: EditPlan; status: 'proposed' | 'applied' | 'rejected'; applied_revision: number | null }>();

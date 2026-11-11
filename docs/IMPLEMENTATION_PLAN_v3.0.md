@@ -17,7 +17,7 @@ Aturan tetap:
     - UI Chrome 9/9: posisi/ukuran/warna/baris pratinjau = gaya, desktop + HP.
 - [x] X02 **Inspector klip:** panel properti klip terpilih (waktu, teks, gaya: posisi drag, ukuran, warna, kotak, perataan; volume untuk klip media setelah X04). *Selesai 2026-11-11: inspector + seret teks di pratinjau; UI Chrome 11/11.*
 - [x] X03 **Preset teks Hook / USP / CTA / Sale / Subtitle** (perpustakaan + tambah ke playhead) dan Copilot "tone/warna" (mis. `warna teks merah`, `pakai preset sale`). *Selesai 2026-11-11: perpustakaan preset + preset di inspector + Copilot warna/kotak/preset/tone/posisi/ukuran; UI Chrome 11/11.*
-- [ ] X04 **Audio:** volume & mute per klip/track (pratinjau + render).
+- [x] X04 **Audio:** volume & mute per klip/track (pratinjau + render). *Selesai 2026-11-11: volume klip (inspector + Copilot), mute track (label linimasa), pratinjau & render ikut; render nyata diukur volumedetect; UI Chrome 12/12.*
 - [ ] X05 **Kelola proyek:** ganti nama, duplikat, arsipkan, ekspor/impor JSON proyek.
 
 **CHECKPOINT G**

@@ -25,6 +25,8 @@ Allowed operations (times in milliseconds, integers):
 - {"op":"set_text","clip_id":"...","text":"..."}
 - {"op":"set_canvas","ratio":"9:16"|"3:4"|"1:1"|"16:9"}
 - {"op":"set_style","clip_id":"...","style":{...}}  (text/subtitle clips only; add_clip of text may also carry "style")
+- {"op":"set_volume","clip_id":"...","volume":0..1}  (video/b-roll/audio clips only; 0 = muted, 1 = full)
+- {"op":"set_track_mute","track_kind":"video"|"broll"|"audio","muted":true|false}
 Style fields (all optional): x,y = centre 0..1 of canvas; size = % of canvas short side (2-20); width = line width 0.2-1; color/bg = "#rrggbb" (bg null = no box); bg_opacity 0-1; bold, outline = true/false; align = "left"|"center"|"right".
 Presets (use their style for hooks, USPs, CTAs, sale/price callouts, subtitles): ${PRESET_LINES}
 Rules: use only clip_id values present in the timeline; clips on one track must not overlap; text max 500 characters; at most 60 operations.

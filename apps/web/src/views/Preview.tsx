@@ -154,6 +154,14 @@ export function Preview({
   useEffect(() => {
     for (const el of [videoRef.current, audioRef.current]) if (el) el.muted = muted;
   }, [muted]);
+  // X04: each layer plays at its clip's volume; a muted track is silent (same rule as render).
+  const gainOf = (c: Clip | null) => (!c ? 1 : tracks.find((tr) => tr.clips.some((x) => x.clip_id === c.clip_id))?.muted ? 0 : (c.volume ?? 1));
+  const visualGain = gainOf(visual);
+  const audioGain = gainOf(audio);
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.volume = visualGain;
+    if (audioRef.current) audioRef.current.volume = audioGain;
+  }, [visualGain, audioGain]);
 
   const v = versionOf(visual);
   const unsupported = v && v.preview === false ? `Codec ${v.probe?.video_codec ?? '?'} belum bisa dipratinjau di browser (tetap bisa dirender).` : null;

@@ -412,7 +412,21 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
             const clips = tracks.filter((x) => x.kind === t.kind).flatMap((x) => x.clips);
             return (
               <div className="track" key={t.kind}>
-                <div className="trackLabel">{t.label}</div>
+                <div className="trackLabel">
+                  {t.label}
+                  {(t.kind === 'video' || t.kind === 'broll' || t.kind === 'audio') && (
+                    <button
+                      className={`trackMute${tracks.some((x) => x.kind === t.kind && x.muted) ? ' on' : ''}`}
+                      disabled={busy || !project}
+                      aria-pressed={tracks.some((x) => x.kind === t.kind && x.muted)}
+                      aria-label={`${tracks.some((x) => x.kind === t.kind && x.muted) ? 'Nyalakan suara' : 'Bisukan'} track ${t.label.replace(/^\S+\s+/, '')}`}
+                      title="Bisukan/nyalakan suara track ini (pratinjau & render)"
+                      onClick={() => void edit([{ op: 'set_track_mute', track_kind: t.kind as 'video' | 'broll' | 'audio', muted: !tracks.some((x) => x.kind === t.kind && x.muted) }])}
+                    >
+                      {tracks.some((x) => x.kind === t.kind && x.muted) ? '🔇' : '🔊'}
+                    </button>
+                  )}
+                </div>
                 <div className="trackSurface" onClick={seek}>
                   <div className="playhead" style={{ left: pct(playhead) }} />
                   {clips.map((c) => {

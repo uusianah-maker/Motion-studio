@@ -24,6 +24,8 @@ export interface Clip {
   text?: string;
   /** X01: text/subtitle look; missing fields = track default. */
   style?: Partial<TextStyle>;
+  /** X04: media clip sound level 0..1 (missing = 1). */
+  volume?: number;
 }
 
 export type EditOp =
@@ -34,11 +36,15 @@ export type EditOp =
   | { op: 'delete_clip'; clip_id: string }
   | { op: 'set_text'; clip_id: string; text: string }
   | { op: 'set_canvas'; ratio: '9:16' | '3:4' | '1:1' | '16:9' }
-  | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> };
+  | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
+  | { op: 'set_volume'; clip_id: string; volume: number }
+  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio'; muted: boolean };
 export interface Track {
   track_id: string;
   kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'effects';
   clips: Clip[];
+  /** X04: media track silenced in preview and render. */
+  muted?: boolean;
 }
 export interface Project extends Required<Omit<ProjectSummary, 'error'>> {
   timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' } };

@@ -115,7 +115,10 @@ table.list tr:hover td { background: #191d29; }
 .timelineTop { height: 47px; display: flex; align-items: center; gap: 12px; padding: 0 17px; border-bottom: 1px solid #303545; }
 .tracks { padding: 6px 14px 13px; }
 .track { display: flex; align-items: center; height: 34px; border-bottom: 1px solid #262d3a; gap: 6px; }
-.trackLabel { width: 102px; flex: none; font-size: 11px; color: #aeb8cd; }
+.trackLabel { width: 102px; flex: none; font-size: 11px; color: #aeb8cd; display: flex; align-items: center; gap: 4px; }
+.trackMute { margin-left: auto; background: none; border: 1px solid transparent; border-radius: 6px; color: inherit; font-size: 12px; line-height: 1; padding: 2px 4px; cursor: pointer; opacity: .55; }
+.trackMute:hover, .trackMute:focus-visible { border-color: #3a4260; opacity: 1; }
+.trackMute.on { opacity: 1; background: #3a2030; border-color: #7a3a52; }
 .trackSurface { position: relative; flex: 1; height: 25px; background: #101520; border-radius: 5px; overflow: hidden; }
 .clip { position: absolute; top: 2px; bottom: 2px; min-width: 6px; border-radius: 4px; background: #29485c; border: 1px solid #4c8da7; color: #e5dfff; display: flex; align-items: center; padding: 0 7px; font-size: 10px; white-space: nowrap; overflow: hidden; }
 .clip.text, .clip.subtitle { background: #544376; border-color: #8870b1; }
