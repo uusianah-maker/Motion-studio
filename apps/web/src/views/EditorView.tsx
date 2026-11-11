@@ -4,6 +4,8 @@ import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, t
 import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration } from '../lib';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
+import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
+import { InspectorPanel } from './InspectorPanel';
 import { RenderDialog } from './RenderDialog';
 import { TranscriptDialog } from './TranscriptDialog';
 
@@ -40,6 +42,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
   const [error, setError] = useState<unknown>(null);
   const [renderOpen, setRenderOpen] = useState(false);
   const [sttMedia, setSttMedia] = useState<Media | null>(null);
+  const [styleDraft, setStyleDraft] = useState<{ clip_id: string; style: Partial<TextStyle> } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -255,6 +258,13 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
             setPlaying={setPlaying}
             busy={busy}
             onRatio={(ratio: CanvasRatio) => void edit([{ op: 'set_canvas', ratio }])}
+            selectedClipId={selected}
+            onSelectClip={(id) => setSelected(id)}
+            styleDraft={styleDraft}
+            onMoveText={(id, x, y) => {
+              setSelected(id);
+              void edit([{ op: 'set_style', clip_id: id, style: { x, y } }]);
+            }}
           />
         )}
       </main>
@@ -266,6 +276,16 @@ export function EditorView({ api, projectId, mobileProjects, onSaved }: { api: A
           <span className="muted">{usable.length}</span>
         </div>
         <div className="panelBody">
+          {sel && project && (
+            <InspectorPanel
+              clip={sel}
+              name={clipName(sel)}
+              sourceMs={sourceMs(sel)}
+              busy={busy}
+              onEdit={(ops) => edit(ops)}
+              onDraft={setStyleDraft}
+            />
+          )}
           {usable.length === 0 ? (
             <div className="muted" style={{ lineHeight: 1.6 }}>Belum ada media. Import lewat menu <b>Media</b>.</div>
           ) : (

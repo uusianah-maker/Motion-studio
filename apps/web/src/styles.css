@@ -272,3 +272,16 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ---------- styled text overlays (X01): geometry comes from the clip style ---------- */
 .overlayText.styled { right: auto; bottom: auto; transform: translate(-50%, -50%); white-space: pre; overflow-wrap: normal; border-radius: 0.12em; font-family: Arial, 'DejaVu Sans', 'Liberation Sans', sans-serif; max-width: none; }
+
+/* ---------- inspector (X02) ---------- */
+.inspector { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #4d4380; border-radius: 10px; background: #1a1830; }
+.inspHead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.inspHead .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.inspGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.inspGrid label, .inspFull { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #b3bbce; min-width: 0; }
+.inspector input:not([type=checkbox]):not([type=range]):not([type=color]), .inspector textarea { border: 1px solid var(--line); background: #10141e; border-radius: 8px; padding: 6px 8px; color: inherit; font: inherit; font-size: 12px; min-width: 0; }
+.inspector input[type=range] { width: 100%; accent-color: #8868ff; }
+.inspector input[type=color] { width: 44px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+.segmented { display: inline-flex; gap: 4px; }
+.chip.on { background: #3a3166; border-color: #8a73e8; color: #fff; }
+.overlayText.styled.picked { outline: 2px dashed #b9a6ff; outline-offset: 3px; }

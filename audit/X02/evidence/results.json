@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-11T13:12:22.757Z",
+  "passed": 11,
+  "total": 11,
+  "results": [
+    {
+      "id": "X2-01 Tanpa klip terpilih: inspector tidak tampil",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X2-02 Klip video: waktu + info sumber, tanpa kontrol gaya",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X2-03 Mulai & durasi dari inspector (1,5 dtk, 2 dtk)",
+      "ok": true,
+      "detail": "1500–3500"
+    },
+    {
+      "id": "X2-04 Geser slider Y: pratinjau langsung ikut, tersimpan sebagai SATU revisi",
+      "ok": true,
+      "detail": "live 0.600, rev 3→4"
+    },
+    {
+      "id": "X2-05 Warna, kotak latar, perataan dari inspector",
+      "ok": true,
+      "detail": "{\"y\":0.6,\"color\":\"#00ff00\",\"bg\":\"#000000\",\"align\":\"left\"}"
+    },
+    {
+      "id": "X2-06 Seret teks di pratinjau → posisi baru tersimpan (satu langkah undo \"Ubah gaya teks\")",
+      "ok": true,
+      "detail": "x 0.6 y 0.4"
+    },
+    {
+      "id": "X2-07 Ubah teks dari inspector",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X2-08 Reset gaya → kembali ke bawaan track",
+      "ok": true,
+      "detail": "{\"x\":0.5,\"y\":0.2,\"size\":6.2,\"width\":0.84,\"bg_opacity\":0.6,\"color\":\"#ffffff\",\"bg\":null,\"bold\":true,\"outline\":true,\"align\":\"center\"}"
+    },
+    {
+      "id": "X2-09 Undo membatalkan reset (gaya hijau kembali)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X2-10 HP 390px: inspector tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "X2-11 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, Clip, Media, Project } from '../api';
+import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { TextOverlay } from './TextOverlay';
 import { CANVAS_RATIOS, type CanvasRatio, aspectCss, clipAt, formatDuration, safeInsets, sourceSeconds } from '../lib';
 
@@ -21,6 +22,10 @@ export function Preview({
   setPlaying,
   onRatio,
   busy,
+  selectedClipId = null,
+  onSelectClip,
+  styleDraft = null,
+  onMoveText,
 }: {
   api: Api;
   project: Project;
@@ -31,6 +36,11 @@ export function Preview({
   setPlaying: (p: boolean) => void;
   onRatio: (r: CanvasRatio) => void;
   busy: boolean;
+  /** X02: the selected clip (its text can be dragged), live style draft from the inspector. */
+  selectedClipId?: string | null;
+  onSelectClip?: (id: string) => void;
+  styleDraft?: { clip_id: string; style: Partial<TextStyle> } | null;
+  onMoveText?: (id: string, x: number, y: number) => void;
 }) {
   const ratio: CanvasRatio = project.timeline.canvas?.ratio ?? '9:16';
   const [safe, setSafe] = useState(true);
@@ -172,11 +182,18 @@ export function Preview({
           <audio ref={audioRef} preload="auto" />
           {!visual && <div className="emptyFrame">{end === 0 ? 'Tambahkan media ke linimasa' : 'Tidak ada video di titik ini'}</div>}
           {(unsupported || problem) && <div className="emptyFrame warnFrame">{unsupported ?? problem}</div>}
-          {texts.map((c) => (
-            <TextOverlay key={c.clip_id} clip={c} kind="text" ratio={ratio} canvas={canvasPx} />
-          ))}
-          {subs.map((c) => (
-            <TextOverlay key={c.clip_id} clip={c} kind="subtitle" ratio={ratio} canvas={canvasPx} />
+          {[...texts.map((c) => ['text', c] as const), ...subs.map((c) => ['subtitle', c] as const)].map(([kind, c]) => (
+            <TextOverlay
+              key={c.clip_id}
+              clip={c}
+              kind={kind}
+              ratio={ratio}
+              canvas={canvasPx}
+              draft={styleDraft?.clip_id === c.clip_id ? styleDraft.style : null}
+              selected={selectedClipId === c.clip_id}
+              {...(onSelectClip ? { onSelect: () => onSelectClip(c.clip_id) } : {})}
+              {...(onMoveText && !busy ? { onMove: (x: number, y: number) => onMoveText(c.clip_id, x, y) } : {})}
+            />
           ))}
           {safe && <div className="safeArea" style={{ top: `${st}%`, right: `${sr}%`, bottom: `${sb}%`, left: `${sl}%` }} aria-hidden="true" />}
           <span className="canvasTag">● PREVIEW</span>

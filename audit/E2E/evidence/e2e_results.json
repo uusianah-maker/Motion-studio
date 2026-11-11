@@ -1,6 +1,6 @@
 {
-  "runAt": "2026-11-11T13:04:27.152Z",
-  "workspace": "C:\\Users\\distc\\AppData\\Local\\Temp\\msc-e2e-exhTaS\\MOTION_STUDIO",
+  "runAt": "2026-11-11T13:12:26.855Z",
+  "workspace": "C:\\Users\\distc\\AppData\\Local\\Temp\\msc-e2e-WeieAs\\MOTION_STUDIO",
   "results": [
     {
       "id": "GC-02",
@@ -12,7 +12,7 @@
       "id": "GC-03",
       "name": "30 hari + semua gate lulus: masuk Trash, registry & audit akurat",
       "status": "PASS",
-      "evidence": "moved=v_cb9a29dee5536fe6 lifecycle=trashed audit=started,done"
+      "evidence": "moved=v_623350d0f04dbf38 lifecycle=trashed audit=started,done"
     },
     {
       "id": "GC-06",
@@ -60,7 +60,7 @@
       "id": "GC-09",
       "name": "Restore ke tujuan yang terisi: tidak overwrite, pilih path alternatif",
       "status": "PASS",
-      "evidence": "first=conflict then=restored at SHARED_MEDIA/m_d987f6ece7bdc241/v_cb9a29dee5536fe6.restored-1.mp4"
+      "evidence": "first=conflict then=restored at SHARED_MEDIA/m_085248bfa8d13085/v_623350d0f04dbf38.restored-1.mp4"
     },
     {
       "id": "GC-08",
@@ -72,7 +72,7 @@
       "id": "M-1",
       "name": "Item 1 hari di Trash bisa di-purge manual (audit + konfirmasi lulus)",
       "status": "PASS",
-      "evidence": "purged=v_47ec19c0dd79a614,v_cb9a29dee5536fe6"
+      "evidence": "purged=v_623350d0f04dbf38,v_710b217dd57f01d2"
     },
     {
       "id": "M-3",

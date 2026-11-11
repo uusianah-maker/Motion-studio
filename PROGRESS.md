@@ -25,11 +25,12 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 | T15 | Integrasi render preflight + snapshot dependensi | DONE | verify: 126 pass/1 skip. Tes: snapshot persis (versi + hash), output versioned di 05_OUTPUT (final_v2), overwrite hanya dengan persetujuan eksplisit; media hilang/berubah → gagal eksplisit + usulan relink tanpa substitusi; versi lebih baru dilaporkan tapi TIDAK dipakai; media di Trash, disk kurang, timeline kosong, nama output traversal/subfolder, AI ditolak; GC-05 lease render 60 hari tidak di-Trash + snapshot tetap terverifikasi + jam mulai saat render selesai; bytes berubah saat render terdeteksi | Probe tulis (buat+hapus file) dipakai karena access() tidak andal di Windows. Render preflight hanya membaca timeline (bukan snapshot undo) | fe0484b |
 
 ## Log task v3.0 (`docs/IMPLEMENTATION_PLAN_v3.0.md`, paritas P0 PRD)
-Progres v3.0: 1/10 selesai · 0 blocked · 9 belum dikerjakan
+Progres v3.0: 2/10 selesai · 0 blocked · 8 belum dikerjakan
 
 | # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
 |---|---|---|---|---|---|
 | X01 | Gaya teks (posisi, ukuran, warna, kotak, tebal, outline, perataan) | DONE | verify: core 207 pass / 1 skip (+6 `x01-text-style`: validasi gaya, layout bebas skala, `set_style` merge + pure (undo), split teks mempertahankan teks + gaya, gaya ditolak di klip media & manifest rusak, rencana render per klip (warna, kotak, outline, font tebal/biasa, perataan, pusat), **render FFmpeg nyata: kotak kuning muncul di posisi gaya, tidak di posisi bawaan**), server 85/85, web 11/11, smoke; **UI Chrome `audit/X01/ui.mjs` 9/9**: pratinjau desktop + HP menaruh teks di pusat (0.30, 0.70), ukuran 9% sisi pendek, merah di kotak kuning, rata kiri; baris pratinjau = baris render; subtitle bawaan; `set_style` via API diikuti pratinjau; Undo mengembalikan gaya; 0 error JS; semua UI W05–W15 + E2E hijau | Modul murni `textStyle.ts` dipakai server (render) dan web (pratinjau) → baris & posisi identik; geometri relatif kanvas (pusat x/y 0..1, ukuran % sisi pendek, lebar baris) supaya satu gaya berlaku di semua rasio; font tetap Arial/DejaVu (tebal/biasa) — font kustom menyusul di Brand Kit X06; warna #rrggbb saja (tanpa nama warna) | 5e08003 |
+| X02 | Inspector klip + seret teks di pratinjau | DONE | verify: core 207 pass / 1 skip, server 85/85, web 11/11, smoke; **UI Chrome `audit/X02/ui.mjs` 11/11**: inspector hanya saat ada klip terpilih; klip video = waktu + info sumber tanpa kontrol gaya; mulai + durasi dari inspector (1,5/2 dtk); slider Y: pratinjau langsung ikut dan tersimpan **satu** revisi; warna, kotak latar, perataan; seret teks di pratinjau → posisi baru, satu langkah undo "Ubah gaya teks"; ubah teks; Reset gaya = bawaan track; Undo mengembalikan; HP 390px; 0 error JS; semua UI W05–W15, X01 + E2E hijau | Inspector di atas panel kanan (di HP ikut tumpuk). Gaya disimpan setelah jeda 450 ms (draft tampil langsung di pratinjau) supaya geser slider = satu undo. Edit saat editor masih menyimpan diantrekan, bukan dibuang; kolom yang sedang diketik tidak ditimpa nilai simpanan. Kotak teks cepat di bawah linimasa dipertahankan (praktis di HP); isian inspector berlabel "Isi teks di inspector" | (commit task X02) |
 
 ## Log task v2.0
 | # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
@@ -188,6 +189,7 @@ Progres v3.0: 1/10 selesai · 0 blocked · 9 belum dikerjakan
 ## Bug
 | Bug | Ditemukan di | Status (fixed/open) | Catatan |
 |---|---|---|---|
+| Inspector: ubah mulai lalu durasi berurutan → durasi hilang (kolom di-disable saat menyimpan, antrean pakai revisi basi) | X02 (UI test) | fixed | antre sampai editor siap memakai fungsi edit terbaru; kolom tidak di-disable; nilai simpanan tidak menimpa kolom yang sedang diketik |
 | Split klip teks: potongan kanan kehilangan teksnya | X01 (review reducer) | fixed | split kini menyalin teks + gaya ke potongan kanan; tes `x01-text-style` |
 | HP: buka "Ganti proyek" menekan area pratinjau sampai tinggi 0 | X01 (UI HP) | fixed | baris editor di layar sempit ikut tinggi isi; area kanvas 300px tetap; UI X01 + W07 hijau |
 | F-01..F-11, I03 | T01 | fixed | T02, lihat laporan |
