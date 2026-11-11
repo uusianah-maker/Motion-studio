@@ -6,3 +6,5 @@ coverage/
 audit/**/evidence/*.mp4
 *.tsbuildinfo
 .env.local
+dist-demo/
+demo/*.html

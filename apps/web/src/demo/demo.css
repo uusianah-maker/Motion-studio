@@ -1,0 +1,16 @@
+.demoBadge {
+  position: fixed;
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  pointer-events: none;
+  max-width: calc(100vw - 90px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #6b5426;
+  background: #3a301acc;
+  color: #f6dfae;
+  font-size: 11px;
+  font-weight: 650;
+  backdrop-filter: blur(6px);
+}
