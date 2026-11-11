@@ -144,6 +144,12 @@ Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). S
 - Opsi B (tidak direkomendasikan sekarang): web app di VPS + "agen lokal" di PC yang memegang file & render — arsitektur baru, jauh lebih besar.
 - Yang perlu dipilih di W15: jenis terowongan (SSH reverse tunnel / WireGuard ke VPS sendiri, atau Cloudflare Tunnel tanpa VPS) dan domain.
 
+### PC-15: Gap fitur editor vs PRD — MENUNGGU OWNER (2026-11-11)
+- Audit `audit/PRD_GAP_AUDIT.md`: fondasi/keamanan/render/Copilot/AI sesuai PRD, tapi fitur kreatif P0 belum ada (gaya & preset teks, inspector, volume audio, kelola proyek, Brand Kit, peran) + PRD T15 silence detection tidak pernah dijadwalkan.
+- Opsi A (rekomendasi): kerjakan rencana v3 X01–X05 (P0 inti) dulu → Checkpoint G; owner menyiapkan domain/VPS paralel; deploy setelah X05. Alasan: app yang online sebaiknya sudah layak dipakai sebagai editor sesuai MVP PRD.
+- Opsi B: deploy dulu (app sekarang), lalu v3 bertahap — cepat online, tapi editor masih minim gaya.
+- Opsi C: owner memilih subset/urutan sendiri dari X01–X10.
+
 ## Audit
 ### Checkpoint A (T01–T05): LULUS setelah perbaikan
 - Suite: verify 48 pass / 1 skip (stabil 5x), prototype 56/56. Laporan: `audit/CHECKPOINT_A/CHECKPOINT_A_REPORT.md`.
