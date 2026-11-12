@@ -1,0 +1,66 @@
+{
+  "source": "public/uji01.mp4",
+  "originalSec": 24.81,
+  "editedVideoSec": 19.87,
+  "totalWithOutroSec": 22.37,
+  "overMax": false,
+  "keptSegments": 6,
+  "removed": [
+    {
+      "fromSec": 0.0,
+      "toSec": 2.03,
+      "reason": "jeda",
+      "text": ""
+    },
+    {
+      "fromSec": 2.57,
+      "toSec": 2.8,
+      "reason": "jeda",
+      "text": ""
+    },
+    {
+      "fromSec": 6.8,
+      "toSec": 6.93,
+      "reason": "jeda",
+      "text": ""
+    },
+    {
+      "fromSec": 9.0,
+      "toSec": 10.47,
+      "reason": "jeda",
+      "text": ""
+    },
+    {
+      "fromSec": 13.07,
+      "toSec": 13.2,
+      "reason": "jeda",
+      "text": ""
+    },
+    {
+      "fromSec": 16.73,
+      "toSec": 16.83,
+      "reason": "jeda",
+      "text": ""
+    },
+    {
+      "fromSec": 23.97,
+      "toSec": 24.81,
+      "reason": "hening di akhir",
+      "text": ""
+    }
+  ],
+  "doubts": [
+    {
+      "atSec": 3.38,
+      "word": "baygon,",
+      "note": "Whisper kurang yakin (0.46)"
+    },
+    {
+      "atSec": 6.34,
+      "word": "Ya,",
+      "note": "Whisper kurang yakin (0.33)"
+    }
+  ],
+  "transcript": "Gila, ini baygon, bener-bener keren banget. Ya, buat sekarang musim hujan, membasmi serangga yang masuk ke rumah tuh, cepet banget mereka tuh mati. Ketika sudah mati, udah tinggal gue sapuin, gue bersihin. Dan itu cukup satu kali semprot. Jadi buat lo semua yang mau check out sekarang, buruan cek keran yang uniknya sekarang.",
+  "finalText": "Gila, ini baygon, bener-bener keren banget. Ya, buat sekarang musim hujan, membasmi serangga yang masuk ke rumah tuh, cepet banget mereka tuh mati. Ketika sudah mati, udah tinggal gue sapuin, gue bersihin. Dan itu cukup satu kali semprot. Jadi buat lo semua yang mau check out sekarang, buruan cek keran yang uniknya sekarang."
+}

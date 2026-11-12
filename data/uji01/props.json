@@ -1,0 +1,421 @@
+{
+  "videoSrc": "uji01.mp4",
+  "segments": [
+    {
+      "startFrame": 61,
+      "endFrame": 77
+    },
+    {
+      "startFrame": 84,
+      "endFrame": 204
+    },
+    {
+      "startFrame": 208,
+      "endFrame": 270
+    },
+    {
+      "startFrame": 314,
+      "endFrame": 392
+    },
+    {
+      "startFrame": 396,
+      "endFrame": 502
+    },
+    {
+      "startFrame": 505,
+      "endFrame": 719
+    }
+  ],
+  "captions": [
+    {
+      "text": "Gila,",
+      "startMs": 0,
+      "endMs": 387,
+      "timestampMs": null,
+      "confidence": 0.697
+    },
+    {
+      "text": "ini",
+      "startMs": 613,
+      "endMs": 1113,
+      "timestampMs": null,
+      "confidence": 0.94
+    },
+    {
+      "text": "baygon,",
+      "startMs": 1113,
+      "endMs": 1673,
+      "timestampMs": null,
+      "confidence": 0.462
+    },
+    {
+      "text": "bener-bener",
+      "startMs": 1913,
+      "endMs": 2553,
+      "timestampMs": null,
+      "confidence": 0.851
+    },
+    {
+      "text": "keren",
+      "startMs": 2553,
+      "endMs": 3413,
+      "timestampMs": null,
+      "confidence": 0.981
+    },
+    {
+      "text": "banget.",
+      "startMs": 3413,
+      "endMs": 3773,
+      "timestampMs": null,
+      "confidence": 0.998
+    },
+    {
+      "text": "Ya,",
+      "startMs": 4073,
+      "endMs": 4413,
+      "timestampMs": null,
+      "confidence": 0.325
+    },
+    {
+      "text": "buat",
+      "startMs": 4640,
+      "endMs": 4860,
+      "timestampMs": null,
+      "confidence": 0.997
+    },
+    {
+      "text": "sekarang",
+      "startMs": 4860,
+      "endMs": 5560,
+      "timestampMs": null,
+      "confidence": 0.977
+    },
+    {
+      "text": "musim",
+      "startMs": 5560,
+      "endMs": 5960,
+      "timestampMs": null,
+      "confidence": 0.994
+    },
+    {
+      "text": "hujan,",
+      "startMs": 5960,
+      "endMs": 6480,
+      "timestampMs": null,
+      "confidence": 0.999
+    },
+    {
+      "text": "membasmi",
+      "startMs": 6600,
+      "endMs": 7233,
+      "timestampMs": null,
+      "confidence": 0.856
+    },
+    {
+      "text": "serangga",
+      "startMs": 7233,
+      "endMs": 7793,
+      "timestampMs": null,
+      "confidence": 0.994
+    },
+    {
+      "text": "yang",
+      "startMs": 7793,
+      "endMs": 7933,
+      "timestampMs": null,
+      "confidence": 0.993
+    },
+    {
+      "text": "masuk",
+      "startMs": 7933,
+      "endMs": 8193,
+      "timestampMs": null,
+      "confidence": 0.995
+    },
+    {
+      "text": "ke",
+      "startMs": 8193,
+      "endMs": 8353,
+      "timestampMs": null,
+      "confidence": 0.864
+    },
+    {
+      "text": "rumah",
+      "startMs": 8353,
+      "endMs": 8573,
+      "timestampMs": null,
+      "confidence": 0.999
+    },
+    {
+      "text": "tuh,",
+      "startMs": 8573,
+      "endMs": 8833,
+      "timestampMs": null,
+      "confidence": 0.884
+    },
+    {
+      "text": "cepet",
+      "startMs": 9113,
+      "endMs": 9540,
+      "timestampMs": null,
+      "confidence": 0.956
+    },
+    {
+      "text": "banget",
+      "startMs": 9540,
+      "endMs": 9800,
+      "timestampMs": null,
+      "confidence": 1.0
+    },
+    {
+      "text": "mereka",
+      "startMs": 9800,
+      "endMs": 10100,
+      "timestampMs": null,
+      "confidence": 0.82
+    },
+    {
+      "text": "tuh",
+      "startMs": 10100,
+      "endMs": 10300,
+      "timestampMs": null,
+      "confidence": 0.95
+    },
+    {
+      "text": "mati.",
+      "startMs": 10300,
+      "endMs": 10660,
+      "timestampMs": null,
+      "confidence": 0.998
+    },
+    {
+      "text": "Ketika",
+      "startMs": 10760,
+      "endMs": 11020,
+      "timestampMs": null,
+      "confidence": 0.998
+    },
+    {
+      "text": "sudah",
+      "startMs": 11020,
+      "endMs": 11200,
+      "timestampMs": null,
+      "confidence": 0.981
+    },
+    {
+      "text": "mati,",
+      "startMs": 11200,
+      "endMs": 11540,
+      "timestampMs": null,
+      "confidence": 0.998
+    },
+    {
+      "text": "udah",
+      "startMs": 11580,
+      "endMs": 11700,
+      "timestampMs": null,
+      "confidence": 0.91
+    },
+    {
+      "text": "tinggal",
+      "startMs": 11660,
+      "endMs": 11940,
+      "timestampMs": null,
+      "confidence": 0.997
+    },
+    {
+      "text": "gue",
+      "startMs": 11940,
+      "endMs": 12060,
+      "timestampMs": null,
+      "confidence": 0.657
+    },
+    {
+      "text": "sapuin,",
+      "startMs": 12060,
+      "endMs": 12600,
+      "timestampMs": null,
+      "confidence": 0.972
+    },
+    {
+      "text": "gue",
+      "startMs": 12840,
+      "endMs": 13320,
+      "timestampMs": null,
+      "confidence": 0.997
+    },
+    {
+      "text": "bersihin.",
+      "startMs": 13320,
+      "endMs": 13840,
+      "timestampMs": null,
+      "confidence": 0.997
+    },
+    {
+      "text": "Dan",
+      "startMs": 14120,
+      "endMs": 14240,
+      "timestampMs": null,
+      "confidence": 0.994
+    },
+    {
+      "text": "itu",
+      "startMs": 14240,
+      "endMs": 14440,
+      "timestampMs": null,
+      "confidence": 0.996
+    },
+    {
+      "text": "cukup",
+      "startMs": 14440,
+      "endMs": 14740,
+      "timestampMs": null,
+      "confidence": 0.999
+    },
+    {
+      "text": "satu",
+      "startMs": 14740,
+      "endMs": 14920,
+      "timestampMs": null,
+      "confidence": 0.655
+    },
+    {
+      "text": "kali",
+      "startMs": 14920,
+      "endMs": 15120,
+      "timestampMs": null,
+      "confidence": 0.999
+    },
+    {
+      "text": "semprot.",
+      "startMs": 15120,
+      "endMs": 15560,
+      "timestampMs": null,
+      "confidence": 0.995
+    },
+    {
+      "text": "Jadi",
+      "startMs": 15820,
+      "endMs": 16160,
+      "timestampMs": null,
+      "confidence": 0.998
+    },
+    {
+      "text": "buat",
+      "startMs": 16160,
+      "endMs": 16380,
+      "timestampMs": null,
+      "confidence": 0.967
+    },
+    {
+      "text": "lo",
+      "startMs": 16380,
+      "endMs": 16560,
+      "timestampMs": null,
+      "confidence": 0.974
+    },
+    {
+      "text": "semua",
+      "startMs": 16560,
+      "endMs": 16940,
+      "timestampMs": null,
+      "confidence": 0.572
+    },
+    {
+      "text": "yang",
+      "startMs": 16940,
+      "endMs": 17240,
+      "timestampMs": null,
+      "confidence": 0.994
+    },
+    {
+      "text": "mau",
+      "startMs": 17240,
+      "endMs": 17440,
+      "timestampMs": null,
+      "confidence": 0.998
+    },
+    {
+      "text": "check",
+      "startMs": 17440,
+      "endMs": 17660,
+      "timestampMs": null,
+      "confidence": 0.945
+    },
+    {
+      "text": "out",
+      "startMs": 17660,
+      "endMs": 17840,
+      "timestampMs": null,
+      "confidence": 0.925
+    },
+    {
+      "text": "sekarang,",
+      "startMs": 17840,
+      "endMs": 18240,
+      "timestampMs": null,
+      "confidence": 0.987
+    },
+    {
+      "text": "buruan",
+      "startMs": 18400,
+      "endMs": 18560,
+      "timestampMs": null,
+      "confidence": 0.612
+    },
+    {
+      "text": "cek",
+      "startMs": 18560,
+      "endMs": 18820,
+      "timestampMs": null,
+      "confidence": 0.944
+    },
+    {
+      "text": "keran",
+      "startMs": 18820,
+      "endMs": 19020,
+      "timestampMs": null,
+      "confidence": 0.524
+    },
+    {
+      "text": "yang",
+      "startMs": 19020,
+      "endMs": 19140,
+      "timestampMs": null,
+      "confidence": 0.514
+    },
+    {
+      "text": "uniknya",
+      "startMs": 19100,
+      "endMs": 19400,
+      "timestampMs": null,
+      "confidence": 0.753
+    },
+    {
+      "text": "sekarang.",
+      "startMs": 19400,
+      "endMs": 19640,
+      "timestampMs": null,
+      "confidence": 0.999
+    }
+  ],
+  "keywords": [
+    "diskon",
+    "promo",
+    "gratis",
+    "murah",
+    "hemat",
+    "ampuh",
+    "keranjang",
+    "checkout",
+    "sekarang",
+    "habis",
+    "nyamuk",
+    "kecoa"
+  ],
+  "logoSrc": "logo.svg",
+  "outroTagline": "",
+  "outroSeconds": 2.5,
+  "maxWordsPerPage": 3,
+  "maxDurationSeconds": 30
+}

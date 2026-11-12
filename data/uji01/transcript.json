@@ -1,0 +1,334 @@
+{
+  "source": "public/uji01.mp4",
+  "durationMs": 24811,
+  "language": "id",
+  "model": "large-v3-turbo",
+  "modelLoadSec": 4.7,
+  "transcribeSec": 13.9,
+  "words": [
+    {
+      "text": "Gila,",
+      "startMs": 1860,
+      "endMs": 2420,
+      "prob": 0.697
+    },
+    {
+      "text": "ini",
+      "startMs": 2880,
+      "endMs": 3380,
+      "prob": 0.94
+    },
+    {
+      "text": "baygon,",
+      "startMs": 3380,
+      "endMs": 3940,
+      "prob": 0.462
+    },
+    {
+      "text": "bener",
+      "startMs": 4180,
+      "endMs": 4660,
+      "prob": 0.898
+    },
+    {
+      "text": "-bener",
+      "startMs": 4660,
+      "endMs": 4820,
+      "prob": 0.851
+    },
+    {
+      "text": "keren",
+      "startMs": 4820,
+      "endMs": 5680,
+      "prob": 0.981
+    },
+    {
+      "text": "banget.",
+      "startMs": 5680,
+      "endMs": 6040,
+      "prob": 0.998
+    },
+    {
+      "text": "Ya,",
+      "startMs": 6340,
+      "endMs": 6680,
+      "prob": 0.325
+    },
+    {
+      "text": "buat",
+      "startMs": 7040,
+      "endMs": 7260,
+      "prob": 0.997
+    },
+    {
+      "text": "sekarang",
+      "startMs": 7260,
+      "endMs": 7960,
+      "prob": 0.977
+    },
+    {
+      "text": "musim",
+      "startMs": 7960,
+      "endMs": 8360,
+      "prob": 0.994
+    },
+    {
+      "text": "hujan,",
+      "startMs": 8360,
+      "endMs": 8880,
+      "prob": 0.999
+    },
+    {
+      "text": "membasmi",
+      "startMs": 10020,
+      "endMs": 11100,
+      "prob": 0.856
+    },
+    {
+      "text": "serangga",
+      "startMs": 11100,
+      "endMs": 11660,
+      "prob": 0.994
+    },
+    {
+      "text": "yang",
+      "startMs": 11660,
+      "endMs": 11800,
+      "prob": 0.993
+    },
+    {
+      "text": "masuk",
+      "startMs": 11800,
+      "endMs": 12060,
+      "prob": 0.995
+    },
+    {
+      "text": "ke",
+      "startMs": 12060,
+      "endMs": 12220,
+      "prob": 0.864
+    },
+    {
+      "text": "rumah",
+      "startMs": 12220,
+      "endMs": 12440,
+      "prob": 0.999
+    },
+    {
+      "text": "tuh,",
+      "startMs": 12440,
+      "endMs": 12700,
+      "prob": 0.884
+    },
+    {
+      "text": "cepet",
+      "startMs": 12980,
+      "endMs": 13540,
+      "prob": 0.956
+    },
+    {
+      "text": "banget",
+      "startMs": 13540,
+      "endMs": 13800,
+      "prob": 1.0
+    },
+    {
+      "text": "mereka",
+      "startMs": 13800,
+      "endMs": 14100,
+      "prob": 0.82
+    },
+    {
+      "text": "tuh",
+      "startMs": 14100,
+      "endMs": 14300,
+      "prob": 0.95
+    },
+    {
+      "text": "mati.",
+      "startMs": 14300,
+      "endMs": 14660,
+      "prob": 0.998
+    },
+    {
+      "text": "Ketika",
+      "startMs": 14760,
+      "endMs": 15020,
+      "prob": 0.998
+    },
+    {
+      "text": "sudah",
+      "startMs": 15020,
+      "endMs": 15200,
+      "prob": 0.981
+    },
+    {
+      "text": "mati,",
+      "startMs": 15200,
+      "endMs": 15540,
+      "prob": 0.998
+    },
+    {
+      "text": "udah",
+      "startMs": 15580,
+      "endMs": 15660,
+      "prob": 0.91
+    },
+    {
+      "text": "tinggal",
+      "startMs": 15660,
+      "endMs": 15940,
+      "prob": 0.997
+    },
+    {
+      "text": "gue",
+      "startMs": 15940,
+      "endMs": 16060,
+      "prob": 0.657
+    },
+    {
+      "text": "sapuin,",
+      "startMs": 16060,
+      "endMs": 16600,
+      "prob": 0.972
+    },
+    {
+      "text": "gue",
+      "startMs": 16940,
+      "endMs": 17420,
+      "prob": 0.997
+    },
+    {
+      "text": "bersihin.",
+      "startMs": 17420,
+      "endMs": 17940,
+      "prob": 0.997
+    },
+    {
+      "text": "Dan",
+      "startMs": 18220,
+      "endMs": 18340,
+      "prob": 0.994
+    },
+    {
+      "text": "itu",
+      "startMs": 18340,
+      "endMs": 18540,
+      "prob": 0.996
+    },
+    {
+      "text": "cukup",
+      "startMs": 18540,
+      "endMs": 18840,
+      "prob": 0.999
+    },
+    {
+      "text": "satu",
+      "startMs": 18840,
+      "endMs": 19020,
+      "prob": 0.655
+    },
+    {
+      "text": "kali",
+      "startMs": 19020,
+      "endMs": 19220,
+      "prob": 0.999
+    },
+    {
+      "text": "semprot.",
+      "startMs": 19220,
+      "endMs": 19660,
+      "prob": 0.995
+    },
+    {
+      "text": "Jadi",
+      "startMs": 19920,
+      "endMs": 20260,
+      "prob": 0.998
+    },
+    {
+      "text": "buat",
+      "startMs": 20260,
+      "endMs": 20480,
+      "prob": 0.967
+    },
+    {
+      "text": "lo",
+      "startMs": 20480,
+      "endMs": 20660,
+      "prob": 0.974
+    },
+    {
+      "text": "semua",
+      "startMs": 20660,
+      "endMs": 21040,
+      "prob": 0.572
+    },
+    {
+      "text": "yang",
+      "startMs": 21040,
+      "endMs": 21340,
+      "prob": 0.994
+    },
+    {
+      "text": "mau",
+      "startMs": 21340,
+      "endMs": 21540,
+      "prob": 0.998
+    },
+    {
+      "text": "check",
+      "startMs": 21540,
+      "endMs": 21760,
+      "prob": 0.945
+    },
+    {
+      "text": "out",
+      "startMs": 21760,
+      "endMs": 21940,
+      "prob": 0.925
+    },
+    {
+      "text": "sekarang,",
+      "startMs": 21940,
+      "endMs": 22340,
+      "prob": 0.987
+    },
+    {
+      "text": "buruan",
+      "startMs": 22500,
+      "endMs": 22660,
+      "prob": 0.612
+    },
+    {
+      "text": "cek",
+      "startMs": 22660,
+      "endMs": 22920,
+      "prob": 0.944
+    },
+    {
+      "text": "keran",
+      "startMs": 22920,
+      "endMs": 23120,
+      "prob": 0.524
+    },
+    {
+      "text": "yang",
+      "startMs": 23120,
+      "endMs": 23200,
+      "prob": 0.514
+    },
+    {
+      "text": "uniknya",
+      "startMs": 23200,
+      "endMs": 23500,
+      "prob": 0.753
+    },
+    {
+      "text": "sekarang.",
+      "startMs": 23500,
+      "endMs": 23740,
+      "prob": 0.999
+    }
+  ]
+}
