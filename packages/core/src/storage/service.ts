@@ -17,6 +17,7 @@ import { guard } from './guard.js';
 import { newId } from './ids.js';
 import * as admin from './projectAdmin.js';
 import * as brand from './brand.js';
+import * as variants from './variants.js';
 import { type Workspace, readProject, withWorkspaceLock } from './workspace.js';
 
 /**
@@ -112,6 +113,19 @@ export class StorageService {
 
   importProject(input: Omit<Parameters<typeof admin.importProject>[1], 'new_project_id'> & { new_project_id?: string }) {
     return mutate(this.ws, 'svc.importProject', input.actor, () => admin.importProject(this.ws, { ...input, new_project_id: input.new_project_id ?? newProjectId() }));
+  }
+
+  // ---- X09 variants
+  createVariants(input: { master_id: string; briefs: unknown; actor: Actor }) {
+    return mutate(this.ws, 'svc.createVariants', input.actor, () => variants.createVariants(this.ws, { ...input, newId: newProjectId }));
+  }
+
+  setVariantApproval(input: Parameters<typeof variants.setVariantApproval>[1]) {
+    return mutate(this.ws, 'svc.setVariantApproval', input.actor, () => variants.setVariantApproval(this.ws, input));
+  }
+
+  listVariants(masterId: string) {
+    return variants.listVariants(this.ws, masterId);
   }
 
   // ---- X06 Brand Kit (workspace level). Saving reconciles clocks: font/logo become held.

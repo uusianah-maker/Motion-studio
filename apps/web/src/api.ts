@@ -5,6 +5,27 @@ import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js
  * carries `x-motion-request: 1`, which the server requires (a cross-site page cannot send it).
  */
 
+/** X09: one ad variant of a master project. */
+export interface VariantRow {
+  project_id: string;
+  name: string;
+  revision: number;
+  number: number;
+  label: string;
+  brief: { ratio?: '9:16' | '3:4' | '1:1' | '16:9'; hook?: string; cta?: string };
+  state: 'draft' | 'approved' | 'changed';
+  ratio: string;
+  render: { job_id: string; status: string; progress: number; output_name: string; problems: { code: string }[]; error: { code: string; message: string } | null } | null;
+  outputs: number;
+}
+export interface VariantTag {
+  master_id: string;
+  number: number;
+  state?: 'draft' | 'approved' | 'changed';
+  label?: string;
+  approved_revision?: number | null;
+}
+
 /** X07: silences + scene changes of one media version (source times, ms). */
 export interface MediaAnalysis {
   version_id: string;
@@ -61,6 +82,8 @@ export interface ProjectSummary {
   project_id: string;
   name?: string;
   status?: 'active' | 'archived';
+  /** X09: set on variant projects. */
+  variant?: VariantTag;
   revision?: number;
   created_at?: number;
   updated_at?: number;
@@ -101,7 +124,8 @@ export interface Track {
   /** X04: media track silenced in preview and render. */
   muted?: boolean;
 }
-export interface Project extends Required<Omit<ProjectSummary, 'error'>> {
+export interface Project extends Required<Omit<ProjectSummary, 'error' | 'variant'>> {
+  variant?: VariantTag;
   timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' }; brand_logo?: boolean };
   history: { undo: number; redo: number; undo_label: string | null; redo_label: string | null };
 }
@@ -478,6 +502,13 @@ export function createApi(token: string | null, base = '') {
     transcript: (id: string, tid: string) => call<{ transcript: TranscriptFull }>('GET', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}`).then((r) => r.transcript),
     transcriptSave: (id: string, tid: string, expected_rev: number, cues: { cue_id?: string; start_ms: number; end_ms: number; text: string }[]) =>
       call<{ transcript: TranscriptFull }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}`, { json: { expected_rev, cues } }).then((r) => r.transcript),
+    variants: (id: string) => call<{ variants: VariantRow[] }>('GET', `/api/projects/${encodeURIComponent(id)}/variants`).then((r) => r.variants),
+    createVariants: (id: string, briefs: { label?: string; ratio?: string; hook?: string; cta?: string }[]) =>
+      call<{ variants: VariantRow[] }>('POST', `/api/projects/${encodeURIComponent(id)}/variants`, { json: { briefs } }).then((r) => r.variants),
+    setVariantApproval: (id: string, expected_revision: number, approved: boolean) =>
+      call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/variant-approval`, { json: { expected_revision, approved } }).then((r) => r.project),
+    renderVariants: (id: string, opts: { short_side?: 720 | 1080 }) =>
+      call<{ jobs: RenderJob[]; skipped: { project_id: string; reason: string }[] }>('POST', `/api/projects/${encodeURIComponent(id)}/variants/render`, { json: opts }),
     analyzeMedia: (versionId: string, params: Partial<MediaAnalysis['params']>) =>
       call<{ analysis: MediaAnalysis }>('POST', `/api/media/${encodeURIComponent(versionId)}/analyze`, { json: { params } }).then((r) => r.analysis),
     cutPlan: (id: string, body: { clip_id: string; silences: { from_ms: number; to_ms: number }[]; scenes: number[]; padding_ms: number }) =>

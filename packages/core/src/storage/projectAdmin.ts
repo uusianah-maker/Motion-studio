@@ -4,7 +4,7 @@ import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { isSafeId } from './ids.js';
 import type { Actor } from './permissions.js';
-import { type MediaRef, type ProjectManifest, type Timeline, PROJECT_SCHEMA_VERSION, validateProjectManifest } from './project.js';
+import { type MediaRef, type ProjectManifest, type Timeline, type VariantInfo, PROJECT_SCHEMA_VERSION, validateProjectManifest } from './project.js';
 import { loadRegistry } from './registry.js';
 import { resolveInside } from './paths.js';
 import { type Workspace, createProject, projectRel, readProject } from './workspace.js';
@@ -63,10 +63,10 @@ export async function updateProjectMeta(ws: Workspace, input: { project_id: stri
  * If the commit is refused (e.g. a media version is in Trash) the half-made project is removed,
  * so a failed duplicate/import leaves nothing behind.
  */
-async function createWithTimeline(ws: Workspace, input: { project_id: string; name: string; timeline: Timeline; actor: Actor }): Promise<ProjectManifest> {
+export async function createWithTimeline(ws: Workspace, input: { project_id: string; name: string; timeline: Timeline; actor: Actor; variant?: VariantInfo }): Promise<ProjectManifest> {
   const fresh = await createProject(ws, { project_id: input.project_id, name: input.name });
   try {
-    return await commitProject(ws, { manifest: { ...fresh, timeline: input.timeline }, expected_revision: 0, actor: input.actor });
+    return await commitProject(ws, { manifest: { ...fresh, timeline: input.timeline, ...(input.variant ? { variant: input.variant } : {}) }, expected_revision: 0, actor: input.actor });
   } catch (e) {
     // Checkpoint G G-3: the folder was created by this call a moment ago (fresh, unguessable id;
     // `createProject` refuses an existing one), so it is removed whatever step failed — even if the

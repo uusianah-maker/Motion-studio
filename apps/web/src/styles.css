@@ -58,6 +58,13 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 .guardBox input:not([type]) { flex: 1; min-width: 0; }
 .guardBox textarea { width: 100%; }
 .guardList { margin: 6px 0 6px 18px; padding: 0; }
+.variantBriefs, .variantList { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.briefRow { display: grid; grid-template-columns: 24px minmax(0, 1fr) 110px minmax(0, 1.4fr) minmax(0, 1.4fr) 28px; gap: 6px; align-items: center; }
+.briefRow input, .briefRow select { min-width: 0; }
+.variantRow { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.variantInfo { flex: 1; min-width: 160px; display: flex; flex-direction: column; }
+.variantRender { min-width: 110px; }
+@media (max-width: 700px) { .briefRow { grid-template-columns: 24px minmax(0, 1fr) 100px; } .briefRow input[aria-label^="Hook"], .briefRow input[aria-label^="CTA"] { grid-column: 2 / 4; } }
 .importRow { padding: 0 15px 8px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

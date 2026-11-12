@@ -71,6 +71,24 @@ export interface ProjectManifest {
   updated_at: number;
   timeline: Timeline;
   snapshots: Snapshot[];
+  /** X09: this project is a variant of a master (ratio / hook / CTA brief + approval). */
+  variant?: VariantInfo;
+}
+
+export interface VariantBrief {
+  ratio?: CanvasRatio;
+  hook?: string;
+  cta?: string;
+}
+
+export interface VariantInfo {
+  master_id: string;
+  /** 1, 2, 3… per master, in creation order (V1, V2, …). */
+  number: number;
+  label: string;
+  brief: VariantBrief;
+  /** Revision the user approved; any later edit means "changed since approval". */
+  approved_revision: number | null;
 }
 
 export function mediaRefUri(ref: MediaRef): string {
@@ -141,7 +159,30 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
     updated_at: num(o.updated_at, 'updated_at'),
     timeline,
     snapshots,
+    ...(o.variant !== undefined ? { variant: validateVariantInfo(o.variant) } : {}),
   };
+}
+
+function validateVariantInfo(x: unknown): VariantInfo {
+  const v = obj(x, 'variant');
+  const b = obj(v.brief, 'variant.brief');
+  const brief: VariantBrief = {};
+  if (b.ratio !== undefined) {
+    if (!CANVAS_RATIOS.includes(b.ratio as CanvasRatio)) fail('variant.brief.ratio', 'rasio tidak dikenal');
+    brief.ratio = b.ratio as CanvasRatio;
+  }
+  for (const k of ['hook', 'cta'] as const) {
+    if (b[k] === undefined) continue;
+    const t = str(b[k], `variant.brief.${k}`);
+    if (!t.trim() || t.length > MAX_TEXT_LEN) fail(`variant.brief.${k}`, `1–${MAX_TEXT_LEN} karakter`);
+    brief[k] = t;
+  }
+  const label = str(v.label, 'variant.label');
+  if (!label.trim() || label.length > 60) fail('variant.label', '1–60 karakter');
+  const ar = v.approved_revision;
+  if (ar !== null && (typeof ar !== 'number' || !Number.isSafeInteger(ar) || ar < 0)) fail('variant.approved_revision', 'harus angka revisi atau null');
+  if (typeof v.number !== 'number' || !Number.isSafeInteger(v.number) || v.number < 1) fail('variant.number', 'harus angka ≥ 1');
+  return { master_id: id(v.master_id, 'variant.master_id'), number: v.number as number, label, brief, approved_revision: ar as number | null };
 }
 
 function validateTimeline(x: unknown, where: string): Timeline {

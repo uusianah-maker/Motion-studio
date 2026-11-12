@@ -14,6 +14,7 @@ import {
   ApiError,
   type ApplyReply,
   type BrandKit,
+  type VariantRow,
   type GuardIssue,
   type Clip,
   type Cue,
@@ -140,6 +141,22 @@ addProject(
 );
 addProject('talking-head', 'Talking Head Edukasi', [{ track_id: 'video', kind: 'video', clips: [{ clip_id: 'c_v9', start_ms: 0, end_ms: 8000, in_ms: 0, media: hookRef }] }], 3);
 
+function variantRow(s: Stored): VariantRow {
+  const job = renderJobs.find((j) => j.project_id === s.p.project_id) ?? null;
+  const v = s.p.variant!;
+  return {
+    project_id: s.p.project_id,
+    name: s.p.name,
+    revision: s.p.revision,
+    number: v.number,
+    label: v.label ?? '',
+    brief: {},
+    state: v.approved_revision === null || v.approved_revision === undefined ? 'draft' : v.approved_revision === s.p.revision ? 'approved' : 'changed',
+    ratio: s.p.timeline.canvas?.ratio ?? '9:16',
+    render: job ? { job_id: job.job_id, status: job.status, progress: job.progress, output_name: job.output?.name ?? job.output_name, problems: job.problems, error: job.error } : null,
+    outputs: (outputs.get(s.p.project_id) ?? []).length,
+  };
+}
 const view = (s: Stored): Project => ({
   ...clone(s.p),
   history: { undo: s.undo.length, redo: s.redo.length, undo_label: s.undo.at(-1)?.label ?? null, redo_label: s.redo.at(-1)?.label ?? null },
@@ -280,6 +297,52 @@ export function createDemoApi(): Api {
       return { project_id: id, name, status: 'active', revision: 0, created_at: s.p.created_at, updated_at: s.p.updated_at };
     },
     project: async (id) => view(get(id)),
+    // X09 demo variants (same rules as the server, simplified): clone master, set ratio/hook/CTA.
+    variants: async (id) => [...projects.values()].filter((s) => s.p.variant?.master_id === id).sort((a, b) => a.p.variant!.number - b.p.variant!.number).map(variantRow),
+    createVariants: async (id, briefs) => {
+      const m = get(id);
+      if (m.p.variant) fail(422, 'EDIT_INVALID', 'Ini sudah varian. Buat varian dari proyek master-nya.');
+      if (!briefs.length || briefs.length > 8) fail(422, 'EDIT_INVALID', 'Isi 1–8 varian');
+      let num = Math.max(0, ...[...projects.values()].filter((s) => s.p.variant?.master_id === id).map((s) => s.p.variant!.number));
+      const made = briefs.map((b) => {
+        if (!b.ratio && !b.hook && !b.cta) fail(422, 'EDIT_INVALID', 'Isi minimal rasio, hook, atau CTA');
+        const texts = (m.p.timeline.tracks.find((t) => t.kind === 'text')?.clips ?? []).slice().sort((a, c) => a.start_ms - c.start_ms);
+        const ops: EditOp[] = [];
+        if (b.ratio) ops.push({ op: 'set_canvas', ratio: b.ratio as '1:1' });
+        if (b.hook && texts[0]) ops.push({ op: 'set_text', clip_id: texts[0].clip_id, text: b.hook });
+        if (b.cta && texts.length > 1) ops.push({ op: 'set_text', clip_id: texts[texts.length - 1]!.clip_id, text: b.cta });
+        const label = b.label || [b.ratio, b.hook && `Hook “${b.hook.slice(0, 18)}”`, b.cta && `CTA “${b.cta.slice(0, 18)}”`].filter(Boolean).join(' · ');
+        const pid = nid('p');
+        const tl = applyOps(m.p.timeline, ops, () => nid('c'), sourceDuration) as Timeline;
+        projects.set(pid, { p: { ...clone(m.p), project_id: pid, name: `${m.p.name} · ${label}`, revision: 1, created_at: now(), updated_at: now(), timeline: tl, variant: { master_id: id, number: ++num, label, approved_revision: null } }, undo: [], redo: [] });
+        return variantRow(projects.get(pid)!);
+      });
+      return made;
+    },
+    setVariantApproval: async (id, rev, approved) => {
+      const s = get(id);
+      if (!s.p.variant) fail(422, 'EDIT_INVALID', 'Proyek ini bukan varian');
+      if (s.p.revision !== rev) fail(409, 'CONFLICT', 'Revisi proyek sudah berubah');
+      s.p.revision++;
+      s.p.variant = { ...s.p.variant!, approved_revision: approved ? s.p.revision : null };
+      s.p.updated_at = now();
+      return view(s);
+    },
+    renderVariants: async (id, opts) => {
+      const jobs: RenderJob[] = [];
+      const skipped: { project_id: string; reason: string }[] = [];
+      for (const s of [...projects.values()].filter((x) => x.p.variant?.master_id === id)) {
+        if (s.p.variant!.approved_revision !== s.p.revision) {
+          skipped.push({ project_id: s.p.project_id, reason: s.p.variant!.approved_revision ? 'diubah setelah disetujui' : 'belum disetujui' });
+          continue;
+        }
+        const job: RenderJob = { job_id: nid('job'), project_id: s.p.project_id, output_name: s.p.name, status: 'queued', phase: null, progress: 0, created_at: now(), finished_at: null, output: null, problems: [], error: null };
+        renderJobs.unshift(job);
+        runRender(job, opts.short_side ?? 1080);
+        jobs.push(clone(job));
+      }
+      return { jobs, skipped };
+    },
     brand: async () => clone(brandKit),
     saveBrand: async (rev, kit) => {
       if (rev !== brandKit.revision) fail(409, 'CONFLICT', 'Brand Kit sudah berubah; muat ulang dulu');

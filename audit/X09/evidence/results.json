@@ -1,0 +1,72 @@
+{
+  "at": "2026-11-12T18:17:15.720Z",
+  "passed": 13,
+  "total": 13,
+  "results": [
+    {
+      "id": "X9-01 3 varian dibuat (V1–V3) dengan rasio/hook/CTA sesuai brief, status belum disetujui",
+      "ok": true,
+      "detail": "V1 Feed IG 1:1 Belum disetujui — Setujui Buka | V2 Hook “Stop scroll dulu!” · CTA “Join live jam 7” 9:16 · Hook “Stop scroll dulu!” · CTA “Join live jam 7” Belum disetujui — Setujui Buka | V3 16:9 16:9 Belum disetujui — Setujui Buka"
+    },
+    {
+      "id": "X9-02 Tiap varian = proyek sendiri; master tidak berubah",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X9-03 V2: hook & CTA master diganti teks brief",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X9-04 Tombol render mati sebelum ada yang disetujui",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X9-05 Setujui V1 & V2 satu per satu",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X9-06 Editor varian: banner \"Varian V2 … disetujui\" + tautan ke master",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X9-07 Diedit setelah disetujui → \"perlu disetujui ulang\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X9-08 Daftar proyek menandai varian (V1 ✓, V2, V3)",
+      "ok": true,
+      "detail": "V2 · Revisi 3 · 13 Nov 2026, 01.17 | V1 ✓ · Revisi 2 · 13 Nov 2026, 01.17 | V3 · Revisi 1 · 13 Nov 2026, 01.17 | Revisi 1 · 13 Nov 2026, 01.17"
+    },
+    {
+      "id": "X9-09 Hanya yang disetujui & belum diubah dirender; sisanya dijelaskan",
+      "ok": true,
+      "detail": "Dilewati: Hook “Stop scroll dulu!” · CTA “Join live jam 7” (diubah setelah disetujui), 16:9 (belum disetujui)"
+    },
+    {
+      "id": "X9-10 V1 dirender ke folder output-nya sendiri: 720×720 (1:1)",
+      "ok": true,
+      "detail": "Promo Master · Feed IG.mp4 720×720"
+    },
+    {
+      "id": "X9-11 V2/V3 tidak punya output; master tidak dirender",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X9-12 HP 390px: dialog varian tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "X9-13 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

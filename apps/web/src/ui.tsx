@@ -98,7 +98,11 @@ export function ProjectList({
       <span className="thumb" aria-hidden="true">{p.status === 'archived' ? '🗄' : '🎬'}</span>
       <span>
         <b>{p.name ?? p.project_id}</b>
-        <small>{p.error ? 'Manifest rusak — tidak bisa dibuka' : `${p.status === 'archived' ? 'Arsip · ' : ''}Revisi ${p.revision} · ${formatDate(p.updated_at)}`}</small>
+        <small>
+          {p.error
+            ? 'Manifest rusak — tidak bisa dibuka'
+            : `${p.variant ? `V${p.variant.number}${p.variant.state === 'approved' ? ' ✓' : ''} · ` : ''}${p.status === 'archived' ? 'Arsip · ' : ''}Revisi ${p.revision} · ${formatDate(p.updated_at)}`}
+        </small>
       </span>
     </button>
   );

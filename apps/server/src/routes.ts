@@ -28,10 +28,11 @@ import {
   readProject,
   checkBrandGuard,
   localDate,
+  variantState,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
-import { type RenderJobs, createRenderJobs } from './render.js';
+import { type RenderJobView, type RenderJobs, createRenderJobs } from './render.js';
 import { type StreamSigner, createStreamSigner, mimeFor, sendBytes } from './stream.js';
 
 // ------------------------------------------------------------------ input helpers
@@ -153,6 +154,7 @@ const projectSummary = (m: ProjectManifest) => ({
   revision: m.revision,
   created_at: m.created_at,
   updated_at: m.updated_at,
+  ...(m.variant ? { variant: { master_id: m.variant.master_id, number: m.variant.number, state: variantState(m) } } : {}),
 });
 
 // ------------------------------------------------------------------ upload
@@ -248,6 +250,26 @@ async function findOutput(ws: Workspace, projectId: string, name: string | null)
   return hit;
 }
 
+/** Renders queued + running at once (variants can queue several in one click). */
+const MAX_ACTIVE_RENDERS = 12;
+const activeRenders = (j: RenderJobs) => j.list().filter((x) => x.status === 'queued' || x.status === 'running').length;
+
+/** X09: a variant row for the master's dialog (brief, approval state, latest render, outputs). */
+function variantView(p: ProjectManifest, job: RenderJobView | null, outputs: number) {
+  return {
+    project_id: p.project_id,
+    name: p.name,
+    revision: p.revision,
+    number: p.variant!.number,
+    label: p.variant!.label,
+    brief: p.variant!.brief,
+    state: variantState(p),
+    ratio: p.timeline.canvas?.ratio ?? '9:16',
+    render: job ? { job_id: job.job_id, status: job.status, progress: job.progress, output_name: job.output?.name ?? job.output_name, problems: job.problems, error: job.error } : null,
+    outputs,
+  };
+}
+
 // ------------------------------------------------------------------ routes
 
 export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSigner = createStreamSigner(), render?: RenderJobs): Route[] {
@@ -303,6 +325,68 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         return { project: projectView(r.result), clocks_ok: r.clocks.ok };
       },
     })),
+
+    // X09 variants: master → briefs → one project each → approve → render the approved ones.
+    {
+      method: 'GET',
+      path: '/api/projects/:project_id/variants',
+      handle: async ({ ws, params, svc }) => {
+        const list = await svc.listVariants(params.project_id!);
+        const j = jobsFor(ws);
+        return { variants: await Promise.all(list.map(async (p) => variantView(p, j.list(p.project_id)[0] ?? null, (await listOutputs(ws, p.project_id)).length))) };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:project_id/variants',
+      handle: async ({ req, params, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['briefs']);
+        const r = await svc.createVariants({ master_id: params.project_id!, briefs: body.briefs, actor });
+        return { variants: r.result.map((p) => variantView(p, null, 0)), clocks_ok: r.clocks.ok };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:project_id/variant-approval',
+      handle: async ({ req, params, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['expected_revision', 'approved']);
+        const r = await svc.setVariantApproval({ project_id: params.project_id!, expected_revision: revision(body), approved: body.approved, actor });
+        return { project: projectView(r.result) };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:project_id/variants/render',
+      handle: async ({ req, ws, params, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['short_side', 'accept_brand_warnings']);
+        const short = body.short_side;
+        if (short !== undefined && short !== 720 && short !== 1080) throw bad('short_side wajib 720 atau 1080');
+        if (body.accept_brand_warnings !== undefined && typeof body.accept_brand_warnings !== 'boolean') throw bad('accept_brand_warnings harus true/false');
+        const j = jobsFor(ws);
+        const jobs: RenderJobView[] = [];
+        const skipped: { project_id: string; reason: string }[] = [];
+        for (const p of await svc.listVariants(params.project_id!)) {
+          const state = variantState(p);
+          if (state !== 'approved') {
+            skipped.push({ project_id: p.project_id, reason: state === 'changed' ? 'diubah setelah disetujui' : 'belum disetujui' });
+            continue;
+          }
+          if (j.list(p.project_id).some((x) => x.status === 'queued' || x.status === 'running')) {
+            skipped.push({ project_id: p.project_id, reason: 'sedang dirender' });
+            continue;
+          }
+          if (activeRenders(j) >= MAX_ACTIVE_RENDERS) {
+            skipped.push({ project_id: p.project_id, reason: 'antrean penuh' });
+            continue;
+          }
+          jobs.push(j.start({ project_id: p.project_id, output_name: renderOutputName(p.name), actor, ...(short ? { settings: { short_side: short } } : {}), ...(body.accept_brand_warnings ? { accept_brand_warnings: true } : {}) }));
+        }
+        return { jobs, skipped };
+      },
+    },
 
     // X08 Brand guard: what the render check would say right now (for the render dialog).
     {
@@ -444,7 +528,7 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         const short = body.short_side;
         if (short !== undefined && short !== 720 && short !== 1080) throw bad('short_side wajib 720 atau 1080');
         const j = jobsFor(ws);
-        if (j.list().filter((x) => x.status === 'queued' || x.status === 'running').length >= 5) throw new ApiError(409, 'BUSY', 'Antrean render penuh; tunggu yang berjalan selesai');
+        if (activeRenders(j) >= MAX_ACTIVE_RENDERS) throw new ApiError(409, 'BUSY', 'Antrean render penuh; tunggu yang berjalan selesai');
         const job = j.start({ project_id: project.project_id, output_name: renderOutputName(raw ?? project.name), actor, ...(short ? { settings: { short_side: short } } : {}), ...(body.accept_brand_warnings ? { accept_brand_warnings: true } : {}) });
         return { job };
       },

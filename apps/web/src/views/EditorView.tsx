@@ -8,6 +8,7 @@ import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle
 import { InspectorPanel } from './InspectorPanel';
 import { ProjectMenu } from './ProjectMenu';
 import { CutReviewDialog } from './CutReviewDialog';
+import { VariantsDialog } from './VariantsDialog';
 import { useBrand } from '../brand';
 import { PresetPanel } from './PresetPanel';
 import { RenderDialog } from './RenderDialog';
@@ -40,7 +41,22 @@ const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isCon
  * the server keeps the undo history. Video preview (W07), render (W08) and Copilot (W11)
  * are not built yet and are labelled as such, never faked.
  */
-export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectCreated }: { api: Api; projectId: string | null; mobileProjects: ReactNode; onSaved?: (p: Project) => void; onProjectCreated?: (id: string) => Promise<void> | void }) {
+export function EditorView({
+  api,
+  projectId,
+  mobileProjects,
+  onSaved,
+  onProjectCreated,
+  onProjectsChanged,
+}: {
+  api: Api;
+  projectId: string | null;
+  mobileProjects: ReactNode;
+  onSaved?: (p: Project) => void;
+  onProjectCreated?: (id: string) => Promise<void> | void;
+  /** X09: variants were created/approved — refresh the project list. */
+  onProjectsChanged?: () => void;
+}) {
   const [project, setProject] = useState<Project | null>(null);
   const [media, setMedia] = useState<Media[]>([]);
   const [error, setError] = useState<unknown>(null);
@@ -51,6 +67,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
   const [busy, setBusy] = useState(false);
   /** X07: media clip whose pauses/scenes are being reviewed. */
   const [cutClip, setCutClip] = useState<Clip | null>(null);
+  const [variantsOpen, setVariantsOpen] = useState(false);
   /** X06: Brand Kit (logo + font) for preview, inspector swatches and the Brand preset. */
   const brand = useBrand(api);
   const [selected, setSelected] = useState<string | null>(null);
@@ -229,11 +246,28 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
         {busy ? <span className="badge">Menyimpan…</span> : project && <span className="badge ok">Tersimpan</span>}
         <div className="spacer" />
         <span className="muted hideNarrow">Diperbarui {formatDate(project?.updated_at)}</span>
+        {project && !project.variant && (
+          <button className="btn" onClick={() => setVariantsOpen(true)} title="Buat varian rasio / hook / CTA dari proyek ini, setujui, lalu render">
+            ◫ Varian
+          </button>
+        )}
         {project && <ProjectMenu api={api} project={project} busy={busy} run={run} onDuplicated={(id) => onProjectCreated?.(id)} />}
         <button className="btn primary" disabled={!project} onClick={() => setRenderOpen(true)} title="Render proyek ke MP4 (metadata dibersihkan)">
           ↧ Render
         </button>
       </header>
+      {variantsOpen && project && (
+        <VariantsDialog
+          api={api}
+          project={project}
+          onClose={() => setVariantsOpen(false)}
+          onCreated={() => onProjectsChanged?.()}
+          onOpen={(id) => {
+            setVariantsOpen(false);
+            void onProjectCreated?.(id);
+          }}
+        />
+      )}
       {cutClip && project && (
         <CutReviewDialog
           api={api}
@@ -274,6 +308,26 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
         )}
         {error ? <div style={{ padding: '12px 16px 0' }}><ErrorNotice error={error} /></div> : null}
         {notice && <div style={{ padding: '12px 16px 0' }}><div className="notice warn" role="status">{notice}</div></div>}
+        {project?.variant && (
+          <div style={{ padding: '12px 16px 0' }}>
+            <div className={`notice ${project.variant.approved_revision === project.revision ? 'ok' : 'info'}`} role="status" aria-label="Status varian">
+              Varian V{project.variant.number} ({project.variant.label}) ·{' '}
+              {project.variant.approved_revision === project.revision ? 'disetujui' : project.variant.approved_revision ? 'diubah setelah disetujui — perlu disetujui ulang' : 'belum disetujui'}{' '}
+              <button
+                className="btn small"
+                disabled={locked}
+                onClick={() =>
+                  void run((p) => api.setVariantApproval(p.project_id, p.revision, p.variant!.approved_revision !== p.revision)).then(() => onProjectsChanged?.())
+                }
+              >
+                {project.variant.approved_revision === project.revision ? 'Batalkan persetujuan' : 'Setujui varian ini'}
+              </button>{' '}
+              <button className="btn small" onClick={() => void onProjectCreated?.(project.variant!.master_id)}>
+                Buka master
+              </button>
+            </div>
+          </div>
+        )}
         {project?.status === 'archived' && (
           <div style={{ padding: '12px 16px 0' }}>
             <div className="notice warn" role="status">

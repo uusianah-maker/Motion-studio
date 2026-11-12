@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Api, ProjectSummary } from './api';
+import type { Api, Project, ProjectSummary, VariantTag } from './api';
 import { AiView } from './views/AiView';
 import { BrandView } from './views/BrandView';
 import { EditorView } from './views/EditorView';
@@ -24,6 +24,13 @@ export interface Account {
   name: string;
   onLogout: () => Promise<void>;
 }
+
+/** X09: a saved variant's list badge follows its approval (an edit after approval = "changed"). */
+const variantTag = (p: Project): VariantTag => ({
+  master_id: p.variant!.master_id,
+  number: p.variant!.number,
+  state: p.variant!.approved_revision === null || p.variant!.approved_revision === undefined ? 'draft' : p.variant!.approved_revision === p.revision ? 'approved' : 'changed',
+});
 
 export function App({ api, workspaceId, account = null }: { api: Api; workspaceId: string; account?: Account | null }) {
   const [view, setView] = useState<View>('editor');
@@ -111,7 +118,7 @@ export function App({ api, workspaceId, account = null }: { api: Api; workspaceI
       {view === 'editor' && !narrow && <aside className="side" aria-label="Proyek">{sideList}</aside>}
       <div className="page">
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
-        {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at } : x)) ?? list)} onProjectCreated={openNew} />}
+        {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} />}
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
         {view === 'brand' && <BrandView api={api} />}
         {view === 'trash' && <TrashView api={api} />}
