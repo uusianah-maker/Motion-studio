@@ -22,6 +22,7 @@ from autocut import FPS, merge_split_words, run_cut, strip_internal
 from cek_ucapan import cek_ucapan
 from brandkit import muat as muat_brand_kit
 from posisi_caption import posisi_otomatis
+from ops import susun as susun_ops, tulis as tulis_ops
 
 MAX_WORDS_PER_PAGE = 3
 PAGE_GAP_MS = 250  # jeda antar kata yang memaksa halaman caption baru
@@ -381,6 +382,9 @@ def main() -> None:
         help="paksa judul hook tampil sampai detik ini (mis. sumber sudah punya teks tertanam "
         "di awal yang perlu ditutup). Default: sampai kalimat kedua mulai, maks 3 dtk",
     )
+    ap.add_argument("--preset", help="id preset di Brand Kit ekspor (durasi target, batas efek)")
+    ap.add_argument("--mode-ops", choices=["kompat", "u3"], default="kompat",
+                    help="kompat = hanya operasi yang sudah ada di Motion Studio; u3 = + field usulan U3")
     ap.add_argument("--buang", nargs="*", default=[], help='rentang detik sumber yang dibuang, mis. "4.9-9.2"')
     ap.add_argument("--cta-text", help="teks CTA outro dari ucapan kreator (default: CTA brand kit per placement)")
     ap.add_argument("--disclaimer-warna", action="store_true", help="tampilkan disclaimer_warna brand kit (video memperlihatkan varian warna)")
@@ -526,6 +530,7 @@ def main() -> None:
         "cekUcapan": ucapan,
         "placement": args.placement,
         "originalSec": round(tr["durationMs"] / 1000, 2),
+        "originalMs": tr["durationMs"],
         "editedVideoSec": round(video_sec, 2),
         "totalWithOutroSec": round(total, 2),
         "overMax": total > args.max_seconds,
@@ -549,6 +554,12 @@ def main() -> None:
         "finalText": " ".join(c["text"] for c in captions),
     }
     (out_dir / "potongan.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # Keluaran kontrak mesin (KONTRAK-ENGINE v0.3): rencana.json + ops.json + qc_rencana.json.
+    preset = bk.get("preset", {}).get(args.preset, {}) if args.preset else {}
+    rencana, ops_doc, qc = susun_ops(props, report, bk, placement=args.placement, root=Path.cwd(),
+                                     mode=args.mode_ops, preset=preset)
+    tulis_ops(out_dir, rencana, ops_doc, qc)
 
     print(f"Durasi: {report['originalSec']}s -> {report['editedVideoSec']}s (+outro = {total:.2f}s)")
     if report["overMax"]:
