@@ -9,6 +9,17 @@ python -m venv .venv
 node pipeline/make-sfx.mjs        # buat public/sfx/pop.wav + whoosh.wav
 ```
 
+## Untuk Motion Studio: `engine.py` (kontrak `docs/KONTRAK-ENGINE.md` v0.3)
+```powershell
+.\.venv\Scripts\python pipeline\engine.py cek                       # cek ffmpeg, Whisper, GPU, OpenCV
+.\.venv\Scripts\python pipeline\engine.py generate <job_dir>        # Generate Otomatis
+.\.venv\Scripts\python pipeline\engine.py ulang <job_dir>           # susun ulang pakai koreksi.json
+.\.venv\Scripts\python pipeline\engine.py batch <job_dir>           # Batch Remix (pipeline/batch)
+node pipelinealidasi_ops.mjs <job_dir>\out\ops.json --sumber-ms N   # uji ops dengan validator Motion Studio
+```
+Input `<job_dir>/job.json` + `brand_kit.json`; keluaran `<job_dir>/out/{rencana,ops,qc_rencana,transkrip}.json`.
+Stdout = progres JSON per baris; kode keluar 0 siap · 2 ditolak · 1 gagal. Mesin tidak merender.
+
 ## Cara cepat: satu perintah
 ```powershell
 $env:PYTHONIOENCODING="utf-8"

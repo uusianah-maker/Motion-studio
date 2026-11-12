@@ -360,7 +360,7 @@ def main() -> None:
     ap.add_argument("--brandkit", required=True)
     ap.add_argument("--video", required=True, help="path relatif ke public/")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--placement", choices=["tiktok", "instagram"], default="tiktok")
+    ap.add_argument("--placement", choices=["tiktok", "instagram", "shopee", "youtube"], default="tiktok")
     ap.add_argument("--outro-seconds", type=float, default=2.5)
     ap.add_argument("--max-seconds", type=float, default=30)
     ap.add_argument("--min-seconds", type=float, default=15)
@@ -493,7 +493,7 @@ def main() -> None:
         "logoSrc": bk.get("logo", ""),
         "brandName": bk["nama"],
         "handle": bk.get("handle", ""),
-        "outroTagline": args.cta_text or bk["cta"][args.placement],
+        "outroTagline": args.cta_text or bk["cta"].get(args.placement) or bk["cta"].get("tiktok", ""),
         "outroSeconds": args.outro_seconds,
         "maxWordsPerPage": MAX_WORDS_PER_PAGE,
         "maxDurationSeconds": args.max_seconds,
