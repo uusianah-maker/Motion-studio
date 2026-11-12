@@ -7,7 +7,7 @@ import { guard } from './guard.js';
 import { isSafeId } from './ids.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { type Actor, MEDIA_AREAS } from './permissions.js';
-import { probeImage } from './probe.js';
+import { probeFile, probeImage } from './probe.js';
 import { CANVAS_RATIOS, type MediaRef, type Timeline } from './project.js';
 import { type Registry, type VersionRecord, loadRegistry, saveRegistry } from './registry.js';
 import { LAYOUT, META_FILES, type Workspace, listProjectIds, metaPath, readProject, withWorkspaceLock } from './workspace.js';
@@ -30,6 +30,12 @@ export const CAPITALS = ['normal', 'kata_kunci', 'semua'] as const;
 export const PLATFORMS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
 export const TEXT_FREE_AREAS = ['wajah', 'produk', 'bawah_15', 'atas_10', 'kanan_tombol'] as const;
 export const DISCLAIMER_WHEN = ['selalu', 'varian_warna', 'harga', 'manual'] as const;
+export const ASSET_KINDS = ['sfx', 'musik', 'broll', 'logo', 'penutup', 'lainnya'] as const;
+export const LICENSE_STATUS = ['milik_sendiri', 'berlisensi', 'tanpa_lisensi', 'belum_dicek'] as const;
+export const MAX_BRAND_ASSETS = 500;
+/** Event tags the engine's presets look for (KONTRAK-ENGINE, U2 notes from venus). */
+export const SUGGESTED_TAGS = { sfx: ['teks-muncul', 'kata-kunci', 'transisi', 'penutup'], musik: ['ceria', 'santai', 'energik', 'elegan'], broll: ['detail-bahan', 'try-on', 'packing', 'lifestyle'] } as const;
+const AUDIO_EXT = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'];
 const LOGO_EXT = ['.png', '.jpg', '.jpeg', '.webp'];
 const FONT_EXT = ['.ttf', '.otf'];
 const OUTRO_EXT = ['.mp4', '.mov', '.webm', '.png', '.jpg', '.jpeg', '.webp'];
@@ -50,6 +56,33 @@ export interface BrandProduct {
   nama: string;
   varian: string[];
   ukuran: string;
+}
+
+/** E (U2): one file of the brand's asset library, with tags and licence status. */
+export interface BrandAsset {
+  /** Unique within the brand: `pop-01` → placeholder `$sfx:pop-01`. */
+  id: string;
+  ref: MediaRef;
+  jenis: (typeof ASSET_KINDS)[number];
+  nama: string;
+  tag: string[];
+  lisensi: {
+    status: (typeof LICENSE_STATUS)[number];
+    /** Licence proof (link / invoice no. / note); required for licensed music. */
+    bukti: string;
+    /** May be used in (paid) ads. Only own or licensed files can be. */
+    iklan: boolean;
+  };
+  mood: string;
+  bpm: number | null;
+  /** Music: no lyrics (the engine refuses songs with lyrics under speech). null = not set. */
+  instrumental: boolean | null;
+  /** B-roll: which product (name from A "Daftar produk") and variant it shows. */
+  produk: string;
+  varian: string;
+  /** B-roll: footage already has burned-in text (Batch Remix avoids or blurs it). */
+  ada_teks_bawaan: boolean;
+  catatan: string;
 }
 
 /** F: one content preset (konversi, awareness, …). Free text where the sheet is free text. */
@@ -116,6 +149,12 @@ export interface BrandKit {
   klaim_boleh: string[];
   visual_dilarang: string[];
   area_bebas_teks: (typeof TEXT_FREE_AREAS)[number][];
+  // E. Assets (U2)
+  aset: BrandAsset[];
+  /** SFX words/tags never to use (e.g. "kaget", "kartun"). */
+  sfx_dilarang: string[];
+  /** Winning reference videos: what to copy / not copy. */
+  referensi: { link: string; tiru: string; jangan: string }[];
   // F. Presets
   presets: BrandPreset[];
 }
@@ -151,6 +190,9 @@ const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
   klaim_boleh: [],
   visual_dilarang: [],
   area_bebas_teks: [],
+  aset: [],
+  sfx_dilarang: [],
+  referensi: [],
   presets: [],
 };
 
@@ -220,6 +262,35 @@ const perPlatform = (x: unknown, w: string, max: number): Partial<Record<Platfor
   }
   return out;
 };
+
+function validateAsset(x: unknown, i: number): BrandAsset {
+  const w = `aset ${i + 1}`;
+  const o = obj(x, w, ['id', 'ref', 'jenis', 'nama', 'tag', 'lisensi', 'mood', 'bpm', 'instrumental', 'produk', 'varian', 'ada_teks_bawaan', 'catatan']);
+  const id = typeof o.id === 'string' && SLUG.test(o.id) ? o.id : bad(`${w}: id huruf kecil/angka/strip, mis. "pop-01"`);
+  const l = obj(o.lisensi ?? {}, `${w} lisensi`, ['status', 'bukti', 'iklan']);
+  const status = oneOf(l.status, `${w} status lisensi`, LICENSE_STATUS, 'belum_dicek');
+  const jenis = oneOf(o.jenis, `${w} jenis`, ASSET_KINDS, 'lainnya');
+  const bukti = text(l.bukti, `${w} bukti lisensi`, 300);
+  const iklan = bool(l.iklan, `${w} boleh untuk iklan`, false);
+  // PRD sheet E: paid ads need a clear right to use the file; licensed music needs proof.
+  if (iklan && status !== 'milik_sendiri' && status !== 'berlisensi') bad(`${w}: hanya file milik sendiri atau berlisensi yang boleh untuk iklan`);
+  if (iklan && jenis === 'musik' && status === 'berlisensi' && !bukti) bad(`${w}: musik berlisensi untuk iklan wajib ada bukti lisensi`);
+  return {
+    id,
+    ref: ref(o.ref, w) ?? bad(`${w}: pilih file`),
+    jenis,
+    nama: text(o.nama, `${w} nama`, 80),
+    tag: list(o.tag, `${w} tag`, 20, 30).map((t) => t.toLowerCase()),
+    lisensi: { status, bukti, iklan },
+    mood: text(o.mood, `${w} mood`, 40),
+    bpm: o.bpm === undefined || o.bpm === null ? null : num(o.bpm, `${w} BPM`, 20, 300),
+    instrumental: o.instrumental === undefined || o.instrumental === null ? null : bool(o.instrumental, `${w} instrumental`, false),
+    produk: text(o.produk, `${w} produk`, 60),
+    varian: text(o.varian, `${w} varian`, 40),
+    ada_teks_bawaan: bool(o.ada_teks_bawaan, `${w} ada teks bawaan`, false),
+    catatan: text(o.catatan, `${w} catatan`, 200),
+  };
+}
 
 function validatePreset(x: unknown, i: number): BrandPreset {
   const w = `preset ${i + 1}`;
@@ -300,6 +371,17 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     disclaimer = t ? { teks: t, kapan: oneOf(d.kapan, 'kapan disclaimer', DISCLAIMER_WHEN, 'selalu') } : null;
   }
   const areas = o.area_bebas_teks === undefined ? [] : Array.isArray(o.area_bebas_teks) ? [...new Set(o.area_bebas_teks as unknown[])] : bad('area bebas teks harus daftar');
+  const assets = o.aset === undefined ? [] : Array.isArray(o.aset) ? o.aset : bad('aset harus daftar');
+  if (assets.length > MAX_BRAND_ASSETS) bad(`aset maksimal ${MAX_BRAND_ASSETS}`);
+  const assetList = assets.map(validateAsset);
+  const dupe = assetList.find((a, i) => assetList.findIndex((b) => b.id === a.id) !== i);
+  if (dupe) bad(`id aset "${dupe.id}" dobel`);
+  if (assetList.some((a) => a.jenis === 'musik' && a.lisensi.iklan && a.instrumental === false)) bad('musik dengan lirik tidak boleh ditandai untuk iklan (suara bicara tertutup)');
+  const refs = o.referensi === undefined ? [] : Array.isArray(o.referensi) ? o.referensi : bad('referensi harus daftar');
+  if (refs.length > 20) bad('referensi maksimal 20');
+  const produkNames = new Set((produk as Record<string, unknown>[]).map((p) => (typeof p?.nama === 'string' ? oneLine(p.nama) : '')));
+  const unknownProduct = assetList.find((a) => a.produk && !produkNames.has(a.produk));
+  if (unknownProduct) bad(`aset ${unknownProduct.id}: produk "${unknownProduct.produk}" tidak ada di daftar produk (bagian A)`);
   return {
     name,
     kode,
@@ -338,6 +420,14 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     klaim_boleh: list(o.klaim_boleh, 'klaim boleh', 100, 80),
     visual_dilarang: list(o.visual_dilarang, 'visual dilarang', 50, 80),
     area_bebas_teks: areas.map((a) => oneOf(a, 'area bebas teks', TEXT_FREE_AREAS, 'wajah')),
+    aset: assetList,
+    sfx_dilarang: list(o.sfx_dilarang, 'SFX dilarang', 50, 40),
+    referensi: refs.map((r, i) => {
+      const ro = obj(r, `referensi ${i + 1}`, ['link', 'tiru', 'jangan']);
+      const link = text(ro.link, `referensi ${i + 1} link`, 300, false);
+      if (!/^https?:\/\/\S+$/i.test(link)) bad(`referensi ${i + 1}: link harus http(s)://…`);
+      return { link, tiru: text(ro.tiru, `referensi ${i + 1} yang ditiru`, 200), jangan: text(ro.jangan, `referensi ${i + 1} yang tidak ditiru`, 200) };
+    }),
     presets: presetList,
   };
 }
@@ -447,12 +537,13 @@ export async function readBrandFor(ws: Workspace, brandId: string | null | undef
 export const readBrandKit = (ws: Workspace): Promise<BrandKit> => readBrandFor(ws, null);
 
 /** Media versions a kit holds (for the dependency index). */
-export const brandReferences = (k: BrandKit): { slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro'; ref: MediaRef }[] => [
+export const brandReferences = (k: BrandKit): { slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro' | 'aset'; ref: MediaRef }[] => [
   ...(k.font ? [{ slot: 'font' as const, ref: k.font }] : []),
   ...(k.font_caption ? [{ slot: 'font_caption' as const, ref: k.font_caption }] : []),
   ...(k.logo ? [{ slot: 'logo' as const, ref: k.logo.ref }] : []),
   ...(k.logo_light ? [{ slot: 'logo_light' as const, ref: k.logo_light }] : []),
   ...(k.outro.ref ? [{ slot: 'outro' as const, ref: k.outro.ref }] : []),
+  ...k.aset.map((a) => ({ slot: 'aset' as const, ref: a.ref })),
 ];
 
 function usable(reg: Registry, r: MediaRef, what: string): VersionRecord {
@@ -498,6 +589,14 @@ async function checkFiles(ws: Workspace, reg: Registry, kit: BrandKitInput): Pro
   if (kit.outro.ref) {
     const v = usable(reg, kit.outro.ref, 'Penutup');
     if (!OUTRO_EXT.includes(ext(v.original_name))) bad('penutup harus video (MP4/MOV/WebM) atau gambar');
+  }
+  // U2: library files must be of their kind (sound for SFX/music, picture for b-roll/logo).
+  for (const a of kit.aset) {
+    const v = usable(reg, a.ref, `Aset ${a.id}`);
+    const e = ext(v.original_name);
+    if ((a.jenis === 'sfx' || a.jenis === 'musik') && !AUDIO_EXT.includes(e) && !['.mp4', '.mov', '.webm'].includes(e)) bad(`aset ${a.id}: ${a.jenis} harus file suara (MP3/WAV/M4A/…)`);
+    if ((a.jenis === 'broll' || a.jenis === 'penutup') && !OUTRO_EXT.includes(e)) bad(`aset ${a.id}: ${a.jenis} harus video atau gambar`);
+    if (a.jenis === 'logo' && !LOGO_EXT.includes(e)) bad(`aset ${a.id}: logo harus gambar PNG/JPG/WebP`);
   }
 }
 
@@ -586,12 +685,32 @@ export function brandRenderRefs(t: Timeline, k: BrandKit): { font: MediaRef | nu
 
 // ------------------------------------------------------------------ export for the engine
 
+/** Nearest standard ratio within 3 %, else "lainnya". */
+export function orientationOf(w: number, h: number): string {
+  const r = w / h;
+  const hit = ([['9:16', 9 / 16], ['3:4', 3 / 4], ['1:1', 1], ['16:9', 16 / 9]] as const).find(([, v]) => Math.abs(r - v) / v < 0.03);
+  return hit ? hit[0] : 'lainnya';
+}
+
 export interface BrandExportAsset {
   kunci: string;
-  jenis: 'font' | 'logo' | 'penutup';
+  jenis: 'font' | 'logo' | 'penutup' | 'sfx' | 'musik' | 'broll' | 'lainnya';
   path?: string;
   tag: string[];
   lisensi_iklan: boolean;
+  nama?: string;
+  status_lisensi?: (typeof LICENSE_STATUS)[number];
+  sumber_lisensi?: string;
+  /** Always set for sound/video; null only for still pictures. */
+  durasi_ms?: number | null;
+  mood?: string;
+  bpm?: number | null;
+  instrumental?: boolean | null;
+  produk?: string;
+  varian?: string;
+  /** 9:16 | 3:4 | 1:1 | 16:9 | lainnya (from the file), null for sound. */
+  orientasi?: string | null;
+  ada_teks_bawaan?: boolean;
 }
 
 /**
@@ -616,6 +735,35 @@ export async function exportBrandKit(ws: Workspace, brandId: string, opts: { pat
   const logo = await add('$logo', 'logo', k.logo?.ref ?? null);
   const logoLight = await add('$logo:terang', 'logo', k.logo_light);
   const outro = await add('$penutup', 'penutup', k.outro.ref);
+  // U2 library: `$sfx:pop-01`, `$musik:ceria-01`, `$broll:detail-bahan` … with tags + licence.
+  for (const a of k.aset) {
+    const v = usable(reg, a.ref, `$${a.jenis}:${a.id}`);
+    // Duration + orientation come from the file itself (probed now if the import has not yet).
+    const local = await ws.blobs.resolve(v.rel_path, MEDIA_AREAS);
+    const probe = v.probe ?? (await ws.blobs.withLocalFile(local, probeFile));
+    const still = !probe ? await ws.blobs.withLocalFile(local, probeImage) : null;
+    const w = probe?.width ?? still?.width ?? null;
+    const h = probe?.height ?? still?.height ?? null;
+    const item: BrandExportAsset = {
+      kunci: `$${a.jenis}:${a.id}`,
+      jenis: a.jenis,
+      tag: a.tag,
+      lisensi_iklan: a.lisensi.iklan,
+      nama: a.nama || v.original_name,
+      status_lisensi: a.lisensi.status,
+      sumber_lisensi: a.lisensi.bukti,
+      durasi_ms: probe?.duration_ms ?? null,
+      mood: a.mood,
+      bpm: a.bpm,
+      instrumental: a.instrumental,
+      produk: a.produk,
+      varian: a.varian,
+      orientasi: w && h ? orientationOf(w, h) : null,
+      ada_teks_bawaan: a.ada_teks_bawaan,
+    };
+    if (opts.paths) item.path = await ws.blobs.withLocalFile(local, async (abs) => abs);
+    aset.push(item);
+  }
   return {
     schema: 'brand-kit-export/1',
     brand: { id: k.brand_id, nama: k.name, kode: k.kode, handle: k.handles, target: k.target, nada: k.nada, bahasa: k.bahasa, produk: k.produk },
@@ -648,8 +796,9 @@ export async function exportBrandKit(ws: Workspace, brandId: string, opts: { pat
       klaim_boleh: k.klaim_boleh,
       visual_dilarang: k.visual_dilarang,
       area_bebas_teks: k.area_bebas_teks,
+      sfx_dilarang: k.sfx_dilarang,
     },
-    // U2 adds the brand's SFX / music / b-roll library here.
+    referensi: k.referensi,
     aset,
     preset: Object.fromEntries(k.presets.map((p) => [p.id, p])),
   };

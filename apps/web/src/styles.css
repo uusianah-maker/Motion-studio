@@ -79,6 +79,9 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 .presetCard { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .brandSampleCaption { position: absolute; bottom: 22%; font-weight: 800; font-size: 14px; }
 .brandToc { display: flex; gap: 10px; margin-top: 10px; }
+.assetLib { display: flex; flex-direction: column; gap: 8px; }
+.assetRow { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.assetRow .ellipsis { max-width: 220px; }
 .importRow { padding: 0 15px 8px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

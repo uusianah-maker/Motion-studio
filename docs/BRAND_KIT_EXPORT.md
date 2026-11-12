@@ -97,10 +97,34 @@ Status: **final untuk U1** (2026-11-13). Sesuai KONTRAK-ENGINE v0.3 bagian 4 dan
 - Field yang kosong tetap ditulis, sebagai `""`, `[]`, `{}`, atau `null`.
 - Placeholder aset hanya muncul kalau file-nya ada. Kalau file tidak ada, nilainya `null`.
 
-## Belum ada (menyusul)
+## Library aset (U2, sejak 2026-11-13)
 
-- **U2:** `aset` berisi SFX, musik, dan b-roll per brand dengan `tag` dan `lisensi_iklan` sungguhan. Sekarang `aset` baru berisi font, logo, dan penutup.
-- **Gaya teks di ops:**
-  - Font judul: `style.font: "brand"`.
-  - Font caption: `style.font: "caption"`.
-  - Font bawaan: `style.font: "default"`.
+`aset` juga berisi library aset per brand. Bentuk setiap itemnya:
+
+```json
+{ "kunci": "$sfx:pop-01", "jenis": "sfx", "tag": ["teks-muncul"], "lisensi_iklan": true,
+  "nama": "Pop 01", "status_lisensi": "milik_sendiri", "sumber_lisensi": "",
+  "durasi_ms": 300, "mood": "", "bpm": null, "instrumental": null,
+  "produk": "", "varian": "", "orientasi": null, "ada_teks_bawaan": false, "path": "D:/… (runner saja)" }
+```
+
+- `kunci`: `$sfx:<id>`, `$musik:<id>`, `$broll:<id>`, `$logo:<id>`, `$penutup:<id>`, atau `$lainnya:<id>`. `id` unik per brand dan ditulis dengan huruf kecil, angka, dan tanda strip.
+- `durasi_ms` dibaca langsung dari file saat ekspor. Nilainya `null` hanya untuk gambar diam.
+- `orientasi` diisi untuk video atau gambar: `9:16`, `3:4`, `1:1`, `16:9`, atau `lainnya`. Untuk suara nilainya `null`.
+- `lisensi_iklan: true` hanya bisa diberikan kalau `status_lisensi` = `milik_sendiri` atau `berlisensi`.
+  - Musik berlisensi wajib punya `sumber_lisensi`.
+  - Musik dengan `instrumental: false` ditolak untuk iklan.
+  - Aset dengan `lisensi_iklan: false` tetap ikut diekspor supaya mesin tahu aset itu ada, tetapi mesin tidak boleh memakainya di iklan.
+- Tag yang disarankan untuk preset mesin:
+  - SFX: `teks-muncul`, `kata-kunci`, `transisi`, `penutup`.
+  - Musik: mood.
+  - B-roll: `detail-bahan`, `try-on`, dan seterusnya.
+- `produk` (b-roll) harus nama dari `brand.produk`.
+- `aturan.sfx_dilarang` berisi kata atau tag SFX yang tidak boleh dipakai.
+- `referensi` berisi daftar `{ link, tiru, jangan }` (video winning).
+
+## Gaya teks di ops
+
+- Font judul: `style.font: "brand"`.
+- Font caption: `style.font: "caption"`.
+- Font bawaan: `style.font: "default"`.

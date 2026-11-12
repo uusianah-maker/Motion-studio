@@ -41,6 +41,22 @@ export interface MediaAnalysis {
 /** X06: workspace Brand Kit. */
 export type Ref = { media_id: string; version_id: string };
 export type Platform = 'tiktok' | 'instagram' | 'shopee' | 'youtube';
+/** E (U2): one file of a brand's asset library. */
+export interface BrandAsset {
+  id: string;
+  ref: Ref;
+  jenis: 'sfx' | 'musik' | 'broll' | 'logo' | 'penutup' | 'lainnya';
+  nama: string;
+  tag: string[];
+  lisensi: { status: 'milik_sendiri' | 'berlisensi' | 'tanpa_lisensi' | 'belum_dicek'; bukti: string; iklan: boolean };
+  mood: string;
+  bpm: number | null;
+  instrumental: boolean | null;
+  produk: string;
+  varian: string;
+  ada_teks_bawaan: boolean;
+  catatan: string;
+}
 /** F: one content preset per brand. */
 export interface BrandPreset {
   id: string;
@@ -94,6 +110,9 @@ export interface BrandKit {
   klaim_boleh: string[];
   visual_dilarang: string[];
   area_bebas_teks: ('wajah' | 'produk' | 'bawah_15' | 'atas_10' | 'kanan_tombol')[];
+  aset: BrandAsset[];
+  sfx_dilarang: string[];
+  referensi: { link: string; tiru: string; jangan: string }[];
   presets: BrandPreset[];
 }
 export interface BrandGuard {

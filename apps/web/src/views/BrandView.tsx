@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { Api, BrandKit, BrandKitInput, BrandPreset, Media, Platform, Ref } from '../api';
 import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY, emptyKit, toInput, useBrand } from '../brand';
 import { ErrorNotice } from '../ui';
+import { AssetLibrary } from './AssetLibrary';
 
 const FONT_RE = /\.(ttf|otf)$/i;
 const LOGO_RE = /\.(png|jpe?g|webp)$/i;
@@ -73,6 +74,9 @@ function cleaned(d: BrandKitInput): BrandKitInput {
     guard: { ...d.guard, banned: clean(d.guard.banned) },
     klaim_boleh: clean(d.klaim_boleh),
     visual_dilarang: clean(d.visual_dilarang),
+    aset: d.aset.map((a) => ({ ...a, tag: clean(a.tag) })),
+    sfx_dilarang: clean(d.sfx_dilarang),
+    referensi: d.referensi.filter((r) => r.link.trim()),
     presets: d.presets.map((p) => ({ ...p, babak: p.babak.filter((b) => b.isi.trim()), efek: { ...p.efek, wajib: clean(p.efek.wajib), boleh: clean(p.efek.boleh), jangan: clean(p.efek.jangan) }, qc: clean(p.qc) })),
   };
 }
@@ -515,8 +519,26 @@ export function BrandView({ api }: { api: Api }) {
               </div>
             </Section>
 
-            <Section id="e" title="E. Aset brand">
-              <div className="muted small">Library SFX, musik, b-roll dengan tag & lisensi menyusul (U2). Logo, font, dan penutup sudah diatur di bagian B.</div>
+            <Section id="e" title="E. Aset brand" hint="mesin memilih aset dari tag; tanpa lisensi tidak pernah dipakai di iklan">
+              <AssetLibrary api={api} draft={draft} set={set} media={media} onMedia={setMedia} />
+              <label>
+                SFX dilarang (pisah koma)
+                <input aria-label="SFX dilarang" placeholder="kaget, kartun" value={csv(draft.sfx_dilarang)} onChange={(e) => set({ sfx_dilarang: fromCsv(e.target.value) })} />
+              </label>
+              <b className="small">Video referensi winning (disarankan minimal 3)</b>
+              {draft.referensi.map((r, i) => (
+                <div key={i} className="row wrap" style={{ gap: 6 }}>
+                  <input aria-label={`Link referensi ${i + 1}`} placeholder="https://…" maxLength={300} value={r.link} onChange={(e) => set({ referensi: draft.referensi.map((x, j) => (j === i ? { ...x, link: e.target.value } : x)) })} />
+                  <input aria-label={`Yang ditiru ${i + 1}`} placeholder="yang ditiru" maxLength={200} value={r.tiru} onChange={(e) => set({ referensi: draft.referensi.map((x, j) => (j === i ? { ...x, tiru: e.target.value } : x)) })} />
+                  <input aria-label={`Yang tidak ditiru ${i + 1}`} placeholder="yang tidak ditiru" maxLength={200} value={r.jangan} onChange={(e) => set({ referensi: draft.referensi.map((x, j) => (j === i ? { ...x, jangan: e.target.value } : x)) })} />
+                  <button className="tiny" aria-label={`Hapus referensi ${i + 1}`} onClick={() => set({ referensi: draft.referensi.filter((_, j) => j !== i) })}>
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button className="btn small" disabled={draft.referensi.length >= 20} onClick={() => set({ referensi: [...draft.referensi, { link: '', tiru: '', jangan: '' }] })}>
+                ＋ Referensi
+              </button>
             </Section>
 
             <Section id="f" title="F. Preset per jenis konten">

@@ -1,0 +1,52 @@
+{
+  "at": "2026-11-12T19:37:50.633Z",
+  "passed": 9,
+  "total": 9,
+  "results": [
+    {
+      "id": "X-U2-01 Unggah 2 SFX sekaligus → 2 aset dengan id dari nama file",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U2-02 Tanpa lisensi → centang \"boleh untuk iklan\" mati",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U2-03 Musik berlisensi untuk iklan tanpa bukti → ditolak saat simpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U2-04 Saring jenis \"B-roll\" hanya menampilkan b-roll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U2-05 Cari tag \"teks-muncul\" → hanya SFX pop",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U2-06 Tersimpan: 4 aset (tag, lisensi, mood/BPM, produk/varian), SFX dilarang, referensi",
+      "ok": true,
+      "detail": "pop-satu,whoosh,musik-ceria,detail-bahan"
+    },
+    {
+      "id": "X-U2-07 Ekspor mesin: $sfx/$musik/$broll dengan tag, lisensi_iklan, durasi_ms, orientasi, tanpa path",
+      "ok": true,
+      "detail": "$sfx:pop-satu,$sfx:whoosh,$musik:musik-ceria,$broll:detail-bahan"
+    },
+    {
+      "id": "X-U2-08 HP 390px: library muat, tidak ada isian terpotong",
+      "ok": true,
+      "detail": "overflow 0px, terpotong 0"
+    },
+    {
+      "id": "X-U2-09 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

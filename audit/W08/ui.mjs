@@ -69,8 +69,13 @@ try {
   await page.getByRole('button', { name: '↧ Render' }).click();
   await dialog.waitFor();
   const startBtn = dialog.getByRole('button', { name: /Mulai render/ });
-  await page.waitForTimeout(300);
-  check('RD-01 Dialog render terbuka; alat render siap', await startBtn.isEnabled(), 'tombol Mulai render aktif');
+  // The button waits for the tools check and the Brand guard check (X08); give it up to 5 s.
+  let enabled = false;
+  for (let i = 0; i < 50 && !enabled; i++) {
+    enabled = await startBtn.isEnabled();
+    if (!enabled) await page.waitForTimeout(100);
+  }
+  check('RD-01 Dialog render terbuka; alat render siap', enabled, 'tombol Mulai render aktif');
   check('RD-02 Info metadata dihapus tampil', await dialog.getByText(/dihapus otomatis/).isVisible());
 
   const revBefore = (await core.readProject(await core.openWorkspace(wsRoot), 'lucy')).revision;

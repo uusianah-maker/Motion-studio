@@ -36,7 +36,7 @@ Kontrak dengan mesin: `D:\VIBECODING
 emotion\docs\KONTRAK-ENGINE.md` v0.3. Isian brand: `D:\VIBECODING
 emotion\docs\BRAND-KIT-LENGKAP.md`.
 - [x] U1 **Brand Kit multi-brand** + isian A–F + brand per proyek + ekspor `brand_kit.json` (kontrak bagian 4). *Selesai 2026-11-13: brand banyak (kode unik, bawaan ★), isian A–F lengkap (E menyusul U2), font judul + caption, logo terang, penutup, brand dipilih per proyek (render, Brand guard, Copilot ikut brand proyek), ekspor `brand-kit-export/1` (`docs/BRAND_KIT_EXPORT.md`), migrasi otomatis Brand Kit lama; UI Chrome 12/12.*
-- [ ] U2 **Library aset per brand** (SFX, musik, b-roll, logo, penutup) dengan tag & status lisensi.
+- [x] U2 **Library aset per brand** (SFX, musik, b-roll, logo, penutup) dengan tag & status lisensi. *Selesai 2026-11-13: library di bagian E halaman Brand (unggah banyak, saring jenis/tag, tag saran, lisensi + bukti + boleh-iklan, musik mood/BPM/instrumental, b-roll produk/varian/teks bawaan), SFX dilarang, video referensi; ekspor aset dengan durasi/orientasi dari file; UI Chrome 9/9.*
 - [ ] U3 **Render pengganti Remotion** (FFmpeg + libass): caption per kata (pop + sorot kata kunci), judul kotak kaca, zoom / punch-in, zoom-through, penutup, disclaimer, −14 LUFS, track `sfx`, `Clip.blur` / `Clip.crop`.
 - [ ] U4 **Halaman Generate Otomatis** (upload + brief → mesin → kartu rencana → setujui → render → QC).
 - [ ] U5 **Halaman Batch Remix** (tabel rencana → coret / setujui → antrean render).

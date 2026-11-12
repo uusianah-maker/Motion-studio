@@ -170,7 +170,7 @@ export async function releaseOrphanLeases(ws: Workspace, opts: { selfPid?: numbe
 export type Holder =
   | { kind: 'project'; project_id: string; status: 'active' | 'archived'; source: 'timeline' | 'snapshot' | 'undo'; detail: string }
   | { kind: 'lease'; lease_id: string; job: JobKind; status: LeaseStatus }
-  | { kind: 'brand'; brand_id: string; slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro' };
+  | { kind: 'brand'; brand_id: string; slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro' | 'aset' };
 
 export interface DependencyIndex {
   schema_version: 1;

@@ -94,6 +94,9 @@ export const emptyKit = (): BrandKitInput => ({
   klaim_boleh: [],
   visual_dilarang: [],
   area_bebas_teks: [],
+  aset: [],
+  sfx_dilarang: [],
+  referensi: [],
   presets: [],
 });
 
