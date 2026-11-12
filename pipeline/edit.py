@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 
 from autocut import FPS, merge_split_words, run_cut, strip_internal
+from cek_ucapan import cek_ucapan
 
 MAX_WORDS_PER_PAGE = 3
 PAGE_GAP_MS = 250  # jeda antar kata yang memaksa halaman caption baru
@@ -97,6 +98,18 @@ def apply_kamus(words, kamus):
             words[i : i + n] = [merged]
             fixes.append({"atSec": round(first["startMs"] / 1000, 2), "dari": before, "jadi": merged["text"]})
     return fixes
+
+
+# Klaim superlatif / mutlak yang berisiko di iklan, berlaku untuk SEMUA brand (ditambah
+# daftar brand kit). Uji 13 Nov 2026: "belum ada yang ngalahin" dan "tahta tertinggi" lolos
+# karena daftar lama hanya "paling murah", "no. 1".
+SUPERLATIF_UMUM = [
+    "paling murah", "termurah", "paling laris", "terlaris", "paling bagus", "paling ampuh",
+    "no. 1", "no 1", "nomor 1", "nomor satu", "number one", "terbaik se-indonesia", "terbaik se indonesia",
+    "belum ada yang ngalahin", "nggak ada yang ngalahin", "gak ada yang ngalahin", "ga ada yang ngalahin",
+    "tidak ada yang mengalahkan", "tahta tertinggi", "satu-satunya", "satu satunya",
+    "dijamin 100%", "100% ampuh", "100% berhasil", "pasti berhasil", "menyembuhkan",
+]
 
 
 def mark_banned(words, banned):
@@ -343,9 +356,22 @@ def main() -> None:
     tr = json.loads(Path(args.transcript).read_text(encoding="utf-8"))
     bk = json.loads(Path(args.brandkit).read_text(encoding="utf-8"))
 
+    # Video tanpa ucapan (hanya musik): Whisper mengarang teks, jadi jangan buat rencana.
+    ucapan = cek_ucapan(tr)
+    if ucapan["status"] == "ditolak":
+        out_dir = Path(args.out)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "potongan.json").write_text(
+            json.dumps({"source": tr["source"], "status": "ditolak", "alasan": ucapan["alasan"], "cekUcapan": ucapan},
+                       ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"DITOLAK: {ucapan['alasan']}")
+        raise SystemExit(2)
+
     words = merge_split_words(tr["words"])
     fixes = apply_kamus(words, bk.get("kamus_kata", {}))
-    banned = mark_banned(words, bk.get("superlatif_dilarang", []))
+    banned = mark_banned(words, list(dict.fromkeys(SUPERLATIF_UMUM + bk.get("superlatif_dilarang", []))))
     # Bagian tengah yang dipilih user untuk dibuang (mis. durasi > 30 dtk).
     for rng in args.buang:
         a, b = (float(x) * 1000 for x in rng.split("-"))
@@ -439,6 +465,9 @@ def main() -> None:
         doubts.append({"atSec": 0, "word": hook["text"], "note": hook_note})
     report = {
         "source": tr["source"],
+        "status": "peringatan" if ucapan["status"] == "peringatan" else "siap",
+        "peringatan": [ucapan["alasan"]] if ucapan["status"] == "peringatan" else [],
+        "cekUcapan": ucapan,
         "placement": args.placement,
         "originalSec": round(tr["durationMs"] / 1000, 2),
         "editedVideoSec": round(video_sec, 2),

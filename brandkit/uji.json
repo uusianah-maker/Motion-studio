@@ -1,0 +1,28 @@
+{
+  "_status": "Brand kit NETRAL khusus uji teknis mesin (13 Nov 2026). Dipakai untuk video referensi brand lain (A1-A16). Hasil render UJI INTERNAL, JANGAN DIUNGGAH.",
+  "nama": "UJI INTERNAL",
+  "handle": "",
+  "logo": "",
+  "warna": {
+    "caption": "#FFFFFF",
+    "outline": "#000000",
+    "aksen": "#FFFFFF",
+    "latar_gelap": "#000000"
+  },
+  "font": {
+    "display": "Anton",
+    "caption": "Oswald"
+  },
+  "kosakata_whisper": ["korset", "celana korset", "shapewear", "perut", "pinggang", "bahan", "nyaman", "halus", "tipis", "adem", "tidak gerah", "nggak kelihatan", "keranjang kuning", "checkout"],
+  "kamus_kata": {},
+  "kata_kunci": ["korset", "celana korset", "perut rata", "pinggang", "nyaman", "halus", "tipis", "adem", "nggak kelihatan", "keranjang kuning"],
+  "superlatif_dilarang": ["paling murah", "termurah", "no. 1", "no 1", "nomor 1", "nomor satu", "terbaik se-indonesia", "terbaik se indonesia"],
+  "cta": {
+    "tiktok": "UJI INTERNAL - JANGAN DIUNGGAH",
+    "instagram": "UJI INTERNAL - JANGAN DIUNGGAH"
+  },
+  "warna_dilarang": [],
+  "klaim_boleh": [],
+  "disclaimer_warna": "UJI INTERNAL - video referensi brand lain - JANGAN DIUNGGAH",
+  "caption_outline_px": 4
+}

@@ -46,6 +46,7 @@ def main() -> None:
     ap.add_argument("--hook-end-sec", type=float)
     ap.add_argument("--sembunyikan", type=float, nargs="*", default=[], help="detik kata yang tidak ditampilkan")
     ap.add_argument("--draf", action="store_true")
+    ap.add_argument("--setuju", action="store_true", help="rencana sudah disetujui: lanjut render")
     ap.add_argument("--transkrip-ulang", action="store_true")
     args = ap.parse_args()
 
@@ -108,7 +109,28 @@ def main() -> None:
         edit_cmd += ["--hook-end-sec", str(args.hook_end_sec)]
     if args.sembunyikan:
         edit_cmd += ["--sembunyikan", *map(str, args.sembunyikan)]
-    times["rencana"] = run("Rencana edit", edit_cmd)
+    print("\n== Rencana edit")
+    t0 = time.perf_counter()
+    rc = subprocess.run(edit_cmd, cwd=ROOT).returncode
+    times["rencana"] = time.perf_counter() - t0
+    rep = json.loads((out_dir / "potongan.json").read_text(encoding="utf-8"))
+    if rc == 2:
+        print(f"\n!! DITOLAK: {rep['alasan']}")
+        raise SystemExit(2)
+    if rc != 0:
+        raise SystemExit(rc)
+    for p in rep.get("peringatan", []):
+        print(f"!! PERINGATAN: {p}")
+
+    # Render hanya setelah rencana disetujui (aturan owner 12 Nov 2026).
+    if not args.setuju:
+        print("\n================ RENCANA SIAP ================")
+        print(f"Rencana  : {(out_dir / 'potongan.json').relative_to(ROOT)}")
+        print(f"Durasi   : {rep['originalSec']}s -> {rep['totalWithOutroSec']}s (termasuk outro)")
+        print(f"Hook     : {rep['hook']['text']}")
+        print(f"Dibuang  : {len(rep['removed'])} bagian | kata kunci: {len(rep['kataKunci'])} | SFX: {len(rep['sfx'])}")
+        print("Render DITAHAN sampai disetujui. Jalankan lagi dengan --setuju untuk merender.")
+        return
 
     # 4. Render.
     render_cmd = [
