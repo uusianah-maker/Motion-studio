@@ -209,3 +209,20 @@ Dipakai kalau tim ingin draf disusun ulang oleh mesin (bukan diedit manual di ti
 2. **Placeholder → `MediaRef` oleh runner.** Placeholder yang tidak dikenal ditolak. Selama mesin jalan, runner memegang *lease* atas versi sumber supaya Auto Trash tidak memindahkannya.
 3. **Operasi baru (5.3)**: arahnya disetujui. Bentuk final dikirim ucok saat U3 mulai. Sampai itu, mesin hanya memakai operasi yang sudah ada dan mengikuti aturan wajib di 5.2.
 4. **`<job_dir>` = `PROJECTS/<proyek>/06_ENGINE/<job_id>/`**: folder baru di layout proyek, area izin sendiri (bukan area media, tidak dipindai GC, ikut backup dan hapus proyek). Ditambah ucok di U6.
+
+## 8. Tambahan v0.3.1 (aditif, 13 Nov 2026 — dari implementasi V3/V5)
+
+Tidak mengubah apa pun yang sudah disepakati; hanya menambah field opsional.
+
+| Di mana | Field | Arti |
+| --- | --- | --- |
+| `job.json` | `mode_ops`: `kompat` (default) · `u3` | `kompat` = hanya operasi/field yang sudah diterima Motion Studio sekarang; `u3` = ikut field usulan 5.3 |
+| `job.json` `brief` | `area_produk`: `bawah` · `atas` · `penuh` (opsional) | letak produk di frame; caption menghindarinya (wajah tetap prioritas) |
+| `job.json` `brief` | `placement`: juga `shopee`, `youtube` | CTA diambil dari Brand Kit per platform, jatuh ke `tiktok` kalau kosong |
+| `ops.json` | `mode`, `aset_lokal: [{ kunci, path }]` | aset milik mesin (mis. SFX bawaan `$sfx:pop`) selama library aset per brand (U2) belum ada; runner mengimpor sebagai media proyek seperti placeholder lain |
+| `rencana.json` | `menunggu_u3: string[]` | efek yang dilewati di mode `kompat` (caption pop, kotak kaca, zoom, penutup logo, volume SFX), ditampilkan di kartu rencana |
+| `rencana.json` | `posisi_caption` (0..1) | pusat vertikal caption hasil deteksi wajah |
+| `rencana.json` | `kamus_baru: { salah: benar }` | hanya dari `engine ulang`; Motion Studio menyimpannya ke Brand Kit |
+
+Mode `kompat` sudah diuji dengan `validateOps` + `applyOps` asli Motion Studio (`pipeline/validasi_ops.mjs`).
+Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "brand"`, dan SFX di track `audio` (tidak ada musik).
