@@ -40,6 +40,25 @@ def _durasi_file_ms(path: Path) -> int | None:
         return None
 
 
+# SFX bawaan mesin -> tag kejadian di library aset brand (urutan = prioritas).
+TAG_SFX = {"pop": ["kata-kunci", "teks-muncul"], "whoosh": ["transisi", "teks-muncul"]}
+
+
+def _boleh_iklan(a: dict, dilarang) -> bool:
+    teks = " ".join([a.get("kunci", ""), a.get("nama", "")] + a.get("tag", [])).lower()
+    return bool(a.get("lisensi_iklan")) and not any(d.lower() in teks for d in dilarang)
+
+
+def pilih_sfx_brand(bk: dict, stem: str):
+    """Aset SFX brand untuk kejadian SFX bawaan `stem` (pop/whoosh), atau None."""
+    aset = [a for a in bk.get("aset", []) if a.get("jenis") == "sfx" and _boleh_iklan(a, bk.get("sfx_dilarang", []))]
+    for tag in TAG_SFX.get(stem, []):
+        for a in aset:
+            if tag in a.get("tag", []):
+                return a
+    return None
+
+
 def _halaman(captions):
     """Kelompokkan caption per halaman (pageBreakAfter dari edit.py)."""
     pages, cur = [], []
@@ -127,19 +146,30 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         if not u3:
             menunggu.append("judul hook kotak kaca/blur (sekarang kotak gelap transparan)")
 
-    # 4. CTA penutup (track text) di akhir video.
+    # 4. Penutup brand (catatan U3 ucok: klip track `broll` dengan media penutup Brand Kit)
+    #    sesudah video, CTA tampil di atasnya. Tanpa aset penutup: CTA di detik terakhir video.
     cta = props.get("outroTagline", "")
-    cta_mulai = max(hook_end, video_ms - CTA_MS)
-    if cta and video_ms - cta_mulai >= MIN_CLIP_MS:
+    pen = bk.get("penutup") or {}
+    pen_aset = next((a for a in bk.get("aset", []) if pen.get("aset") and a.get("kunci") == pen["aset"]
+                     and a.get("lisensi_iklan", True)), None)
+    penutup_ms = 0
+    if pen_aset:
+        penutup_ms = round((pen.get("detik") or props.get("outroSeconds", 2.5)) * 1000)
+        if pen_aset.get("durasi_ms"):
+            penutup_ms = min(penutup_ms, pen_aset["durasi_ms"])
+        if penutup_ms >= MIN_CLIP_MS:
+            ops.append({"op": "add_clip", "track_kind": "broll", "media": pen_aset["kunci"], "start_ms": video_ms,
+                        "duration_ms": penutup_ms, "in_ms": 0})
+        else:
+            penutup_ms = 0
+    cta_mulai, cta_akhir = (video_ms, video_ms + penutup_ms) if penutup_ms else (max(hook_end, video_ms - CTA_MS), video_ms)
+    if cta and cta_akhir - cta_mulai >= MIN_CLIP_MS:
         ops.append({"op": "add_clip", "track_kind": "text", "text": cta, "start_ms": cta_mulai,
-                    "duration_ms": video_ms - cta_mulai,
+                    "duration_ms": cta_akhir - cta_mulai,
                     "style": {"x": 0.5, "y": 0.45, "size": 6.0, "width": 0.84, "color": "#ffffff", "bg": warna["latar_gelap"].lower(),
                               "bg_opacity": 0.75, "bold": True, "outline": False, "align": "center", "font": "brand"}})
-    if u3:
-        ops.append({"op": "add_clip", "track_kind": "effects", "effect": "outro", "start_ms": video_ms,
-                    "duration_ms": round(props.get("outroSeconds", 2.5) * 1000)})
-    else:
-        menunggu.append(f"penutup logo/video {props.get('outroSeconds', 2.5)} dtk sesudah video (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)")
+    if not penutup_ms:
+        menunggu.append(f"penutup logo/video: Brand Kit belum punya aset penutup (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)")
     if props.get("disclaimer"):
         menunggu.append("teks disclaimer kecil (track text dipakai hook/CTA; perlu preset disclaimer di U3)")
 
@@ -147,14 +177,19 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     aset_lokal = {}
     sfx = sorted(props.get("sfx", []), key=lambda s: s["atMs"])
     for i, s in enumerate(sfx):
-        p = (root / "public" / s["src"]).resolve()
-        kunci = "$sfx:" + Path(s["src"]).stem
-        dur = _durasi_file_ms(p) or 300
+        brand = pilih_sfx_brand(bk, Path(s["src"]).stem)
+        if brand:
+            kunci, dur = brand["kunci"], brand.get("durasi_ms") or 300
+        else:
+            p = (root / "public" / s["src"]).resolve()
+            kunci = "$sfx:" + Path(s["src"]).stem
+            dur = _durasi_file_ms(p) or 300
         batas = (sfx[i + 1]["atMs"] if i + 1 < len(sfx) else s["atMs"] + dur) - s["atMs"]
         dur = min(dur, batas, max(video_ms - s["atMs"], 0))
         if dur < MIN_CLIP_MS:
             continue
-        aset_lokal[kunci] = str(p).replace("\\", "/")
+        if not brand:
+            aset_lokal[kunci] = str(p).replace("\\", "/")
         op = {"op": "add_clip", "track_kind": "sfx" if u3 else "audio", "media": kunci, "start_ms": s["atMs"], "duration_ms": dur}
         if u3:
             op["volume"] = s.get("volume", 1)
@@ -177,7 +212,7 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     # rencana.json (5.1)
     dur = preset.get("durasi", {})
     target = [dur.get("min", 15), dur.get("max", 30)]
-    akhir = round(video_ms / 1000, 2) if not u3 else laporan["totalWithOutroSec"]
+    akhir = round((video_ms + penutup_ms) / 1000, 2)
     peringatan = [{"level": "warn", "jenis": "ucapan", "teks": p} for p in laporan.get("peringatan", [])]
     peringatan += [{"level": bk.get("level_pelanggaran", "block"), "jenis": "kata_terlarang", "detik": x["atSec"], "teks": x["frasa"]}
                    for x in laporan.get("superlatifDisembunyikan", [])]

@@ -11,8 +11,12 @@ const core = process.env.MOTION_STUDIO_CORE || 'D:/VIBECODING/Video motion/packa
 const { validateOps, applyOps, MAX_SERVER_OPS } = await import(pathToFileURL(`${core}/storage/timeline.js`).href);
 
 const [file, ...rest] = process.argv.slice(2);
-const sumberMs = rest[0] === '--sumber-ms' ? Number(rest[1]) : undefined;
+const opt = (name) => (rest.indexOf(name) >= 0 ? rest[rest.indexOf(name) + 1] : undefined);
+const sumberMs = opt('--sumber-ms') !== undefined ? Number(opt('--sumber-ms')) : undefined;
 const doc = JSON.parse(readFileSync(file, 'utf8'));
+// --brand-kit <brand_kit.json>: placeholder aset Brand Kit (SFX, penutup, ...) juga dianggap terdeklarasi.
+const bkPath = opt('--brand-kit');
+const asetBrand = bkPath ? (JSON.parse(readFileSync(bkPath, 'utf8')).aset || []).map((a) => a.kunci) : [];
 const refs = new Map();
 const refOf = (ph) => {
   if (!refs.has(ph)) {
@@ -21,7 +25,7 @@ const refOf = (ph) => {
   }
   return refs.get(ph);
 };
-const declared = new Set(['$sumber', ...(doc.aset_lokal || []).map((a) => a.kunci)]);
+const declared = new Set(['$sumber', ...(doc.aset_lokal || []).map((a) => a.kunci), ...asetBrand]);
 const raw = doc.ops.map((o) => {
   if (typeof o.media === 'string') {
     if (!declared.has(o.media) && !o.media.startsWith('$sumber')) throw new Error(`placeholder tidak dideklarasikan: ${o.media}`);

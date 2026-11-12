@@ -159,6 +159,10 @@ def dari_ekspor(d: dict) -> dict:
         "area_bebas_teks": a.get("area_bebas_teks", []),
         "produk": b.get("produk", []),
         "preset": d.get("preset", {}),
+        # Library aset (U2): SFX/musik/b-roll/penutup per brand, beserta status lisensi.
+        "aset": d.get("aset", []),
+        "sfx_dilarang": a.get("sfx_dilarang", []),
+        "penutup": v.get("penutup") or {},
     }
 
 

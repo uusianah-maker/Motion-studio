@@ -83,6 +83,28 @@ class Ops(unittest.TestCase):
         self.assertEqual(self.rencana["status"], "perlu_keputusan")  # 9 dtk < target min 15
         self.assertFalse(self.qc["lulus"])
 
+    def test_sfx_dan_penutup_dari_library_brand(self):
+        props, laporan = contoh()
+        props["sfx"] = [{"src": "sfx/pop.wav", "atMs": 1000, "volume": 0.35}, {"src": "sfx/whoosh.wav", "atMs": 4000, "volume": 0.3}]
+        bk = dict(BK, sfx_dilarang=["kartun"], penutup={"aset": "$penutup:outro", "detik": 2.5}, aset=[
+            {"kunci": "$sfx:pop-01", "jenis": "sfx", "tag": ["kata-kunci"], "lisensi_iklan": True, "durasi_ms": 180},
+            {"kunci": "$sfx:boing", "jenis": "sfx", "tag": ["transisi", "kartun"], "lisensi_iklan": True, "durasi_ms": 400},
+            {"kunci": "$sfx:swoosh", "jenis": "sfx", "tag": ["transisi"], "lisensi_iklan": False, "durasi_ms": 300},
+            {"kunci": "$penutup:outro", "jenis": "penutup", "tag": [], "lisensi_iklan": True, "durasi_ms": 3000},
+        ])
+        rencana, doc, _ = susun(props, laporan, bk, placement="tiktok", root=ROOT)
+        media = [o["media"] for o in doc["ops"] if "media" in o]
+        self.assertIn("$sfx:pop-01", media)  # SFX brand bertag kata-kunci
+        self.assertNotIn("$sfx:boing", media)  # dilarang (kartun)
+        self.assertNotIn("$sfx:swoosh", media)  # tanpa lisensi iklan
+        self.assertIn("$sfx:whoosh", [a["kunci"] for a in doc["aset_lokal"]])  # jatuh ke SFX bawaan mesin
+        pen = [o for o in doc["ops"] if o.get("track_kind") == "broll"]
+        v = self.per_track("video")[-1]
+        self.assertEqual((pen[0]["start_ms"], pen[0]["duration_ms"]), (v["start_ms"] + v["duration_ms"], 2500))
+        cta = [o for o in doc["ops"] if o.get("track_kind") == "text" and o["text"].startswith("Cek")][0]
+        self.assertEqual(cta["start_ms"], pen[0]["start_ms"])
+        self.assertFalse(any("penutup" in m for m in rencana["menunggu_u3"]))
+
     def test_mode_u3_menambah_field_usulan(self):
         props, laporan = contoh()
         _, doc, _ = susun(props, laporan, BK, placement="tiktok", root=ROOT, mode="u3")
