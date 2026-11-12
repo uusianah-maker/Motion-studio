@@ -223,6 +223,7 @@ Tidak mengubah apa pun yang sudah disepakati; hanya menambah field opsional.
 | `job.json` mode `batch` | `hak_pakai_jelas: bool` (default `false`) | `true` = blur watermark/teks bawaan boleh dipasang (5.3: hanya untuk footage milik brand) |
 | `job.json` mode `batch` | `shot_tiktok: bool` (opsional) | paksa anggap semua footage unduhan TikTok (watermark + footer) saat membuat Shot Library |
 | `ops.json` | `mode`, `aset_lokal: [{ kunci, path }]` | aset milik mesin (mis. SFX bawaan `$sfx:pop`; Batch Remix: `$vokal:<id>`, `$musik:<id>`) selama library aset per brand (U2) belum ada; runner mengimpor sebagai media proyek seperti placeholder lain |
+| `out/batch.json` (mode `batch`) | `media: { "<placeholder>": "<path>" }` | footage/vokal per placeholder (`$sumber:<id>`, `$vokal:<id>`, `$musik:<id>`) yang diimpor runner U6; path relatif ke root mesin atau absolut **di dalam** root mesin |
 | `rencana.json` | `menunggu_u3: string[]` | efek yang dilewati di mode `kompat` (caption pop, kotak kaca, zoom, penutup logo, volume SFX), ditampilkan di kartu rencana |
 | `rencana.json` | `posisi_caption` (0..1) | pusat vertikal caption hasil deteksi wajah |
 | `rencana.json` | `kamus_baru: { salah: benar }` | hanya dari `engine ulang`; Motion Studio menyimpannya ke Brand Kit |
@@ -237,3 +238,9 @@ Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "bran
 **Sejak U3c/U3d (ucok, d395518):** hook = kotak kaca (`bg: "#ffffff"`, `bg_opacity: 0.16`, `bg_blur: 12`); `highlight.box: true` kalau warna aksen sama dengan warna caption; track `effects` berisi `{ effect: { type: "zoom", scale, mode, x, y } }` (berlaku sampai ganti framing berikutnya, skala < 1,02 tidak dipasang) dan `{ effect: { type: "zoom_through", scale: 1.4 } }` ±150 ms di titik potong (rentang zoom dipotong di sekitarnya, tidak tumpang tindih); disclaimer = klip track `text` gaya preset `disclaimer` di sela hook dan CTA. `mode_ops` `kompat` dan `u3` sekarang menghasilkan isi yang sama.
 
 **Tiga lajur suara berbunyi bersamaan:** `audio` (VO / suara asli terpisah), `music`, `sfx`. Masing-masing tidak boleh tumpang tindih di dalam lajurnya sendiri. Suara asli di dalam klip `video` tetap ikut kecuali `volume: 0`.
+
+### Aturan runner U6 yang berlaku untuk mesin (audit Checkpoint I ucok, 13 Nov 2026)
+
+1. **Impor media dari folder mesin** mengikuti *realpath* dan hanya menerima file media (mp4, mov, m4v, webm, mkv, wav, mp3, m4a, aac, ogg, opus, flac, png, jpg, webp). Path di luar root mesin ditolak. Berlaku untuk `aset_lokal` dan `batch.json` `media`.
+2. **Lingkungan proses mesin dibatasi** (allowlist: PATH, SYSTEMROOT, TEMP/TMP, USERPROFILE/APPDATA/LOCALAPPDATA, PYTHON*, VIRTUAL_ENV, HF_HOME, XDG_CACHE_HOME, CUDA_VISIBLE_DEVICES, …). Rahasia seperti `ANTHROPIC_API_KEY` dibaca mesin dari `.env` miliknya sendiri, bukan dari lingkungan Motion Studio.
+3. **Status:** kode keluar 0 dengan `rencana.status: "ditolak"` diperlakukan sebagai ditolak; `perlu_keputusan` tetap siap, dengan pesan.
