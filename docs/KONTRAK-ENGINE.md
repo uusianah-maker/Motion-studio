@@ -219,7 +219,10 @@ Tidak mengubah apa pun yang sudah disepakati; hanya menambah field opsional.
 | `job.json` | `mode_ops`: `kompat` (default) · `u3` | `kompat` = hanya operasi/field yang sudah diterima Motion Studio sekarang; `u3` = ikut field usulan 5.3 |
 | `job.json` `brief` | `area_produk`: `bawah` · `atas` · `penuh` (opsional) | letak produk di frame; caption menghindarinya (wajah tetap prioritas) |
 | `job.json` `brief` | `placement`: juga `shopee`, `youtube` | CTA diambil dari Brand Kit per platform, jatuh ke `tiktok` kalau kosong |
-| `ops.json` | `mode`, `aset_lokal: [{ kunci, path }]` | aset milik mesin (mis. SFX bawaan `$sfx:pop`) selama library aset per brand (U2) belum ada; runner mengimpor sebagai media proyek seperti placeholder lain |
+| `job.json` mode `batch` | `akun_sendiri: string[]` (opsional) | akun watermark milik brand; footage ber-watermark akun lain tidak dipakai (kosong = semua dipakai + peringatan) |
+| `job.json` mode `batch` | `hak_pakai_jelas: bool` (default `false`) | `true` = blur watermark/teks bawaan boleh dipasang (5.3: hanya untuk footage milik brand) |
+| `job.json` mode `batch` | `shot_tiktok: bool` (opsional) | paksa anggap semua footage unduhan TikTok (watermark + footer) saat membuat Shot Library |
+| `ops.json` | `mode`, `aset_lokal: [{ kunci, path }]` | aset milik mesin (mis. SFX bawaan `$sfx:pop`; Batch Remix: `$vokal:<id>`, `$musik:<id>`) selama library aset per brand (U2) belum ada; runner mengimpor sebagai media proyek seperti placeholder lain |
 | `rencana.json` | `menunggu_u3: string[]` | efek yang dilewati di mode `kompat` (caption pop, kotak kaca, zoom, penutup logo, volume SFX), ditampilkan di kartu rencana |
 | `rencana.json` | `posisi_caption` (0..1) | pusat vertikal caption hasil deteksi wajah |
 | `rencana.json` | `kamus_baru: { salah: benar }` | hanya dari `engine ulang`; Motion Studio menyimpannya ke Brand Kit |
