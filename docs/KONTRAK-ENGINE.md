@@ -234,4 +234,6 @@ Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "bran
 
 **Sejak U3b (ucok, 6330cba):** caption per frasa membawa `words` (waktu RELATIF ke awal klip, satu token per kata, maks 30 kata/klip) + `style.anim: "pop"` + `style.highlight: { words: [kata kunci huruf kecil per kata], color: aksen, scale: 1.4, current: false }`. Kata kunci tetap KAPITAL kalau `teks.kapital = "kata_kunci"`.
 
+**Sejak U3c/U3d (ucok, d395518):** hook = kotak kaca (`bg: "#ffffff"`, `bg_opacity: 0.16`, `bg_blur: 12`); `highlight.box: true` kalau warna aksen sama dengan warna caption; track `effects` berisi `{ effect: { type: "zoom", scale, mode, x, y } }` (berlaku sampai ganti framing berikutnya, skala < 1,02 tidak dipasang) dan `{ effect: { type: "zoom_through", scale: 1.4 } }` ±150 ms di titik potong (rentang zoom dipotong di sekitarnya, tidak tumpang tindih); disclaimer = klip track `text` gaya preset `disclaimer` di sela hook dan CTA. `mode_ops` `kompat` dan `u3` sekarang menghasilkan isi yang sama.
+
 **Tiga lajur suara berbunyi bersamaan:** `audio` (VO / suara asli terpisah), `music`, `sfx`. Masing-masing tidak boleh tumpang tindih di dalam lajurnya sendiri. Suara asli di dalam klip `video` tetap ikut kecuali `volume: 0`.

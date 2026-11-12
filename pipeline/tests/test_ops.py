@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "pipeline"))
-from ops import MIN_CLIP_MS, susun  # noqa: E402
+from ops import MIN_CLIP_MS, efek_video, susun  # noqa: E402
 
 BK = {"warna": {"caption": "#FFFFFF", "outline": "#000000", "aksen": "#FFFFFF", "latar_gelap": "#000000"},
       "kapital": "kata_kunci", "superlatif_dilarang": ["termurah"], "logo": ""}
@@ -52,7 +52,7 @@ class Ops(unittest.TestCase):
         self.assertEqual(v[0]["start_ms"] + v[0]["duration_ms"], v[1]["start_ms"])
 
     def test_tidak_ada_tumpang_tindih_dan_min_100ms(self):
-        for kind in ("video", "subtitle", "text", "audio", "music", "sfx", "broll"):
+        for kind in ("video", "subtitle", "text", "audio", "music", "sfx", "broll", "effects"):
             prev = -1
             for o in self.per_track(kind):
                 self.assertGreaterEqual(o["start_ms"], prev, kind)
@@ -62,12 +62,15 @@ class Ops(unittest.TestCase):
     def test_tidak_merujuk_clip_id_sendiri(self):
         self.assertFalse(any("clip_id" in o for o in self.ops))
 
-    def test_mode_kompat_tanpa_field_u3c(self):
-        # U3a (sfx, volume, set_loudness) & U3b (words, anim, highlight) sudah ada; U3c (effect) belum.
-        self.assertFalse(any("effect" in o for o in self.ops))
-        self.assertFalse(any(o.get("track_kind") == "effects" for o in self.ops))
+    def test_semua_fitur_u3_dipakai(self):
         self.assertIn({"op": "set_loudness", "lufs": -14}, self.ops[:3])
-        self.assertTrue(self.rencana["menunggu_u3"])
+        hook = [o for o in self.per_track("text") if o["start_ms"] == 0][0]
+        self.assertGreater(hook["style"]["bg_blur"], 0)  # kotak kaca
+        fx = self.per_track("effects")
+        self.assertTrue(fx and all("effect" in o for o in fx))
+        self.assertIn("zoom_through", {o["effect"]["type"] for o in fx})
+        # yang tersisa hanya kekurangan data Brand Kit (aset penutup), bukan fitur Motion Studio
+        self.assertTrue(all("penutup" in m for m in self.rencana["menunggu_u3"]))
 
     def test_kata_kunci_kapital(self):
         teks = " ".join(o["text"] for o in self.per_track("subtitle"))
@@ -125,11 +128,21 @@ class Ops(unittest.TestCase):
         _, doc2, _ = susun(props, laporan, dict(BK, aset=aset[:2]), placement="tiktok", root=ROOT)
         self.assertFalse([o for o in doc2["ops"] if o.get("track_kind") == "music"])
 
-    def test_mode_u3_menambah_field_usulan(self):
-        props, laporan = contoh()
-        _, doc, _ = susun(props, laporan, BK, placement="tiktok", root=ROOT, mode="u3")
-        self.assertTrue(any("words" in o for o in doc["ops"]))
-        self.assertTrue(any((o.get("effect") or {}).get("type") == "zoom" for o in doc["ops"]))
+    def test_efek_video_tidak_tumpang_tindih(self):
+        fr = [{"atMs": 0, "scale": 1.07, "mode": "cut"}, {"atMs": 3000, "scale": 1.0, "mode": "cut"},
+              {"atMs": 6000, "scale": 1.1, "mode": "smooth"}]
+        fx = efek_video(fr, [2000, 7000], 9000)
+        prev = 0
+        for a, b, e in fx:
+            self.assertGreaterEqual(a, prev)
+            self.assertGreaterEqual(b - a, MIN_CLIP_MS)
+            prev = b
+        self.assertEqual([e["type"] for _, _, e in fx].count("zoom_through"), 2)
+        self.assertFalse(any(a < 6000 and b > 3000 and e["type"] == "zoom" for a, b, e in fx))  # skala 1.0 = tanpa zoom
+
+    def test_highlight_kotak_kalau_aksen_sama_dengan_caption(self):
+        hl = [o["style"]["highlight"] for o in self.per_track("subtitle") if "highlight" in o["style"]]
+        self.assertTrue(hl and all(h["box"] for h in hl))  # BK: aksen == caption (#ffffff)
 
     def test_caption_per_kata_u3b(self):
         subs = self.per_track("subtitle")

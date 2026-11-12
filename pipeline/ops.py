@@ -5,11 +5,9 @@ Mengubah hasil edit.py (props + laporan potongan) menjadi:
   ops.json          operasi timeline Motion Studio (5.2)
   qc_rencana.json   cek sebelum render (5.4)
 
-Mode `kompat` (default) hanya memakai operasi & field yang SUDAH ada di Motion Studio,
-jadi draf bisa langsung diterapkan dan dirender FFmpeg sekarang. Efek yang menunggu U3
-(caption pop per kata, sorot kata kunci, kotak kaca, zoom, penutup logo, volume SFX)
-dicatat di rencana.json `menunggu_u3`. Mode `u3` menambahkan field usulan 5.3 (belum
-diterima validator Motion Studio sampai U3 selesai).
+Semua fitur Motion Studio U3a–U3d sudah dipakai (track sfx/music, volume, set_loudness,
+caption per kata + pop + sorot, kotak kaca, zoom/zoom-through, disclaimer, penutup broll).
+`mode` (kompat/u3) dipertahankan untuk kompatibilitas kontrak; isinya sekarang sama.
 """
 
 import json
@@ -78,6 +76,35 @@ def pilih_musik(bk: dict, preset: dict):
     return boleh[0], ""
 
 
+ZOOM_MIN = 1.02
+ZOOM_THROUGH_MS = 300  # durasi transisi zoom-through di sekitar titik potong
+
+
+def efek_video(framing, zoom_throughs, video_ms):
+    """Daftar (mulai, akhir, effect) untuk track `effects`, urut dan tidak tumpang tindih.
+
+    framing: [{atMs, scale, mode}] — skala berlaku sampai framing berikutnya (skala < 1.02 = tanpa zoom).
+    zoom_throughs: titik potong (ms hasil); efek ±150 ms di sekitarnya, menimpa rentang zoom."""
+    zt = []
+    for z in sorted(zoom_throughs):
+        a, b = max(0, z - ZOOM_THROUGH_MS // 2), min(video_ms, z + ZOOM_THROUGH_MS // 2)
+        if b - a >= MIN_CLIP_MS and (not zt or a >= zt[-1][1]):
+            zt.append((a, b, {"type": "zoom_through", "scale": 1.4, "x": 0.5, "y": 0.5}))
+    out = list(zt)
+    fr = sorted(framing, key=lambda f: f["atMs"])
+    for i, f in enumerate(fr):
+        if f["scale"] < ZOOM_MIN:
+            continue
+        a, b = f["atMs"], fr[i + 1]["atMs"] if i + 1 < len(fr) else video_ms
+        eff = {"type": "zoom", "scale": round(min(f["scale"], 2.5), 3), "mode": f.get("mode", "cut"), "x": 0.5, "y": 0.5}
+        # potong rentang zoom di sekitar zoom-through
+        potong = [(a, b)]
+        for za, zb, _ in zt:
+            potong = [p for x0, x1 in potong for p in ((x0, min(x1, za)), (max(x0, zb), x1)) if p[1] - p[0] >= MIN_CLIP_MS]
+        out += [(x0, x1, dict(eff)) for x0, x1 in potong]
+    return sorted(out, key=lambda e: e[0])
+
+
 MAKS_KATA_KLIP = 30
 MAKS_HURUF_KATA = 40
 
@@ -126,7 +153,6 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
           preset: dict | None = None):
     """Kembalikan (rencana, ops, qc)."""
     preset = preset or {}
-    u3 = mode == "u3"
     warna = bk["warna"]
     lufs = (preset.get("audio") or {}).get("lufs", -14)
     ops = [{"op": "set_canvas", "ratio": "9:16"}, {"op": "set_brand_logo", "on": bool(bk.get("logo") or bk.get("logo_aturan"))},
@@ -166,7 +192,9 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
                        - {""})
         style = dict(gaya_caption, anim="pop", anim_ms=(preset.get("caption") or {}).get("pop_ms", 120))
         if kunci:
-            style["highlight"] = {"words": kunci, "color": warna["aksen"].lower(), "scale": 1.4, "current": False}
+            # Aksen sama dengan warna caption (mis. Aysilla krem): kata kunci dibedakan dengan kotak (U3c).
+            style["highlight"] = {"words": kunci, "color": warna["aksen"].lower(), "scale": 1.4, "current": False,
+                                  "box": warna["aksen"].lower() == warna["caption"].lower()}
         ops.append({"op": "add_clip", "track_kind": "subtitle", "text": " ".join(w["text"] for w in words), "words": words,
                     "start_ms": a, "duration_ms": b - a, "style": style})
 
@@ -176,15 +204,12 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     if hook and hook.get("text"):
         hook_end = min(hook["endMs"], video_ms)
         gaya_hook = {"x": 0.5, "y": round(min(0.8, (hook.get("top") or 0.30) + 0.05), 3), "size": HOOK_SIZE, "width": 0.84,
-                     "color": "#ffffff", "bg": "#000000", "bg_opacity": 0.35, "bold": True, "outline": False,
+                     # U3c: kotak kaca (efek 17 glass type) = kotak putih tipis + blur di belakang teks.
+                     "color": "#ffffff", "bg": "#ffffff", "bg_opacity": 0.16, "bg_blur": 12, "bold": True, "outline": True,
                      "align": "center", "font": "brand"}
-        if u3:
-            gaya_hook.update({"bg": "#ffffff", "bg_opacity": 0.16, "bg_blur": 12})
         if hook_end - hook.get("startMs", 0) >= MIN_CLIP_MS:
             ops.append({"op": "add_clip", "track_kind": "text", "text": hook["text"].upper(), "start_ms": hook.get("startMs", 0),
                         "duration_ms": hook_end - hook.get("startMs", 0), "style": gaya_hook})
-        if not u3:
-            menunggu.append("judul hook kotak kaca/blur (sekarang kotak gelap transparan)")
 
     # 4. Penutup brand (catatan U3 ucok: klip track `broll` dengan media penutup Brand Kit)
     #    sesudah video, CTA tampil di atasnya. Tanpa aset penutup: CTA di detik terakhir video.
@@ -210,8 +235,13 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
                               "bg_opacity": 0.75, "bold": True, "outline": False, "align": "center", "font": "brand"}})
     if not penutup_ms:
         menunggu.append(f"penutup logo/video: Brand Kit belum punya aset penutup (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)")
-    if props.get("disclaimer"):
-        menunggu.append("teks disclaimer kecil (track text dipakai hook/CTA; perlu preset disclaimer di U3)")
+    # Disclaimer (preset teks "disclaimer" ucok): teks kecil di bawah, di sela hook dan CTA
+    # (track text tidak boleh tumpang tindih).
+    if props.get("disclaimer") and cta_mulai - hook_end >= MIN_CLIP_MS:
+        ops.append({"op": "add_clip", "track_kind": "text", "text": props["disclaimer"], "start_ms": hook_end,
+                    "duration_ms": cta_mulai - hook_end,
+                    "style": {"x": 0.5, "y": 0.93, "size": 2.6, "width": 0.9, "color": "#ffffff", "bg": None, "bold": False,
+                              "outline": True, "align": "center", "font": "default"}})
 
     # 5. SFX di track `sfx` (U3a) dengan volume; dari library brand, kalau tidak ada: SFX bawaan mesin.
     aset_lokal = {}
@@ -244,17 +274,10 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         if dur_m < total_ms:
             alasan_musik = f"musik {dur_m / 1000:.1f} dtk lebih pendek dari video {total_ms / 1000:.1f} dtk (berhenti sebelum akhir)"
 
-    # 6. Efek video (U3c, bentuk final ucok) hanya di mode u3 sampai U3c rilis.
-    if u3:
-        fr = props.get("framing") or []
-        for i, f in enumerate(fr):
-            akhir_f = fr[i + 1]["atMs"] if i + 1 < len(fr) else video_ms
-            if akhir_f - f["atMs"] >= MIN_CLIP_MS:
-                ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": f["atMs"], "duration_ms": akhir_f - f["atMs"],
-                            "effect": {"type": "zoom", "scale": f["scale"], "mode": f["mode"], "x": 0.5, "y": 0.5}})
-        menunggu.append("zoom-through belum dipasang di mode u3 (bentuk tumpang-tindih dengan zoom menunggu U3c)")
-    elif props.get("framing") or props.get("zoomThroughs"):
-        menunggu.append(f"digital zoom ({len(props.get('framing') or [])}x) & zoom-through ({len(props.get('zoomThroughs') or [])}x)")
+    # 6. Efek video (U3c): digital zoom (ganti framing) + zoom-through di titik potong, satu track `effects`
+    #    tanpa tumpang tindih. Zoom-through menang; rentang zoom dipotong di sekitarnya.
+    for e in efek_video(props.get("framing") or [], props.get("zoomThroughs") or [], video_ms):
+        ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": e[0], "duration_ms": e[1] - e[0], "effect": e[2]})
 
     ops_doc = {"schema": "ms-ops/1", "mode": mode, "aset_lokal": [{"kunci": k, "path": v} for k, v in aset_lokal.items()], "ops": ops}
 
@@ -290,7 +313,7 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         "ragu": [{"detik": d["atSec"], "teks": d["word"], "alasan": d["note"]} for d in laporan.get("doubts", [])],
         "menunggu_u3": menunggu,
     }
-    rencana["efek"] += [{"jenis": "zoom", "detik": round(o["start_ms"] / 1000, 2)} for o in ops if o.get("track_kind") == "effects"]
+    rencana["efek"] += [{"jenis": o["effect"]["type"], "detik": round(o["start_ms"] / 1000, 2)} for o in ops if o.get("track_kind") == "effects"]
 
     # qc_rencana.json (5.4)
     teks_layar = " ".join(o.get("text", "") for o in ops).lower()
