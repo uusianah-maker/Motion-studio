@@ -219,6 +219,8 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_style: 'Ubah gaya teks',
   set_volume: 'Ubah volume',
   set_brand_logo: 'Logo brand',
+  remove_range: 'Hapus jeda',
+  split_at: 'Potong di adegan',
   set_track_mute: 'Bisukan/nyalakan track',
 };
 

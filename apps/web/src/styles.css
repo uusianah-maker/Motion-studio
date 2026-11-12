@@ -49,6 +49,11 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 .brandSampleNote { position: absolute; top: 6px; right: 8px; }
 .brandLogo { position: absolute; height: auto; pointer-events: none; }
 @media (max-width: 900px) { .brandGrid { grid-template-columns: 1fr; } }
+.cutParams { margin: 10px 0; }
+.cutLists { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin: 10px 0; max-height: 300px; overflow: auto; }
+.cutRow { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.cutRow > span { flex: 1; min-width: 0; }
+@media (max-width: 700px) { .cutLists { grid-template-columns: 1fr; } }
 .importRow { padding: 0 15px 8px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

@@ -22,6 +22,7 @@ export function InspectorPanel({
   onDraft,
   readOnly = false,
   brand = null,
+  onCutReview,
 }: {
   clip: SelectedClip;
   name: string;
@@ -33,6 +34,8 @@ export function InspectorPanel({
   readOnly?: boolean;
   /** X06: Brand Kit colours + whether it has a font. */
   brand?: BrandKit | null;
+  /** X07: open "Deteksi jeda & adegan" for this media clip. */
+  onCutReview?: () => void;
 }) {
   const isText = clip.kind === 'text' || clip.kind === 'subtitle';
   const [start, setStart] = useState(sec(clip.start_ms));
@@ -175,6 +178,11 @@ export function InspectorPanel({
             </button>
           </span>
         </div>
+      )}
+      {clip.media && onCutReview && (
+        <button className="btn small" onClick={onCutReview} title="Cari jeda & pergantian adegan, lalu pilih yang mau dipotong (FFmpeg, tanpa AI)">
+          ✂ Deteksi jeda & adegan
+        </button>
       )}
 
       {isText && s && (

@@ -162,7 +162,7 @@ function commit(s: Stored, expected: number, ops: EditOp[], label: string): Proj
   return view(s);
 }
 
-const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_brand_logo: 'Logo brand', set_track_mute: 'Bisukan/nyalakan track' };
+const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_brand_logo: 'Logo brand', remove_range: 'Hapus jeda', split_at: 'Potong di adegan', set_track_mute: 'Bisukan/nyalakan track' };
 
 // ------------------------------------------------------------------ copilot plans
 const plans = new Map<string, { plan: EditPlan; status: 'proposed' | 'applied' | 'rejected'; applied_revision: number | null }>();
@@ -170,7 +170,7 @@ function propose(projectId: string, source: EditPlan['source'], prompt: string, 
   const s = get(projectId);
   let checked: { ops: EditOp[]; labels: string[]; diff: { kind: string; summary: string }[] };
   try {
-    checked = checkPlan(s.p.timeline, ops, sourceDuration, source === 'transcript' ? 1000 : undefined) as typeof checked;
+    checked = checkPlan(s.p.timeline, ops, sourceDuration, source === 'transcript' || source === 'analysis' ? 1000 : undefined) as typeof checked;
   } catch (e) {
     return fail(422, 'EDIT_INVALID', e instanceof Error ? e.message : 'Rencana tidak valid');
   }
@@ -499,6 +499,25 @@ export function createDemoApi(): Api {
       });
       Object.assign(t, { cues: sorted.map((c) => ({ cue_id: c.cue_id ?? nid('cue'), ...c })), rev: t.rev + 1, edited: true, updated_at: now() });
       return clone(t);
+    },
+    // X07 demo: fixed pauses/scenes (no FFmpeg in the browser); the plan path is the real one.
+    analyzeMedia: async (vid, params) => {
+      await wait(500);
+      const v = media.flatMap((m) => m.versions).find((x) => x.version_id === vid) ?? fail(404, 'NOT_FOUND', 'Versi media tidak ditemukan');
+      const d = v.probe?.duration_ms ?? 8000;
+      return { version_id: vid, params: { noise_db: -35, min_silence_ms: 600, scene_threshold: 0.3, ...params }, duration_ms: d, has_audio: true, has_video: true, silences: [{ from_ms: Math.round(d * 0.3), to_ms: Math.round(d * 0.3) + 900 }, { from_ms: Math.round(d * 0.7), to_ms: Math.round(d * 0.7) + 700 }], scenes: [Math.round(d * 0.5)], cached: false };
+    },
+    cutPlan: async (id, body) => {
+      const s = get(id);
+      const c = s.p.timeline.tracks.flatMap((t) => t.clips.map((x) => ({ ...x, kind: t.kind }))).find((x) => x.clip_id === body.clip_id) ?? fail(422, 'EDIT_INVALID', 'Pilih klip video/audio di linimasa');
+      const inMs = c.in_ms ?? 0;
+      const ops: EditOp[] = body.silences
+        .map((x) => ({ from: c.start_ms + Math.max(x.from_ms + body.padding_ms, inMs) - inMs, to: c.start_ms + Math.min(x.to_ms - body.padding_ms, inMs + c.end_ms - c.start_ms) - inMs }))
+        .filter((x) => x.to - x.from >= 200)
+        .sort((a, b) => b.from - a.from)
+        .map((x) => ({ op: 'remove_range', from_ms: x.from, to_ms: x.to }));
+      if (!ops.length) fail(422, 'EDIT_INVALID', 'Tidak ada potongan yang dipilih.');
+      return propose(id, 'analysis', `Potong ${ops.length} jeda (deteksi otomatis)`, ops, 'Menghapus jeda di semua track.', []);
     },
     transcriptSubtitles: async (id, tid) => {
       const t = transcripts.get(tid) ?? fail(404, 'NOT_FOUND', 'Transkrip tidak ada');

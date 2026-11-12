@@ -89,7 +89,7 @@ try {
   const playing = await videoState();
   const shown = await page.locator('.player .time').innerText();
   check('PV-03 Putar: video jalan + jam timeline maju', !playing.paused && playing.t > 1 && !shown.startsWith('00:00'), `${JSON.stringify(playing)} time=${shown}`);
-  await page.getByRole('button', { name: 'Jeda' }).click();
+  await page.getByRole('button', { name: 'Jeda', exact: true }).click();
   await page.waitForTimeout(200);
   check('PV-04 Jeda: video berhenti', (await videoState()).paused);
   await page.screenshot({ path: path.join(EVID, 'w07_preview_playing.png') });

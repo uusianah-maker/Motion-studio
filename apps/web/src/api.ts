@@ -5,6 +5,18 @@ import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js
  * carries `x-motion-request: 1`, which the server requires (a cross-site page cannot send it).
  */
 
+/** X07: silences + scene changes of one media version (source times, ms). */
+export interface MediaAnalysis {
+  version_id: string;
+  params: { noise_db: number; min_silence_ms: number; scene_threshold: number };
+  duration_ms: number;
+  has_audio: boolean;
+  has_video: boolean;
+  silences: { from_ms: number; to_ms: number }[];
+  scenes: number[];
+  cached: boolean;
+}
+
 /** X06: workspace Brand Kit. */
 export interface BrandKit {
   schema_version: 1;
@@ -59,6 +71,8 @@ export type EditOp =
   | { op: 'set_text'; clip_id: string; text: string }
   | { op: 'set_canvas'; ratio: '9:16' | '3:4' | '1:1' | '16:9' }
   | { op: 'set_brand_logo'; on: boolean }
+  | { op: 'remove_range'; from_ms: number; to_ms: number }
+  | { op: 'split_at'; track_kind: Track['kind']; at_ms: number }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio'; muted: boolean };
@@ -182,7 +196,7 @@ export interface EditPlan {
   plan_id: string;
   project_id: string;
   project_revision: number;
-  source: 'local' | 'ai' | 'transcript';
+  source: 'local' | 'ai' | 'transcript' | 'analysis';
   prompt: string;
   operations: PlanOperation[];
   rationale: string;
@@ -446,6 +460,10 @@ export function createApi(token: string | null, base = '') {
     transcript: (id: string, tid: string) => call<{ transcript: TranscriptFull }>('GET', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}`).then((r) => r.transcript),
     transcriptSave: (id: string, tid: string, expected_rev: number, cues: { cue_id?: string; start_ms: number; end_ms: number; text: string }[]) =>
       call<{ transcript: TranscriptFull }>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}`, { json: { expected_rev, cues } }).then((r) => r.transcript),
+    analyzeMedia: (versionId: string, params: Partial<MediaAnalysis['params']>) =>
+      call<{ analysis: MediaAnalysis }>('POST', `/api/media/${encodeURIComponent(versionId)}/analyze`, { json: { params } }).then((r) => r.analysis),
+    cutPlan: (id: string, body: { clip_id: string; silences: { from_ms: number; to_ms: number }[]; scenes: number[]; padding_ms: number }) =>
+      call<PlanReply>('POST', `/api/projects/${encodeURIComponent(id)}/cuts/plan`, { json: body }),
     transcriptSubtitles: (id: string, tid: string) => call<PlanReply>('POST', `/api/projects/${encodeURIComponent(id)}/transcripts/${encodeURIComponent(tid)}/subtitles`, { json: {} }),
     dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
     // Render MP4 (W08)

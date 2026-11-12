@@ -29,6 +29,10 @@ export type EditOp =
   | { op: 'set_text'; clip_id: string; text: string }
   | { op: 'set_canvas'; ratio: CanvasRatio }
   | { op: 'set_brand_logo'; on: boolean }
+  /** X07: ripple-delete [from_ms, to_ms) on EVERY track (cut a silence): later clips move left. */
+  | { op: 'remove_range'; from_ms: number; to_ms: number }
+  /** X07: split whatever clip covers `at_ms` on a track (scene change) — no clip id needed. */
+  | { op: 'split_at'; track_kind: TrackKind; at_ms: number }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio'; muted: boolean };
@@ -100,6 +104,17 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         keys(['op', 'ratio']);
         if (!CANVAS_RATIOS.includes(o.ratio as CanvasRatio)) bad(`ops[${i}]: rasio harus ${CANVAS_RATIOS.join(', ')}`);
         return { op: 'set_canvas', ratio: o.ratio as CanvasRatio };
+      case 'remove_range': {
+        keys(['op', 'from_ms', 'to_ms']);
+        const from = ms(o.from_ms, 'from_ms');
+        const to = ms(o.to_ms, 'to_ms');
+        if (to - from < MIN_CLIP_MS) bad(`ops[${i}]: rentang yang dihapus minimal ${MIN_CLIP_MS} ms`);
+        return { op: 'remove_range', from_ms: from, to_ms: to };
+      }
+      case 'split_at':
+        keys(['op', 'track_kind', 'at_ms']);
+        if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
+        return { op: 'split_at', track_kind: o.track_kind as TrackKind, at_ms: ms(o.at_ms, 'at_ms') };
       case 'set_brand_logo':
         keys(['op', 'on']);
         if (typeof o.on !== 'boolean') bad(`ops[${i}]: on harus true/false`);
@@ -126,6 +141,23 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
     }
   });
 }
+
+/** Split track.clips[index] at `at` (strictly inside): the left keeps its id, the right is new. */
+function splitInto(track: Track, index: number, at: number, newClipId: () => string): void {
+  const clip = track.clips[index]!;
+  const right: Clip = { clip_id: newClipId(), start_ms: at, end_ms: clip.end_ms };
+  if (clip.text !== undefined) right.text = clip.text;
+  if (clip.style) right.style = { ...clip.style };
+  if (clip.volume !== undefined) right.volume = clip.volume;
+  if (clip.media) {
+    right.media = { ...clip.media };
+    right.in_ms = (clip.in_ms ?? 0) + (at - clip.start_ms);
+  }
+  clip.end_ms = at;
+  track.clips.splice(index + 1, 0, right);
+}
+
+const timelineEnd = (t: Timeline) => Math.max(0, ...t.tracks.flatMap((tr) => tr.clips.map((c) => c.end_ms)));
 
 const clone = (t: Timeline): Timeline => ({
   tracks: t.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => ({ ...c, ...(c.media ? { media: { ...c.media } } : {}), ...(c.style ? { style: { ...c.style } } : {}) })) })),
@@ -229,16 +261,40 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
       case 'split_clip': {
         const { track, clip, index } = locate(t, op.clip_id);
         if (op.at_ms <= clip.start_ms || op.at_ms >= clip.end_ms) bad('Titik split harus di dalam klip', { clip_id: clip.clip_id });
-        const right: Clip = { clip_id: newClipId(), start_ms: op.at_ms, end_ms: clip.end_ms };
-        if (clip.text !== undefined) right.text = clip.text;
-        if (clip.style) right.style = { ...clip.style };
-        if (clip.volume !== undefined) right.volume = clip.volume;
-        if (clip.media) {
-          right.media = { ...clip.media };
-          right.in_ms = (clip.in_ms ?? 0) + (op.at_ms - clip.start_ms);
+        splitInto(track, index, op.at_ms, newClipId);
+        break;
+      }
+      case 'split_at': {
+        const track = t.tracks.find((x) => x.kind === op.track_kind);
+        const index = track ? track.clips.findIndex((c) => c.start_ms < op.at_ms && op.at_ms < c.end_ms) : -1;
+        if (!track || index < 0) bad(`Tidak ada klip ${op.track_kind} di ${op.at_ms} ms untuk dipotong`, { at_ms: op.at_ms });
+        splitInto(track!, index, op.at_ms, newClipId);
+        break;
+      }
+      case 'remove_range': {
+        // Cut [from, to) out of the whole timeline. Media clips crossing the cut become two pieces
+        // that keep their source offsets; text/subtitle clips crossing it just get shorter.
+        const { from_ms: from, to_ms: to } = op;
+        const len = to - from;
+        if (from >= timelineEnd(t)) bad('Rentang yang dihapus ada di luar linimasa', { from_ms: from });
+        for (const tr of t.tracks) {
+          const out: Clip[] = [];
+          for (const c of tr.clips) {
+            if (c.end_ms <= from) out.push(c);
+            else if (c.start_ms >= to) out.push({ ...c, start_ms: c.start_ms - len, end_ms: c.end_ms - len });
+            else if (c.start_ms >= from && c.end_ms <= to) continue; // entirely inside the cut
+            else if (c.start_ms < from && c.end_ms > to) {
+              if (c.media) {
+                const right: Clip = { ...c, clip_id: newClipId(), start_ms: from, end_ms: c.end_ms - len, in_ms: (c.in_ms ?? 0) + (to - c.start_ms) };
+                if (c.style) right.style = { ...c.style };
+                right.media = { ...c.media };
+                out.push({ ...c, end_ms: from }, right);
+              } else out.push({ ...c, end_ms: c.end_ms - len });
+            } else if (c.start_ms < from) out.push({ ...c, end_ms: from });
+            else out.push({ ...c, start_ms: from, end_ms: c.end_ms - len, ...(c.media ? { in_ms: (c.in_ms ?? 0) + (to - c.start_ms) } : {}) });
+          }
+          tr.clips = out.filter((c) => c.end_ms - c.start_ms >= MIN_CLIP_MS);
         }
-        clip.end_ms = op.at_ms;
-        track.clips.splice(index + 1, 0, right);
         break;
       }
       case 'delete_clip': {

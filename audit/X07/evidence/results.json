@@ -1,0 +1,72 @@
+{
+  "at": "2026-11-12T17:34:08.307Z",
+  "passed": 13,
+  "total": 13,
+  "results": [
+    {
+      "id": "X7-01 Analisis menemukan 1 jeda (±1,0–2,5 dtk) + 1 pergantian adegan",
+      "ok": true,
+      "detail": "0:01,0–0:02,5 (1,5 dtk) ▶"
+    },
+    {
+      "id": "X7-02 Jeda tercentang otomatis, potong-adegan tidak (opt-in); perkiraan hemat tampil",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X7-03 Tombol ▶ memindah playhead ke jeda (untuk dicek dulu)",
+      "ok": true,
+      "detail": "1000 ms"
+    },
+    {
+      "id": "X7-04 Rencana jelas: hapus jeda di semua track + potong video di adegan",
+      "ok": true,
+      "detail": "Hapus 0:01,1–0:02,4 (1,2 dtk) di semua track | Potong video di 0:00,6"
+    },
+    {
+      "id": "X7-05 Menyusun rencana tidak mengubah proyek",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X7-06 Diterapkan: video jadi 3 potongan, total ±2,3 dtk (dari 3,5)",
+      "ok": true,
+      "detail": "3 klip, akhir 2300 ms"
+    },
+    {
+      "id": "X7-07 Subtitle ikut bergeser bersama jeda yang dihapus (tetap sinkron)",
+      "ok": true,
+      "detail": "1400–2200"
+    },
+    {
+      "id": "X7-08 Ctrl+Z sekali → kembali utuh (1 klip 3,5 dtk, subtitle di tempat semula)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X7-09 Analisis ulang file yang sama memakai hasil tersimpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X7-10 Klip teks/subtitle tidak punya tombol deteksi",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X7-11 Tercatat di audit (media.analyze), tanpa panggilan AI",
+      "ok": true,
+      "detail": "2 analisis"
+    },
+    {
+      "id": "X7-12 HP 390px: dialog muat tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "X7-13 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

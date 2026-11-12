@@ -16,7 +16,7 @@ export const PLAN_SCHEMA_VERSION = 1;
 export const MAX_PLAN_OPS = 60;
 export const MAX_PROMPT_LEN = 1000;
 
-export type PlanSource = 'local' | 'ai' | 'transcript';
+export type PlanSource = 'local' | 'ai' | 'transcript' | 'analysis';
 
 export interface PlanOperation {
   op: EditOp;
@@ -83,6 +83,9 @@ export const styleSummary = (s: Partial<TextStyle>) =>
     ),
   ].join(', ');
 
+/** m:ss.d — cuts need tenths of a second. */
+const fmtPrecise = (ms: number) => `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(1).padStart(4, '0').replace('.', ',')}`;
+
 /** One line per op, against the timeline the op will run on. */
 export function describeOp(op: EditOp, t: Timeline): string {
   const ref = (id: string) => {
@@ -109,6 +112,10 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return `Ubah rasio ke ${op.ratio}`;
     case 'set_brand_logo':
       return op.on ? 'Tampilkan logo brand' : 'Sembunyikan logo brand';
+    case 'remove_range':
+      return `Hapus ${fmtPrecise(op.from_ms)}–${fmtPrecise(op.to_ms)} (${((op.to_ms - op.from_ms) / 1000).toFixed(1).replace('.', ',')} dtk) di semua track`;
+    case 'split_at':
+      return `Potong ${TRACK_NAME[op.track_kind]} di ${fmtPrecise(op.at_ms)}`;
     case 'set_style':
       return `Ubah gaya ${ref(op.clip_id)}: ${styleSummary(op.style)}`;
     case 'set_volume':

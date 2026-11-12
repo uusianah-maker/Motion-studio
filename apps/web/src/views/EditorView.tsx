@@ -7,6 +7,7 @@ import { Preview } from './Preview';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
 import { ProjectMenu } from './ProjectMenu';
+import { CutReviewDialog } from './CutReviewDialog';
 import { useBrand } from '../brand';
 import { PresetPanel } from './PresetPanel';
 import { RenderDialog } from './RenderDialog';
@@ -48,6 +49,8 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
   const [styleDraft, setStyleDraft] = useState<{ clip_id: string; style: Partial<TextStyle> } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** X07: media clip whose pauses/scenes are being reviewed. */
+  const [cutClip, setCutClip] = useState<Clip | null>(null);
   /** X06: Brand Kit (logo + font) for preview, inspector swatches and the Brand preset. */
   const brand = useBrand(api);
   const [selected, setSelected] = useState<string | null>(null);
@@ -231,6 +234,21 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
           ↧ Render
         </button>
       </header>
+      {cutClip && project && (
+        <CutReviewDialog
+          api={api}
+          project={project}
+          clip={cutClip}
+          name={clipName(cutClip)}
+          onClose={() => setCutClip(null)}
+          onSeek={(ms) => setPlayhead(ms)}
+          onApplied={(p) => {
+            setProject(p);
+            setSelected(null);
+            onSavedRef.current?.(p);
+          }}
+        />
+      )}
       {renderOpen && project && <RenderDialog api={api} project={project} onClose={() => setRenderOpen(false)} />}
       {sttMedia && project && (
         <TranscriptDialog
@@ -305,6 +323,7 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
               busy={busy}
               readOnly={project.status === 'archived'}
               brand={brand?.kit ?? null}
+              {...(project.status !== 'archived' ? { onCutReview: () => setCutClip(sel) } : {})}
               onEdit={(ops) => edit(ops)}
               onDraft={setStyleDraft}
             />
