@@ -21,6 +21,7 @@ from pathlib import Path
 from autocut import FPS, merge_split_words, run_cut, strip_internal
 from cek_ucapan import cek_ucapan
 from brandkit import muat as muat_brand_kit
+from posisi_caption import posisi_otomatis
 
 MAX_WORDS_PER_PAGE = 3
 PAGE_GAP_MS = 250  # jeda antar kata yang memaksa halaman caption baru
@@ -364,10 +365,15 @@ def main() -> None:
     ap.add_argument("--min-seconds", type=float, default=15)
     ap.add_argument(
         "--caption-pos",
-        choices=["bawah", "atas"],
-        default="bawah",
-        help="bawah = sepertiga bawah (default gaya); atas = di area badan atas, "
-        "untuk produk bawahan (celana/rok) supaya produk tidak tertutup",
+        choices=["auto", "bawah", "atas"],
+        default="auto",
+        help="auto = pilih otomatis supaya tidak menutup wajah (dan produk, lihat --area-produk); "
+        "bawah = sepertiga bawah; atas = area badan atas",
+    )
+    ap.add_argument(
+        "--area-produk",
+        choices=["bawah", "atas", "penuh"],
+        help="letak produk di frame (dari brief), mis. bawah untuk celana/rok; caption menghindarinya",
     )
     ap.add_argument(
         "--hook-end-sec",
@@ -457,6 +463,18 @@ def main() -> None:
     zoom_throughs, framing = plan_effects(scene_cuts, cut, hook)
     sfx = plan_sfx(hook, zoom_throughs, keywords)
 
+    posisi = {"mode": args.caption_pos}
+    if args.caption_pos == "auto":
+        try:
+            caption_y, lap = posisi_otomatis(tr["source"], 0.72, args.area_produk)
+            posisi.update(lap)
+        except Exception as e:  # noqa: BLE001 - deteksi gagal tidak boleh menghentikan rencana
+            caption_y = 0.72
+            posisi["gagal"] = str(e)
+    else:
+        caption_y = 0.72 if args.caption_pos == "bawah" else 0.36
+    posisi["y"] = caption_y
+
     music_dir = Path("public/musik")
     music = sorted(p for p in music_dir.glob("*") if p.suffix.lower() in {".mp3", ".wav", ".m4a"}) if music_dir.exists() else []
 
@@ -480,7 +498,7 @@ def main() -> None:
             "outlineColor": warna["outline"],
             "accentColor": warna["aksen"],
             "outroBg": warna["latar_gelap"],
-            "captionCenterY": 0.72 if args.caption_pos == "bawah" else 0.36,
+            "captionCenterY": caption_y,
             "keywordScale": 1.4,
             "uppercaseAll": False,
             "safeRight": 0.12,
@@ -523,6 +541,7 @@ def main() -> None:
             "09_zoom_through": [round(z / 1000, 2) for z in zoom_throughs],
             "05_digital_zoom": f"{len(framing)} pergantian framing",
         },
+        "posisiCaption": posisi,
         "kataKunci": keywords,
         "sfx": sfx,
         "musik": props["musicSrc"] or "TIDAK ADA (public/musik kosong)",

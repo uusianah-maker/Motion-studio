@@ -5,7 +5,7 @@ Semua perintah dijalankan dari `D:\VIBECODING\remotion` (PowerShell).
 ## Sekali saja
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install faster-whisper
+.\.venv\Scripts\python -m pip install -r pipelineequirements.txt   # faster-whisper, OpenCV (deteksi wajah)
 node pipeline/make-sfx.mjs        # buat public/sfx/pop.wav + whoosh.wav
 ```
 
@@ -43,9 +43,16 @@ $env:PYTHONIOENCODING="utf-8"
 .\.venv\Scripts\python pipeline\render.py out\a3\props.json --name aysilla_th_celana
 ```
 
+Rencana edit **tidak** langsung dirender: `jalan.py` berhenti setelah rencana dan menampilkan ringkasan.
+Render baru jalan kalau ditambah `--setuju` (aturan: rencana disetujui dulu).
+
+Video tanpa ucapan (hanya musik) ditolak otomatis (`pipeline/cek_ucapan.py`, kode keluar 2).
+
 Opsi `edit.py`:
 - `--placement tiktok|instagram`: CTA dari brand kit (keranjang kuning hanya TikTok).
-- `--caption-pos atas`: caption di badan atas, untuk produk bawahan (celana/rok) supaya produk tidak tertutup. Default `bawah`.
+- `--caption-pos auto` (default): posisi caption dipilih otomatis supaya tidak menutup wajah (`pipeline/posisi_caption.py`). `bawah`/`atas` untuk memaksa.
+- `--area-produk bawah|atas|penuh`: letak produk di frame; caption menghindarinya (wajah tetap prioritas).
+- `--brandkit`: format lama `brandkit/<brand>.json` atau ekspor Motion Studio `brand-kit-export/1`.
 - `--hook-end-sec 3.4`: judul hook ditahan sampai detik ini, misalnya untuk menutup teks yang sudah tertanam di video sumber.
 
 ## File

@@ -6,7 +6,7 @@ Pakai (dari D:\\VIBECODING\\remotion):
 Opsi penting:
   --draf                 render cepat setengah resolusi (untuk cek/revisi)
   --placement instagram  CTA versi IG (default tiktok)
-  --caption-pos atas     caption di badan atas (produk bawahan: celana/rok)
+  --caption-pos auto     (default) caption otomatis menghindari wajah; --area-produk bawah untuk celana/rok
   --hook-end-sec 3.4     tahan judul hook (tutup teks tertanam di video sumber)
   --transkrip-ulang      paksa Whisper jalan lagi (default: pakai transkrip lama
                          kalau videonya tidak berubah)
@@ -42,7 +42,8 @@ def main() -> None:
     ap.add_argument("--produk", required=True, help="nama produk untuk nama file, mis. celana")
     ap.add_argument("--nama", help="nama folder hasil (default: nama file video)")
     ap.add_argument("--placement", choices=["tiktok", "instagram"], default="tiktok")
-    ap.add_argument("--caption-pos", choices=["bawah", "atas"], default="bawah")
+    ap.add_argument("--caption-pos", choices=["auto", "bawah", "atas"], default="auto")
+    ap.add_argument("--area-produk", choices=["bawah", "atas", "penuh"], help="letak produk di frame; caption menghindarinya")
     ap.add_argument("--hook-end-sec", type=float)
     ap.add_argument("--sembunyikan", type=float, nargs="*", default=[], help="detik kata yang tidak ditampilkan")
     ap.add_argument("--draf", action="store_true")
@@ -110,6 +111,8 @@ def main() -> None:
         "--placement", args.placement,
         "--caption-pos", args.caption_pos,
     ]
+    if args.area_produk:
+        edit_cmd += ["--area-produk", args.area_produk]
     if args.hook_end_sec:
         edit_cmd += ["--hook-end-sec", str(args.hook_end_sec)]
     if args.sembunyikan:
