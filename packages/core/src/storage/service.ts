@@ -16,6 +16,7 @@ import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { newId } from './ids.js';
 import * as admin from './projectAdmin.js';
+import * as brand from './brand.js';
 import { type Workspace, readProject, withWorkspaceLock } from './workspace.js';
 
 /**
@@ -113,6 +114,15 @@ export class StorageService {
     return mutate(this.ws, 'svc.importProject', input.actor, () => admin.importProject(this.ws, { ...input, new_project_id: input.new_project_id ?? newProjectId() }));
   }
 
+  // ---- X06 Brand Kit (workspace level). Saving reconciles clocks: font/logo become held.
+  readBrandKit() {
+    return brand.readBrandKit(this.ws);
+  }
+
+  setBrandKit(input: Parameters<typeof brand.setBrandKit>[1]) {
+    return mutate(this.ws, 'svc.setBrandKit', input.actor, () => brand.setBrandKit(this.ws, input));
+  }
+
   private async revisionOrConflict(projectId: string, expected: number) {
     const current = await readProject(this.ws, projectId);
     if (current.revision !== expected) throw new StorageError('CONFLICT', 'Revisi proyek sudah berubah; muat ulang dulu', { expected, actual: current.revision });
@@ -208,6 +218,7 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_canvas: 'Ubah rasio',
   set_style: 'Ubah gaya teks',
   set_volume: 'Ubah volume',
+  set_brand_logo: 'Logo brand',
   set_track_mute: 'Bisukan/nyalakan track',
 };
 

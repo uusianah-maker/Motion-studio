@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { brandReferences, readBrandKit } from './brand.js';
 import { promises as fsp } from 'node:fs';
 import { audit } from './audit.js';
 import { StorageError, isStorageError } from './errors.js';
@@ -167,7 +168,8 @@ export async function releaseOrphanLeases(ws: Workspace, opts: { selfPid?: numbe
 
 export type Holder =
   | { kind: 'project'; project_id: string; status: 'active' | 'archived'; source: 'timeline' | 'snapshot' | 'undo'; detail: string }
-  | { kind: 'lease'; lease_id: string; job: JobKind; status: LeaseStatus };
+  | { kind: 'lease'; lease_id: string; job: JobKind; status: LeaseStatus }
+  | { kind: 'brand'; slot: 'font' | 'logo' };
 
 export interface DependencyIndex {
   schema_version: 1;
@@ -190,6 +192,8 @@ async function inputsFingerprint(ws: Workspace, projectIds: string[]): Promise<s
   h.update(await fsp.readFile(metaPath(ws, META_FILES.leases)));
   h.update('registry\n');
   h.update(await fsp.readFile(metaPath(ws, META_FILES.registry)));
+  h.update('brand\n');
+  h.update(await fsp.readFile(metaPath(ws, META_FILES.brand)).catch((e: NodeJS.ErrnoException) => (e.code === 'ENOENT' ? Buffer.from('none') : Promise.reject(e))));
   return h.digest('hex');
 }
 
@@ -234,6 +238,15 @@ export async function buildIndex(ws: Workspace): Promise<IndexResult> {
       checkRef(r.ref, `proyek ${id} (${r.source} ${r.detail})`);
       add(r.ref.version_id, { kind: 'project', project_id: id, status: m.status, source: r.source, detail: r.detail });
     }
+  }
+  // X06: the Brand Kit holds its font + logo like a project holds its clips.
+  try {
+    for (const b of brandReferences(await readBrandKit(ws))) {
+      checkRef(b.ref, `Brand Kit (${b.slot})`);
+      add(b.ref.version_id, { kind: 'brand', slot: b.slot });
+    }
+  } catch (e) {
+    errors.push(`Brand Kit: ${isStorageError(e) ? e.message : String(e)}`);
   }
   for (const l of leases.leases) {
     for (const r of l.media) {

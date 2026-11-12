@@ -14,6 +14,8 @@ import {
   loadRegistry,
   pickOps,
   planLocal,
+  readBrandKit,
+  type BrandContext,
   readProject,
 } from './core.js';
 import { ApiError } from './errors.js';
@@ -35,7 +37,7 @@ export type CopilotMode = 'local' | 'auto' | 'ai';
 export interface AiPlanner {
   /** Why AI cannot be used right now (no connection, budget, …) or null when it can. */
   unavailable(): Promise<string | null>;
-  plan(input: { project_id: string; prompt: string; timeline: unknown; selected_clip_ids: string[]; playhead_ms: number }): Promise<{
+  plan(input: { project_id: string; prompt: string; timeline: unknown; selected_clip_ids: string[]; playhead_ms: number; brand?: BrandContext }): Promise<{
     ops: unknown;
     rationale: string;
     warnings: string[];
@@ -147,6 +149,9 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
         const reqMode = body.mode ?? null;
         if (reqMode !== null && reqMode !== 'local' && reqMode !== 'auto' && reqMode !== 'ai') throw bad('mode harus local | auto | ai');
         // Checkpoint F F-5: a request may narrow the admin's mode (e.g. force "local"), never widen it.
+        // X06: the planner may use the Brand Kit's colours / font / logo (never file ids).
+        const kit = await readBrandKit(ws);
+        const brand: BrandContext = { colors: kit.colors, text_color: kit.text_color, has_font: !!kit.font, has_logo: !!kit.logo };
         const RANK: Record<CopilotMode, number> = { local: 0, auto: 1, ai: 2 };
         const allowed: CopilotMode = opts.mode ? await opts.mode() : 'local';
         const mode: CopilotMode = reqMode && RANK[reqMode as CopilotMode] < RANK[allowed] ? (reqMode as CopilotMode) : allowed;
@@ -154,7 +159,7 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
         const project = await readProject(ws, projectId);
 
         if (mode !== 'ai') {
-          const local = planLocal(prompt, { timeline: project.timeline, selected_clip_ids: sel as string[], playhead_ms: playhead });
+          const local = planLocal(prompt, { timeline: project.timeline, selected_clip_ids: sel as string[], playhead_ms: playhead, brand });
           if (local.ok) return propose({ project_id: projectId, source: 'local', prompt, ops: local.ops, rationale: local.rationale, warnings: local.warnings });
           if (mode === 'local' || !opts.ai) {
             await audit(ws, { op: 'copilot.plan', actor: 'ai', outcome: 'blocked', project_id: projectId, source: 'local', reason: 'UNSUPPORTED' });
@@ -165,7 +170,7 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
         if (!opts.ai) return { plan: null, unsupported: { message: 'AI belum dipasang di server ini.', examples: LOCAL_EXAMPLES, ai_available: false } };
         const why = await opts.ai.unavailable();
         if (why) return { plan: null, unsupported: { message: why, examples: LOCAL_EXAMPLES, ai_available: false } };
-        const out = await opts.ai.plan({ project_id: projectId, prompt, timeline: project.timeline, selected_clip_ids: sel as string[], playhead_ms: playhead });
+        const out = await opts.ai.plan({ project_id: projectId, prompt, timeline: project.timeline, selected_clip_ids: sel as string[], playhead_ms: playhead, brand });
         return propose({ project_id: projectId, source: 'ai', prompt, ops: out.ops, rationale: out.rationale, warnings: out.warnings, provider: out.provider, cost_usd: out.cost_usd });
       },
     },

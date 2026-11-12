@@ -7,6 +7,7 @@ import { Preview } from './Preview';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
 import { ProjectMenu } from './ProjectMenu';
+import { useBrand } from '../brand';
 import { PresetPanel } from './PresetPanel';
 import { RenderDialog } from './RenderDialog';
 import { TranscriptDialog } from './TranscriptDialog';
@@ -47,6 +48,8 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
   const [styleDraft, setStyleDraft] = useState<{ clip_id: string; style: Partial<TextStyle> } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** X06: Brand Kit (logo + font) for preview, inspector swatches and the Brand preset. */
+  const brand = useBrand(api);
   const [selected, setSelected] = useState<string | null>(null);
   const [playhead, setPlayhead] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -277,6 +280,8 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
             selectedClipId={selected}
             onSelectClip={(id) => setSelected(id)}
             styleDraft={styleDraft}
+            brand={brand}
+            onBrandLogo={(on) => void edit([{ op: 'set_brand_logo', on }])}
             onMoveText={(id, x, y) => {
               setSelected(id);
               void edit([{ op: 'set_style', clip_id: id, style: { x, y } }]);
@@ -299,12 +304,14 @@ export function EditorView({ api, projectId, mobileProjects, onSaved, onProjectC
               sourceMs={sourceMs(sel)}
               busy={busy}
               readOnly={project.status === 'archived'}
+              brand={brand?.kit ?? null}
               onEdit={(ops) => edit(ops)}
               onDraft={setStyleDraft}
             />
           )}
           {project && (
             <PresetPanel
+              brand={brand?.kit ?? null}
               project={project}
               playhead={playhead}
               busy={locked}

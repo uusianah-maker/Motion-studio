@@ -132,7 +132,7 @@ export function reconcileClocks(reg: Registry, index: DependencyIndex, now: numb
   for (const v of Object.values(reg.versions)) {
     if (v.lifecycle !== 'active') continue;
     const holders = holdersOf(index, v.version_id);
-    if (!v.ever_referenced && holders.some((h) => h.kind === 'project')) {
+    if (!v.ever_referenced && holders.some((h) => h.kind === 'project' || h.kind === 'brand')) {
       changes.push({ version_id: v.version_id, field: 'ever_referenced', from: false, to: true });
       v.ever_referenced = true;
     }

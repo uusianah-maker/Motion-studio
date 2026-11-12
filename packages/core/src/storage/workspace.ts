@@ -29,6 +29,7 @@ export const META_FILES = {
   registry: 'registry.json',
   leases: 'leases.json',
   deps: 'deps.json',
+  brand: 'brand_kit.json',
   purgeRequests: 'purge_requests.json',
   audit: 'audit.log.jsonl',
   lock: 'workspace.lock',

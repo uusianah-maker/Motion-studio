@@ -302,6 +302,19 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       },
     })),
 
+    // X06 Brand Kit (workspace level).
+    { method: 'GET', path: '/api/brand', handle: async ({ svc }) => ({ brand: await svc.readBrandKit() }) },
+    {
+      method: 'POST',
+      path: '/api/brand',
+      handle: async ({ req, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['expected_revision', 'kit']);
+        const r = await svc.setBrandKit({ expected_revision: revision(body), kit: body.kit, actor });
+        return { brand: r.result, clocks_ok: r.clocks.ok };
+      },
+    },
+
     // X05 project management. Export holds no files or paths (PC-13: files stay on the PC).
     {
       method: 'POST',

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { TEXT_PRESETS } from '../../../../packages/core/dist/storage/textPresets.js';
 import { DEFAULT_STYLES, type TextStyle, effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
-import type { Clip, EditOp, Track } from '../api';
+import type { BrandKit, Clip, EditOp, Track } from '../api';
 import { formatDuration } from '../lib';
 
 export type SelectedClip = Clip & { kind: Track['kind'] };
@@ -21,6 +21,7 @@ export function InspectorPanel({
   onEdit,
   onDraft,
   readOnly = false,
+  brand = null,
 }: {
   clip: SelectedClip;
   name: string;
@@ -30,6 +31,8 @@ export function InspectorPanel({
   onDraft: (d: { clip_id: string; style: Partial<TextStyle> } | null) => void;
   /** X05: archived project — everything is shown but nothing can be changed. */
   readOnly?: boolean;
+  /** X06: Brand Kit colours + whether it has a font. */
+  brand?: BrandKit | null;
 }) {
   const isText = clip.kind === 'text' || clip.kind === 'subtitle';
   const [start, setStart] = useState(sec(clip.start_ms));
@@ -217,13 +220,21 @@ export function InspectorPanel({
             </label>
             <label>
               Warna teks
-              <input type="color" aria-label="Warna teks" value={s.color} onChange={(e) => change({ color: e.target.value })} />
+              <span className="row" style={{ gap: 4 }}>
+                <input type="color" aria-label="Warna teks" value={s.color} onChange={(e) => change({ color: e.target.value })} />
+                {[...(brand?.colors ?? []), ...(brand ? [brand.text_color] : [])].filter((c, i, a) => a.indexOf(c) === i).map((c) => (
+                  <button key={c} className="swatchBtn" style={{ background: c }} aria-label={`Pakai warna brand ${c} untuk teks`} title={`Warna brand ${c}`} onClick={() => change({ color: c })} />
+                ))}
+              </span>
             </label>
             <label>
               Kotak latar
               <span className="row" style={{ gap: 6 }}>
                 <input type="checkbox" aria-label="Pakai kotak latar" checked={!!s.bg} onChange={(e) => change({ bg: e.target.checked ? (s.bg ?? '#000000') : null })} />
                 <input type="color" aria-label="Warna kotak" value={s.bg ?? '#000000'} disabled={!s.bg} onChange={(e) => change({ bg: e.target.value })} />
+                {(brand?.colors ?? []).map((c) => (
+                  <button key={c} className="swatchBtn" style={{ background: c }} aria-label={`Pakai warna brand ${c} untuk kotak`} title={`Kotak warna brand ${c}`} onClick={() => change({ bg: c, bg_opacity: 1 })} />
+                ))}
               </span>
             </label>
             {s.bg && (
@@ -233,6 +244,15 @@ export function InspectorPanel({
               </label>
             )}
           </div>
+          <label className="inspFull">
+            Font
+            <select aria-label="Font teks" value={s.font} onChange={(e) => change({ font: e.target.value as 'default' | 'brand' })}>
+              <option value="default">Bawaan</option>
+              <option value="brand" disabled={!brand?.font && s.font !== 'brand'}>
+                Brand{brand?.font ? '' : ' (belum ada di Brand Kit)'}
+              </option>
+            </select>
+          </label>
           <div className="row wrap" style={{ gap: 6 }}>
             <label className="inline">
               <input type="checkbox" aria-label="Tebal" checked={s.bold} onChange={(e) => change({ bold: e.target.checked })} /> Tebal

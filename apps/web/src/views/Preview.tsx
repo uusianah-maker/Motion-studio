@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { LoadedBrand } from '../brand';
 import type { Api, Clip, Media, Project } from '../api';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { TextOverlay } from './TextOverlay';
@@ -26,6 +27,8 @@ export function Preview({
   onSelectClip,
   styleDraft = null,
   onMoveText,
+  brand = null,
+  onBrandLogo,
 }: {
   api: Api;
   project: Project;
@@ -41,6 +44,9 @@ export function Preview({
   onSelectClip?: (id: string) => void;
   styleDraft?: { clip_id: string; style: Partial<TextStyle> } | null;
   onMoveText?: (id: string, x: number, y: number) => void;
+  /** X06: Brand Kit (logo URL) and the per-project logo switch. */
+  brand?: LoadedBrand | null;
+  onBrandLogo?: (on: boolean) => void;
 }) {
   const ratio: CanvasRatio = project.timeline.canvas?.ratio ?? '9:16';
   const [safe, setSafe] = useState(true);
@@ -180,9 +186,16 @@ export function Preview({
             ))}
           </select>
         </span>
-        <label className="muted" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input type="checkbox" checked={safe} onChange={(e) => setSafe(e.target.checked)} /> Area aman
-        </label>
+        <span className="row" style={{ gap: 12 }}>
+          {onBrandLogo && (
+            <label className="muted" style={{ display: 'flex', gap: 6, alignItems: 'center' }} title={brand?.kit.logo ? 'Tampilkan logo Brand Kit di pratinjau & render' : 'Belum ada logo di Brand Kit'}>
+              <input type="checkbox" aria-label="Logo brand" checked={!!project.timeline.brand_logo} disabled={busy || (!brand?.kit.logo && !project.timeline.brand_logo)} onChange={(e) => onBrandLogo(e.target.checked)} /> Logo
+            </label>
+          )}
+          <label className="muted" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input type="checkbox" checked={safe} onChange={(e) => setSafe(e.target.checked)} /> Area aman
+          </label>
+        </span>
       </div>
       <div className="canvasArea">
         <div className="canvas live" ref={canvasRef} style={{ aspectRatio: aspectCss(ratio) }} aria-label="Area pratinjau">
@@ -203,6 +216,20 @@ export function Preview({
               {...(onMoveText && !busy ? { onMove: (x: number, y: number) => onMoveText(c.clip_id, x, y) } : {})}
             />
           ))}
+          {project.timeline.brand_logo && brand?.kit.logo && brand.logoUrl && (
+            <img
+              className="brandLogo"
+              data-corner={brand.kit.logo.corner}
+              src={brand.logoUrl}
+              alt="Logo brand"
+              style={{
+                width: `${brand.kit.logo.size}%`,
+                opacity: brand.kit.logo.opacity,
+                [brand.kit.logo.corner.startsWith('t') ? 'top' : 'bottom']: `${Math.min(canvasPx.w, canvasPx.h) * 0.04}px`,
+                [brand.kit.logo.corner.endsWith('l') ? 'left' : 'right']: `${Math.min(canvasPx.w, canvasPx.h) * 0.04}px`,
+              }}
+            />
+          )}
           {safe && <div className="safeArea" style={{ top: `${st}%`, right: `${sr}%`, bottom: `${sb}%`, left: `${sl}%` }} aria-hidden="true" />}
           <span className="canvasTag">● PREVIEW</span>
         </div>

@@ -30,6 +30,7 @@ export type { RestoreResult } from './storage/restore.js';
 export { type CycleResult, GcScheduler } from './storage/scheduler.js';
 export { recoverOnStartup, type RecoveryReport } from './storage/recovery.js';
 export { StorageService, describeOps } from './storage/service.js';
+export { type BrandKit, type BrandLogo, EMPTY_BRAND, LOGO_CORNERS, LOGO_LIMITS, MAX_BRAND_COLORS, brandRenderRefs, readBrandKit } from './storage/brand.js';
 export { EXPORT_FORMAT, MAX_PROJECT_NAME, type ProjectExport, assertEditable, cleanName } from './storage/projectAdmin.js';
 export { COLOR_WORDS, type PresetId, TEXT_PRESETS, TONES, type TextPreset, presetById } from './storage/textPresets.js';
 export {
@@ -74,5 +75,6 @@ export {
   pickOps,
   planLocal,
   timelineEndMs,
+  type BrandContext,
 } from './storage/copilot.js';
 export { type Workspace, type WorkspaceOptions, createProject, initWorkspace, listProjectIds, openWorkspace, readProject } from './storage/workspace.js';

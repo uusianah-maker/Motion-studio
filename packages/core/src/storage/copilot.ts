@@ -72,14 +72,14 @@ function findClip(t: Timeline, id: string) {
   return null;
 }
 
-const STYLE_WORD: Record<keyof TextStyle, string> = { x: 'posisi', y: 'posisi', size: 'ukuran', width: 'lebar', color: 'warna', bg: 'kotak', bg_opacity: 'opasitas kotak', bold: 'tebal', outline: 'outline', align: 'perataan' };
+const STYLE_WORD: Record<keyof TextStyle, string> = { x: 'posisi', y: 'posisi', size: 'ukuran', width: 'lebar', color: 'warna', bg: 'kotak', bg_opacity: 'opasitas kotak', bold: 'tebal', outline: 'outline', align: 'perataan', font: 'font' };
 /** "warna #e53935, kotak, posisi" — which properties a style change touches. */
 export const styleSummary = (s: Partial<TextStyle>) =>
   [
     ...new Set(
       Object.keys(s)
         .filter((k) => !(k === 'bg_opacity' && 'bg' in s))
-        .map((k) => (k === 'color' ? `warna ${s.color}` : k === 'bg' ? (s.bg ? `kotak ${s.bg}` : 'tanpa kotak') : STYLE_WORD[k as keyof TextStyle])),
+        .map((k) => (k === 'color' ? `warna ${s.color}` : k === 'bg' ? (s.bg ? `kotak ${s.bg}` : 'tanpa kotak') : k === 'font' ? (s.font === 'brand' ? 'font brand' : 'font bawaan') : STYLE_WORD[k as keyof TextStyle])),
     ),
   ].join(', ');
 
@@ -107,6 +107,8 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return `Ubah teks ${ref(op.clip_id)} → ${quote(op.text)}`;
     case 'set_canvas':
       return `Ubah rasio ke ${op.ratio}`;
+    case 'set_brand_logo':
+      return op.on ? 'Tampilkan logo brand' : 'Sembunyikan logo brand';
     case 'set_style':
       return `Ubah gaya ${ref(op.clip_id)}: ${styleSummary(op.style)}`;
     case 'set_volume':
@@ -170,6 +172,7 @@ export function diffTimelines(before: Timeline, after: Timeline): DiffItem[] {
     const mb = after.tracks.some((t) => t.kind === kind && t.muted);
     if (ma !== mb) items.push({ kind: 'change', track_kind: kind, clip_id: null, before: null, after: null, summary: `~ track ${TRACK_NAME[kind]}: ${mb ? 'dibisukan' : 'suara dinyalakan'}` });
   }
+  if (!!before.brand_logo !== !!after.brand_logo) items.push({ kind: 'canvas', track_kind: null, clip_id: null, before: null, after: null, summary: after.brand_logo ? 'Logo brand: tampil' : 'Logo brand: disembunyikan' });
   const ra = before.canvas?.ratio ?? '9:16';
   const rb = after.canvas?.ratio ?? '9:16';
   if (ra !== rb) items.push({ kind: 'canvas', track_kind: null, clip_id: null, before: null, after: null, summary: `Rasio ${ra} → ${rb}` });
@@ -207,10 +210,19 @@ export function pickOps(ops: EditOp[], accept: unknown): EditOp[] {
 
 // ------------------------------------------------------------------ local rule planner
 
+/** X06: what the planner may use from the Brand Kit (no file ids: only what words can ask for). */
+export interface BrandContext {
+  colors: string[];
+  text_color: string;
+  has_font: boolean;
+  has_logo: boolean;
+}
+
 export interface PlanContext {
   timeline: Timeline;
   selected_clip_ids?: string[];
   playhead_ms?: number;
+  brand?: BrandContext;
 }
 
 export type LocalPlanResult = { ok: true; ops: EditOp[]; rationale: string; warnings: string[] } | { ok: false; message: string };
@@ -236,15 +248,44 @@ export const LOCAL_EXAMPLES = [
   'posisi teks bawah, lebih besar (klip teks terpilih)',
   'volume 40% (klip video/audio terpilih)',
   'bisukan track video',
+  'pakai brand / warna brand / font brand (klip teks terpilih)',
+  'tampilkan logo / sembunyikan logo',
 ];
 
 /**
  * Style words in a command (X03): preset, tone, text colour, box colour / no box, position,
  * bigger/smaller. Returns null when the command mentions no style at all.
  */
-export function parseStyleWords(low: string, base?: Partial<TextStyle>): Partial<TextStyle> | null {
+export function parseStyleWords(low: string, base?: Partial<TextStyle>, brand?: BrandContext): Partial<TextStyle> | null {
   let style: Partial<TextStyle> = {};
   let hit = false;
+  // X06: brand words — "pakai brand"/"gaya brand" (font + main colour box + text colour),
+  // "warna brand", "kotak brand", "font brand", "font bawaan".
+  if (/\bbrand\b/.test(low) || /\bfont\s+(?:bawaan|default|biasa)\b/.test(low)) {
+    const needColors = () => (brand?.colors.length ? brand.colors : bad('Brand Kit belum punya warna. Isi dulu di menu Brand Kit.'));
+    if (/\b(?:pakai|gaya|style|tema|ala)\s+brand\b|\bbrand\s*kit\b/.test(low)) {
+      const [main] = needColors();
+      style = { ...style, bg: main!, bg_opacity: 1, color: brand!.text_color, ...(brand!.has_font ? { font: 'brand' as const } : {}) };
+      hit = true;
+    }
+    if (/\b(?:warna|color)\s+(?:teks\s+)?brand\b/.test(low)) {
+      style.color = needColors()[0]!;
+      hit = true;
+    }
+    if (/\b(?:kotak|latar|background|bg)\s+brand\b/.test(low)) {
+      style.bg = needColors()[0]!;
+      style.bg_opacity = 1;
+      hit = true;
+    }
+    if (/\bfont\s+brand\b/.test(low)) {
+      if (!brand?.has_font) bad('Brand Kit belum punya font. Unggah file .ttf/.otf lalu pilih di Brand Kit.');
+      style.font = 'brand';
+      hit = true;
+    } else if (/\bfont\s+(?:bawaan|default|biasa)\b/.test(low)) {
+      style.font = 'default';
+      hit = true;
+    }
+  }
   const colorOf = (w: string) => (/^#[0-9a-f]{6}$/.test(w) ? w : Object.hasOwn(COLOR_WORDS, w) ? COLOR_WORDS[w] : undefined); // G-4: no inherited keys
   const preset = /\b(?:preset|jadikan|gaya|style)\s+(hook|usp|cta|sale|subtitle)\b/.exec(low);
   if (preset) {
@@ -444,6 +485,15 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
         continue;
       }
 
+      // ---- brand logo (X06): "tampilkan logo" / "sembunyikan logo"
+      const logo = /\b(tampilkan|pasang|munculkan|show|sembunyikan|hilangkan|hapus|lepas|hide)\b[^.;]*\blogo\b/.exec(lowBare);
+      if (logo) {
+        const on = /tampilkan|pasang|munculkan|show/.test(logo[1]!);
+        if (on && !ctx.brand?.has_logo) return { ok: false, message: 'Brand Kit belum punya logo. Unggah gambar logo lalu pilih di Brand Kit.' };
+        push({ op: 'set_brand_logo', on }, on ? 'tampilkan logo' : 'sembunyikan logo');
+        continue;
+      }
+
       // ---- sound (X04): "bisukan track musik/audio/video/b-roll", "volume 40%", "bisukan klip"
       const trackMute = /\b(bisukan|mute|matikan suara|nyalakan suara|unmute)\b.*\btrack\s+(video|b-?roll|audio|musik)\b/.exec(lowBare);
       if (trackMute) {
@@ -461,10 +511,10 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
       }
 
       // ---- style of the selected text (X03): colour, box, preset, tone, position, size
-      if (quoted === null && /\b(warna|color|colour|kotak|latar|background|preset|jadikan|tone|nuansa|gaya|style|posisi|taruh|letakkan|besar|kecil|perbesar|perkecil|besarkan|kecilkan|minimalis|minimal|elegan|elegant|tegas|tanpa)\b/.test(lowBare) && !/\b(potong|split|geser|pindahkan klip|hapus klip|durasi|rasio|ratio)\b/.test(lowBare)) {
+      if (quoted === null && /\b(warna|color|colour|kotak|latar|background|preset|jadikan|tone|nuansa|gaya|style|posisi|taruh|letakkan|besar|kecil|perbesar|perkecil|besarkan|kecilkan|minimalis|minimal|elegan|elegant|tegas|tanpa|brand|font)\b/.test(lowBare) && !/\b(potong|split|geser|pindahkan klip|hapus klip|durasi|rasio|ratio)\b/.test(lowBare)) {
         const f = needOneSelected('ubah gaya teks');
         if (f.track.kind !== 'text' && f.track.kind !== 'subtitle') throw new StorageError('EDIT_INVALID', 'Klip terpilih bukan klip teks/subtitle.');
-        const style = parseStyleWords(lowBare, { ...DEFAULT_TEXT_SIZE(f.track.kind), ...(f.clip.style ?? {}) });
+        const style = parseStyleWords(lowBare, { ...DEFAULT_TEXT_SIZE(f.track.kind), ...(f.clip.style ?? {}) }, ctx.brand);
         if (!style) return { ok: false, message: 'Gaya apa yang mau diubah? Contoh: "warna teks merah", "kotak kuning", "pakai preset cta", "posisi bawah", "lebih besar".' };
         push({ op: 'set_style', clip_id: f.clip.clip_id, style }, 'ubah gaya');
         continue;
@@ -546,7 +596,7 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
         // X03: the preset look of the kind of text asked for, plus any colour/tone/position words.
         const presetId: PresetId | null = isHook ? 'hook' : isCta ? 'cta' : isSale ? 'sale' : isUsp ? 'usp' : null;
         const base = presetId ? { ...presetById(presetId)!.style } : {};
-        const extra = parseStyleWords(lowBare, base) ?? {};
+        const extra = parseStyleWords(lowBare, base, ctx.brand) ?? {};
         const style = { ...base, ...extra };
         push({ op: 'add_clip', track_kind: kind, text: quoted, ...(Object.keys(style).length ? { style } : {}), start_ms: start, duration_ms: end - start }, presetId ?? kind);
         continue;

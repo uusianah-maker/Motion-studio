@@ -23,7 +23,7 @@ Aturan tetap:
 **CHECKPOINT G** — *lulus 2026-11-11 setelah perbaikan (0 High, 1 Medium, 5 Low; `audit/CHECKPOINT_G/`).*
 
 ## Fase B — P0 sisa + P1 kunci
-- [ ] X06 **Brand Kit** (font, warna, logo) dipakai preset & Copilot.
+- [x] X06 **Brand Kit** (font, warna, logo) dipakai preset & Copilot. *Selesai 2026-11-12: halaman Brand (warna, warna teks, font .ttf/.otf, logo + posisi/ukuran/opasitas), preset Brand, swatch + Font di inspector, saklar Logo per proyek, Copilot "pakai brand / warna brand / font brand / tampilkan logo"; pratinjau = render; UI Chrome 13/13.*
 - [ ] X07 **Deteksi hening & adegan → review potongan** (FFmpeg, tanpa LLM), sesuai PRD T15.
 - [ ] X08 **Brand guard** sebelum render: harga kedaluwarsa dan daftar klaim terlarang.
 - [ ] X09 **Varian:** rasio / hook / CTA → antrean render.

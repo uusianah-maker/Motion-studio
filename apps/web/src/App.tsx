@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Api, ProjectSummary } from './api';
 import { AiView } from './views/AiView';
+import { BrandView } from './views/BrandView';
 import { EditorView } from './views/EditorView';
 import { MediaView } from './views/MediaView';
 import { StorageView } from './views/StorageView';
 import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 
-export type View = 'editor' | 'media' | 'trash' | 'storage' | 'ai';
+export type View = 'editor' | 'media' | 'brand' | 'trash' | 'storage' | 'ai';
 
 const NAV: { id: View; sym: string; label: string }[] = [
   { id: 'editor', sym: '▤', label: 'Editor' },
   { id: 'media', sym: '◇', label: 'Media' },
+  { id: 'brand', sym: '◆', label: 'Brand' },
   { id: 'trash', sym: '♲', label: 'Trash' },
   { id: 'storage', sym: '▥', label: 'Storage' },
   { id: 'ai', sym: '✦', label: 'AI' },
@@ -111,6 +113,7 @@ export function App({ api, workspaceId, account = null }: { api: Api; workspaceI
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
         {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at } : x)) ?? list)} onProjectCreated={openNew} />}
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
+        {view === 'brand' && <BrandView api={api} />}
         {view === 'trash' && <TrashView api={api} />}
         {view === 'storage' && <StorageView api={api} />}
         {view === 'ai' && <AiView api={api} />}

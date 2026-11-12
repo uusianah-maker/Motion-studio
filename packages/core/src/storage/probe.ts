@@ -69,3 +69,20 @@ export function validateProbe(x: unknown): MediaProbe | null {
   }
   return { duration_ms: o.duration_ms, width: o.width ?? null, height: o.height ?? null, video_codec: o.video_codec ?? null, audio_codec: o.audio_codec ?? null };
 }
+
+/** X06: a still image (logo). `null` = not a PNG/JPEG/WebP picture ffprobe can read. */
+export async function probeImage(file: string): Promise<{ width: number; height: number; codec: string } | null> {
+  let out: string;
+  try {
+    out = await run(ffprobeBin(), ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,width,height', '-of', 'json', file]);
+  } catch {
+    return null;
+  }
+  try {
+    const j = JSON.parse(out) as { streams?: { codec_type?: string; codec_name?: string; width?: number; height?: number }[] };
+    const s = (j.streams ?? []).find((x) => x.codec_type === 'video' && ['png', 'mjpeg', 'webp'].includes(x.codec_name ?? ''));
+    return s && s.width && s.height && s.width <= 8192 && s.height <= 8192 ? { width: s.width, height: s.height, codec: s.codec_name! } : null;
+  } catch {
+    return null;
+  }
+}

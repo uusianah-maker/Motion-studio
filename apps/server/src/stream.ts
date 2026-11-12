@@ -55,6 +55,13 @@ const MIME: Record<string, string> = {
   '.aac': 'audio/aac',
   '.wav': 'audio/wav',
   '.ogg': 'audio/ogg',
+  // X06 Brand Kit: logo preview + brand font in the editor.
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
 };
 export const mimeFor = (rel: string): string => MIME[path.extname(rel).toLowerCase()] ?? 'application/octet-stream';
 

@@ -5,6 +5,19 @@ import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js
  * carries `x-motion-request: 1`, which the server requires (a cross-site page cannot send it).
  */
 
+/** X06: workspace Brand Kit. */
+export interface BrandKit {
+  schema_version: 1;
+  revision: number;
+  updated_at: number;
+  name: string;
+  colors: string[];
+  text_color: string;
+  font: { media_id: string; version_id: string } | null;
+  logo: { ref: { media_id: string; version_id: string }; corner: 'tl' | 'tr' | 'bl' | 'br'; size: number; opacity: number } | null;
+}
+export type BrandKitInput = Pick<BrandKit, 'name' | 'colors' | 'text_color' | 'font' | 'logo'>;
+
 /** X05: a project file (timeline + which media versions it uses; never files or paths). */
 export interface ProjectExport {
   format: 'motion-studio-project';
@@ -45,6 +58,7 @@ export type EditOp =
   | { op: 'delete_clip'; clip_id: string }
   | { op: 'set_text'; clip_id: string; text: string }
   | { op: 'set_canvas'; ratio: '9:16' | '3:4' | '1:1' | '16:9' }
+  | { op: 'set_brand_logo'; on: boolean }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio'; muted: boolean };
@@ -56,7 +70,7 @@ export interface Track {
   muted?: boolean;
 }
 export interface Project extends Required<Omit<ProjectSummary, 'error'>> {
-  timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' } };
+  timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' }; brand_logo?: boolean };
   history: { undo: number; redo: number; undo_label: string | null; redo_label: string | null };
 }
 
@@ -106,7 +120,7 @@ export interface PurgePlan {
     filename: string;
     size: number;
     trashed_at: number | null;
-    referenced_by: ({ kind: 'project'; project_id: string; source: string } | { kind: 'lease'; lease_id: string; job: string })[];
+    referenced_by: ({ kind: 'project'; project_id: string; source: string } | { kind: 'lease'; lease_id: string; job: string } | { kind: 'brand'; slot: 'font' | 'logo' })[];
     protected_by: string[];
     backup: { status: 'verified' | 'unverified'; location?: string };
     purgeable: boolean;
@@ -347,6 +361,8 @@ export function createApi(token: string | null, base = '') {
     projects: () => call<{ projects: ProjectSummary[] }>('GET', '/api/projects').then((r) => r.projects),
     createProject: (name: string) => call<{ project: ProjectSummary }>('POST', '/api/projects', { json: { name } }).then((r) => r.project),
     project: (id: string) => call<{ project: Project }>('GET', `/api/projects/${encodeURIComponent(id)}`).then((r) => r.project),
+    brand: () => call<{ brand: BrandKit }>('GET', '/api/brand').then((r) => r.brand),
+    saveBrand: (expected_revision: number, kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', '/api/brand', { json: { expected_revision, kit } }).then((r) => r.brand),
     /** X05: rename and/or archive (read-only) / activate. */
     updateProject: (id: string, expected_revision: number, patch: { name?: string; status?: 'active' | 'archived' }) =>
       call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/meta`, { json: { expected_revision, ...patch } }).then((r) => r.project),

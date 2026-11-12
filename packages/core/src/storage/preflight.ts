@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { brandRenderRefs, readBrandKit } from './brand.js';
 import { audit } from './audit.js';
 import { type Lease, createLease, loadLeases, releaseLease } from './deps.js';
 import { StorageError } from './errors.js';
@@ -80,6 +81,10 @@ export async function renderPreflight(
   const refs: MediaRef[] = [];
   for (const t of project.timeline.tracks) for (const c of t.clips) if (c.media) refs.push(c.media);
   if (!refs.length) problems.push({ code: 'NO_MEDIA' });
+  // X06: Brand Kit font/logo this render uses are verified and leased like clip media.
+  const brand = brandRenderRefs(project.timeline, await readBrandKit(ws));
+  if (brand.font) refs.push(brand.font);
+  if (brand.logo) refs.push(brand.logo.ref);
 
   for (const ref of refs) {
     if (seen.has(ref.version_id)) continue;

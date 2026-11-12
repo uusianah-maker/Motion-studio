@@ -202,7 +202,7 @@ function PurgeDialog({ api, versionIds, onClose }: { api: Api; versionIds: strin
                     </small>
                     {i.referenced_by.length > 0 && (
                       <small>
-                        Dipakai: {i.referenced_by.map((h) => (h.kind === 'project' ? `proyek ${h.project_id}` : `job ${h.job}`)).join(', ')}
+                        Dipakai: {i.referenced_by.map((h) => (h.kind === 'project' ? `proyek ${h.project_id}` : h.kind === 'brand' ? `Brand Kit (${h.slot})` : `job ${h.job}`)).join(', ')}
                       </small>
                     )}
                   </td>

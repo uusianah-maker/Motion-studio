@@ -1,5 +1,6 @@
 import { TEXT_PRESETS, type TextPreset } from '../../../../packages/core/dist/storage/textPresets.js';
-import type { EditOp, Project } from '../api';
+import type { BrandKit, EditOp, Project } from '../api';
+import { brandStyle } from '../brand';
 
 /** First start ≥ `from` where a clip of `len` fits on `track` without overlapping. */
 export function freeSlot(project: Project, track: 'text' | 'subtitle', from: number, len: number): number {
@@ -22,7 +23,7 @@ export const presetOp = (p: TextPreset, project: Project, playhead: number): Edi
  * Text preset library (X03, PRD §7 P0): one click adds the preset at the playhead (or the next
  * free spot on its track) with its look and sample copy; edit the words in the inspector.
  */
-export function PresetPanel({ project, playhead, busy, onAdd }: { project: Project; playhead: number; busy: boolean; onAdd: (op: EditOp, label: string) => void }) {
+export function PresetPanel({ project, playhead, busy, onAdd, brand = null }: { project: Project; playhead: number; busy: boolean; onAdd: (op: EditOp, label: string) => void; brand?: BrandKit | null }) {
   return (
     <section className="presets" aria-label="Preset teks">
       <div className="inspHead">
@@ -42,6 +43,20 @@ export function PresetPanel({ project, playhead, busy, onAdd }: { project: Proje
             {p.label}
           </button>
         ))}
+        {brand && brand.colors.length > 0 && (
+          <button
+            className="presetBtn"
+            disabled={busy}
+            title={`Teks dengan warna & font ${brand.name}`}
+            aria-label="Tambah preset Brand"
+            onClick={() => onAdd({ op: 'add_clip', track_kind: 'text', text: brand.name, style: { ...brandStyle(brand), size: 6.5 }, start_ms: freeSlot(project, 'text', playhead, 3000), duration_ms: 3000 }, 'Brand')}
+          >
+            <span className="presetSwatch" style={{ color: brand.text_color, background: brand.colors[0], fontWeight: 800 }} aria-hidden="true">
+              Aa
+            </span>
+            Brand
+          </button>
+        )}
       </div>
     </section>
   );

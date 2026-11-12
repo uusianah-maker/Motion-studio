@@ -37,6 +37,8 @@ export interface Timeline {
   tracks: Track[];
   /** Default 9:16 when absent. */
   canvas?: { ratio: CanvasRatio };
+  /** X06: burn the Brand Kit logo onto this project's renders (and show it in the preview). */
+  brand_logo?: boolean;
 }
 
 export interface Track {
@@ -149,6 +151,10 @@ function validateTimeline(x: unknown, where: string): Timeline {
     const c = obj(o.canvas, `${where}.canvas`);
     if (!CANVAS_RATIOS.includes(c.ratio as CanvasRatio)) fail(`${where}.canvas.ratio`, `harus salah satu ${CANVAS_RATIOS.join(', ')}`);
     out.canvas = { ratio: c.ratio as CanvasRatio };
+  }
+  if (o.brand_logo !== undefined) {
+    if (typeof o.brand_logo !== 'boolean') fail(`${where}.brand_logo`, 'harus true/false');
+    if (o.brand_logo) out.brand_logo = true;
   }
   return out;
 }

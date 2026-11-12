@@ -12,6 +12,7 @@ import {
   type Api,
   ApiError,
   type ApplyReply,
+  type BrandKit,
   type Clip,
   type Cue,
   type Dashboard,
@@ -115,6 +116,7 @@ interface Stored {
 const hookRef = { media_id: 'm_00000000000000a1', version_id: V_HOOK };
 const brollRef = { media_id: 'm_00000000000000b1', version_id: V_BROLL };
 const projects = new Map<string, Stored>();
+let brandKit: BrandKit = { schema_version: 1, revision: 1, updated_at: Date.now(), name: 'Toko Demo', colors: ['#7a1f5c', '#f4d35e'], text_color: '#ffffff', font: null, logo: null };
 function addProject(id: string, name: string, tracks: Project['timeline']['tracks'], ageDays: number) {
   const t = now() - ageDays * DAY;
   projects.set(id, {
@@ -160,7 +162,7 @@ function commit(s: Stored, expected: number, ops: EditOp[], label: string): Proj
   return view(s);
 }
 
-const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_track_mute: 'Bisukan/nyalakan track' };
+const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_brand_logo: 'Logo brand', set_track_mute: 'Bisukan/nyalakan track' };
 
 // ------------------------------------------------------------------ copilot plans
 const plans = new Map<string, { plan: EditPlan; status: 'proposed' | 'applied' | 'rejected'; applied_revision: number | null }>();
@@ -276,6 +278,13 @@ export function createDemoApi(): Api {
       return { project_id: id, name, status: 'active', revision: 0, created_at: s.p.created_at, updated_at: s.p.updated_at };
     },
     project: async (id) => view(get(id)),
+    brand: async () => clone(brandKit),
+    saveBrand: async (rev, kit) => {
+      if (rev !== brandKit.revision) fail(409, 'CONFLICT', 'Brand Kit sudah berubah; muat ulang dulu');
+      if (!kit.name.trim()) fail(422, 'EDIT_INVALID', 'Brand Kit: nama 1–60 karakter');
+      brandKit = { ...brandKit, ...clone(kit), revision: brandKit.revision + 1, updated_at: now() };
+      return clone(brandKit);
+    },
     updateProject: async (id, rev, patch) => {
       const s = get(id);
       if (s.p.revision !== rev) fail(409, 'CONFLICT', 'Revisi proyek sudah berubah');

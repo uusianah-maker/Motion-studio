@@ -27,7 +27,9 @@ Allowed operations (times in milliseconds, integers):
 - {"op":"set_style","clip_id":"...","style":{...}}  (text/subtitle clips only; add_clip of text may also carry "style")
 - {"op":"set_volume","clip_id":"...","volume":0..1}  (video/b-roll/audio clips only; 0 = muted, 1 = full)
 - {"op":"set_track_mute","track_kind":"video"|"broll"|"audio","muted":true|false}
-Style fields (all optional): x,y = centre 0..1 of canvas; size = % of canvas short side (2-20); width = line width 0.2-1; color/bg = "#rrggbb" (bg null = no box); bg_opacity 0-1; bold, outline = true/false; align = "left"|"center"|"right".
+- {"op":"set_brand_logo","on":true|false}  (show/hide the Brand Kit logo; only when brand.has_logo)
+Style fields (all optional): x,y = centre 0..1 of canvas; size = % of canvas short side (2-20); width = line width 0.2-1; color/bg = "#rrggbb" (bg null = no box); bg_opacity 0-1; bold, outline = true/false; align = "left"|"center"|"right"; font = "default"|"brand" ("brand" only when brand.has_font).
+Brand Kit: the input's "brand" lists the brand colours (first = main) and text colour; "pakai brand"/"on brand" means box = main colour, text = brand text colour, font "brand".
 Presets (use their style for hooks, USPs, CTAs, sale/price callouts, subtitles): ${PRESET_LINES}
 Rules: use only clip_id values present in the timeline; clips on one track must not overlap; text max 500 characters; at most 60 operations.
 Never invent media. If the instruction cannot be done with these operations, return {"operations": [], "rationale": "<why>", "warnings": []}.`;
@@ -37,6 +39,7 @@ export function timelineSummary(timeline: unknown): unknown {
   const t = timeline as { tracks?: { kind: string; clips: { clip_id: string; start_ms: number; end_ms: number; text?: string; media?: unknown; in_ms?: number }[] }[]; canvas?: { ratio: string } };
   return {
     canvas: t.canvas?.ratio ?? '9:16',
+    brand_logo: !!(t as { brand_logo?: boolean }).brand_logo,
     tracks: (t.tracks ?? []).map((tr) => ({
       kind: tr.kind,
       clips: tr.clips.map((c) => ({ clip_id: c.clip_id, start_ms: c.start_ms, end_ms: c.end_ms, ...(c.text !== undefined ? { text: c.text } : {}), ...(c.media ? { has_media: true } : {}) })),
@@ -53,7 +56,7 @@ export function createAiPlanner(store: AiStore, router: AiRouter, fetchImpl: typ
       return router.available('planner');
     },
     async plan(input) {
-      const user = JSON.stringify({ instruction: input.prompt, timeline: timelineSummary(input.timeline), selected_clip_ids: input.selected_clip_ids, playhead_ms: Math.round(input.playhead_ms) });
+      const user = JSON.stringify({ instruction: input.prompt, timeline: timelineSummary(input.timeline), selected_clip_ids: input.selected_clip_ids, playhead_ms: Math.round(input.playhead_ms), ...(input.brand ? { brand: input.brand } : {}) });
       const maxOut = store.settings().max_output_tokens;
       const inTok = estimateTokens(PLANNER_SYSTEM) + estimateTokens(user);
       const r = await router.call(

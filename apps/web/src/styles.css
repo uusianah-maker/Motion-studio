@@ -37,6 +37,18 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .sideTitle b { font-size: 14px; }
 .search { margin: 15px; border: 1px solid var(--line); background: #10141e; border-radius: 9px; padding: 10px 11px; width: calc(100% - 30px); }
 fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.brandGrid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.brandForm { display: flex; flex-direction: column; gap: 14px; }
+.brandForm label { display: flex; flex-direction: column; gap: 4px; }
+.brandForm select, .brandForm input:not([type]) { max-width: 100%; }
+.swatchEdit { display: inline-flex; align-items: center; gap: 2px; }
+.swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid #ffffff33; display: inline-block; }
+.swatchBtn { width: 20px; height: 20px; border-radius: 5px; border: 1px solid #ffffff44; cursor: pointer; padding: 0; }
+.brandSample { position: relative; margin-top: 8px; max-height: 420px; width: 100%; max-width: 240px; background: linear-gradient(160deg, #3a3f55, #1b1e2b); border-radius: 10px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.brandSampleText { padding: 8px 10px; font-weight: 800; font-size: 15px; text-align: center; max-width: 85%; border-radius: 3px; }
+.brandSampleNote { position: absolute; top: 6px; right: 8px; }
+.brandLogo { position: absolute; height: auto; pointer-events: none; }
+@media (max-width: 900px) { .brandGrid { grid-template-columns: 1fr; } }
 .importRow { padding: 0 15px 8px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

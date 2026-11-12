@@ -24,18 +24,20 @@ export interface TextStyle {
   /** Dark outline + shadow for legibility on busy footage. */
   outline: boolean;
   align: TextAlign;
+  /** X06: 'brand' = the Brand Kit font (falls back to the default font when the kit has none). */
+  font: 'default' | 'brand';
 }
 
 export type TextKind = 'text' | 'subtitle';
 
 export const DEFAULT_STYLES: Record<TextKind, TextStyle> = {
-  text: { x: 0.5, y: 0.2, size: 6.2, width: 0.84, color: '#ffffff', bg: null, bg_opacity: 0.6, bold: true, outline: true, align: 'center' },
-  subtitle: { x: 0.5, y: 0.78, size: 4.5, width: 0.76, color: '#ffffff', bg: '#000000', bg_opacity: 0.62, bold: true, outline: false, align: 'center' },
+  text: { x: 0.5, y: 0.2, size: 6.2, width: 0.84, color: '#ffffff', bg: null, bg_opacity: 0.6, bold: true, outline: true, align: 'center', font: 'default' },
+  subtitle: { x: 0.5, y: 0.78, size: 4.5, width: 0.76, color: '#ffffff', bg: '#000000', bg_opacity: 0.62, bold: true, outline: false, align: 'center', font: 'default' },
 };
 
 export const STYLE_LIMITS = { size: [2, 20], width: [0.2, 1] } as const;
 const HEX = /^#[0-9a-f]{6}$/;
-const KEYS: readonly (keyof TextStyle)[] = ['x', 'y', 'size', 'width', 'color', 'bg', 'bg_opacity', 'bold', 'outline', 'align'];
+const KEYS: readonly (keyof TextStyle)[] = ['x', 'y', 'size', 'width', 'color', 'bg', 'bg_opacity', 'bold', 'outline', 'align', 'font'];
 
 const bad = (msg: string): never => {
   throw new StorageError('EDIT_INVALID', msg);
@@ -75,6 +77,10 @@ export function validateStyle(raw: unknown, where = 'style'): Partial<TextStyle>
   if (o.align !== undefined) {
     if (o.align !== 'left' && o.align !== 'center' && o.align !== 'right') bad(`${where}.align harus left | center | right`);
     out.align = o.align as TextAlign;
+  }
+  if (o.font !== undefined) {
+    if (o.font !== 'default' && o.font !== 'brand') bad(`${where}.font harus default | brand`);
+    out.font = o.font as 'default' | 'brand';
   }
   return out;
 }

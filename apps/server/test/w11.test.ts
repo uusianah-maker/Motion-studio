@@ -145,7 +145,8 @@ describe('W11 Copilot API', () => {
     expect(seen).toHaveLength(0);
     const r = await s.plan('bikin pembuka yang menarik');
     expect(r.json.plan).toMatchObject({ source: 'ai', provider: { provider: 'fake' }, cost_estimate: { usd: 0.0012 } });
-    expect(Object.keys(seen[0] as object).sort()).toEqual(['playhead_ms', 'project_id', 'prompt', 'selected_clip_ids', 'timeline']);
+    expect(Object.keys(seen[0] as object).sort()).toEqual(['brand', 'playhead_ms', 'project_id', 'prompt', 'selected_clip_ids', 'timeline']); // X06: brand = colours + has_font/has_logo only (no file ids)
+    expect(Object.keys((seen[0] as { brand: object }).brand).sort()).toEqual(['colors', 'has_font', 'has_logo', 'text_color']);
     expect(JSON.stringify(seen)).not.toMatch(/Bearer|authorization|cookie|[0-9a-f]{64}/i);
     // Garbage from the model is refused as a whole.
     ops = [{ op: 'delete_clip', clip_id: 'c_ghost' }];

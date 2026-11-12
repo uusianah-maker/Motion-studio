@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-11T13:43:15.201Z",
+  "at": "2026-11-12T16:38:49.605Z",
   "passed": 11,
   "total": 11,
   "results": [
@@ -41,7 +41,7 @@
     {
       "id": "X2-08 Reset gaya → kembali ke bawaan track",
       "ok": true,
-      "detail": "{\"x\":0.5,\"y\":0.2,\"size\":6.2,\"width\":0.84,\"bg_opacity\":0.6,\"color\":\"#ffffff\",\"bg\":null,\"bold\":true,\"outline\":true,\"align\":\"center\"}"
+      "detail": "{\"x\":0.5,\"y\":0.2,\"size\":6.2,\"width\":0.84,\"bg_opacity\":0.6,\"color\":\"#ffffff\",\"bg\":null,\"bold\":true,\"outline\":true,\"align\":\"center\",\"font\":\"default\"}"
     },
     {
       "id": "X2-09 Undo membatalkan reset (gaya hijau kembali)",

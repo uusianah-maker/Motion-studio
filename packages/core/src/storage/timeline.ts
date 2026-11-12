@@ -28,6 +28,7 @@ export type EditOp =
   | { op: 'delete_clip'; clip_id: string }
   | { op: 'set_text'; clip_id: string; text: string }
   | { op: 'set_canvas'; ratio: CanvasRatio }
+  | { op: 'set_brand_logo'; on: boolean }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio'; muted: boolean };
@@ -99,6 +100,10 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         keys(['op', 'ratio']);
         if (!CANVAS_RATIOS.includes(o.ratio as CanvasRatio)) bad(`ops[${i}]: rasio harus ${CANVAS_RATIOS.join(', ')}`);
         return { op: 'set_canvas', ratio: o.ratio as CanvasRatio };
+      case 'set_brand_logo':
+        keys(['op', 'on']);
+        if (typeof o.on !== 'boolean') bad(`ops[${i}]: on harus true/false`);
+        return { op: 'set_brand_logo', on: o.on as boolean };
       case 'set_volume': {
         keys(['op', 'clip_id', 'volume']);
         const v = o.volume;
@@ -125,6 +130,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
 const clone = (t: Timeline): Timeline => ({
   tracks: t.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => ({ ...c, ...(c.media ? { media: { ...c.media } } : {}), ...(c.style ? { style: { ...c.style } } : {}) })) })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
+  ...(t.brand_logo ? { brand_logo: true } : {}),
 });
 
 function locate(t: Timeline, id: string): { track: Track; clip: Clip; index: number } {
@@ -248,6 +254,10 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
       }
       case 'set_canvas':
         t.canvas = { ratio: op.ratio };
+        break;
+      case 'set_brand_logo':
+        if (op.on) t.brand_logo = true;
+        else delete t.brand_logo;
         break;
       case 'set_volume': {
         const { clip } = locate(t, op.clip_id);

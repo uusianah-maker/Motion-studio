@@ -1,0 +1,72 @@
+{
+  "at": "2026-11-12T16:39:09.489Z",
+  "passed": 13,
+  "total": 13,
+  "results": [
+    {
+      "id": "X6-01 Tanpa Brand Kit: tidak ada preset Brand, logo tidak bisa dinyalakan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X6-02 Simpan Brand Kit: nama, 2 warna, font, logo kanan atas tersimpan di workspace",
+      "ok": true,
+      "detail": "{\"colors\":[\"#7a1f5c\",\"#f4d35e\"],\"font\":true,\"logo\":\"tr\"}"
+    },
+    {
+      "id": "X6-03 Contoh tampilan memuat logo dari Brand Kit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X6-04 Preset Brand → klip teks bergaya brand (kotak warna utama, font brand)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X6-05 Pratinjau: teks brand memakai font brand (FontFace termuat)",
+      "ok": true,
+      "detail": "MotionBrandFont, Arial, sans-serif"
+    },
+    {
+      "id": "X6-06 Centang \"Logo\" → proyek menyimpan brand_logo (satu edit)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X6-07 Logo tampil di pojok kanan atas pratinjau",
+      "ok": true,
+      "detail": "x=201 y=11"
+    },
+    {
+      "id": "X6-08 Inspector: klik swatch warna brand → kotak klip pakai warna brand",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X6-09 Copilot \"font brand; warna brand\" → font + warna dari Brand Kit",
+      "ok": true,
+      "detail": "{\"bg_opacity\":1,\"color\":\"#7a1f5c\",\"bg\":\"#f4d35e\",\"font\":\"brand\"}"
+    },
+    {
+      "id": "X6-09b Logo tetap menyala setelah edit lain (inspector + Copilot), di disk dan di pratinjau",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X6-10 Render: selesai, metadata bersih, logo oranye hanya di pojok kanan atas video",
+      "ok": true,
+      "detail": "8 piksel logo di kanan atas, 0 di tempat lain"
+    },
+    {
+      "id": "X6-11 HP 390px: halaman Brand Kit tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "X6-12 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

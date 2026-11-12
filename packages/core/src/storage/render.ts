@@ -1,4 +1,5 @@
 import { promises as fsp } from 'node:fs';
+import { type LogoCorner, brandRenderRefs, readBrandKit } from './brand.js';
 import os from 'node:os';
 import path from 'node:path';
 import { audit } from './audit.js';
@@ -136,7 +137,13 @@ export const STRIP_METADATA_ARGS: readonly string[] = [
 /** Upper bound on visual segments per render (Checkpoint E E4). */
 export const MAX_RENDER_SEGMENTS = 200;
 
-export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInput>, settings: RenderSettings, font: string | null, regularFont: string | null = font): RenderPlan {
+/** X06: Brand Kit pieces a render uses (local paths); `null` = not used / not set. */
+export interface RenderBrand {
+  font: string | null;
+  logo: { path: string; corner: LogoCorner; size: number; opacity: number } | null;
+}
+
+export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInput>, settings: RenderSettings, font: string | null, regularFont: string | null = font, brand: RenderBrand = { font: null, logo: null }): RenderPlan {
   const fps = settings.fps;
   const ratio = t.canvas?.ratio ?? '9:16';
   const { width: W, height: H } = canvasSize(ratio, settings.short_side);
@@ -230,13 +237,26 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
         ...(s.outline ? [`borderw=${Math.max(2, Math.round(fs * 0.06))}:bordercolor=black@0.8:shadowcolor=black@0.6:shadowy=${Math.round(fs * 0.08)}`] : []),
       ].join(':');
       const face = s.bold || !regularFont ? font : regularFont;
-      const fontFile = `${s.bold || !regularFont ? 'fontb' : 'fontr'}${path.extname(face).toLowerCase()}`;
+      // X06: the brand font when the style asks for it and the kit has one (else the default face).
+      const fontFile = s.font === 'brand' && brand.font ? `fontk${path.extname(brand.font).toLowerCase()}` : `${s.bold || !regularFont ? 'fontb' : 'fontr'}${path.extname(face).toLowerCase()}`;
       draws.push(
         `drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}:enable='gte(t,${s6(c.start_ms / 1000)})*lt(t,${s6(c.end_ms / 1000)})'`,
       );
     }
   }
-  graph.push(draws.length ? `[vcat]${draws.join(',')}[vout]` : `[vcat]null[vout]`);
+  // X06: Brand Kit logo in a corner, over everything (text included), for the whole video.
+  if (brand.logo) {
+    const lg = brand.logo;
+    const idx = inputCount++;
+    args.push('-loop', '1', '-framerate', String(fps), '-t', s6(total_ms / 1000), '-i', lg.path);
+    const lw = Math.max(2, Math.round((W * lg.size) / 100 / 2) * 2);
+    const m = Math.round(short * 0.04);
+    const x = lg.corner.endsWith('l') ? `${m}` : `W-w-${m}`;
+    const y = lg.corner.startsWith('t') ? `${m}` : `H-h-${m}`;
+    graph.push(draws.length ? `[vcat]${draws.join(',')}[vtxt]` : `[vcat]null[vtxt]`);
+    graph.push(`[${idx}:v:0]scale=${lw}:-2,format=rgba,colorchannelmixer=aa=${lg.opacity.toFixed(2)},setsar=1[logo]`);
+    graph.push(`[vtxt][logo]overlay=x=${x}:y=${y}:eof_action=pass:format=auto,format=yuv420p,trim=end_frame=${total_frames}[vout]`);
+  } else graph.push(draws.length ? `[vcat]${draws.join(',')}[vout]` : `[vcat]null[vout]`);
 
   args.push(
     '-/filter_complex', 'graph.txt',
@@ -350,6 +370,12 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     if (!check.ok) throw new StorageError('INTEGRITY', 'Media berubah setelah preflight; render dibatalkan', { problems: check.problems });
 
     const reg = await loadRegistry(ws);
+    // X06: the brand pieces this revision needs must be exactly the ones preflight checked + leased.
+    const brandRefs = brandRenderRefs(project.timeline, await readBrandKit(ws));
+    const leased = new Set(lease.media.map((m) => m.version_id));
+    for (const r of [brandRefs.font, brandRefs.logo?.ref]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
+    const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
+    const clipVersions = new Set(project.timeline.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.media ? [c.media.version_id] : []))));
     const versions = lease.media.map((m) => reg.versions[m.version_id]!);
     const rels = await Promise.all(versions.map((v) => ws.blobs.resolve(v.rel_path, MEDIA_AREAS)));
     tmp = await fsp.mkdtemp(path.join(hooks.tmpRoot ?? os.tmpdir(), RENDER_TMP_PREFIX));
@@ -358,18 +384,27 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     const result = await withLocalFiles(ws, rels, async (abs) => {
       const inputs = new Map<string, PlanInput>();
       const markers = new Set<string>();
+      const local = new Map(versions.map((v, i) => [v.version_id, abs[i]!]));
       for (let i = 0; i < versions.length; i++) {
         const v = versions[i]!;
+        if (brandOnly.has(v.version_id) && !clipVersions.has(v.version_id)) {
+          if (v.version_id === brandRefs.logo?.ref.version_id) for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
+          continue; // font / logo: not a timeline clip
+        }
         const probe = v.probe ?? (await probeFile(abs[i]!));
         if (!probe) throw new StorageError('PRECONDITION', `Media "${v.original_name}" tidak bisa dibaca sebagai video/audio`, { version_id: v.version_id });
         inputs.set(v.version_id, { path: abs[i]!, probe });
         for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
       }
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont);
+      const brandFont = brandRefs.font ? local.get(brandRefs.font.version_id)! : null;
+      const brandLogo = brandRefs.logo ? { path: local.get(brandRefs.logo.ref.version_id)!, corner: brandRefs.logo.corner, size: brandRefs.logo.size, opacity: brandRefs.logo.opacity } : null;
+      const fontExt = brandFont ? (/\.(ttf|otf)$/i.exec(reg.versions[brandRefs.font!.version_id]!.original_name)?.[0] ?? '.ttf').toLowerCase() : '';
+      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, logo: brandLogo });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));
       if (regularFont) await fsp.copyFile(regularFont, path.join(jobDir, `fontr${path.extname(regularFont).toLowerCase()}`));
+      if (brandFont) await fsp.copyFile(brandFont, path.join(jobDir, `fontk${fontExt}`));
 
       hooks.onPhase?.('encoding');
       hooks.onProgress?.(0);
