@@ -53,9 +53,14 @@ def main() -> None:
     src = Path(args.video).resolve()
     if not src.exists():
         sys.exit(f"Video tidak ditemukan: {src}")
-    brandkit = ROOT / "brandkit" / f"{args.brand}.json"
+    # --brand aysilla -> brandkit/aysilla.json; atau path file brand_kit.json (ekspor Motion Studio).
+    brandkit = Path(args.brand).resolve() if args.brand.endswith(".json") else ROOT / "brandkit" / f"{args.brand}.json"
     if not brandkit.exists():
         sys.exit(f"Brand kit tidak ditemukan: {brandkit}")
+    sys.path.insert(0, str(ROOT / "pipeline"))
+    from brandkit import muat
+
+    brand_slug = muat(brandkit)["kode"].lower() if args.brand.endswith(".json") else args.brand
     nama = args.nama or re.sub(r"[^\w-]+", "_", src.stem).strip("_").lower()
     produk = re.sub(r"[^\w-]+", "_", args.produk).lower()
 
@@ -93,13 +98,13 @@ def main() -> None:
     else:
         times["transkrip"] = run(
             "Transkrip (Whisper)",
-            [PY, "pipeline/transcribe.py", rel_video, str(transkrip.relative_to(ROOT)), "--brandkit", str(brandkit.relative_to(ROOT))],
+            [PY, "pipeline/transcribe.py", rel_video, str(transkrip.relative_to(ROOT)), "--brandkit", str(brandkit)],
         )
 
     # 3. Rencana edit.
     edit_cmd = [
         PY, "pipeline/edit.py", str(transkrip.relative_to(ROOT)),
-        "--brandkit", str(brandkit.relative_to(ROOT)),
+        "--brandkit", str(brandkit),
         "--video", public_video,
         "--out", str(out_dir.relative_to(ROOT)),
         "--placement", args.placement,
@@ -135,13 +140,13 @@ def main() -> None:
     # 4. Render.
     render_cmd = [
         PY, "pipeline/render.py", str((out_dir / "props.json").relative_to(ROOT)),
-        "--name", f"{args.brand}_th_{produk}",
+        "--name", f"{brand_slug}_th_{produk}",
     ]
     if args.draf:
         render_cmd.append("--draf")
     times["render"] = run("Render" + (" DRAF" if args.draf else ""), render_cmd)
 
-    hasil = sorted((ROOT / "public" / "Output").glob(f"{args.brand}_th_{produk}_*.mp4"), key=lambda p: p.stat().st_mtime)[-1]
+    hasil = sorted((ROOT / "public" / "Output").glob(f"{brand_slug}_th_{produk}_*.mp4"), key=lambda p: p.stat().st_mtime)[-1]
     rep = json.loads((out_dir / "potongan.json").read_text(encoding="utf-8"))
     print("\n================ SELESAI ================")
     print(f"File     : {hasil.relative_to(ROOT)}")

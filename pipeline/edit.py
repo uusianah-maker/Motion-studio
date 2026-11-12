@@ -20,6 +20,7 @@ from pathlib import Path
 
 from autocut import FPS, merge_split_words, run_cut, strip_internal
 from cek_ucapan import cek_ucapan
+from brandkit import muat as muat_brand_kit
 
 MAX_WORDS_PER_PAGE = 3
 PAGE_GAP_MS = 250  # jeda antar kata yang memaksa halaman caption baru
@@ -354,7 +355,7 @@ def main() -> None:
     args = ap.parse_args()
 
     tr = json.loads(Path(args.transcript).read_text(encoding="utf-8"))
-    bk = json.loads(Path(args.brandkit).read_text(encoding="utf-8"))
+    bk = muat_brand_kit(args.brandkit)
 
     # Video tanpa ucapan (hanya musik): Whisper mengarang teks, jadi jangan buat rencana.
     ucapan = cek_ucapan(tr)

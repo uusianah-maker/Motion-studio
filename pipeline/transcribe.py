@@ -81,7 +81,9 @@ def main() -> None:
 
     vocab = []
     if args.brandkit:
-        vocab = json.loads(Path(args.brandkit).read_text(encoding="utf-8")).get("kosakata_whisper", [])
+        from brandkit import muat
+
+        vocab = muat(args.brandkit).get("kosakata_whisper", [])
     prompt = INITIAL_PROMPT + (" " + ", ".join(vocab) + "." if vocab else "")
 
     t0 = time.perf_counter()
