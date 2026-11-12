@@ -3,6 +3,7 @@
  * saved or sent anywhere (no server, no AI calls, no render). Used to share how the app looks
  * and feels before it is online. The Copilot rule engine is the real one from the core.
  */
+import { checkBrandGuard, localDate, validateGuard } from '../../../../packages/core/dist/storage/brandGuard.js';
 import { checkPlan, diffTimelines, planLocal } from '../../../../packages/core/dist/storage/copilot.js';
 import { applyOps } from '../../../../packages/core/dist/storage/timeline.js';
 import {
@@ -13,6 +14,7 @@ import {
   ApiError,
   type ApplyReply,
   type BrandKit,
+  type GuardIssue,
   type Clip,
   type Cue,
   type Dashboard,
@@ -116,7 +118,7 @@ interface Stored {
 const hookRef = { media_id: 'm_00000000000000a1', version_id: V_HOOK };
 const brollRef = { media_id: 'm_00000000000000b1', version_id: V_BROLL };
 const projects = new Map<string, Stored>();
-let brandKit: BrandKit = { schema_version: 1, revision: 1, updated_at: Date.now(), name: 'Toko Demo', colors: ['#7a1f5c', '#f4d35e'], text_color: '#ffffff', font: null, logo: null };
+let brandKit: BrandKit = { schema_version: 1, revision: 1, updated_at: Date.now(), name: 'Toko Demo', colors: ['#7a1f5c', '#f4d35e'], text_color: '#ffffff', font: null, logo: null, guard: { prices: [], banned: ['paling murah'], banned_level: 'block' } };
 function addProject(id: string, name: string, tracks: Project['timeline']['tracks'], ageDays: number) {
   const t = now() - ageDays * DAY;
   projects.set(id, {
@@ -558,6 +560,10 @@ export function createDemoApi(): Api {
         backup: { verified: 1, active_versions: 2 },
       };
       return d;
+    },
+    brandCheck: async (id) => {
+      const today = localDate(now());
+      return { today, issues: checkBrandGuard(get(id).p.timeline, validateGuard(brandKit.guard), today) as GuardIssue[] };
     },
     renderTools: async () => ({ ok: true, version: '9.0.2 (demo)', problems: [], font: true }),
     startRender: async (id, opts) => {

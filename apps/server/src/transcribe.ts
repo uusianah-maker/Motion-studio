@@ -78,6 +78,9 @@ export function transcribeRoutes(ws: Workspace, opts: { router: AiRouter; copilo
 
   async function run(job: Job, rel: string, durationMs: number, mediaId: string, language: 'id' | 'en' | null, confirmUsd: number, minutes: number) {
     let dir: string | null = null;
+    // The job's final status is published only after the temp audio is gone (a caller that sees
+    // "completed"/"failed" can rely on nothing being left behind).
+    let final: Pick<Job, 'status' | 'error' | 'transcript_id'> = { status: 'failed', error: { code: 'INTERNAL', message: 'Transkripsi gagal' }, transcript_id: null };
     try {
       const work = await fsp.mkdtemp(path.join(opts.tmpRoot, STT_TMP_PREFIX));
       dir = work;
@@ -117,18 +120,16 @@ export function transcribeRoutes(ws: Workspace, opts: { router: AiRouter; copilo
         words,
         cues: validateCues(buildCues(words, { duration_ms: durationMs }), durationMs),
       });
-      job.transcript_id = t.transcript_id;
-      job.status = 'completed';
+      final = { status: 'completed', error: null, transcript_id: t.transcript_id };
       await audit(ws, { op: 'transcript.create', actor: 'user', outcome: 'ok', project_id: job.project_id, transcript_id: t.transcript_id, version_id: job.version_id, provider: r.connection.provider, cues: t.cues.length, cost_usd: r.cost_usd }).catch(() => undefined);
     } catch (e) {
-      job.status = 'failed';
       const code = e instanceof ApiError ? e.code : isStorageError(e) ? e.code : e instanceof AiCallError ? 'AI_UNAVAILABLE' : 'INTERNAL';
       const message = e instanceof ApiError || isStorageError(e) ? e.message : e instanceof AiCallError ? e.message : 'Transkripsi gagal';
-      job.error = { code, message: code === 'RENDER_FAILED' || code === 'INTERNAL' ? 'Audio tidak bisa diambil dari media ini' : message };
+      final = { status: 'failed', error: { code, message: code === 'RENDER_FAILED' || code === 'INTERNAL' ? 'Audio tidak bisa diambil dari media ini' : message }, transcript_id: null };
       await audit(ws, { op: 'transcript.create', actor: 'user', outcome: 'failed', project_id: job.project_id, version_id: job.version_id, code }).catch(() => undefined);
     } finally {
-      job.finished_at = Date.now();
       if (dir) await fsp.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      Object.assign(job, final, { finished_at: Date.now() });
     }
   }
 

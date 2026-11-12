@@ -333,7 +333,7 @@ function settingsFrom(partial: Partial<RenderSettings> | undefined): RenderSetti
  * 05_OUTPUT under the reserved versioned name (never overwrites) → audit → release lease.
  * Originals are only ever read.
  */
-export async function renderProject(ws: Workspace, input: { project_id: string; output_name: string; actor: Actor }, hooks: RenderHooks = {}): Promise<RenderOutcome> {
+export async function renderProject(ws: Workspace, input: { project_id: string; output_name: string; actor: Actor; accept_brand_warnings?: boolean }, hooks: RenderHooks = {}): Promise<RenderOutcome> {
   await guard(ws, input.actor, 'render_preflight', { project_id: input.project_id }); // never AI (T15 matrix)
   const settings = settingsFrom(hooks.settings);
   hooks.onPhase?.('preflight');
@@ -354,6 +354,7 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     output_name: input.output_name,
     estimated_bytes: estimateRenderBytes(timelineEnd(before.timeline), size, settings.fps),
     actor: input.actor,
+    ...(input.accept_brand_warnings ? { accept_brand_warnings: true } : {}),
     ...(hooks.worker_pid !== undefined ? { worker_pid: hooks.worker_pid } : {}),
   });
   if (!lease) return { status: 'blocked', preflight };

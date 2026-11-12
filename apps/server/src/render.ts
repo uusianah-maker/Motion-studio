@@ -37,6 +37,8 @@ interface Job extends RenderJobView {
   controller: AbortController;
   settings: Partial<RenderSettings>;
   actor: Actor;
+  /** X08: the user accepted warn-level Brand guard issues for this render. */
+  accept_brand_warnings: boolean;
 }
 
 export interface RenderJobsOptions {
@@ -50,7 +52,7 @@ export interface RenderJobsOptions {
 const ACTIVE: readonly JobStatus[] = ['queued', 'running'];
 
 /** Problem codes only: `OUTPUT_NOT_WRITABLE.detail` etc. can contain absolute paths (Checkpoint D F5). */
-const problemView = (p: PreflightProblem) => ({ code: p.code, ...('ref' in p ? { media_id: p.ref.media_id, version_id: p.ref.version_id } : {}) });
+const problemView = (p: PreflightProblem) => ({ code: p.code, ...('ref' in p ? { media_id: p.ref.media_id, version_id: p.ref.version_id } : {}), ...('issues' in p ? { issues: p.issues } : {}) });
 
 /** Messages of our own typed errors are user-facing Indonesian text without paths; anything else is generic. */
 function errorView(e: unknown): { code: string; message: string } {
@@ -64,10 +66,11 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
   let running = false;
 
   const view = (j: Job): RenderJobView => {
-    const { controller: _c, settings: _s, actor: _a, ...v } = j;
+    const { controller: _c, settings: _s, actor: _a, accept_brand_warnings: _b, ...v } = j;
     void _c;
     void _s;
     void _a;
+    void _b;
     return { ...v, problems: [...v.problems], output: v.output ? { ...v.output } : null };
   };
 
@@ -80,7 +83,7 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
     try {
       const r = await renderProject(
         ws,
-        { project_id: next.project_id, output_name: next.output_name, actor: next.actor },
+        { project_id: next.project_id, output_name: next.output_name, actor: next.actor, ...(next.accept_brand_warnings ? { accept_brand_warnings: true } : {}) },
         {
           tmpRoot: opts.tmpRoot,
           settings: { ...opts.settings, ...next.settings },
@@ -120,7 +123,7 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
 
   return {
     /** `actor` comes from the caller (Checkpoint E E9); the core refuses render for AI. */
-    start(input: { project_id: string; output_name: string; actor: Actor; settings?: Partial<RenderSettings> }): RenderJobView {
+    start(input: { project_id: string; output_name: string; actor: Actor; settings?: Partial<RenderSettings>; accept_brand_warnings?: boolean }): RenderJobView {
       const job: Job = {
         job_id: `job_${randomBytes(8).toString('hex')}`,
         project_id: input.project_id,
@@ -136,6 +139,7 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
         controller: new AbortController(),
         settings: input.settings ?? {},
         actor: input.actor,
+        accept_brand_warnings: !!input.accept_brand_warnings,
       };
       jobs.push(job);
       void pump();

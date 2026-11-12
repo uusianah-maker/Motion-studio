@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { type GuardIssue, checkBrandGuard, localDate } from './brandGuard.js';
 import { brandRenderRefs, readBrandKit } from './brand.js';
 import { audit } from './audit.js';
 import { type Lease, createLease, loadLeases, releaseLease } from './deps.js';
@@ -21,7 +22,11 @@ export type PreflightProblem =
   | { code: 'MEDIA_MISSING' | 'MEDIA_CHANGED'; ref: MediaRef; relink_options: MediaRef[] }
   | { code: 'OUTPUT_NOT_WRITABLE'; detail: string }
   | { code: 'INSUFFICIENT_DISK'; free_bytes: number | null; needed_bytes: number; reserve_bytes: number }
-  | { code: 'NO_MEDIA' };
+  | { code: 'NO_MEDIA' }
+  /** X08: an expired promo price or a banned claim (block level) is on screen. */
+  | { code: 'BRAND_BLOCKED'; issues: GuardIssue[] }
+  /** X08: warn-level brand issues the user has not accepted for this render. */
+  | { code: 'BRAND_WARNING'; issues: GuardIssue[] };
 
 export interface PreflightResult {
   ok: boolean;
@@ -62,7 +67,7 @@ async function freeOutputName(ws: Workspace, dirRel: string, name: string, reser
  */
 export async function renderPreflight(
   ws: Workspace,
-  input: { project_id: string; output_name: string; estimated_bytes: number; approve_overwrite?: boolean; actor: Actor; disk?: { free_bytes: number; total_bytes: number } | null },
+  input: { project_id: string; output_name: string; estimated_bytes: number; approve_overwrite?: boolean; accept_brand_warnings?: boolean; actor: Actor; disk?: { free_bytes: number; total_bytes: number } | null },
 ): Promise<PreflightResult> {
   await guard(ws, input.actor, 'render_preflight', { project_id: input.project_id });
   if (input.approve_overwrite && input.actor !== 'user') {
@@ -70,6 +75,7 @@ export async function renderPreflight(
     await audit(ws, { op: 'render.preflight', actor: input.actor, outcome: 'blocked', reason: 'OVERWRITE_NOT_USER', project_id: input.project_id });
     throw new StorageError('FORBIDDEN', 'Hanya user yang boleh menyetujui overwrite output');
   }
+  if (input.accept_brand_warnings && input.actor !== 'user') throw new StorageError('FORBIDDEN', 'Hanya user yang boleh menerima peringatan Brand guard');
   const project = await readProject(ws, input.project_id);
   const reg = await loadRegistry(ws);
   const busy = await journalBusy(ws);
@@ -82,7 +88,15 @@ export async function renderPreflight(
   for (const t of project.timeline.tracks) for (const c of t.clips) if (c.media) refs.push(c.media);
   if (!refs.length) problems.push({ code: 'NO_MEDIA' });
   // X06: Brand Kit font/logo this render uses are verified and leased like clip media.
-  const brand = brandRenderRefs(project.timeline, await readBrandKit(ws));
+  const kit = await readBrandKit(ws);
+  const brand = brandRenderRefs(project.timeline, kit);
+  // X08 Brand guard: expired prices / banned claims on screen.
+  const issues = checkBrandGuard(project.timeline, kit.guard, localDate(ws.clock.now()));
+  const blocking = issues.filter((i) => i.level === 'block');
+  const warning = issues.filter((i) => i.level === 'warn');
+  if (blocking.length) problems.push({ code: 'BRAND_BLOCKED', issues: blocking });
+  if (warning.length && !input.accept_brand_warnings) problems.push({ code: 'BRAND_WARNING', issues: warning });
+  else if (warning.length) notes.push(`Peringatan Brand guard diterima user untuk render ini: ${[...new Set(warning.map((w) => w.match))].join(', ')}`);
   if (brand.font) refs.push(brand.font);
   if (brand.logo) refs.push(brand.logo.ref);
 
@@ -153,7 +167,7 @@ export async function renderPreflight(
   if (!space.ok) problems.push({ code: 'INSUFFICIENT_DISK', free_bytes: space.free_bytes, needed_bytes: input.estimated_bytes, reserve_bytes: space.reserve_bytes });
 
   const result: PreflightResult = { ok: problems.length === 0, project_id: project.project_id, project_revision: project.revision, snapshot, output_rel, output_versioned: chosen.versioned, problems, notes };
-  await audit(ws, { op: 'render.preflight', actor: input.actor, outcome: result.ok ? 'ok' : 'blocked', project_id: project.project_id, revision: project.revision, output_rel, problems: problems.map((p) => p.code), snapshot });
+  await audit(ws, { op: 'render.preflight', actor: input.actor, outcome: result.ok ? 'ok' : 'blocked', project_id: project.project_id, revision: project.revision, output_rel, problems: problems.map((p) => p.code), brand_issues: issues.map((x) => ({ kind: x.kind, level: x.level, clip_id: x.clip_id, match: x.match })), brand_warnings_accepted: !!input.accept_brand_warnings && warning.length > 0, snapshot });
   return result;
 }
 

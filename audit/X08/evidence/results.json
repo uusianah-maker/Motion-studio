@@ -1,0 +1,52 @@
+{
+  "at": "2026-11-12T17:47:06.156Z",
+  "passed": 9,
+  "total": 9,
+  "results": [
+    {
+      "id": "X8-01 Brand guard tersimpan: 1 harga + tanggal, 2 klaim (baris kosong diabaikan), level blokir",
+      "ok": true,
+      "detail": "{\"prices\":[{\"text\":\"Rp99.000\",\"valid_until\":\"2026-11-12\"}],\"banned\":[\"paling murah\",\"100% menyembuhkan\"],\"banned_level\":\"block\"}"
+    },
+    {
+      "id": "X8-02 Dialog render: harga kedaluwarsa + klaim terlarang terdaftar (klip & waktu)",
+      "ok": true,
+      "detail": "Harga \"Rp99.000\" sudah lewat masa berlaku (2026-11-12) — teks “Cuma Rp 99.000” di 0:00 | Klaim terlarang \"paling murah\" — subtitle “Ini paling murah lho” di 0:01"
+    },
+    {
+      "id": "X8-03 Tombol Mulai render mati selama ada yang merah",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X8-04 Copilot menolak menulis klaim terlarang (pesan jelas, tidak ada rencana)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X8-05 Harga diperbaiki + klaim jadi \"peringatan\": merah hilang, kuning tampil, tombol tetap mati sampai dicentang",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X8-06 \"Render tetap\" → render selesai & tercatat di audit (peringatan diterima user)",
+      "ok": true,
+      "detail": "{\"outcome\":\"ok\",\"accepted\":true}"
+    },
+    {
+      "id": "X8-07 Harga yang masih berlaku tidak dipermasalahkan",
+      "ok": true,
+      "detail": "[\"BANNED_CLAIM\"]"
+    },
+    {
+      "id": "X8-08 HP 390px: Brand guard muat tanpa scroll samping",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "id": "X8-09 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

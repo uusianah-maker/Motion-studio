@@ -27,8 +27,26 @@ export interface BrandKit {
   text_color: string;
   font: { media_id: string; version_id: string } | null;
   logo: { ref: { media_id: string; version_id: string }; corner: 'tl' | 'tr' | 'bl' | 'br'; size: number; opacity: number } | null;
+  /** X08: promo prices with an end date + banned claims, checked before every render. */
+  guard: BrandGuard;
 }
-export type BrandKitInput = Pick<BrandKit, 'name' | 'colors' | 'text_color' | 'font' | 'logo'>;
+export interface BrandGuard {
+  prices: { text: string; valid_until: string }[];
+  banned: string[];
+  banned_level: 'block' | 'warn';
+}
+export interface GuardIssue {
+  level: 'block' | 'warn';
+  kind: 'PRICE_EXPIRED' | 'BANNED_CLAIM';
+  clip_id: string;
+  track_kind: Track['kind'];
+  start_ms: number;
+  end_ms: number;
+  text: string;
+  match: string;
+  valid_until?: string;
+}
+export type BrandKitInput = Pick<BrandKit, 'name' | 'colors' | 'text_color' | 'font' | 'logo' | 'guard'>;
 
 /** X05: a project file (timeline + which media versions it uses; never files or paths). */
 export interface ProjectExport {
@@ -169,7 +187,7 @@ export interface RenderJob {
   created_at: number;
   finished_at: number | null;
   output: { name: string; size: number; hash: string; duration_ms: number; width: number; height: number; metadata_clean: true; kept_tags: string[] } | null;
-  problems: { code: string; media_id?: string; version_id?: string }[];
+  problems: { code: string; media_id?: string; version_id?: string; issues?: GuardIssue[] }[];
   error: { code: string; message: string } | null;
 }
 
@@ -468,7 +486,8 @@ export function createApi(token: string | null, base = '') {
     dashboard: () => call<{ dashboard: Dashboard }>('GET', '/api/dashboard').then((r) => r.dashboard),
     // Render MP4 (W08)
     renderTools: () => call<RenderTools>('GET', '/api/render/tools'),
-    startRender: (id: string, opts: { output_name?: string; short_side?: 720 | 1080 }) =>
+    brandCheck: (id: string) => call<{ today: string; issues: GuardIssue[] }>('GET', `/api/projects/${encodeURIComponent(id)}/brand-check`),
+    startRender: (id: string, opts: { output_name?: string; short_side?: 720 | 1080; accept_brand_warnings?: boolean }) =>
       call<{ job: RenderJob }>('POST', `/api/projects/${encodeURIComponent(id)}/render`, { json: opts }).then((r) => r.job),
     renders: (id: string) => call<{ jobs: RenderJob[]; outputs: RenderOutputFile[] }>('GET', `/api/projects/${encodeURIComponent(id)}/renders`),
     cancelRender: (jobId: string) => call<{ job: RenderJob }>('POST', `/api/render/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }).then((r) => r.job),

@@ -3,6 +3,7 @@ import { audit } from './audit.js';
 import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { isSafeId } from './ids.js';
+import { type BrandGuard, EMPTY_GUARD, validateGuard } from './brandGuard.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { probeImage } from './probe.js';
 import { type Actor, MEDIA_AREAS } from './permissions.js';
@@ -44,11 +45,13 @@ export interface BrandKit {
   text_color: string;
   font: MediaRef | null;
   logo: BrandLogo | null;
+  /** X08: promo prices with an end date + banned claims, checked before every render. */
+  guard: BrandGuard;
 }
 
-export type BrandKitInput = Pick<BrandKit, 'name' | 'colors' | 'text_color' | 'font' | 'logo'>;
+export type BrandKitInput = Pick<BrandKit, 'name' | 'colors' | 'text_color' | 'font' | 'logo' | 'guard'>;
 
-export const EMPTY_BRAND: BrandKit = { schema_version: 1, revision: 0, updated_at: 0, name: 'Brand', colors: [], text_color: '#ffffff', font: null, logo: null };
+export const EMPTY_BRAND: BrandKit = { schema_version: 1, revision: 0, updated_at: 0, name: 'Brand', colors: [], text_color: '#ffffff', font: null, logo: null, guard: EMPTY_GUARD };
 
 const HEX = /^#[0-9a-f]{6}$/;
 const bad = (msg: string): never => {
@@ -68,7 +71,7 @@ function ref(x: unknown, where: string): MediaRef {
 export function validateBrandInput(raw: unknown): BrandKitInput {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return bad('harus objek');
   const o = raw as Record<string, unknown>;
-  const extra = Object.keys(o).filter((k) => !['name', 'colors', 'text_color', 'font', 'logo'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['name', 'colors', 'text_color', 'font', 'logo', 'guard'].includes(k));
   if (extra.length) bad(`field tidak dikenal ${extra.join(', ')}`);
   const name = typeof o.name === 'string' ? [...o.name].map((c) => (c.charCodeAt(0) < 32 ? ' ' : c)).join('').trim() : '';
   if (!name || name.length > 60) bad('nama 1–60 karakter');
@@ -87,7 +90,8 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     const num = (v: unknown, [min, max]: readonly [number, number], what: string) => (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? Math.round(v * 100) / 100 : bad(`${what} harus ${min}–${max}`));
     logo = { ref: ref(l.ref, 'logo'), corner: l.corner as LogoCorner, size: num(l.size, LOGO_LIMITS.size, 'ukuran logo'), opacity: num(l.opacity, LOGO_LIMITS.opacity, 'opasitas logo') };
   }
-  return { name, colors, text_color: (o.text_color as string).toLowerCase(), font, logo };
+  // A kit saved before X08 has no guard: same as an empty one.
+  return { name, colors, text_color: (o.text_color as string).toLowerCase(), font, logo, guard: validateGuard(o.guard) };
 }
 
 function validateStored(x: unknown): BrandKit {

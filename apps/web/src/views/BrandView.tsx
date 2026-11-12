@@ -17,7 +17,18 @@ const usable = (m: Media, re: RegExp) => {
   const v = current(m);
   return !!v && v.lifecycle === 'active' && v.integrity === 'ok' && re.test(v.original_name);
 };
-const toInput = (k: BrandKit): BrandKitInput => ({ name: k.name, colors: [...k.colors], text_color: k.text_color, font: k.font, logo: k.logo ? { ...k.logo } : null });
+const toInput = (k: BrandKit): BrandKitInput => ({
+  name: k.name,
+  colors: [...k.colors],
+  text_color: k.text_color,
+  font: k.font,
+  logo: k.logo ? { ...k.logo } : null,
+  guard: { prices: (k.guard?.prices ?? []).map((p) => ({ ...p })), banned: [...(k.guard?.banned ?? [])], banned_level: k.guard?.banned_level ?? 'block' },
+});
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 /**
  * Brand Kit (X06, PRD §7): brand colours, text colour, font file and logo for the whole workspace.
@@ -84,7 +95,8 @@ export function BrandView({ api }: { api: Api }) {
     setSaving(true);
     setError(null);
     try {
-      const k = await api.saveBrand(kit.revision, draft);
+      // Empty lines in the banned list are just spacing.
+      const k = await api.saveBrand(kit.revision, { ...draft, guard: { ...draft.guard, banned: draft.guard.banned.map((b) => b.trim()).filter(Boolean) } });
       setKit(k);
       setDraft(toInput(k));
       setSaved(true);
@@ -202,6 +214,42 @@ export function BrandView({ api }: { api: Api }) {
                 </label>
               </div>
             )}
+          </div>
+
+          <div className="guardBox" role="group" aria-label="Brand guard">
+            <b>Brand guard</b> <span className="muted small">dicek sebelum setiap render</span>
+            <div className="muted small" style={{ marginTop: 6 }}>
+              Harga promo + tanggal terakhir berlaku. Setelah tanggal itu, video yang masih menulis harga ini tidak bisa dirender.
+            </div>
+            {draft.guard.prices.map((p, i) => (
+              <div key={i} className="row" style={{ gap: 6, marginTop: 6 }}>
+                <input aria-label={`Harga promo ${i + 1}`} placeholder="mis. Rp99.000 atau DISKON 50%" maxLength={60} value={p.text} onChange={(e) => set({ guard: { ...draft.guard, prices: draft.guard.prices.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) } })} />
+                <input type="date" aria-label={`Berlaku sampai ${i + 1}`} value={p.valid_until} onChange={(e) => set({ guard: { ...draft.guard, prices: draft.guard.prices.map((x, j) => (j === i ? { ...x, valid_until: e.target.value } : x)) } })} />
+                <button className="tiny" aria-label={`Hapus harga ${i + 1}`} onClick={() => set({ guard: { ...draft.guard, prices: draft.guard.prices.filter((_, j) => j !== i) } })}>
+                  ×
+                </button>
+              </div>
+            ))}
+            <button className="btn small" style={{ marginTop: 6 }} disabled={draft.guard.prices.length >= 50} onClick={() => set({ guard: { ...draft.guard, prices: [...draft.guard.prices, { text: '', valid_until: todayStr() }] } })}>
+              ＋ Harga promo
+            </button>
+            <label style={{ marginTop: 10 }}>
+              Klaim terlarang (satu per baris)
+              <textarea
+                aria-label="Klaim terlarang"
+                rows={4}
+                placeholder={'paling murah\n100% menyembuhkan\ndijamin'}
+                value={draft.guard.banned.join('\n')}
+                onChange={(e) => set({ guard: { ...draft.guard, banned: e.target.value.split('\n') } })}
+              />
+            </label>
+            <label>
+              Kalau klaim terlarang ditemukan
+              <select aria-label="Tingkat klaim terlarang" value={draft.guard.banned_level} onChange={(e) => set({ guard: { ...draft.guard, banned_level: e.target.value as 'block' | 'warn' } })}>
+                <option value="block">Blokir render (disarankan)</option>
+                <option value="warn">Peringatkan saja (bisa render tetap, tercatat)</option>
+              </select>
+            </label>
           </div>
 
           <div className="row" style={{ gap: 8, alignItems: 'center' }}>

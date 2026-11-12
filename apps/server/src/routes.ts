@@ -26,6 +26,8 @@ import {
   listProjectIds,
   loadRegistry,
   readProject,
+  checkBrandGuard,
+  localDate,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
@@ -302,6 +304,18 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       },
     })),
 
+    // X08 Brand guard: what the render check would say right now (for the render dialog).
+    {
+      method: 'GET',
+      path: '/api/projects/:project_id/brand-check',
+      handle: async ({ ws, params, svc }) => {
+        const project = await readProject(ws, params.project_id!);
+        const kit = await svc.readBrandKit();
+        const today = localDate(ws.clock.now());
+        return { today, issues: checkBrandGuard(project.timeline, kit.guard, today) };
+      },
+    },
+
     // X06 Brand Kit (workspace level).
     { method: 'GET', path: '/api/brand', handle: async ({ svc }) => ({ brand: await svc.readBrandKit() }) },
     {
@@ -423,14 +437,15 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       path: '/api/projects/:project_id/render',
       handle: async ({ req, ws, params, actor }) => {
         const body = await readJsonBody(req);
-        onlyKeys(body, ['output_name', 'short_side']);
+        onlyKeys(body, ['output_name', 'short_side', 'accept_brand_warnings']);
+        if (body.accept_brand_warnings !== undefined && typeof body.accept_brand_warnings !== 'boolean') throw bad('accept_brand_warnings harus true/false');
         const project = await readProject(ws, params.project_id!);
         const raw = str(body, 'output_name', { optional: true, max: 120 });
         const short = body.short_side;
         if (short !== undefined && short !== 720 && short !== 1080) throw bad('short_side wajib 720 atau 1080');
         const j = jobsFor(ws);
         if (j.list().filter((x) => x.status === 'queued' || x.status === 'running').length >= 5) throw new ApiError(409, 'BUSY', 'Antrean render penuh; tunggu yang berjalan selesai');
-        const job = j.start({ project_id: project.project_id, output_name: renderOutputName(raw ?? project.name), actor, ...(short ? { settings: { short_side: short } } : {}) });
+        const job = j.start({ project_id: project.project_id, output_name: renderOutputName(raw ?? project.name), actor, ...(short ? { settings: { short_side: short } } : {}), ...(body.accept_brand_warnings ? { accept_brand_warnings: true } : {}) });
         return { job };
       },
     },

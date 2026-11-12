@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Route } from './app.js';
 import {
   type DiffItem,
@@ -17,6 +18,10 @@ import {
   readBrandKit,
   type BrandContext,
   readProject,
+  applyOps,
+  checkBrandGuard,
+  localDate,
+  type GuardIssue,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
@@ -98,6 +103,22 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
   }): Promise<{ plan: EditPlan; diff: DiffItem[] }> {
     const project = await readProject(ws, input.project_id);
     const checked = checkPlan(project.timeline, input.ops, await sourceDuration(), maxOpsFor(input.source));
+    // X08 Brand guard: issues this plan would ADD (not ones already on the timeline).
+    const kit = await readBrandKit(ws);
+    const today = localDate(now());
+    const key = (i: GuardIssue) => `${i.clip_id}|${i.kind}|${i.match}|${i.text}`;
+    const before = new Set(checkBrandGuard(project.timeline, kit.guard, today).map(key));
+    const after = checkBrandGuard(applyOps(project.timeline, checked.ops, () => `plan_new_${randomUUID()}`), kit.guard, today);
+    const added = after.filter((i) => !before.has(key(i)));
+    const say = (i: GuardIssue) => (i.kind === 'PRICE_EXPIRED' ? `harga "${i.match}" sudah lewat masa berlaku (${i.valid_until})` : `klaim terlarang "${i.match}"`);
+    const brandWarnings: string[] = [];
+    if (added.length) {
+      const what = [...new Set(added.map(say))].join(', ');
+      // Typed/AI plans are refused; plans made from the video's own speech (transcript) or from
+      // cuts only warn — the words are already in the footage.
+      if (input.source === 'local' || input.source === 'ai') throw new ApiError(422, 'EDIT_INVALID', `Rencana ditolak Brand guard: ${what}. Ubah kata-katanya atau atur Brand Kit.`);
+      brandWarnings.push(`Brand guard: ${what}. Render akan ${added.some((i) => i.level === 'block') ? 'diblokir' : 'minta konfirmasi'} sampai teksnya diubah.`);
+    }
     // Checkpoint E E8: planner output beyond the ops is untrusted too (an LLM can return anything).
     const rationale = typeof input.rationale === 'string' ? input.rationale : '';
     const warnings = Array.isArray(input.warnings) ? input.warnings.filter((w): w is string => typeof w === 'string') : [];
@@ -114,7 +135,7 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
       prompt: input.prompt,
       operations: checked.ops.map((op, i) => ({ op, label: checked.labels[i]! })),
       rationale: rationale.slice(0, 500),
-      warnings: warnings.slice(0, 10).map((w) => w.slice(0, 200)),
+      warnings: [...brandWarnings, ...warnings].slice(0, 10).map((w) => w.slice(0, 300)),
       cost_estimate: { usd: cost, note: input.source === 'ai' ? 'biaya panggilan AI untuk menyusun rencana ini' : 'tanpa AI, tanpa biaya API' },
       requires_approval: true,
       provider,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Api, Project, RenderJob, RenderOutputFile, RenderPhase, RenderTools } from '../api';
+import type { Api, GuardIssue, Project, RenderJob, RenderOutputFile, RenderPhase, RenderTools } from '../api';
 import { formatBytes, formatDate, formatDuration } from '../lib';
 import { ErrorNotice, Modal } from '../ui';
 
@@ -21,7 +21,13 @@ const PROBLEM: Record<string, string> = {
   MEDIA_UNKNOWN: 'Ada klip yang merujuk media tak dikenal.',
   OUTPUT_NOT_WRITABLE: 'Folder output tidak bisa ditulis.',
   INSUFFICIENT_DISK: 'Ruang disk tidak cukup untuk render ini.',
+  BRAND_BLOCKED: 'Brand guard: ada harga kedaluwarsa / klaim terlarang di video. Ubah teksnya dulu.',
+  BRAND_WARNING: 'Brand guard: ada peringatan yang belum dikonfirmasi.',
 };
+
+const fmtT = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
+const issueText = (i: GuardIssue) =>
+  i.kind === 'PRICE_EXPIRED' ? `Harga "${i.match}" sudah lewat masa berlaku (${i.valid_until})` : `Klaim terlarang "${i.match}"`;
 
 const TOOL: Record<string, string> = {
   FFMPEG_MISSING: 'FFmpeg tidak ditemukan di server (pasang FFmpeg atau set MOTION_FFMPEG).',
@@ -48,6 +54,14 @@ export function RenderDialog({ api, project, onClose }: { api: Api; project: Pro
   const [starting, setStarting] = useState(false);
   const [playing, setPlaying] = useState<{ name: string; url: string } | null>(null);
   const alive = useRef(true);
+  /** X08: Brand guard result for the current timeline (null = not loaded yet). */
+  const [issues, setIssues] = useState<GuardIssue[] | null>(null);
+  const [acceptWarn, setAcceptWarn] = useState(false);
+  useEffect(() => {
+    api.brandCheck(project.project_id).then((r) => alive.current && setIssues(r.issues), () => setIssues([]));
+  }, [api, project.project_id, project.revision]);
+  const blocking = (issues ?? []).filter((i) => i.level === 'block');
+  const warnings = (issues ?? []).filter((i) => i.level === 'warn');
 
   const refresh = useCallback(async () => {
     const r = await api.renders(project.project_id);
@@ -76,7 +90,7 @@ export function RenderDialog({ api, project, onClose }: { api: Api; project: Pro
     setError(null);
     setStarting(true);
     try {
-      await api.startRender(project.project_id, { output_name: name.trim() || project.name, short_side: short });
+      await api.startRender(project.project_id, { output_name: name.trim() || project.name, short_side: short, ...(acceptWarn && warnings.length ? { accept_brand_warnings: true } : {}) });
       await refresh();
     } catch (e) {
       setError(e);
@@ -135,6 +149,34 @@ export function RenderDialog({ api, project, onClose }: { api: Api; project: Pro
       )}
       {tools?.ok && !tools.font && <div className="notice warn">Font untuk teks/subtitle tidak ditemukan; proyek dengan teks belum bisa dirender (set MOTION_FONT).</div>}
       <ErrorNotice error={error} />
+      {blocking.length > 0 && (
+        <div className="notice err" role="alert" aria-label="Brand guard memblokir">
+          <b>Brand guard: render diblokir sampai teks ini diubah</b>
+          <ul className="guardList">
+            {blocking.map((i, k) => (
+              <li key={k}>
+                {issueText(i)} — {i.track_kind === 'subtitle' ? 'subtitle' : 'teks'} “{i.text}” di {fmtT(i.start_ms)}
+              </li>
+            ))}
+          </ul>
+          <span className="muted small">Aturan ada di menu Brand → Brand guard.</span>
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div className="notice warn" role="note" aria-label="Brand guard memperingatkan">
+          <b>Brand guard: periksa dulu</b>
+          <ul className="guardList">
+            {warnings.map((i, k) => (
+              <li key={k}>
+                {issueText(i)} — {i.track_kind === 'subtitle' ? 'subtitle' : 'teks'} “{i.text}” di {fmtT(i.start_ms)}
+              </li>
+            ))}
+          </ul>
+          <label className="inline">
+            <input type="checkbox" aria-label="Render tetap meski ada peringatan Brand guard" checked={acceptWarn} onChange={(e) => setAcceptWarn(e.target.checked)} /> Sudah gue cek, render tetap (tercatat di audit)
+          </label>
+        </div>
+      )}
 
       <div className="renderForm">
         <label>
@@ -154,7 +196,7 @@ export function RenderDialog({ api, project, onClose }: { api: Api; project: Pro
         <span className="muted renderSize">
           {ratio} · {size} · 30 fps · H.264/AAC
         </span>
-        <button className="btn primary" onClick={() => void start()} disabled={starting || !!blockedTools || !tools}>
+        <button className="btn primary" onClick={() => void start()} disabled={starting || !!blockedTools || !tools || issues === null || blocking.length > 0 || (warnings.length > 0 && !acceptWarn)}>
           {running ? '＋ Antrekan render' : '↧ Mulai render'}
         </button>
       </div>
@@ -187,7 +229,10 @@ export function RenderDialog({ api, project, onClose }: { api: Api; project: Pro
           {latest.status === 'blocked' && (
             <ul className="problems">
               {latest.problems.map((p, i) => (
-                <li key={i}>{PROBLEM[p.code] ?? p.code}</li>
+                <li key={i}>
+                  {PROBLEM[p.code] ?? p.code}
+                  {p.issues?.length ? ` (${p.issues.map(issueText).join('; ')})` : ''}
+                </li>
               ))}
             </ul>
           )}
