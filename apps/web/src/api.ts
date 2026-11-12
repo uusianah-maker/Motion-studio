@@ -170,7 +170,7 @@ export interface Clip {
 }
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number }
+  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -182,10 +182,11 @@ export type EditOp =
   | { op: 'split_at'; track_kind: Track['kind']; at_ms: number }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
-  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio'; muted: boolean };
+  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'sfx'; muted: boolean }
+  | { op: 'set_loudness'; lufs: number | null };
 export interface Track {
   track_id: string;
-  kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'effects';
+  kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'sfx' | 'effects';
   clips: Clip[];
   /** X04: media track silenced in preview and render. */
   muted?: boolean;
@@ -193,7 +194,7 @@ export interface Track {
 export interface Project extends Required<Omit<ProjectSummary, 'error' | 'variant' | 'brand_id'>> {
   brand_id?: string;
   variant?: VariantTag;
-  timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' }; brand_logo?: boolean };
+  timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' }; brand_logo?: boolean; loudness_lufs?: number };
   history: { undo: number; redo: number; undo_label: string | null; redo_label: string | null };
 }
 

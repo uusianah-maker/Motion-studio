@@ -61,7 +61,7 @@ export const fmtTime = (ms: number) => {
   const sec = Number.isInteger(rest) ? String(rest).padStart(2, '0') : rest.toFixed(1).padStart(4, '0');
   return `${m}:${sec}`;
 };
-const TRACK_NAME: Record<TrackKind, string> = { video: 'video', broll: 'b-roll', text: 'teks', subtitle: 'subtitle', audio: 'audio', effects: 'efek' };
+const TRACK_NAME: Record<TrackKind, string> = { video: 'video', broll: 'b-roll', text: 'teks', subtitle: 'subtitle', audio: 'audio', sfx: 'SFX', effects: 'efek' };
 const quote = (t: string) => `“${t.length > 40 ? `${t.slice(0, 39)}…` : t}”`;
 
 function findClip(t: Timeline, id: string) {
@@ -112,6 +112,8 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return `Ubah rasio ke ${op.ratio}`;
     case 'set_brand_logo':
       return op.on ? 'Tampilkan logo brand' : 'Sembunyikan logo brand';
+    case 'set_loudness':
+      return op.lufs === null ? 'Loudness: biarkan apa adanya' : `Loudness akhir ${op.lufs} LUFS`;
     case 'remove_range':
       return `Hapus ${fmtPrecise(op.from_ms)}–${fmtPrecise(op.to_ms)} (${((op.to_ms - op.from_ms) / 1000).toFixed(1).replace('.', ',')} dtk) di semua track`;
     case 'split_at':

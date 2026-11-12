@@ -10,8 +10,9 @@ export interface MediaRef {
   version_id: string;
 }
 
-export type TrackKind = 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'effects';
-const TRACK_KINDS: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'effects'];
+/** U3: `sfx` = short sound effects mixed over everything (separate from music/voice on `audio`). */
+export type TrackKind = 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'sfx' | 'effects';
+const TRACK_KINDS: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'sfx', 'effects'];
 
 export interface Clip {
   clip_id: string;
@@ -39,6 +40,8 @@ export interface Timeline {
   canvas?: { ratio: CanvasRatio };
   /** X06: burn the Brand Kit logo onto this project's renders (and show it in the preview). */
   brand_logo?: boolean;
+  /** U3: normalise the final mix to this integrated loudness (LUFS, e.g. -14). Missing = as is. */
+  loudness_lufs?: number;
 }
 
 export interface Track {
@@ -196,6 +199,11 @@ function validateTimeline(x: unknown, where: string): Timeline {
     if (!CANVAS_RATIOS.includes(c.ratio as CanvasRatio)) fail(`${where}.canvas.ratio`, `harus salah satu ${CANVAS_RATIOS.join(', ')}`);
     out.canvas = { ratio: c.ratio as CanvasRatio };
   }
+  if (o.loudness_lufs !== undefined) {
+    const l = o.loudness_lufs;
+    if (typeof l !== 'number' || !Number.isFinite(l) || l < -30 || l > -6) fail(`${where}.loudness_lufs`, 'harus angka -30 sampai -6');
+    out.loudness_lufs = l as number;
+  }
   if (o.brand_logo !== undefined) {
     if (typeof o.brand_logo !== 'boolean') fail(`${where}.brand_logo`, 'harus true/false');
     if (o.brand_logo) out.brand_logo = true;
@@ -243,7 +251,7 @@ function validateTracks(timeline: Obj, where: string): Track[] {
     const track: Track = { track_id: id(to.track_id, `${w}.track_id`), kind, clips };
     if (to.muted !== undefined) {
       if (typeof to.muted !== 'boolean') fail(`${w}.muted`, 'harus true/false');
-      if (!['video', 'broll', 'audio'].includes(kind)) fail(`${w}.muted`, 'mute hanya untuk track media');
+      if (!['video', 'broll', 'audio', 'sfx'].includes(kind)) fail(`${w}.muted`, 'mute hanya untuk track media');
       track.muted = to.muted as boolean;
     }
     return track;

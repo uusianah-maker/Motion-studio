@@ -267,6 +267,7 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_volume: 'Ubah volume',
   set_brand_logo: 'Logo brand',
   remove_range: 'Hapus jeda',
+  set_loudness: 'Loudness',
   split_at: 'Potong di adegan',
   set_track_mute: 'Bisukan/nyalakan track',
 };

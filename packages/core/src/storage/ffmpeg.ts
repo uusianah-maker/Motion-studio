@@ -267,3 +267,29 @@ export async function verifyCleanOutput(
 }
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** U3: loudnorm pass-1 measurement of a file's audio (null = could not measure). */
+export function measureLoudness(file: string, target: number): Promise<{ input_i: string; input_tp: string; input_lra: string; input_thresh: string; target_offset: string } | null> {
+  return new Promise((resolve) => {
+    const child = spawn(ffmpegBin(), ['-hide_banner', '-nostdin', '-nostats', '-i', file, '-map', '0:a:0', '-af', `loudnorm=I=${target}:TP=-1.5:LRA=11:print_format=json`, '-f', 'null', '-'], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (d: string) => {
+      err = (err + d).slice(-8000);
+    });
+    child.on('error', () => resolve(null));
+    child.on('close', (code) => {
+      if (code !== 0) return resolve(null);
+      const m = /\{[^{}]*"input_i"[^{}]*\}/.exec(err);
+      if (!m) return resolve(null);
+      try {
+        const j = JSON.parse(m[0]) as Record<string, string>;
+        const nums = ['input_i', 'input_tp', 'input_lra', 'input_thresh', 'target_offset'] as const;
+        if (!nums.every((k) => Number.isFinite(Number(j[k])))) return resolve(null);
+        resolve({ input_i: j.input_i!, input_tp: j.input_tp!, input_lra: j.input_lra!, input_thresh: j.input_thresh!, target_offset: j.target_offset! });
+      } catch {
+        resolve(null);
+      }
+    });
+  });
+}

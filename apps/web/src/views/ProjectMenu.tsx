@@ -95,6 +95,20 @@ export function ProjectMenu({
           </select>
           {brandName && <span className="muted"> Dipakai: {brandName}</span>}
         </label>
+        <label className="small">
+          Loudness akhir (render)
+          <select
+            aria-label="Loudness akhir"
+            disabled={busy}
+            value={project.timeline.loudness_lufs === undefined ? '' : String(project.timeline.loudness_lufs)}
+            onChange={(e) => void run((p) => api.editProject(p.project_id, p.revision, [{ op: 'set_loudness', lufs: e.target.value === '' ? null : Number(e.target.value) }]))}
+          >
+            <option value="">Asli (tidak diubah)</option>
+            <option value="-14">−14 LUFS (TikTok / Reels / Shopee)</option>
+            <option value="-16">−16 LUFS (lebih pelan)</option>
+            <option value="-23">−23 LUFS (siaran)</option>
+          </select>
+        </label>
         <button className="btn small" disabled={busy || working} onClick={() => void side(async () => onDuplicated((await api.duplicateProject(project.project_id)).project_id))}>
           ⧉ Duplikat
         </button>

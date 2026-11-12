@@ -6,7 +6,7 @@ import { audit } from './audit.js';
 import { setLeaseStatus } from './deps.js';
 import { StorageError, isStorageError } from './errors.js';
 import { guard } from './guard.js';
-import { checkTools, findFont, runFfmpeg, sourceMetadataMarkers, verifyCleanOutput } from './ffmpeg.js';
+import { checkTools, findFont, measureLoudness, runFfmpeg, sourceMetadataMarkers, verifyCleanOutput } from './ffmpeg.js';
 import type { Actor } from './permissions.js';
 import { MEDIA_AREAS } from './permissions.js';
 import { type PreflightResult, finishRender, startRender, verifyRenderSnapshot } from './preflight.js';
@@ -207,7 +207,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
 
   // Audio track: mixed over the visual sound at its timeline position, like the preview.
   const mixes: string[] = [];
-  for (const c of clipsOf(t, 'audio')) {
+  for (const c of [...clipsOf(t, 'audio'), ...clipsOf(t, 'sfx')]) {
     const src = media(c);
     const startFrame = Math.round((c.start_ms * fps) / 1000);
     const endFrame = Math.min(total_frames, Math.round((c.end_ms * fps) / 1000));
@@ -218,6 +218,8 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     graph.push(`[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(c))},apad,atrim=end_sample=${(endFrame - startFrame) * samplesPerFrame},adelay=delays=${delay}:all=1[m${mixes.length}]`);
     mixes.push(`[m${mixes.length}]`);
   }
+  // U3: the final loudness (timeline.loudness_lufs) is applied after encoding, in two passes
+  // (measure, then linear gain) — see `normalizeLoudness`; a single pass is inaccurate on short ads.
   graph.push(mixes.length ? `[acat]${mixes.join('')}amix=inputs=${mixes.length + 1}:duration=first:normalize=0:dropout_transition=0,${AFMT}[aout]` : `[acat]anull[aout]`);
 
   // Text + subtitles (X01): each clip's own style — the same layout function as the preview
@@ -275,6 +277,23 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     '-f', 'mp4', 'out.mp4',
   );
   return { args, graph: graph.join(';\n'), files, width: W, height: H, total_ms, total_frames };
+}
+
+/**
+ * U3: two-pass EBU R128 loudness normalisation of `out.mp4` in `jobDir` (video stream copied).
+ * Pass 1 measures the whole mix; pass 2 applies one linear gain (true peak limited to -1.5 dBTP),
+ * so a 20-second ad lands on the target instead of drifting like single-pass dynamic mode.
+ */
+export async function normalizeLoudness(jobDir: string, lufs: number, signal?: AbortSignal): Promise<void> {
+  const out = path.join(jobDir, 'out.mp4');
+  const m = await measureLoudness(out, lufs);
+  if (!m) throw new StorageError('RENDER_FAILED', 'Loudness hasil render tidak bisa diukur', { stage: 'loudness' });
+  const filter = `loudnorm=I=${lufs}:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,${AFMT}`;
+  await runFfmpeg(
+    ['-hide_banner', '-nostdin', '-v', 'error', '-progress', 'pipe:1', '-nostats', '-y', '-i', 'out.mp4', '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy', '-af', filter, '-c:a', 'aac', '-b:a', '192k', '-ar', String(AUDIO_RATE), '-ac', '2', ...STRIP_METADATA_ARGS, '-movflags', '+faststart', '-f', 'mp4', 'out_lufs.mp4'],
+    { cwd: jobDir, ...(signal ? { signal } : {}) },
+  );
+  await fsp.rename(path.join(jobDir, 'out_lufs.mp4'), out);
 }
 
 /** Rough output size (bytes) for the disk check: generous bits-per-pixel + audio, ×2 for the staging copy. */
@@ -424,6 +443,7 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
         ...(hooks.signal ? { signal: hooks.signal } : {}),
         onTime: (ms) => hooks.onProgress?.(Math.min(0.999, Math.max(0, ms / plan.total_ms))),
       });
+      if (project.timeline.loudness_lufs !== undefined) await normalizeLoudness(jobDir, project.timeline.loudness_lufs, hooks.signal);
       return { plan, markers: [...markers] };
     });
 

@@ -1,0 +1,37 @@
+{
+  "at": "2026-11-12T19:45:23.402Z",
+  "passed": 6,
+  "total": 6,
+  "results": [
+    {
+      "id": "U3a-01 \"＋ SFX\" menaruh SFX di track SFX (bersamaan dengan musik di track Audio)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U3a-02 Track SFX tampil di linimasa dengan tombol mute",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U3a-03 Pratinjau punya lapisan suara SFX sendiri",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U3a-04 Menu ⋯ Proyek: Loudness akhir −14 LUFS tersimpan di proyek",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U3a-05 Render: loudness terukur ±−14 LUFS, metadata bersih",
+      "ok": true,
+      "detail": "-13.5 LUFS"
+    },
+    {
+      "id": "U3-99 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

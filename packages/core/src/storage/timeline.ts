@@ -13,15 +13,17 @@ export const MIN_CLIP_MS = 100;
 /** Retained undo steps per project. Older steps are dropped (and stop holding their media). */
 export const UNDO_LIMIT = 50;
 /** Media clips may live on these tracks; text/subtitle/effects carry no media. */
-export const MEDIA_TRACKS: readonly TrackKind[] = ['video', 'broll', 'audio'];
+export const MEDIA_TRACKS: readonly TrackKind[] = ['video', 'broll', 'audio', 'sfx'];
 /** Checkpoint E E10: bound the manifest (each edit stores up to UNDO_LIMIT full snapshots). */
 export const MAX_TIMELINE_CLIPS = 2000;
 /** Text clips (overlay / subtitle) carry `text` and never media. */
 export const TEXT_TRACKS: readonly TrackKind[] = ['text', 'subtitle'];
-const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'effects'];
+const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'sfx', 'effects'];
+/** Tracks whose clips are sound only (mixed over the picture's sound). */
+export const SOUND_TRACKS: readonly TrackKind[] = ['audio', 'sfx'];
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number }
+  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -35,7 +37,9 @@ export type EditOp =
   | { op: 'split_at'; track_kind: TrackKind; at_ms: number }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
-  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio'; muted: boolean };
+  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'sfx'; muted: boolean }
+  /** U3: final loudness (LUFS) or null = leave the mix as is. */
+  | { op: 'set_loudness'; lufs: number | null };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -65,7 +69,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
     };
     switch (o.op) {
       case 'add_clip': {
-        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms']);
+        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume']);
         if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
         let media: MediaRef | undefined;
         if (o.media !== undefined) {
@@ -82,6 +86,8 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           start_ms: ms(o.start_ms, 'start_ms'),
           duration_ms: ms(o.duration_ms, 'duration_ms'),
           ...(o.in_ms !== undefined ? { in_ms: ms(o.in_ms, 'in_ms') } : {}),
+          // U3 (contract §5.2): volume set at creation, so a plan never refers to its own new clip.
+          ...(o.volume !== undefined ? { volume: typeof o.volume === 'number' && Number.isFinite(o.volume) && o.volume >= 0 && o.volume <= 1 ? Math.round(o.volume * 100) / 100 : bad(`ops[${i}]: volume harus angka 0–1`) } : {}),
         };
       }
       case 'move_clip':
@@ -127,9 +133,13 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
       }
       case 'set_track_mute':
         keys(['op', 'track_kind', 'muted']);
-        if (o.track_kind !== 'video' && o.track_kind !== 'broll' && o.track_kind !== 'audio') bad(`ops[${i}]: track_kind harus video | broll | audio`);
+        if (o.track_kind !== 'video' && o.track_kind !== 'broll' && o.track_kind !== 'audio' && o.track_kind !== 'sfx') bad(`ops[${i}]: track_kind harus video | broll | audio | sfx`);
         if (typeof o.muted !== 'boolean') bad(`ops[${i}]: muted harus true/false`);
-        return { op: 'set_track_mute', track_kind: o.track_kind as 'video' | 'broll' | 'audio', muted: o.muted as boolean };
+        return { op: 'set_track_mute', track_kind: o.track_kind as 'video' | 'broll' | 'audio' | 'sfx', muted: o.muted as boolean };
+      case 'set_loudness':
+        keys(['op', 'lufs']);
+        if (o.lufs !== null && (typeof o.lufs !== 'number' || !Number.isFinite(o.lufs) || o.lufs < -30 || o.lufs > -6)) bad(`ops[${i}]: lufs harus -30 sampai -6 atau null`);
+        return { op: 'set_loudness', lufs: o.lufs === null ? null : Math.round((o.lufs as number) * 10) / 10 };
       case 'set_style': {
         keys(['op', 'clip_id', 'style']);
         const style = validateStyle(o.style, `ops[${i}].style`);
@@ -163,6 +173,7 @@ const clone = (t: Timeline): Timeline => ({
   tracks: t.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => ({ ...c, ...(c.media ? { media: { ...c.media } } : {}), ...(c.style ? { style: { ...c.style } } : {}) })) })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
   ...(t.brand_logo ? { brand_logo: true } : {}),
+  ...(t.loudness_lufs !== undefined ? { loudness_lufs: t.loudness_lufs } : {}),
 });
 
 function locate(t: Timeline, id: string): { track: Track; clip: Clip; index: number } {
@@ -230,6 +241,10 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         if (op.media) {
           clip.media = { ...op.media };
           clip.in_ms = op.in_ms ?? 0;
+        }
+        if (op.volume !== undefined) {
+          if (!op.media) bad('Volume hanya untuk klip video/audio');
+          if (op.volume !== 1) clip.volume = op.volume;
         }
         trackFor(t, op.track_kind).clips.push(clip);
         break;
@@ -314,6 +329,10 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
       case 'set_brand_logo':
         if (op.on) t.brand_logo = true;
         else delete t.brand_logo;
+        break;
+      case 'set_loudness':
+        if (op.lufs === null) delete t.loudness_lufs;
+        else t.loudness_lufs = op.lufs;
         break;
       case 'set_volume': {
         const { clip } = locate(t, op.clip_id);

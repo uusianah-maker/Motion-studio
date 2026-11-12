@@ -5,7 +5,7 @@ import type { BrandKit, Clip, EditOp, Track } from '../api';
 import { formatDuration } from '../lib';
 
 export type SelectedClip = Clip & { kind: Track['kind'] };
-const KIND_NAME: Record<Track['kind'], string> = { video: 'Video', broll: 'B-roll', text: 'Teks', subtitle: 'Subtitle', audio: 'Audio', effects: 'Efek' };
+const KIND_NAME: Record<Track['kind'], string> = { video: 'Video', broll: 'B-roll', text: 'Teks', subtitle: 'Subtitle', audio: 'Audio', sfx: 'SFX', effects: 'Efek' };
 const sec = (ms: number) => (ms / 1000).toFixed(2);
 
 /**
