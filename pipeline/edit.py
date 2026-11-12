@@ -209,7 +209,47 @@ def plan_captions(captions, words, kata_kunci, kamus_values):
     return chosen
 
 
-def plan_hook(captions):
+HOOK_QUESTION = {"kapan", "apa", "kenapa", "gimana", "bagaimana", "siapa", "pernah", "mau", "udah", "sudah"}
+HOOK_BAD_START = HOOK_DANGLING | {"yaitu", "yakni", "pun", "lagi", "juga", "nya"}
+
+
+def _hook_window(sent, kata_kunci):
+    """Pilih potongan 3..6 kata terbaik dari kalimat yang terlalu panjang.
+
+    Skor: memuat kata kunci/produk (+3), berakhir di akhir kalimat (+3) atau koma (+1), mulai di awal
+    kalimat atau sesudah koma (+1, +1 lagi kalau kata tanya), tiap koma di tengah (-1),
+    mulai/berakhir di kata sambung (-2/-3), lebih panjang sedikit lebih baik.
+    """
+    toks = [norm(c["text"]) for c in sent]
+    kws = [[norm(t) for t in re.split(r"[\s-]+", k) if norm(t)] for k in kata_kunci]
+    best, best_score = None, None
+    for n in range(3, HOOK_MAX_WORDS + 1):
+        for i in range(0, len(sent) - n + 1):
+            w = sent[i : i + n]
+            t = toks[i : i + n]
+            score = 0.1 * n
+            if any(k and any(t[j : j + len(k)] == k for j in range(n - len(k) + 1)) for k in kws):
+                score += 3
+            if re.search(r"[.?!]$", w[-1]["text"]):
+                score += 3  # akhir kalimat
+            elif re.search(r"[,;:]$", w[-1]["text"]):
+                score += 1
+            if i == 0 or re.search(r"[,;:]$", sent[i - 1]["text"]):
+                score += 1
+                if t[0] in HOOK_QUESTION:
+                    score += 1
+            score -= sum(1 for c in w[:-1] if re.search(r"[,;:]$", c["text"]))
+            if t[0] in HOOK_BAD_START:
+                score -= 2
+            # "ini"/"itu" wajar di akhir kalimat ("...korset ini."), tapi tidak di tengah.
+            if t[-1] in HOOK_DANGLING and not re.search(r"[.?!]$", w[-1]["text"]):
+                score -= 3
+            if best_score is None or score > best_score + 1e-9:
+                best, best_score = w, score
+    return best
+
+
+def plan_hook(captions, kata_kunci=()):
     """Judul hook dari kalimat pertama yang diucapkan (maks 6 kata, tidak mengarang)."""
     sent = []
     for c in captions:
@@ -222,11 +262,8 @@ def plan_hook(captions):
         sent = sent[1:]
     note = None
     if len(sent) > HOOK_MAX_WORDS:
-        sent = sent[:HOOK_MAX_WORDS]
-        # Jangan berhenti di kata sambung ("... nanti yang").
-        while len(sent) > 3 and norm(sent[-1]["text"]) in HOOK_DANGLING:
-            sent = sent[:-1]
-        note = "kalimat pertama lebih dari 6 kata, judul dipotong di kata ke-6"
+        sent = _hook_window(sent, kata_kunci)
+        note = "kalimat pertama lebih dari 6 kata, judul dipilih dari potongan terbaik kalimat itu"
     text = " ".join(re.sub(r"[.,;:]+$", "", c["text"]) for c in sent)
     text = text[:1].upper() + text[1:]
     end = min(HOOK_MAX_MS, after)
@@ -402,7 +439,7 @@ def main() -> None:
         if i == 0 or re.search(r"[.?!]$", captions[i - 1]["text"]):
             c["text"] = c["text"][:1].upper() + c["text"][1:]
     keywords = plan_captions(captions, words, bk.get("kata_kunci", []), bk.get("kamus_kata", {}).values())
-    hook, hook_note = plan_hook(captions)
+    hook, hook_note = plan_hook(captions, bk.get("kata_kunci", []) + [p["nama"] for p in bk.get("produk", [])])
     if args.hook_text:
         # Judul pilihan user tetap harus dari ucapan: semua katanya wajib ada di transkrip.
         spoken = {norm(c["text"]) for c in captions}
