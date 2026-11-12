@@ -79,6 +79,8 @@ try {
   check('U4-03 Status job: Rencana siap (job id AYS-YYYYMMDD-001)', /AYS-\d{8}-001/.test(await status.innerText()) && (await status.getAttribute('data-state')) === 'siap');
   const cardText = await card.innerText();
   check('U4-04 Kartu rencana: hook, durasi mentah → akhir, kata yang perlu dicek', cardText.includes('Celana adem') && /3,0 dtk → 1,5 dtk/.test(cardText) && cardText.includes('Periksa kata "adem"'), cardText.split('\n').slice(0, 6).join(' | '));
+  const qcList = card.getByRole('list', { name: 'Cek rencana mesin' });
+  check('U4-04b Kartu rencana: cek mesin (qc_rencana), posisi caption, musik + lisensi', (await qcList.getByText('⚠ durasi sesuai target (1.5)').isVisible()) && (await qcList.getByText('✓ hook di 3 detik pertama').isVisible()) && cardText.includes('Posisi caption: 72%') && cardText.includes('lisensi: milik_sendiri'));
   const projects = await core.listProjectIds(ws);
   const pid = projects.find((p) => p !== 'u3');
   const before = await core.readProject(ws, pid);

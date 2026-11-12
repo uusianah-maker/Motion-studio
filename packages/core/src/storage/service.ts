@@ -132,7 +132,9 @@ export class StorageService {
   // ---- U5 Batch Remix: approve / strike rows of an engine batch
   decideBatch(input: { project_id: string; job_id: string; rows: unknown; config: engine.EngineConfig | null; actor: Actor }) {
     if (input.actor !== 'user') throw new StorageError('FORBIDDEN', 'Hanya pengguna yang boleh menyetujui batch');
-    return mutate(this.ws, 'svc.decideBatch', input.actor, () => engine.decideBatch(this.ws, input.config, { ...input, actor: 'user', newId: newProjectId }));
+    return engine.loadBatchPlans(this.ws, input.config, input.project_id, input.job_id, input.rows).then((plans) =>
+      mutate(this.ws, 'svc.decideBatch', input.actor, () => engine.decideBatch(this.ws, input.config, { ...input, actor: 'user', newId: newProjectId, plans })),
+    );
   }
 
   // ---- X06 Brand Kit (workspace level). Saving reconciles clocks: font/logo become held.

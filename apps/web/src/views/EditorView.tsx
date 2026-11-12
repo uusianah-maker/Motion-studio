@@ -1,6 +1,7 @@
 import { CopilotPanel } from './CopilotPanel';
+import { ReviewPanel } from './ReviewPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Track } from '../api';
+import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Role, type Track } from '../api';
 import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration } from '../lib';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
@@ -45,6 +46,7 @@ const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isCon
  */
 export function EditorView({
   api,
+  role = 'owner',
   projectId,
   mobileProjects,
   onSaved,
@@ -52,6 +54,8 @@ export function EditorView({
   onProjectsChanged,
 }: {
   api: Api;
+  /** U7: reviewers see everything read-only (comment + Lulus/Revisi only); editors cannot approve. */
+  role?: Role;
   projectId: string | null;
   mobileProjects: ReactNode;
   onSaved?: (p: Project) => void;
@@ -127,7 +131,8 @@ export function EditorView({
   const edit = useCallback((ops: EditOp[]) => run((p) => api.editProject(p.project_id, p.revision, ops)), [run, api]);
   const step = useCallback((dir: 'undo' | 'redo') => run((p) => api.stepHistory(p.project_id, p.revision, dir)), [run, api]);
   /** X05: an archived project is read-only — every edit control is off (the server refuses too). */
-  const locked = busy || project?.status === 'archived';
+  const reviewer = role === 'reviewer';
+  const locked = busy || project?.status === 'archived' || reviewer;
 
   const tracks = project?.timeline.tracks ?? [];
   const allClips = tracks.flatMap((t) => t.clips.map((c) => ({ ...c, kind: t.kind })));
@@ -150,7 +155,7 @@ export function EditorView({
         setPlaying((p) => !p);
         return;
       }
-      if (project.status === 'archived') return; // read-only: play/pause only
+      if (project.status === 'archived' || reviewer) return; // read-only: play/pause only
       if ((e.ctrlKey || e.metaKey) && k === 'z') {
         e.preventDefault();
         if (e.shiftKey ? project.history.redo : project.history.undo) void step(e.shiftKey ? 'redo' : 'undo');
@@ -317,7 +322,8 @@ export function EditorView({
               {project.variant.approved_revision === project.revision ? 'disetujui' : project.variant.approved_revision ? 'diubah setelah disetujui — perlu disetujui ulang' : 'belum disetujui'}{' '}
               <button
                 className="btn small"
-                disabled={locked}
+                disabled={busy || project.status === 'archived' || role === 'editor'}
+                title={role === 'editor' ? 'Persetujuan oleh Owner / Reviewer' : undefined}
                 onClick={() =>
                   void run((p) => api.setVariantApproval(p.project_id, p.revision, p.variant!.approved_revision !== p.revision)).then(() => onProjectsChanged?.())
                 }
@@ -385,9 +391,9 @@ export function EditorView({
                 return a! / b!;
               })()}
               busy={busy}
-              readOnly={project.status === 'archived'}
+              readOnly={project.status === 'archived' || reviewer}
               brand={brand?.kit ?? null}
-              {...(project.status !== 'archived' ? { onCutReview: () => setCutClip(sel) } : {})}
+              {...(project.status !== 'archived' && !reviewer ? { onCutReview: () => setCutClip(sel) } : {})}
               onEdit={(ops) => edit(ops)}
               onDraft={setStyleDraft}
             />
@@ -449,7 +455,8 @@ export function EditorView({
               Sebagian media belum terbaca durasinya (ffprobe belum jalan untuk file itu). Klip dari media tersebut masuk 5 detik dan trim-nya belum dibatasi panjang sumber.
             </p>
           )}
-          {project && (
+          {project && <ReviewPanel api={api} project={project} role={role} playheadMs={playhead} onSeek={(ms) => setPlayhead(ms)} />}
+          {project && !reviewer && (
             <CopilotPanel
               api={api}
               project={project}

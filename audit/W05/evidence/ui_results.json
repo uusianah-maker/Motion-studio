@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-12T20:33:56.010Z",
+  "at": "2026-11-12T20:50:29.271Z",
   "summary": {
     "PASS": 20
   },
@@ -17,7 +17,7 @@
     {
       "id": "UI-02 Token dihapus dari address bar",
       "ok": true,
-      "detail": "http://127.0.0.1:65224/"
+      "detail": "http://127.0.0.1:60355/"
     },
     {
       "id": "UI-03 Editor memuat proyek + linimasa asli",

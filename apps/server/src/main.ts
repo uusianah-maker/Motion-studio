@@ -21,6 +21,8 @@ import { createCopilot } from './copilot.js';
 import { STT_TMP_PREFIX, transcribeRoutes } from './transcribe.js';
 import { cutRoutes } from './cuts.js';
 import { engineRoutes } from './engine.js';
+import { reviewRoutes } from './review.js';
+import { parseRoleLists, roleResolver } from './roles.js';
 import { createRenderJobs } from './render.js';
 import { apiRoutes, sweepUploadTemp } from './routes.js';
 import { createStreamSigner } from './stream.js';
@@ -61,6 +63,8 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   }
   const allowedEmails = googleSet.length ? parseAllowlist(env.MOTION_ALLOWED_EMAILS) : [];
   if (googleSet.length && !allowedEmails.length) throw new Error('MOTION_ALLOWED_EMAILS kosong: minimal satu email');
+  // U7: roles only mean something with Google login (local token mode = the owner on this PC).
+  const roleLists = googleSet.length ? parseRoleLists(env, allowedEmails) : null;
   const publicUrl = (env.MOTION_PUBLIC_URL ?? '').replace(/\/+$/, '') || null;
   if (publicUrl && !/^(https:\/\/[A-Za-z0-9.-]+(:\d{1,5})?|http:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?)$/.test(publicUrl)) {
     throw new Error('MOTION_PUBLIC_URL harus https://domain (atau http://127.0.0.1:<port> / http://localhost:<port>), tanpa path');
@@ -110,7 +114,8 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...engineRoutes(ws, { copilot, config: engineConfigFromEnv(env), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) })],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...engineRoutes(ws, { copilot, config: engineConfigFromEnv(env), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) })],
+    roleOf: roleResolver(roleLists),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 

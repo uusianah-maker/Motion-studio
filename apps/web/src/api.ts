@@ -454,7 +454,28 @@ export class ApiError extends Error {
   }
 }
 
+/** U7: who may do what (enforced by the server). */
+export type Role = 'owner' | 'editor' | 'reviewer';
+export interface ReviewComment {
+  comment_id: string;
+  at_ms: number;
+  text: string;
+  author: { email: string | null; name: string };
+  created_at: number;
+  revision: number;
+  resolved_at: number | null;
+  resolved_by: { email: string | null; name: string } | null;
+}
+export interface ReviewInfo {
+  comments: ReviewComment[];
+  decision: { status: 'lulus' | 'revisi'; revision: number; by: { email: string | null; name: string }; at: number; note: string } | null;
+  state: 'belum' | 'lulus' | 'revisi' | 'berubah';
+  revision: number;
+}
+
 export interface Session {
+  /** U7 (missing on servers before roles = owner). */
+  role?: Role;
   actor: string;
   workspace_id: string;
   storage_backend: string;
@@ -510,9 +531,13 @@ export interface EngineRencana {
   hook?: { teks?: string };
   kata_kunci?: { teks?: string; detik?: number }[];
   efek?: { jenis?: string }[];
-  audio?: { sfx?: number; musik?: string | null; alasan_tanpa_musik?: string | null };
+  audio?: { sfx?: number; musik?: string | null; alasan_tanpa_musik?: string | null; lisensi_musik?: string | null };
+  posisi_caption?: number | null;
   cta?: string;
   menunggu_u3?: string[];
+}
+export interface EngineQc {
+  butir: { butir: string; lulus: boolean; nilai?: unknown }[];
 }
 export interface BatchRow {
   id: string;
@@ -674,6 +699,13 @@ export function createApi(token: string | null, base = '') {
     renders: (id: string) => call<{ jobs: RenderJob[]; outputs: RenderOutputFile[] }>('GET', `/api/projects/${encodeURIComponent(id)}/renders`),
     cancelRender: (jobId: string) => call<{ job: RenderJob }>('POST', `/api/render/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }).then((r) => r.job),
     /** Short-lived signed link to play (or download) one finished output. */
+    // U7 review
+    review: (id: string) => call<{ review: ReviewInfo }>('GET', `/api/projects/${encodeURIComponent(id)}/review`).then((r) => r.review),
+    addComment: (id: string, at_ms: number, text: string) => call<{ comment: ReviewComment }>('POST', `/api/projects/${encodeURIComponent(id)}/comments`, { json: { at_ms, text } }).then((r) => r.comment),
+    resolveComment: (id: string, commentId: string, resolved: boolean) =>
+      call<{ comment: ReviewComment }>('POST', `/api/projects/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}/resolve`, { json: { resolved } }).then((r) => r.comment),
+    decideReview: (id: string, expected_revision: number, status: 'lulus' | 'revisi', note?: string) =>
+      call<{ state: ReviewInfo['state'] }>('POST', `/api/projects/${encodeURIComponent(id)}/review`, { json: { expected_revision, status, ...(note ? { note } : {}) } }),
     // U6 engine runner
     engineInfo: () => call<{ installed: boolean; running: number; waiting: number }>('GET', '/api/engine'),
     engineJobs: (id: string) => call<{ jobs: EngineJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs`).then((r) => r.jobs),
@@ -681,7 +713,7 @@ export function createApi(token: string | null, base = '') {
     engineJob: (id: string, jobId: string) => call<{ job: EngineJob; log: string | null }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}`),
     engineCancel: (id: string, jobId: string) => call<{ ok?: true; job?: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }),
     enginePlan: (id: string, jobId: string, variant?: string) =>
-      call<PlanReply & { rencana: EngineRencana }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/plan`, { json: variant ? { variant } : {} }),
+      call<PlanReply & { rencana: EngineRencana; qc: EngineQc | null }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/plan`, { json: variant ? { variant } : {} }),
     engineBatch: (id: string, jobId: string) =>
       call<{ batch: BatchTable; decisions: Record<string, { status: BatchRowStatus; project_id: string | null }> }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch`),
     engineDecide: (id: string, jobId: string, rows: { varian: string; status: BatchRowStatus }[]) =>

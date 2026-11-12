@@ -32,6 +32,7 @@ export { recoverOnStartup, type RecoveryReport } from './storage/recovery.js';
 export { StorageService, describeOps } from './storage/service.js';
 export { type ClipEffect, RAMP_MS, validateEffect, zoomAt } from './storage/effects.js';
 export { type BlurRegion, type Crop, fillCrop, validateBlur, validateCrop } from './storage/framing.js';
+export { type Author, MAX_COMMENTS, type ReviewComment, type ReviewDecision, type ReviewState, addComment, decideReview, readReview, resolveComment, reviewState } from './storage/review.js';
 export {
   type EngineConfig,
   type EngineJobInput,
@@ -45,6 +46,8 @@ export {
   prepareEngineJob,
   readBatchDecisions,
   decideBatch,
+  loadBatchPlans,
+  engineEnv,
   type BatchDecision,
   readEngineBatch,
   readEngineLog,

@@ -251,6 +251,7 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
   const job_id = `${kit.kode}-${day}-${String(n).padStart(3, '0')}`;
   const jdir = jobAbs(ws, input.project_id, job_id);
   await fsp.mkdir(jdir); // fails if a parallel request took the same id
+  let lease: { lease_id: string } | null = null;
   try {
     const sumber = [];
     for (const s of input.sources) sumber.push({ kunci: s.kunci, path: (await localPath(ws, s.ref)).replace(/\\/g, '/') });
@@ -272,12 +273,14 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
     const refs: Record<string, MediaRef> = { ...brandPlaceholders(kit) };
     for (const s of input.sources) refs[s.kunci] = s.ref;
     await writeJsonAtomic(path.join(jdir, 'refs.json'), { schema: 'engine-refs/1', brand_id: kit.brand_id, refs });
-    const lease = await createLease(ws, { job: 'engine', label: `Mesin ${job_id}`, media: input.sources.map((s) => s.ref), actor: opts.actor ?? 'user', worker_pid: process.pid });
+    lease = await createLease(ws, { job: 'engine', label: `Mesin ${job_id}`, media: input.sources.map((s) => s.ref), actor: opts.actor ?? 'user', worker_pid: process.pid });
     const status: EngineStatus = { schema: 'engine-status/1', job_id, project_id: input.project_id, mode: input.mode, state: 'menunggu', tahap: 'antre', persen: 0, pesan: '', created_at: now, started_at: null, finished_at: null, exit_code: null, alasan: null, lease_id: lease.lease_id };
     await writeStatus(ws, status);
     await audit(ws, { op: 'engine.prepare', actor: opts.actor ?? 'user', outcome: 'ok', project_id: input.project_id, job_id, mode: input.mode, sources: input.sources.length });
     return status;
   } catch (e) {
+    // Checkpoint I M4: nothing may stay pinned by a job that does not exist.
+    if (lease) await releaseLease(ws, { lease_id: lease.lease_id, outcome: 'failed', actor: opts.actor ?? 'user' }).catch(() => undefined);
     await fsp.rm(jdir, { recursive: true, force: true });
     throw e;
   }
@@ -287,6 +290,17 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
 function killTree(child: { pid?: number | undefined; kill: () => boolean }): void {
   if (process.platform === 'win32' && child.pid) execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, () => child.kill());
   else child.kill();
+}
+
+/**
+ * The engine's environment: only what Python / Whisper / FFmpeg need. Never the server's secrets
+ * (MOTION_SECRET_KEY, Google client secret, …) — Checkpoint I M3.
+ */
+export function engineEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const keep = /^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TEMP|TMP|TMPDIR|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|PROGRAMDATA|PROGRAMFILES|PROGRAMFILES\(X86\)|NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|OS|LANG|LC_ALL|CUDA_VISIBLE_DEVICES|PYTHON[A-Z_]*|VIRTUAL_ENV|HF_HOME|XDG_CACHE_HOME)$/i;
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) if (keep.test(k) && v !== undefined) out[k] = v;
+  return { ...out, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' };
 }
 
 /** Spawn seam for tests. */
@@ -306,6 +320,8 @@ export async function runEngineJob(
   let s = await readEngineStatus(ws, projectId, jobId);
   const jdir = jobAbs(ws, projectId, jobId);
   const mode = opts.mode ?? s.mode;
+  // Checkpoint I H1: only a waiting job (with its lease) may start; a settled one never runs leaseless.
+  if (s.state !== 'menunggu' || !s.lease_id) throw new StorageError('PRECONDITION', `Job ${jobId} tidak menunggu (${s.state}); jalankan job baru`);
   if (mode === 'ulang' && !(await fsp.stat(path.join(jdir, 'koreksi.json')).catch(() => null))) bad('koreksi.json belum ada');
   s = { ...s, state: 'berjalan', tahap: 'mulai', persen: 0, pesan: '', started_at: ws.clock.now(), finished_at: null, exit_code: null, alasan: null };
   await writeStatus(ws, s);
@@ -313,10 +329,16 @@ export async function runEngineJob(
   opts.onProgress?.(s);
   let log = '';
   let lastWrite = 0;
-  const code = await new Promise<number>((resolve) => {
+  let writing: Promise<void> = Promise.resolve(); // progress writes in order, finished before the final one
+  let code = await new Promise<number>((resolve) => {
+    if (opts.signal?.aborted) {
+      log += '[Motion Studio] dibatalkan sebelum mesin mulai';
+      resolve(1);
+      return;
+    }
     let child: ReturnType<Spawner>;
     try {
-      child = (opts.spawnImpl ?? spawn)(cfg.command, [cfg.script, mode, jdir], { cwd: cfg.root, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
+      child = (opts.spawnImpl ?? spawn)(cfg.command, [cfg.script, mode, jdir], { cwd: cfg.root, windowsHide: true, env: engineEnv() });
     } catch (e) {
       log += `tidak bisa menjalankan mesin: ${String(e)}`;
       resolve(1);
@@ -331,6 +353,7 @@ export async function runEngineJob(
       killTree(child);
     };
     opts.signal?.addEventListener('abort', onAbort, { once: true });
+    if (opts.signal?.aborted) onAbort(); // cancelled between the check above and the listener
     let buf = '';
     child.stdout?.setEncoding('utf8');
     child.stdout?.on('data', (chunk: string) => {
@@ -349,7 +372,8 @@ export async function runEngineJob(
           const t = Date.now();
           if (t - lastWrite > 500) {
             lastWrite = t;
-            void writeStatus(ws, { ...s }).catch(() => undefined);
+            const snap = { ...s };
+            writing = writing.then(() => writeStatus(ws, snap)).catch(() => undefined);
           }
         } catch {
           log = (log + line + '\n').slice(-MAX_ENGINE_LOG); // not JSON: keep as log
@@ -369,12 +393,16 @@ export async function runEngineJob(
       resolve(typeof c === 'number' ? c : 1);
     });
   });
+  await writing;
   await fsp.writeFile(path.join(jdir, 'engine.log'), log, 'utf8').catch(() => undefined);
   const rencana = await readJson<{ status?: string; alasan?: string }>(path.join(jdir, 'out', 'rencana.json')).catch(() => null);
+  if (code === 0 && rencana?.status === 'ditolak') code = 2; // contract §5.1: the plan itself says refused
   const tail = log.trim().split('\n').slice(-3).join(' · ').slice(0, 300);
   if (code === 0) {
     const okFiles = mode === 'batch' ? await fsp.stat(path.join(jdir, 'out', 'batch.json')).catch(() => null) : await fsp.stat(path.join(jdir, 'out', 'ops.json')).catch(() => null);
-    s = okFiles ? { ...s, state: 'siap', tahap: 'selesai', persen: 100 } : { ...s, state: 'gagal', alasan: `Mesin selesai tanpa ${mode === 'batch' ? 'batch.json' : 'ops.json'}` };
+    s = okFiles
+      ? { ...s, state: 'siap', tahap: 'selesai', persen: 100, ...(rencana?.status === 'perlu_keputusan' ? { pesan: 'Perlu keputusan tim (lihat kartu rencana)' } : {}) }
+      : { ...s, state: 'gagal', alasan: `Mesin selesai tanpa ${mode === 'batch' ? 'batch.json' : 'ops.json'}` };
   } else if (code === 2) s = { ...s, state: 'ditolak', alasan: (typeof rencana?.alasan === 'string' ? rencana.alasan : 'Input ditolak mesin').slice(0, 300) };
   else s = { ...s, state: 'gagal', alasan: tail || `Mesin gagal (kode ${code})` };
   s = { ...s, exit_code: code, finished_at: ws.clock.now() };
@@ -402,16 +430,26 @@ export async function settleOrphanJob(ws: Workspace, s: EngineStatus): Promise<E
 export interface EnginePlan {
   ops: unknown[];
   rencana: Record<string, unknown>;
+  /** `qc_rencana.json` (contract §5.4): the engine's own checks of the plan, shown on the card. */
+  qc: { butir: { butir: string; lulus: boolean; nilai?: unknown }[] } | null;
   /** Media imported from the engine's own `aset_lokal` while resolving. */
   imported: string[];
 }
 
-/** Paths the engine may hand us to import: inside its own repo, nothing else. */
-function assertEnginePath(cfg: EngineConfig | null, p: string): string {
+const MEDIA_EXT = /\.(mp4|mov|m4v|webm|mkv|wav|mp3|m4a|aac|ogg|opus|flac|png|jpe?g|webp)$/i;
+
+/**
+ * Paths the engine may hand us to import: real media files inside its own repo, nothing else
+ * (no symlink out of it, no `.env` or code — Checkpoint I L1).
+ */
+async function assertEnginePath(cfg: EngineConfig | null, p: string): Promise<string> {
   if (!cfg) throw new StorageError('PRECONDITION', 'Mesin belum dipasang (MOTION_ENGINE_ROOT); aset_lokal tidak bisa diimpor');
   const abs = path.resolve(cfg.root, p);
-  if (!isInside(cfg.root, abs)) throw new StorageError('PRECONDITION', 'aset_lokal di luar folder mesin ditolak', { path: path.basename(abs) });
-  return abs;
+  const real = await fsp.realpath(abs).catch(() => null);
+  const rootReal = await fsp.realpath(cfg.root).catch(() => cfg.root);
+  if (!real || !isInside(rootReal, real)) throw new StorageError('PRECONDITION', 'aset_lokal di luar folder mesin ditolak', { path: path.basename(abs) });
+  if (!MEDIA_EXT.test(real)) throw new StorageError('PRECONDITION', 'aset_lokal harus file media (video/audio/gambar)', { path: path.basename(abs) });
+  return real;
 }
 
 /**
@@ -427,6 +465,10 @@ export async function loadEnginePlan(ws: Workspace, cfg: EngineConfig | null, pr
   if (!opsFile) throw new StorageError('NOT_FOUND', 'ops.json belum ada (mesin belum selesai)');
   if (opsFile.schema !== 'ms-ops/1' || !Array.isArray(opsFile.ops)) throw new StorageError('PRECONDITION', 'ops.json harus schema ms-ops/1 dengan daftar ops');
   const rencana = (await readJson<Record<string, unknown>>(path.join(outDir, 'rencana.json'))) ?? {};
+  const qcRaw = await readJson<{ butir?: unknown }>(path.join(outDir, 'qc_rencana.json'));
+  const qc = qcRaw && Array.isArray(qcRaw.butir)
+    ? { butir: (qcRaw.butir as Record<string, unknown>[]).filter((b) => b && typeof b.butir === 'string').slice(0, 50).map((b) => ({ butir: String(b.butir).slice(0, 200), lulus: b.lulus === true, ...(b.nilai !== undefined ? { nilai: b.nilai } : {}) })) }
+    : null;
   const refsFile = (await readJson<{ refs: Record<string, MediaRef> }>(path.join(jdir, 'refs.json'))) ?? { refs: {} };
   const refs = { ...refsFile.refs };
   const imported: string[] = [];
@@ -453,7 +495,7 @@ export async function loadEnginePlan(ws: Workspace, cfg: EngineConfig | null, pr
   // Import once (deduplicated by content), remembered in refs.json.
   for (const f of found) {
     if (refs[f.kunci]) continue;
-    const abs = assertEnginePath(cfg, f.path);
+    const abs = await assertEnginePath(cfg, f.path);
     const r = await importMedia(ws, { sourcePath: abs, scope, display_name: `${f.kunci.slice(1).replace(/:/g, '-')}${path.extname(abs)}`, actor: 'user' });
     refs[f.kunci] = { media_id: r.media.media_id, version_id: r.version.version_id };
     imported.push(f.kunci);
@@ -470,7 +512,7 @@ export async function loadEnginePlan(ws: Workspace, cfg: EngineConfig | null, pr
     return op;
   });
   if (unknown.size) throw new StorageError('PRECONDITION', `Placeholder tidak dikenal: ${[...unknown].slice(0, 10).join(', ')}`, { unknown: [...unknown].slice(0, 50) });
-  return { ops, rencana, imported };
+  return { ops, rencana, qc, imported };
 }
 
 /** Batch Remix table (`out/batch.json`) as written by the engine. */
@@ -481,7 +523,16 @@ export async function readEngineBatch(ws: Workspace, projectId: string, jobId: s
 }
 
 /** Engine log tail for the "gagal" card. */
-export const readEngineLog = async (ws: Workspace, projectId: string, jobId: string) => (await fsp.readFile(path.join(jobAbs(ws, projectId, jobId), 'engine.log'), 'utf8').catch(() => '')).slice(-4000);
+export async function readEngineLog(ws: Workspace, projectId: string, jobId: string, cfg: EngineConfig | null = null): Promise<string> {
+  let log = (await fsp.readFile(path.join(jobAbs(ws, projectId, jobId), 'engine.log'), 'utf8').catch(() => '')).slice(-4000);
+  // Checkpoint I L2: no local paths in what the browser sees.
+  const swap = (from: string, to: string) => {
+    for (const v of [from, from.replace(/\\/g, '/')]) if (v) log = log.split(v).join(to);
+  };
+  if (cfg) swap(cfg.root, '<mesin>');
+  swap(ws.root, '<workspace>');
+  return log.replace(/[A-Za-z]:[\\/][^\s"'<>|]*/g, '<path>');
+}
 
 // ------------------------------------------------------------------ Batch Remix decisions (U5)
 
@@ -508,7 +559,7 @@ export async function readBatchDecisions(ws: Workspace, projectId: string, jobId
 export async function decideBatch(
   ws: Workspace,
   cfg: EngineConfig | null,
-  input: { project_id: string; job_id: string; rows: unknown; actor: 'user'; newId: () => string },
+  input: { project_id: string; job_id: string; rows: unknown; actor: 'user'; newId: () => string; plans?: ReadonlyMap<string, EnginePlan> },
 ): Promise<Record<string, BatchDecision>> {
   const s = await readEngineStatus(ws, input.project_id, input.job_id);
   if (s.mode !== 'batch') bad('Job ini bukan Batch Remix');
@@ -523,6 +574,8 @@ export async function decideBatch(
     if (o.status !== 'usul' && o.status !== 'disetujui' && o.status !== 'dicoret') bad(`rows[${i}].status harus usul | disetujui | dicoret`);
     return { varian: o.varian as string, status: o.status as BatchRowStatus };
   });
+  // Checkpoint I H2: one decision per row per request.
+  if (new Set(wanted.map((w) => w.varian)).size !== wanted.length) bad('Satu varian hanya boleh muncul sekali per keputusan');
   const master = await readProject(ws, input.project_id);
   if (master.variant) bad('Proyek batch tidak boleh varian');
   const decisions = await readBatchDecisions(ws, input.project_id, input.job_id);
@@ -532,7 +585,7 @@ export async function decideBatch(
   const toCreate: { varian: string; timeline: Timeline; label: string; hook: string | null; test: boolean }[] = [];
   for (const w of wanted) {
     if (w.status !== 'disetujui' || decisions[w.varian]?.project_id) continue;
-    const p = await loadEnginePlan(ws, cfg, input.project_id, input.job_id, w.varian);
+    const p = input.plans?.get(w.varian) ?? (await loadEnginePlan(ws, cfg, input.project_id, input.job_id, w.varian));
     let timeline: Timeline;
     try {
       timeline = applyOps({ tracks: [] }, validateOps(p.ops, MAX_SERVER_OPS), () => newId('c'), dur);
@@ -546,10 +599,12 @@ export async function decideBatch(
   }
   let number = Math.max(0, ...(await listVariants(ws, master.project_id)).map((p) => p.variant!.number));
   for (const c of toCreate) {
-    const variant: VariantInfo = { master_id: master.project_id, number: ++number, label: c.label, brief: c.hook ? { hook: c.hook } : {}, approved_revision: null };
+    const variant: VariantInfo = { master_id: master.project_id, number: ++number, label: c.label, brief: c.hook ? { hook: c.hook } : {}, approved_revision: null, ...(c.test ? { bukan_iklan: true as const } : {}) };
     const made = await createWithTimeline(ws, { project_id: input.newId(), name: `${master.name} · ${c.label}`.slice(0, MAX_PROJECT_NAME), timeline: c.timeline, actor: input.actor, variant, ...(master.brand_id ? { brand_id: master.brand_id } : {}) });
     await setVariantApproval(ws, { project_id: made.project_id, expected_revision: made.revision, approved: true, actor: input.actor });
     decisions[c.varian] = { status: 'disetujui', project_id: made.project_id };
+    // Recorded right away: a failure on a later row never leaves this project unknown (no duplicate on retry).
+    await writeJsonAtomic(decisionsFile(ws, input.project_id, input.job_id), { schema: 'batch-keputusan/1', rows: decisions });
   }
   for (const w of wanted) {
     const d = decisions[w.varian] ?? { status: 'usul', project_id: null };
@@ -567,4 +622,20 @@ export async function decideBatch(
   await writeJsonAtomic(decisionsFile(ws, input.project_id, input.job_id), { schema: 'batch-keputusan/1', rows: decisions });
   await audit(ws, { op: 'engine.batch_decide', actor: input.actor, outcome: 'ok', project_id: input.project_id, job_id: input.job_id, approved: wanted.filter((w) => w.status === 'disetujui').length, struck: wanted.filter((w) => w.status === 'dicoret').length, created: toCreate.length });
   return decisions;
+}
+
+/**
+ * Checkpoint I M2: read (and import the media of) the plans of rows that will become variants,
+ * OUTSIDE the workspace lock — imports hash and copy footage and may take minutes.
+ */
+export async function loadBatchPlans(ws: Workspace, cfg: EngineConfig | null, projectId: string, jobId: string, rows: unknown): Promise<Map<string, EnginePlan>> {
+  const out = new Map<string, EnginePlan>();
+  if (!Array.isArray(rows) || rows.length > 50) return out;
+  const decisions = await readBatchDecisions(ws, projectId, jobId);
+  for (const r of rows as Record<string, unknown>[]) {
+    const v = r?.varian;
+    if (r?.status !== 'disetujui' || typeof v !== 'string' || !/^varian-\d{3}$/.test(v) || out.has(v) || decisions[v]?.project_id) continue;
+    out.set(v, await loadEnginePlan(ws, cfg, projectId, jobId, v));
+  }
+  return out;
 }

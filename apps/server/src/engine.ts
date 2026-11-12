@@ -32,6 +32,8 @@ import { onlyKeys } from './routes.js';
 export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void }): Route[] {
   const queue: { project_id: string; job_id: string; mode: EngineMode }[] = [];
   const active = new Map<string, AbortController>();
+  /** Jobs being prepared by a request right now: never "orphans" (Checkpoint I H1). */
+  const preparing = new Set<string>();
   let running = false;
   const key = (p: string, j: string) => `${p}/${j}`;
 
@@ -52,7 +54,8 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
   };
 
   /** Jobs this server is not running or queueing were left by a previous server: settle them. */
-  const live = async (s: EngineStatus) => (active.has(key(s.project_id, s.job_id)) || queue.some((q) => q.project_id === s.project_id && q.job_id === s.job_id) ? s : settleOrphanJob(ws, s));
+  const live = async (s: EngineStatus) =>
+    active.has(key(s.project_id, s.job_id)) || preparing.has(s.project_id) || queue.some((q) => q.project_id === s.project_id && q.job_id === s.job_id) ? s : settleOrphanJob(ws, s);
   const jobParam = (j: string | undefined) => {
     if (!isJobId(j)) throw new ApiError(404, 'NOT_FOUND', 'Job mesin tidak ditemukan');
     return j;
@@ -86,10 +89,15 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
         const body = await readJsonBody(req);
         const input = validateEngineJob({ ...(body as object), project_id: params.project_id });
         if (queue.length >= 20) throw new ApiError(429, 'BUSY', 'Antrean mesin penuh (20); tunggu dulu');
-        const status = await prepareEngineJob(ws, input);
-        queue.push({ project_id: status.project_id, job_id: status.job_id, mode: status.mode });
-        pump();
-        return { job: status };
+        preparing.add(input.project_id);
+        try {
+          const status = await prepareEngineJob(ws, input);
+          queue.push({ project_id: status.project_id, job_id: status.job_id, mode: status.mode });
+          pump();
+          return { job: status };
+        } finally {
+          preparing.delete(input.project_id);
+        }
       },
     },
     {
@@ -97,7 +105,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
       path: '/api/projects/:project_id/engine/jobs/:job_id',
       handle: async ({ params }) => {
         const s = await live(await readEngineStatus(ws, params.project_id!, jobParam(params.job_id)));
-        return { job: s, log: s.state === 'gagal' ? await readEngineLog(ws, s.project_id, s.job_id) : null };
+        return { job: s, log: s.state === 'gagal' ? await readEngineLog(ws, s.project_id, s.job_id, opts.config) : null };
       },
     },
     {
@@ -122,7 +130,10 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
       path: '/api/projects/:project_id/engine/jobs/:job_id/batch',
       handle: async ({ params }) => {
         const job = jobParam(params.job_id);
-        return { batch: await readEngineBatch(ws, params.project_id!, job), decisions: await readBatchDecisions(ws, params.project_id!, job) };
+        // Checkpoint I L2: the media map holds local paths — the browser does not need it.
+        const { media: _media, ...batch } = await readEngineBatch(ws, params.project_id!, job);
+        void _media;
+        return { batch, decisions: await readBatchDecisions(ws, params.project_id!, job) };
       },
     },
     {
@@ -166,7 +177,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
           warnings,
         });
         await audit(ws, { op: 'engine.plan', actor, outcome: 'ok', project_id: params.project_id!, job_id: job, plan_id: out.plan.plan_id, imported: p.imported.length });
-        return { ...out, rencana: p.rencana };
+        return { ...out, rencana: p.rencana, qc: p.qc };
       },
     },
   ];

@@ -109,6 +109,8 @@ export interface VariantInfo {
   brief: VariantBrief;
   /** Revision the user approved; any later edit means "changed since approval". */
   approved_revision: number | null;
+  /** U5: Batch Remix test variant (music without an ad licence): may be rendered, never "Lulus". */
+  bukan_iklan?: true;
 }
 
 export function mediaRefUri(ref: MediaRef): string {
@@ -203,7 +205,8 @@ function validateVariantInfo(x: unknown): VariantInfo {
   const ar = v.approved_revision;
   if (ar !== null && (typeof ar !== 'number' || !Number.isSafeInteger(ar) || ar < 0)) fail('variant.approved_revision', 'harus angka revisi atau null');
   if (typeof v.number !== 'number' || !Number.isSafeInteger(v.number) || v.number < 1) fail('variant.number', 'harus angka ≥ 1');
-  return { master_id: id(v.master_id, 'variant.master_id'), number: v.number as number, label, brief, approved_revision: ar as number | null };
+  if (v.bukan_iklan !== undefined && v.bukan_iklan !== true) fail('variant.bukan_iklan', 'hanya true');
+  return { master_id: id(v.master_id, 'variant.master_id'), number: v.number as number, label, brief, approved_revision: ar as number | null, ...(v.bukan_iklan ? { bukan_iklan: true as const } : {}) };
 }
 
 function validateTimeline(x: unknown, where: string): Timeline {

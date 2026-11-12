@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Api, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob } from '../api';
+import type { Api, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role } from '../api';
 import { ErrorNotice } from '../ui';
 import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
 
@@ -10,7 +10,7 @@ import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
  */
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function BatchView({ api, projects, onOpenProject, onProjectsChanged }: { api: Api; projects: ProjectSummary[]; onOpenProject: (id: string) => void; onProjectsChanged: () => void }) {
+export function BatchView({ api, role = 'owner', projects, onOpenProject, onProjectsChanged }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void; onProjectsChanged: () => void }) {
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [brands, setBrands] = useState<BrandKit[]>([]);
   const [brandId, setBrandId] = useState('');
@@ -195,7 +195,7 @@ export function BatchView({ api, projects, onOpenProject, onProjectsChanged }: {
               <input type="checkbox" aria-label="Hak pakai footage jelas" checked={hak} onChange={(e) => setHak(e.target.checked)} /> Hak pakai footage jelas milik brand (boleh blur watermark / teks bawaan)
             </label>
           </div>
-          <button className="btn primary" disabled={!installed || !brand || !batchName.trim() || !preset || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
+          <button className="btn primary" disabled={role === 'reviewer' || !installed || !brand || !batchName.trim() || !preset || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
             ▦ Susun {jumlah} varian
           </button>
         </section>
@@ -268,10 +268,10 @@ export function BatchView({ api, projects, onOpenProject, onProjectsChanged }: {
               </table>
             </div>
             <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
-              <button className="btn primary" disabled={busy || !changed.length} onClick={() => void save()}>
+              <button className="btn primary" disabled={busy || !changed.length || role === 'editor'} title={role === 'editor' ? 'Persetujuan oleh Owner / Reviewer' : undefined} onClick={() => void save()}>
                 Simpan keputusan ({changed.length})
               </button>
-              <button className="btn" disabled={busy || !approvedCount || changed.length > 0} onClick={() => void renderApproved()}>
+              <button className="btn" disabled={busy || !approvedCount || changed.length > 0 || role === 'reviewer'} onClick={() => void renderApproved()}>
                 ▶ Render {approvedCount} varian disetujui
               </button>
               <button className="linkBtn small" onClick={() => onOpenProject(current.project_id)}>

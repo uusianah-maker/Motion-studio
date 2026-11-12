@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { checkPlan } from '../src/storage/copilot.js';
 import { loadLeases } from '../src/storage/deps.js';
-import { type EngineConfig, decideBatch, engineConfigFromEnv, readBatchDecisions, readEngineBatch, listEngineJobs, loadEnginePlan, prepareEngineJob, readEngineLog, readEngineStatus, runEngineJob, settleOrphanJob, validateEngineJob } from '../src/storage/engine.js';
+import { type EngineConfig, decideBatch, engineConfigFromEnv, engineEnv, readBatchDecisions, readEngineBatch, listEngineJobs, loadEnginePlan, prepareEngineJob, readEngineLog, readEngineStatus, runEngineJob, settleOrphanJob, validateEngineJob } from '../src/storage/engine.js';
 import { isStorageError } from '../src/storage/errors.js';
 import { areaOf } from '../src/storage/permissions.js';
 import { loadRegistry } from '../src/storage/registry.js';
@@ -111,6 +111,11 @@ describe('U6 engine runner', () => {
     expect(seen).toEqual(expect.arrayContaining(['cek_input:5', 'transkrip:40', 'rencana:80', 'selesai:100']));
     expect((await readEngineStatus(ws, 'g', s0.job_id)).state).toBe('siap');
     expect(await readEngineLog(ws, 'g', s0.job_id)).toContain('log: mulai');
+    // Checkpoint I H1: a finished (or settled) job never runs again — and never without its lease.
+    expect(await code(() => runEngineJob(ws, cfg, 'g', s0.job_id))).toBe('PRECONDITION');
+    // M3: the engine never gets the server's secrets.
+    const env = engineEnv({ PATH: 'p', MOTION_SECRET_KEY: 'k', MOTION_GOOGLE_CLIENT_SECRET: 's', ANTHROPIC_API_KEY: 'a', PYTHONPATH: 'x', SystemRoot: 'C:/Windows' });
+    expect(Object.keys(env).sort()).toEqual(['PATH', 'PYTHONIOENCODING', 'PYTHONPATH', 'PYTHONUTF8', 'SystemRoot']);
     expect((await loadLeases(ws)).leases.filter((l) => l.job === 'engine')).toHaveLength(1); // only s1's
 
     // Plan: placeholders → MediaRefs; the engine's own music imported once as project media.
@@ -124,7 +129,8 @@ describe('U6 engine runner', () => {
     expect((await loadEnginePlan(ws, cfg, 'g', s0.job_id)).imported).toEqual([]); // remembered in refs.json
     // It is a valid Motion Studio plan (same checks as every Copilot plan).
     expect(checkPlan({ tracks: [] }, plan.ops, undefined, 1000).ops).toHaveLength(5);
-    expect(plan.rencana).toMatchObject({ status: 'siap', hook: { teks: 'Celana adem' } });
+    expect(plan.rencana).toMatchObject({ status: 'siap', hook: { teks: 'Celana adem' }, posisi_caption: 0.72 });
+    expect(plan.qc!.butir.map((b) => b.lulus)).toEqual([false, true]);
     expect((await listEngineJobs(ws, 'g')).map((j) => j.job_id)).toEqual([s1.job_id, s0.job_id]);
     // A job left waiting by a stopped server is settled and frees its lease.
     expect((await settleOrphanJob(ws, s1)).state).toBe('gagal');
@@ -138,6 +144,7 @@ describe('U6 engine runner', () => {
       return runEngineJob(ws, c, 'g', s.job_id);
     };
     expect(await run('tolak')).toMatchObject({ state: 'ditolak', exit_code: 2, alasan: 'tidak ada ucapan terdeteksi' });
+    expect(await run('tolak0')).toMatchObject({ state: 'ditolak', alasan: 'durasi di luar target' }); // L3: rencana.status wins over exit 0
     const failed = await run('gagal');
     expect(failed).toMatchObject({ state: 'gagal', exit_code: 1 });
     expect(failed.alasan).toContain('whisper model tidak ada');
@@ -149,6 +156,14 @@ describe('U6 engine runner', () => {
     const kabur = await run('kabur');
     expect(await code(() => loadEnginePlan(ws, cfg, 'g', kabur.job_id))).toBe('PRECONDITION'); // C:/Windows/win.ini
     expect(await code(() => loadEnginePlan(ws, null, 'g', kabur.job_id))).toBe('PRECONDITION');
+    // L2: the failure log shown in the browser has no local paths.
+    expect(await readEngineLog(ws, 'g', failed.job_id, cfg)).not.toMatch(/[A-Za-z]:[\\/]/);
+    // L1: only media files inside the engine folder (no .env, no code), symlinks resolved.
+    await fsp.writeFile(path.join(cfg.root, '.env'), 'ANTHROPIC_API_KEY=x');
+    const opsFile = path.join(ws.root, 'PROJECTS', 'g', '06_ENGINE', asing.job_id, 'out', 'ops.json');
+    const doc = JSON.parse(await fsp.readFile(opsFile, 'utf8'));
+    await fsp.writeFile(opsFile, JSON.stringify({ ...doc, ops: doc.ops.filter((o: { media?: string }) => o.media !== '$sfx:tidak-ada'), aset_lokal: [{ kunci: '$musik:env', path: '.env' }] }));
+    expect(await code(() => loadEnginePlan(ws, cfg, 'g', asing.job_id))).toBe('PRECONDITION');
     // Job ids are checked: no path tricks.
     expect(await code(() => readEngineStatus(ws, 'g', '../../x'))).toBe('NOT_FOUND');
     expect(await code(() => loadEnginePlan(ws, cfg, 'g', asing.job_id, '../x'))).toBe('EDIT_INVALID');
@@ -190,6 +205,9 @@ describe('U6 engine runner', () => {
     expect(variantState(await readProject(ws, v1.project_id))).toBe('approved');
     expect(await listVariants(ws, 'b')).toHaveLength(2);
     expect((await readBatchDecisions(ws, 'b', s.job_id))['varian-001']).toEqual({ status: 'disetujui', project_id: v1.project_id });
+    // Checkpoint I H2: the same row twice in one request is refused (no duplicate variant projects).
+    expect(await code(() => decideBatch(ws, cfg, { project_id: 'b', job_id: s.job_id, rows: [{ varian: 'varian-002', status: 'disetujui' }, { varian: 'varian-002', status: 'disetujui' }], actor: 'user', newId: ids }))).toBe('EDIT_INVALID');
+    expect(await listVariants(ws, 'b')).toHaveLength(2);
     // Unknown rows / statuses are refused.
     expect(await code(() => decideBatch(ws, cfg, { project_id: 'b', job_id: s.job_id, rows: [{ varian: 'varian-009', status: 'disetujui' }], actor: 'user', newId: ids }))).toBe('EDIT_INVALID');
     expect(await code(() => decideBatch(ws, cfg, { project_id: 'b', job_id: s.job_id, rows: [{ varian: 'varian-001', status: 'lulus' }], actor: 'user', newId: ids }))).toBe('EDIT_INVALID');

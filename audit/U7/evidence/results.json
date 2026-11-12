@@ -1,0 +1,77 @@
+{
+  "at": "2026-11-12T20:54:35.680Z",
+  "passed": 14,
+  "total": 14,
+  "results": [
+    {
+      "id": "U7-01 Reviewer: menu AI (khusus Owner) tidak tampil",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-02 Reviewer: linimasa hanya-baca (tombol edit mati, Copilot tidak ada)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-03 Server menolak edit dari Reviewer (403), bukan cuma UI",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-04 Komentar di timecode tersimpan dengan nama penulis",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-05 \"Lulus\" mati selama ada komentar terbuka",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-06 Reviewer memberi \"Perlu revisi\" + catatan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-07 Editor bisa mengedit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-08 Editor menandai komentar selesai",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-09 Editor tidak melihat tombol Lulus/Revisi; server menolak (403)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-10 Editor: Brand Kit hanya-baca (isian mati) dan server menolak simpan (403)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-11 Reviewer memberi Lulus pada revisi terbaru",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-12 Owner melihat status Lulus + menu AI",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-13 Edit setelah Lulus → \"Diubah setelah Lulus\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U7-99 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

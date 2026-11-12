@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Api, Project, ProjectSummary, VariantTag } from './api';
+import type { Api, Project, ProjectSummary, Role, VariantTag } from './api';
 import { AiView } from './views/AiView';
 import { BatchView } from './views/BatchView';
 import { BrandView } from './views/BrandView';
@@ -37,7 +37,7 @@ const variantTag = (p: Project): VariantTag => ({
   state: p.variant!.approved_revision === null || p.variant!.approved_revision === undefined ? 'draft' : p.variant!.approved_revision === p.revision ? 'approved' : 'changed',
 });
 
-export function App({ api, workspaceId, account = null }: { api: Api; workspaceId: string; account?: Account | null }) {
+export function App({ api, workspaceId, account = null, role = 'owner' }: { api: Api; workspaceId: string; account?: Account | null; role?: Role }) {
   const [view, setView] = useState<View>('editor');
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -94,7 +94,7 @@ export function App({ api, workspaceId, account = null }: { api: Api; workspaceI
     <div className={`app${view === 'editor' ? '' : ' noSide'}`}>
       <nav className="rail" aria-label="Navigasi utama">
         <div className="brand" aria-hidden="true">▶</div>
-        {NAV.map((n) => (
+        {NAV.filter((n) => n.id !== 'ai' || role === 'owner').map((n) => (
           <button key={n.id} className={`nav${view === n.id ? ' sel' : ''}`} aria-current={view === n.id ? 'page' : undefined} onClick={() => setView(n.id)}>
             <span className="sym" aria-hidden="true">{n.sym}</span>
             {n.label}
@@ -123,11 +123,11 @@ export function App({ api, workspaceId, account = null }: { api: Api; workspaceI
       {view === 'editor' && !narrow && <aside className="side" aria-label="Proyek">{sideList}</aside>}
       <div className="page">
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
-        {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} />}
-        {view === 'generate' && <GenerateView api={api} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />}
-        {view === 'batch' && <BatchView api={api} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />}
+        {view === 'editor' && <EditorView api={api} role={role} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} />}
+        {view === 'generate' && <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />}
+        {view === 'batch' && <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />}
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
-        {view === 'brand' && <BrandView api={api} />}
+        {view === 'brand' && <BrandView api={api} readOnly={role !== 'owner'} />}
         {view === 'trash' && <TrashView api={api} />}
         {view === 'storage' && <StorageView api={api} />}
         {view === 'ai' && <AiView api={api} />}

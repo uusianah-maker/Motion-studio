@@ -116,6 +116,7 @@ function Root() {
     <App
       api={api}
       workspaceId={state.session.workspace_id}
+      role={state.session.role ?? 'owner'}
       account={
         user
           ? {

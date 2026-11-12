@@ -6,6 +6,7 @@ import { ApiError, toApiError } from './errors.js';
 import { sendError, sendJson } from './http.js';
 import type { GoogleAuth, SessionUser } from './auth.js';
 import { serveStatic } from './static.js';
+import { ROLE_LABEL, type Role, allowedRoles } from './roles.js';
 
 /** The server only ever listens on loopback (plan v2.0 W03); on a VPS a reverse proxy (W15) fronts it. */
 export const HOST = '127.0.0.1';
@@ -20,6 +21,8 @@ export interface RequestContext {
   actor: Actor;
   /** Signed-in Google account (W09); null in local-token mode and on public routes. */
   user: SessionUser | null;
+  /** U7: the caller's role (owner in local-token mode). Already checked against the route. */
+  role: Role;
   ws: Workspace;
   svc: StorageService;
 }
@@ -47,6 +50,8 @@ export interface AppOptions {
   routes?: Route[];
   /** Built web UI folder (apps/web/dist) served at `/` and `/assets/*` (W05). */
   staticDir?: string;
+  /** U7: role of a caller (default: everyone is owner, as before roles existed). */
+  roleOf?: (user: SessionUser | null) => Role;
   onError?: (e: unknown) => void;
 }
 
@@ -87,8 +92,9 @@ export function createApp(opts: AppOptions) {
     {
       method: 'GET',
       path: '/api/session',
-      handle: async ({ actor, ws, user }) => ({
+      handle: async ({ actor, ws, user, role }) => ({
         actor,
+        role,
         workspace_id: ws.meta.workspace_id,
         storage_backend: ws.blobs.kind,
         auth: opts.auth ? 'google' : 'local',
@@ -142,7 +148,12 @@ export function createApp(opts: AppOptions) {
       if (who === undefined) throw new ApiError(401, 'UNAUTHORIZED', opts.auth ? 'Belum login atau sesi sudah habis' : 'Sesi tidak valid');
       user = who;
     }
-    const body = await hit.r.handle({ req, res, url, params: hit.params!, actor: 'user', user, ws: opts.ws, svc });
+    // U7: the role decides, on the server, what this caller may do on this route.
+    const role: Role = opts.roleOf ? opts.roleOf(user) : 'owner';
+    if (!hit.r.public && !allowedRoles(hit.r.method, hit.r.path).includes(role)) {
+      throw new ApiError(403, 'FORBIDDEN', `Peran ${ROLE_LABEL[role]} tidak boleh melakukan ini`);
+    }
+    const body = await hit.r.handle({ req, res, url, params: hit.params!, actor: 'user', user, role, ws: opts.ws, svc });
     if (!res.headersSent) sendJson(res, 200, body);
   }
 

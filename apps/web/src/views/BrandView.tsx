@@ -98,7 +98,8 @@ function Section({ id, title, hint, children }: { id: string; title: string; hin
  * are uploaded like any media and stay on this PC. "Ekspor JSON" shows what the automation engine
  * receives (`brand-kit-export/1`, without local paths).
  */
-export function BrandView({ api }: { api: Api }) {
+/** U7: only the owner changes Brand Kits (`readOnly` for editors & reviewers; the server refuses too). */
+export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: boolean }) {
   const [brands, setBrands] = useState<BrandKit[] | null>(null);
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | 'new' | null>(null);
@@ -232,11 +233,19 @@ export function BrandView({ api }: { api: Api }) {
               {b.brand_id === defaultId ? ' ★' : ''}
             </button>
           ))}
-          <button className={`chip${selected === 'new' ? ' on' : ''}`} onClick={() => void load('new')}>
-            ＋ Brand baru
-          </button>
+          {!readOnly && (
+            <button className={`chip${selected === 'new' ? ' on' : ''}`} onClick={() => void load('new')}>
+              ＋ Brand baru
+            </button>
+          )}
         </nav>
+        {readOnly && (
+          <div className="notice info" role="status">
+            Hanya Owner yang bisa mengubah Brand Kit. Anda bisa melihat isinya.
+          </div>
+        )}
 
+        <fieldset className="plainFieldset" disabled={readOnly}>
         <div className="brandGrid">
           <section className="card brandForm" aria-label="Pengaturan Brand Kit">
             <Section id="a" title="A. Identitas brand">
@@ -738,6 +747,7 @@ export function BrandView({ api }: { api: Api }) {
             </nav>
           </section>
         </div>
+        </fieldset>
       </div>
     </>
   );

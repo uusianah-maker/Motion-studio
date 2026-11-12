@@ -12,6 +12,8 @@ import {
   type AiLogEntry,
   type AiSettings,
   type Api,
+  type ReviewComment,
+  type ReviewInfo,
   ApiError,
   type ApplyReply,
   type BrandKit,
@@ -299,6 +301,8 @@ function runRender(job: RenderJob, short: number) {
 }
 
 // ------------------------------------------------------------------ the fake API
+const reviews = new Map<string, { comments: ReviewComment[]; decision: ReviewInfo['decision'] }>();
+
 export function createDemoApi(): Api {
   const api: Api = {
     session: async () => ({ actor: 'user', workspace_id: 'ws_demo', storage_backend: 'local-fs', auth: 'google', user: { email: 'owner@contoh.com', name: 'Owner' } }),
@@ -690,6 +694,33 @@ export function createDemoApi(): Api {
       const j = renderJobs.find((x) => x.job_id === jobId) ?? fail(404, 'NOT_FOUND', 'Job tidak ada');
       if (j.status === 'running' || j.status === 'queued') Object.assign(j, { status: 'cancelled', finished_at: now(), error: { code: 'CANCELLED', message: 'Render dibatalkan' } });
       return clone(j);
+    },
+    review: async (id) => {
+      const s = get(id);
+      const r = reviews.get(id) ?? { comments: [], decision: null };
+      return clone({ ...r, revision: s.p.revision, state: !r.decision ? 'belum' : r.decision.status === 'revisi' ? 'revisi' : r.decision.revision === s.p.revision ? 'lulus' : 'berubah' });
+    },
+    addComment: async (id, at_ms, text) => {
+      const s = get(id);
+      const r = reviews.get(id) ?? { comments: [], decision: null };
+      const c = { comment_id: nid('cm'), at_ms, text, author: { email: 'owner@contoh.com', name: 'Owner' }, created_at: now(), revision: s.p.revision, resolved_at: null, resolved_by: null };
+      r.comments = [...r.comments, c].sort((a, b) => a.at_ms - b.at_ms);
+      reviews.set(id, r);
+      return clone(c);
+    },
+    resolveComment: async (id, cid, resolved) => {
+      const c = reviews.get(id)?.comments.find((x) => x.comment_id === cid) ?? fail(404, 'NOT_FOUND', 'Komentar tidak ada');
+      Object.assign(c, resolved ? { resolved_at: now(), resolved_by: { email: 'owner@contoh.com', name: 'Owner' } } : { resolved_at: null, resolved_by: null });
+      return clone(c);
+    },
+    decideReview: async (id, rev, status, note) => {
+      const s = get(id);
+      if (s.p.revision !== rev) fail(409, 'CONFLICT', 'Proyek sudah berubah');
+      const r = reviews.get(id) ?? { comments: [], decision: null };
+      if (status === 'lulus' && r.comments.some((c) => !c.resolved_at)) fail(422, 'EDIT_INVALID', 'Masih ada komentar terbuka; selesaikan dulu');
+      r.decision = { status, revision: rev, by: { email: 'owner@contoh.com', name: 'Owner' }, at: now(), note: note ?? '' };
+      reviews.set(id, r);
+      return { state: status === 'lulus' ? 'lulus' : 'revisi' };
     },
     engineInfo: async () => ({ installed: false, running: 0, waiting: 0 }),
     engineJobs: async () => [],

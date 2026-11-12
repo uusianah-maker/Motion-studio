@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineRencana, ProjectSummary } from '../api';
+import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, ProjectSummary, Role } from '../api';
 import { ErrorNotice } from '../ui';
 
 /**
@@ -80,7 +80,7 @@ export function EngineProgress({ job, log, onCancel }: { job: EngineJob; log: st
 }
 
 /** "Rencana edit siap, render ditahan" card (contract §5.1). */
-export function PlanCard({ rencana, plan, diff, busy, onApprove, onReject }: { rencana: EngineRencana; plan: EditPlan; diff: DiffItem[]; busy: boolean; onApprove: () => void; onReject: () => void }) {
+export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }: { rencana: EngineRencana; qc: EngineQc | null; plan: EditPlan; diff: DiffItem[]; busy: boolean; onApprove: () => void; onReject: () => void }) {
   const d = rencana.durasi;
   return (
     <section className="card planCard" aria-label="Rencana edit">
@@ -104,11 +104,23 @@ export function PlanCard({ rencana, plan, diff, busy, onApprove, onReject }: { r
         <div className="stat">
           <small>Audio</small>
           <b>
-            {rencana.audio?.sfx ?? 0} SFX · {rencana.audio?.musik ? 'musik' : 'tanpa musik'}
+            {rencana.audio?.sfx ?? 0} SFX · {rencana.audio?.musik ? `musik ${rencana.audio.musik.replace(/^\$musik:/, '')}` : 'tanpa musik'}
           </b>
+          {rencana.audio?.lisensi_musik && <span className="muted small">lisensi: {rencana.audio.lisensi_musik}</span>}
           {rencana.audio?.alasan_tanpa_musik && <span className="muted small">{rencana.audio.alasan_tanpa_musik}</span>}
         </div>
       </div>
+      {typeof rencana.posisi_caption === 'number' && <div className="small">Posisi caption: {Math.round(rencana.posisi_caption * 100)}% dari atas</div>}
+      {qc && qc.butir.length > 0 && (
+        <ul className="qcList small" aria-label="Cek rencana mesin">
+          {qc.butir.map((b, i) => (
+            <li key={i} data-ok={b.lulus}>
+              {b.lulus ? '✓' : '⚠'} {b.butir}
+              {b.nilai !== undefined && b.nilai !== null && !b.lulus ? ` (${typeof b.nilai === 'object' ? JSON.stringify(b.nilai) : String(b.nilai)})` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
       {!!rencana.kata_kunci?.length && <div className="small">Kata kunci: {rencana.kata_kunci.map((k) => k.teks).join(', ')}</div>}
       {rencana.cta && <div className="small">CTA: {rencana.cta}</div>}
       {plan.warnings.map((w, i) => (
@@ -138,7 +150,7 @@ export function PlanCard({ rencana, plan, diff, busy, onApprove, onReject }: { r
   );
 }
 
-export function GenerateView({ api, projects, onOpenProject }: { api: Api; projects: ProjectSummary[]; onOpenProject: (id: string) => void }) {
+export function GenerateView({ api, role = 'owner', projects, onOpenProject }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void }) {
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [brands, setBrands] = useState<BrandKit[]>([]);
   const [brandId, setBrandId] = useState('');
@@ -153,7 +165,7 @@ export function GenerateView({ api, projects, onOpenProject }: { api: Api; proje
   const [error, setError] = useState<unknown>(null);
   const [current, setCurrent] = useState<{ project_id: string; job_id: string } | null>(null);
   const [history, setHistory] = useState<EngineJob[]>([]);
-  const [plan, setPlan] = useState<{ plan: EditPlan; diff: DiffItem[]; rencana: EngineRencana } | null>(null);
+  const [plan, setPlan] = useState<{ plan: EditPlan; diff: DiffItem[]; rencana: EngineRencana; qc: EngineQc | null } | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { job, log, error: jobError } = useEngineJob(api, current?.project_id ?? null, current?.job_id ?? null);
@@ -189,7 +201,7 @@ export function GenerateView({ api, projects, onOpenProject }: { api: Api; proje
   useEffect(() => {
     if (!current || job?.state !== 'siap' || plan || applied) return;
     void api.enginePlan(current.project_id, current.job_id).then((r) => {
-      if (r.plan) setPlan({ plan: r.plan, diff: r.diff, rencana: r.rencana });
+      if (r.plan) setPlan({ plan: r.plan, diff: r.diff, rencana: r.rencana, qc: r.qc });
     }, setError);
   }, [api, current, job?.state, plan, applied]);
 
@@ -354,7 +366,7 @@ export function GenerateView({ api, projects, onOpenProject }: { api: Api; proje
             </label>
           </div>
           <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-            <button className="btn primary" disabled={!installed || !file || !brand || !preset || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
+            <button className="btn primary" disabled={role === 'reviewer' || !installed || !file || !brand || !preset || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
               ⚡ Susun draf otomatis
             </button>
             {upload !== null && <span className="muted small">Mengunggah {Math.round(upload * 100)}%…</span>}
@@ -368,7 +380,8 @@ export function GenerateView({ api, projects, onOpenProject }: { api: Api; proje
             <EngineProgress job={job} log={log} onCancel={() => void api.engineCancel(current.project_id, current.job_id).catch(setError)} />
           </section>
         )}
-        {plan && <PlanCard rencana={plan.rencana} plan={plan.plan} diff={plan.diff} busy={busy} onApprove={() => void approve()} onReject={() => void reject()} />}
+        {role === 'reviewer' && <div className="notice info">Peran Reviewer: bisa melihat job & rencana, tidak menjalankan mesin atau menerapkan draf.</div>}
+        {plan && <PlanCard rencana={plan.rencana} qc={plan.qc} plan={plan.plan} diff={plan.diff} busy={busy || role === 'reviewer'} onApprove={() => void approve()} onReject={() => void reject()} />}
         {applied && (
           <section className="card" aria-label="Draf diterapkan">
             <h2>3 · Draf sudah di timeline</h2>
