@@ -78,6 +78,37 @@ def pilih_musik(bk: dict, preset: dict):
     return boleh[0], ""
 
 
+MAKS_KATA_KLIP = 30
+MAKS_HURUF_KATA = 40
+
+
+def _bersih(t: str) -> str:
+    """Bentuk pencocokan highlight Motion Studio: huruf kecil, tanpa tanda baca."""
+    return re.sub(r"[^\w-]+", "", t.lower())
+
+
+def kata_klip(page, mulai: int, durasi: int, kapital: str):
+    """`words` U3b: satu token per kata, waktu relatif ke awal klip, urut, tidak tumpang tindih,
+    di dalam [0, durasi]. Token berspasi dipecah dan waktunya dibagi rata."""
+    out = []
+    for c in page:
+        teks = c["text"]
+        if kapital == "semua" or (kapital == "kata_kunci" and c.get("emphasis")):
+            teks = teks.upper()
+        toks = [t[:MAKS_HURUF_KATA] for t in teks.split()] or ["…"]
+        a, b = c["startMs"] - mulai, c["endMs"] - mulai
+        step = max((b - a) / len(toks), 1)
+        for k, t in enumerate(toks):
+            out.append({"text": t, "start_ms": round(a + k * step), "end_ms": round(a + (k + 1) * step)})
+    out = out[:MAKS_KATA_KLIP]
+    prev = 0
+    for w in out:
+        w["start_ms"] = min(max(w["start_ms"], prev), durasi)
+        w["end_ms"] = min(max(w["end_ms"], w["start_ms"]), durasi)
+        prev = w["end_ms"]
+    return out
+
+
 def _halaman(captions):
     """Kelompokkan caption per halaman (pageBreakAfter dari edit.py)."""
     pages, cur = [], []
@@ -89,16 +120,6 @@ def _halaman(captions):
     if cur:
         pages.append(cur)
     return pages
-
-
-def _teks_halaman(page, kapital: str) -> str:
-    out = []
-    for c in page:
-        t = c["text"]
-        if kapital == "semua" or (kapital == "kata_kunci" and c.get("emphasis")):
-            t = t.upper()
-        out.append(t)
-    return " ".join(out)
 
 
 def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, mode: str = "kompat",
@@ -139,17 +160,15 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         b = min(b, video_ms)
         if b - a < MIN_CLIP_MS:
             continue
-        op = {"op": "add_clip", "track_kind": "subtitle", "text": _teks_halaman(page, bk.get("kapital", "kata_kunci")),
-              "start_ms": a, "duration_ms": b - a, "style": dict(gaya_caption)}
-        if u3:
-            op["words"] = [{"text": c["text"], "start_ms": c["startMs"], "end_ms": c["endMs"]} for c in page]
-            op["style"].update({"anim": "pop", "anim_ms": preset.get("caption", {}).get("pop_ms", 100),
-                                "highlight": {"words": [c["text"] for c in page if c.get("emphasis")],
-                                              "color": warna["aksen"].lower(), "scale": 1.4,
-                                              "box": warna["aksen"].lower() == warna["caption"].lower()}})
-        ops.append(op)
-    if not u3:
-        menunggu.append("caption muncul per kata dengan efek pop dan sorot kata kunci (sekarang per frasa, kata kunci KAPITAL)")
+        # U3b: kata muncul saat diucapkan (pop), kata kunci disorot. Waktu kata RELATIF ke awal klip.
+        words = kata_klip(page, a, b - a, bk.get("kapital", "kata_kunci"))
+        kunci = sorted({_bersih(w["text"]) for c in page if c.get("emphasis") for w in [{"text": t} for t in c["text"].split()]}
+                       - {""})
+        style = dict(gaya_caption, anim="pop", anim_ms=(preset.get("caption") or {}).get("pop_ms", 120))
+        if kunci:
+            style["highlight"] = {"words": kunci, "color": warna["aksen"].lower(), "scale": 1.4, "current": False}
+        ops.append({"op": "add_clip", "track_kind": "subtitle", "text": " ".join(w["text"] for w in words), "words": words,
+                    "start_ms": a, "duration_ms": b - a, "style": style})
 
     # 3. Judul hook (track text) di awal.
     hook = props.get("hook")
@@ -225,13 +244,15 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         if dur_m < total_ms:
             alasan_musik = f"musik {dur_m / 1000:.1f} dtk lebih pendek dari video {total_ms / 1000:.1f} dtk (berhenti sebelum akhir)"
 
-    # 6. Efek video (zoom, zoom-through) hanya di mode u3.
+    # 6. Efek video (U3c, bentuk final ucok) hanya di mode u3 sampai U3c rilis.
     if u3:
-        for f in props.get("framing") or []:
-            ops.append({"op": "add_clip", "track_kind": "effects", "effect": "zoom", "scale": f["scale"], "mode": f["mode"],
-                        "start_ms": f["atMs"], "duration_ms": MIN_CLIP_MS})
-        for z in props.get("zoomThroughs") or []:
-            ops.append({"op": "add_clip", "track_kind": "effects", "effect": "zoom_through", "start_ms": z, "duration_ms": MIN_CLIP_MS})
+        fr = props.get("framing") or []
+        for i, f in enumerate(fr):
+            akhir_f = fr[i + 1]["atMs"] if i + 1 < len(fr) else video_ms
+            if akhir_f - f["atMs"] >= MIN_CLIP_MS:
+                ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": f["atMs"], "duration_ms": akhir_f - f["atMs"],
+                            "effect": {"type": "zoom", "scale": f["scale"], "mode": f["mode"], "x": 0.5, "y": 0.5}})
+        menunggu.append("zoom-through belum dipasang di mode u3 (bentuk tumpang-tindih dengan zoom menunggu U3c)")
     elif props.get("framing") or props.get("zoomThroughs"):
         menunggu.append(f"digital zoom ({len(props.get('framing') or [])}x) & zoom-through ({len(props.get('zoomThroughs') or [])}x)")
 
@@ -269,8 +290,7 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         "ragu": [{"detik": d["atSec"], "teks": d["word"], "alasan": d["note"]} for d in laporan.get("doubts", [])],
         "menunggu_u3": menunggu,
     }
-    for z in props.get("zoomThroughs") or []:
-        rencana["efek"].append({"jenis": "zoom_through", "detik": round(z / 1000, 2)})
+    rencana["efek"] += [{"jenis": "zoom", "detik": round(o["start_ms"] / 1000, 2)} for o in ops if o.get("track_kind") == "effects"]
 
     # qc_rencana.json (5.4)
     teks_layar = " ".join(o.get("text", "") for o in ops).lower()

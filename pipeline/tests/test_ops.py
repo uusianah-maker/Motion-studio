@@ -62,10 +62,9 @@ class Ops(unittest.TestCase):
     def test_tidak_merujuk_clip_id_sendiri(self):
         self.assertFalse(any("clip_id" in o for o in self.ops))
 
-    def test_mode_kompat_tanpa_field_u3(self):
-        # U3a sudah ada (track sfx, volume, set_loudness); U3b+ belum (words, effect).
-        terlarang = {"words", "effect"}
-        self.assertFalse(any(terlarang & set(o) for o in self.ops))
+    def test_mode_kompat_tanpa_field_u3c(self):
+        # U3a (sfx, volume, set_loudness) & U3b (words, anim, highlight) sudah ada; U3c (effect) belum.
+        self.assertFalse(any("effect" in o for o in self.ops))
         self.assertFalse(any(o.get("track_kind") == "effects" for o in self.ops))
         self.assertIn({"op": "set_loudness", "lufs": -14}, self.ops[:3])
         self.assertTrue(self.rencana["menunggu_u3"])
@@ -130,7 +129,22 @@ class Ops(unittest.TestCase):
         props, laporan = contoh()
         _, doc, _ = susun(props, laporan, BK, placement="tiktok", root=ROOT, mode="u3")
         self.assertTrue(any("words" in o for o in doc["ops"]))
-        self.assertTrue(any(o.get("effect") == "zoom_through" for o in doc["ops"]))
+        self.assertTrue(any((o.get("effect") or {}).get("type") == "zoom" for o in doc["ops"]))
+
+    def test_caption_per_kata_u3b(self):
+        subs = self.per_track("subtitle")
+        for o in subs:
+            self.assertEqual(o["style"]["anim"], "pop")
+            self.assertEqual(o["text"], " ".join(w["text"] for w in o["words"]))
+            prev = 0
+            for w in o["words"]:
+                self.assertNotIn(" ", w["text"])
+                self.assertGreaterEqual(w["start_ms"], prev)
+                self.assertLessEqual(w["start_ms"], w["end_ms"])
+                self.assertLessEqual(w["end_ms"], o["duration_ms"])
+                prev = w["end_ms"]
+        hl = [o["style"]["highlight"]["words"] for o in subs if "highlight" in o["style"]]
+        self.assertIn(["loose", "pants"], hl)  # kata kunci per kata, huruf kecil tanpa tanda baca
 
 
 if __name__ == "__main__":

@@ -232,4 +232,6 @@ Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "bran
 
 **Sejak U3a (ucok, 269aee8):** `set_loudness` (lufs dari preset, default −14) di awal `ops`; SFX di track `sfx` dengan `volume`; musik latar di track `music` (U3b, `volume` 0,12) hanya kalau aset musik `instrumental: true` + `lisensi_iklan: true`; penutup brand = klip `broll` media `visual.penutup.aset` sesudah video, CTA di atasnya.
 
+**Sejak U3b (ucok, 6330cba):** caption per frasa membawa `words` (waktu RELATIF ke awal klip, satu token per kata, maks 30 kata/klip) + `style.anim: "pop"` + `style.highlight: { words: [kata kunci huruf kecil per kata], color: aksen, scale: 1.4, current: false }`. Kata kunci tetap KAPITAL kalau `teks.kapital = "kata_kunci"`.
+
 **Tiga lajur suara berbunyi bersamaan:** `audio` (VO / suara asli terpisah), `music`, `sfx`. Masing-masing tidak boleh tumpang tindih di dalam lajurnya sendiri. Suara asli di dalam klip `video` tetap ikut kecuali `volume: 0`.
