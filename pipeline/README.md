@@ -5,7 +5,7 @@ Semua perintah dijalankan dari `D:\VIBECODING\remotion` (PowerShell).
 ## Sekali saja
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -r pipelineequirements.txt   # faster-whisper, OpenCV (deteksi wajah)
+.\.venv\Scripts\python -m pip install -r pipeline\requirements.txt   # faster-whisper, OpenCV (deteksi wajah)
 node pipeline/make-sfx.mjs        # buat public/sfx/pop.wav + whoosh.wav
 ```
 
