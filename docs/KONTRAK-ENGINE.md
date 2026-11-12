@@ -242,5 +242,5 @@ Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "bran
 ### Aturan runner U6 yang berlaku untuk mesin (audit Checkpoint I ucok, 13 Nov 2026)
 
 1. **Impor media dari folder mesin** mengikuti *realpath* dan hanya menerima file media (mp4, mov, m4v, webm, mkv, wav, mp3, m4a, aac, ogg, opus, flac, png, jpg, webp). Path di luar root mesin ditolak. Berlaku untuk `aset_lokal` dan `batch.json` `media`.
-2. **Lingkungan proses mesin dibatasi** (allowlist: PATH, SYSTEMROOT, TEMP/TMP, USERPROFILE/APPDATA/LOCALAPPDATA, PYTHON*, VIRTUAL_ENV, HF_HOME, XDG_CACHE_HOME, CUDA_VISIBLE_DEVICES, …). Rahasia seperti `ANTHROPIC_API_KEY` dibaca mesin dari `.env` miliknya sendiri, bukan dari lingkungan Motion Studio.
+2. **Lingkungan proses mesin dibatasi** (allowlist: PATH, SYSTEMROOT, TEMP/TMP, USERPROFILE/APPDATA/LOCALAPPDATA, PYTHON*, VIRTUAL_ENV, HF_HOME, XDG_CACHE_HOME, CUDA_VISIBLE_DEVICES, …). Rahasia seperti `ANTHROPIC_API_KEY` dibaca mesin dari `.env` miliknya sendiri, bukan dari lingkungan Motion Studio. **Wajib ada:** `USERPROFILE` atau `HF_HOME` (Whisper mencari cache model di sana; tanpa keduanya transkrip gagal).
 3. **Status:** kode keluar 0 dengan `rencana.status: "ditolak"` diperlakukan sebagai ditolak; `perlu_keputusan` tetap siap, dengan pesan.
