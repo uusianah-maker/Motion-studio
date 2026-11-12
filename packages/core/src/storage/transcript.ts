@@ -1,4 +1,5 @@
 import { promises as fsp } from 'node:fs';
+import { MAX_WORDS_PER_CLIP, MAX_WORD_LEN } from './words.js';
 import { StorageError } from './errors.js';
 import { newId } from './ids.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
@@ -235,7 +236,11 @@ export function cuesToSubtitleOps(t: Transcript, timeline: Timeline, onlyClipId?
           continue;
         }
         taken.push([start, end]);
-        ops.push({ op: 'add_clip', track_kind: 'subtitle', text: cue.text, start_ms: start, duration_ms: end - start });
+        // U3b: an unedited cue keeps its word timings, so it can be shown word by word.
+        const spoken = (t.words ?? []).filter((w) => w.start_ms >= s && w.end_ms <= e);
+        const same = spoken.length > 0 && spoken.length <= MAX_WORDS_PER_CLIP && spoken.every((w) => !/\s/.test(w.text.trim()) && w.text.trim().length <= MAX_WORD_LEN) && spoken.map((w) => w.text.trim()).join(' ') === cue.text.trim().replace(/\s+/g, ' ');
+        const words = same ? spoken.map((w) => ({ text: w.text.trim(), start_ms: w.start_ms - s, end_ms: w.end_ms - s })) : null;
+        ops.push({ op: 'add_clip', track_kind: 'subtitle', text: cue.text, start_ms: start, duration_ms: end - start, ...(words && words.every((w, i) => w.end_ms > w.start_ms && (i === 0 || w.start_ms >= words[i - 1]!.end_ms)) ? { words } : {}) });
       }
     }
   }

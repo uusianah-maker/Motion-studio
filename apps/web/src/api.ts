@@ -167,6 +167,8 @@ export interface Clip {
   style?: Partial<TextStyle>;
   /** X04: media clip sound level 0..1 (missing = 1). */
   volume?: number;
+  /** U3b: caption word timings relative to the clip start. */
+  words?: { text: string; start_ms: number; end_ms: number }[];
 }
 
 export type EditOp =
@@ -182,11 +184,11 @@ export type EditOp =
   | { op: 'split_at'; track_kind: Track['kind']; at_ms: number }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
-  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'sfx'; muted: boolean }
+  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'music' | 'sfx'; muted: boolean }
   | { op: 'set_loudness'; lufs: number | null };
 export interface Track {
   track_id: string;
-  kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'sfx' | 'effects';
+  kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';
   clips: Clip[];
   /** X04: media track silenced in preview and render. */
   muted?: boolean;

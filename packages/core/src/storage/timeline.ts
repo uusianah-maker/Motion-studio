@@ -1,4 +1,5 @@
 import { StorageError } from './errors.js';
+import { type Word, cutWords, sliceWords, validateWords } from './words.js';
 import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
@@ -13,17 +14,17 @@ export const MIN_CLIP_MS = 100;
 /** Retained undo steps per project. Older steps are dropped (and stop holding their media). */
 export const UNDO_LIMIT = 50;
 /** Media clips may live on these tracks; text/subtitle/effects carry no media. */
-export const MEDIA_TRACKS: readonly TrackKind[] = ['video', 'broll', 'audio', 'sfx'];
+export const MEDIA_TRACKS: readonly TrackKind[] = ['video', 'broll', 'audio', 'music', 'sfx'];
 /** Checkpoint E E10: bound the manifest (each edit stores up to UNDO_LIMIT full snapshots). */
 export const MAX_TIMELINE_CLIPS = 2000;
 /** Text clips (overlay / subtitle) carry `text` and never media. */
 export const TEXT_TRACKS: readonly TrackKind[] = ['text', 'subtitle'];
-const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'sfx', 'effects'];
+const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'music', 'sfx', 'effects'];
 /** Tracks whose clips are sound only (mixed over the picture's sound). */
-export const SOUND_TRACKS: readonly TrackKind[] = ['audio', 'sfx'];
+export const SOUND_TRACKS: readonly TrackKind[] = ['audio', 'music', 'sfx'];
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number }
+  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[] }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -37,7 +38,7 @@ export type EditOp =
   | { op: 'split_at'; track_kind: TrackKind; at_ms: number }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
-  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'sfx'; muted: boolean }
+  | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'music' | 'sfx'; muted: boolean }
   /** U3: final loudness (LUFS) or null = leave the mix as is. */
   | { op: 'set_loudness'; lufs: number | null };
 
@@ -69,7 +70,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
     };
     switch (o.op) {
       case 'add_clip': {
-        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume']);
+        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words']);
         if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
         let media: MediaRef | undefined;
         if (o.media !== undefined) {
@@ -86,6 +87,8 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           start_ms: ms(o.start_ms, 'start_ms'),
           duration_ms: ms(o.duration_ms, 'duration_ms'),
           ...(o.in_ms !== undefined ? { in_ms: ms(o.in_ms, 'in_ms') } : {}),
+          // U3b: per-word caption timings (relative to the clip start).
+          ...(o.words !== undefined ? { words: validateWords(o.words, ms(o.duration_ms, 'duration_ms'), `ops[${i}].words`) } : {}),
           // U3 (contract §5.2): volume set at creation, so a plan never refers to its own new clip.
           ...(o.volume !== undefined ? { volume: typeof o.volume === 'number' && Number.isFinite(o.volume) && o.volume >= 0 && o.volume <= 1 ? Math.round(o.volume * 100) / 100 : bad(`ops[${i}]: volume harus angka 0–1`) } : {}),
         };
@@ -133,9 +136,9 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
       }
       case 'set_track_mute':
         keys(['op', 'track_kind', 'muted']);
-        if (o.track_kind !== 'video' && o.track_kind !== 'broll' && o.track_kind !== 'audio' && o.track_kind !== 'sfx') bad(`ops[${i}]: track_kind harus video | broll | audio | sfx`);
+        if (!['video', 'broll', 'audio', 'music', 'sfx'].includes(o.track_kind as string)) bad(`ops[${i}]: track_kind harus video | broll | audio | music | sfx`);
         if (typeof o.muted !== 'boolean') bad(`ops[${i}]: muted harus true/false`);
-        return { op: 'set_track_mute', track_kind: o.track_kind as 'video' | 'broll' | 'audio' | 'sfx', muted: o.muted as boolean };
+        return { op: 'set_track_mute', track_kind: o.track_kind as 'video' | 'broll' | 'audio' | 'music' | 'sfx', muted: o.muted as boolean };
       case 'set_loudness':
         keys(['op', 'lufs']);
         if (o.lufs !== null && (typeof o.lufs !== 'number' || !Number.isFinite(o.lufs) || o.lufs < -30 || o.lufs > -6)) bad(`ops[${i}]: lufs harus -30 sampai -6 atau null`);
@@ -163,14 +166,44 @@ function splitInto(track: Track, index: number, at: number, newClipId: () => str
     right.media = { ...clip.media };
     right.in_ms = (clip.in_ms ?? 0) + (at - clip.start_ms);
   }
+  if (clip.words) {
+    // Each half keeps the words spoken in it (text follows the words).
+    const rel = at - clip.start_ms;
+    right.words = sliceWords(clip.words, rel, clip.end_ms - clip.start_ms);
+    clip.words = sliceWords(clip.words, 0, rel);
+    wordsAfterEdit(right);
+  }
   clip.end_ms = at;
+  if (clip.words) wordsAfterEdit(clip);
   track.clips.splice(index + 1, 0, right);
 }
+
+/** After an edit: words outside the clip are gone; the text is the remaining words. */
+function wordsAfterEdit(c: Clip): void {
+  if (!c.words) return;
+  c.words = c.words.filter((w) => w.start_ms < c.end_ms - c.start_ms).map((w) => ({ ...w, end_ms: Math.min(w.end_ms, c.end_ms - c.start_ms) }));
+  if (c.words.length) c.text = c.words.map((w) => w.text).join(' ');
+  else delete c.words; // nothing spoken left: keep the text as plain text
+}
+const withWords = (c: Clip, words: Word[] | undefined): Clip => {
+  if (words === undefined) return c;
+  const out: Clip = { ...c, words };
+  wordsAfterEdit(out);
+  return out;
+};
 
 const timelineEnd = (t: Timeline) => Math.max(0, ...t.tracks.flatMap((tr) => tr.clips.map((c) => c.end_ms)));
 
 const clone = (t: Timeline): Timeline => ({
-  tracks: t.tracks.map((tr) => ({ ...tr, clips: tr.clips.map((c) => ({ ...c, ...(c.media ? { media: { ...c.media } } : {}), ...(c.style ? { style: { ...c.style } } : {}) })) })),
+  tracks: t.tracks.map((tr) => ({
+    ...tr,
+    clips: tr.clips.map((c) => ({
+      ...c,
+      ...(c.media ? { media: { ...c.media } } : {}),
+      ...(c.style ? { style: { ...c.style, ...(c.style.highlight ? { highlight: { ...c.style.highlight, words: [...c.style.highlight.words] } } : {}) } } : {}),
+      ...(c.words ? { words: c.words.map((w) => ({ ...w })) } : {}),
+    })),
+  })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
   ...(t.brand_logo ? { brand_logo: true } : {}),
   ...(t.loudness_lufs !== undefined ? { loudness_lufs: t.loudness_lufs } : {}),
@@ -246,6 +279,11 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
           if (!op.media) bad('Volume hanya untuk klip video/audio');
           if (op.volume !== 1) clip.volume = op.volume;
         }
+        if (op.words) {
+          if (!TEXT_TRACKS.includes(op.track_kind)) bad('Kata per kata hanya untuk klip teks/subtitle');
+          clip.words = op.words.map((w) => ({ ...w }));
+          clip.text = op.words.map((w) => w.text).join(' '); // the caption IS its words
+        }
         trackFor(t, op.track_kind).clips.push(clip);
         break;
       }
@@ -268,9 +306,11 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
             if (nextIn < 0) bad('Tidak bisa memperpanjang klip sebelum awal sumbernya', { clip_id: clip.clip_id });
             clip.in_ms = nextIn;
           }
+          if (clip.words) clip.words = sliceWords(clip.words, delta, clip.end_ms - clip.start_ms);
           clip.start_ms = op.to_ms;
         }
         if (clip.end_ms <= clip.start_ms) bad('Trim membuat klip kosong', { clip_id: clip.clip_id });
+        if (clip.words) wordsAfterEdit(clip);
         break;
       }
       case 'split_clip': {
@@ -304,9 +344,9 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
                 if (c.style) right.style = { ...c.style };
                 right.media = { ...c.media };
                 out.push({ ...c, end_ms: from }, right);
-              } else out.push({ ...c, end_ms: c.end_ms - len });
-            } else if (c.start_ms < from) out.push({ ...c, end_ms: from });
-            else out.push({ ...c, start_ms: from, end_ms: c.end_ms - len, ...(c.media ? { in_ms: (c.in_ms ?? 0) + (to - c.start_ms) } : {}) });
+              } else out.push(withWords({ ...c, end_ms: c.end_ms - len }, c.words ? cutWords(c.words, from - c.start_ms, to - c.start_ms) : undefined));
+            } else if (c.start_ms < from) out.push(withWords({ ...c, end_ms: from }, c.words ? sliceWords(c.words, 0, from - c.start_ms) : undefined));
+            else out.push(withWords({ ...c, start_ms: from, end_ms: c.end_ms - len, ...(c.media ? { in_ms: (c.in_ms ?? 0) + (to - c.start_ms) } : {}) }, c.words ? sliceWords(c.words, to - c.start_ms, c.end_ms - c.start_ms) : undefined));
           }
           tr.clips = out.filter((c) => c.end_ms - c.start_ms >= MIN_CLIP_MS);
         }
@@ -321,6 +361,7 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         const { track, clip } = locate(t, op.clip_id);
         if (!TEXT_TRACKS.includes(track.kind)) bad('Hanya klip teks/subtitle yang punya teks', { clip_id: op.clip_id });
         clip.text = op.text;
+        delete clip.words; // new words, no timings any more
         break;
       }
       case 'set_canvas':

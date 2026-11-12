@@ -5,7 +5,7 @@ import type { BrandKit, Clip, EditOp, Track } from '../api';
 import { formatDuration } from '../lib';
 
 export type SelectedClip = Clip & { kind: Track['kind'] };
-const KIND_NAME: Record<Track['kind'], string> = { video: 'Video', broll: 'B-roll', text: 'Teks', subtitle: 'Subtitle', audio: 'Audio', sfx: 'SFX', effects: 'Efek' };
+const KIND_NAME: Record<Track['kind'], string> = { video: 'Video', broll: 'B-roll', text: 'Teks', subtitle: 'Subtitle', audio: 'Audio', music: 'Musik', sfx: 'SFX', effects: 'Efek' };
 const sec = (ms: number) => (ms / 1000).toFixed(2);
 
 /**
@@ -252,6 +252,39 @@ export function InspectorPanel({
               </label>
             )}
           </div>
+          <div className="inspGrid">
+            <label>
+              Animasi
+              <select aria-label="Animasi teks" value={s.anim} onChange={(e) => change({ anim: e.target.value as TextStyle['anim'] })}>
+                <option value="none">Tanpa</option>
+                <option value="pop">Pop</option>
+                <option value="fade">Fade</option>
+              </select>
+            </label>
+            <label>
+              Durasi animasi (ms)
+              <input type="number" aria-label="Durasi animasi" min={0} max={2000} step={20} value={s.anim_ms} onChange={(e) => change({ anim_ms: Math.max(0, Math.min(2000, Number(e.target.value) || 0)) })} />
+            </label>
+          </div>
+          <label className="inspFull">
+            Sorot kata kunci (pisah koma){clip.words?.length ? ` · ${clip.words.length} kata bertimecode` : ''}
+            <span className="row" style={{ gap: 6 }}>
+              <input
+                aria-label="Kata kunci disorot"
+                placeholder="mis. anti kusut, flowy"
+                defaultValue={(s.highlight?.words ?? []).join(', ')}
+                key={`${clip.clip_id}:${(s.highlight?.words ?? []).join('|')}`}
+                onBlur={(e) => {
+                  const words = e.target.value.split(',').flatMap((w) => w.trim().split(/\s+/)).filter(Boolean);
+                  change({ highlight: words.length || s.highlight?.current ? { words, color: s.highlight?.color ?? brand?.colors[1] ?? '#ffd23f', scale: s.highlight?.scale ?? 1.15, current: s.highlight?.current ?? false } : null });
+                }}
+              />
+              <input type="color" aria-label="Warna sorot" value={s.highlight?.color ?? '#ffd23f'} onChange={(e) => change({ highlight: { words: s.highlight?.words ?? [], scale: s.highlight?.scale ?? 1.15, current: s.highlight?.current ?? false, color: e.target.value } })} />
+            </span>
+          </label>
+          <label className="inline">
+            <input type="checkbox" aria-label="Sorot kata yang sedang diucapkan" checked={!!s.highlight?.current} onChange={(e) => change({ highlight: { words: s.highlight?.words ?? [], color: s.highlight?.color ?? '#ffd23f', scale: s.highlight?.scale ?? 1.15, current: e.target.checked } })} /> Sorot kata yang sedang diucapkan
+          </label>
           <label className="inspFull">
             Font
             <select aria-label="Font teks" value={s.font} onChange={(e) => change({ font: e.target.value as TextStyle['font'] })}>

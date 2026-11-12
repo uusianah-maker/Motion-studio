@@ -56,6 +56,7 @@ export function Preview({
   const audioRef = useRef<HTMLAudioElement>(null);
   /** U3: sound effects play on their own element, over music/voice. */
   const sfxRef = useRef<HTMLAudioElement>(null);
+  const musicRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasPx, setCanvasPx] = useState({ w: 360, h: 640 });
   useEffect(() => {
@@ -80,6 +81,7 @@ export function Preview({
   const visual = clipAt(clipsOf('broll'), t) ?? clipAt(clipsOf('video'), t);
   const audio = clipAt(clipsOf('audio'), t);
   const sfx = clipAt(clipsOf('sfx'), t);
+  const music = clipAt(clipsOf('music'), t);
   const texts = clipsOf('text').filter((c) => t >= c.start_ms && t < c.end_ms);
   const subs = clipsOf('subtitle').filter((c) => t >= c.start_ms && t < c.end_ms);
   const versionOf = (c: Clip | null) => (c?.media ? media.flatMap((m) => m.versions).find((v) => v.version_id === c.media!.version_id) : undefined);
@@ -136,7 +138,8 @@ export function Preview({
     void sync(videoRef.current, visual, t, playing, 'visual');
     void sync(audioRef.current, audio, t, playing, 'audio');
     void sync(sfxRef.current, sfx, t, playing, 'audio');
-  }, [visual, audio, sfx, t, playing, sync]);
+    void sync(musicRef.current, music, t, playing, 'audio');
+  }, [visual, audio, sfx, music, t, playing, sync]);
 
   useEffect(() => {
     if (!playing) {
@@ -162,18 +165,20 @@ export function Preview({
   }, [playing]);
 
   useEffect(() => {
-    for (const el of [videoRef.current, audioRef.current, sfxRef.current]) if (el) el.muted = muted;
+    for (const el of [videoRef.current, audioRef.current, sfxRef.current, musicRef.current]) if (el) el.muted = muted;
   }, [muted]);
   // X04: each layer plays at its clip's volume; a muted track is silent (same rule as render).
   const gainOf = (c: Clip | null) => (!c ? 1 : tracks.find((tr) => tr.clips.some((x) => x.clip_id === c.clip_id))?.muted ? 0 : (c.volume ?? 1));
   const visualGain = gainOf(visual);
   const audioGain = gainOf(audio);
   const sfxGain = gainOf(sfx);
+  const musicGain = gainOf(music);
   useEffect(() => {
+    if (musicRef.current) musicRef.current.volume = musicGain;
     if (videoRef.current) videoRef.current.volume = visualGain;
     if (audioRef.current) audioRef.current.volume = audioGain;
     if (sfxRef.current) sfxRef.current.volume = sfxGain;
-  }, [visualGain, audioGain, sfxGain]);
+  }, [visualGain, audioGain, sfxGain, musicGain]);
 
   const v = versionOf(visual);
   const unsupported = v && v.preview === false ? `Codec ${v.probe?.video_codec ?? '?'} belum bisa dipratinjau di browser (tetap bisa dirender).` : null;
@@ -208,6 +213,7 @@ export function Preview({
           <video ref={videoRef} playsInline preload="auto" aria-label="Video pratinjau" className={visual?.media && !unsupported ? '' : 'off'} />
           <audio ref={audioRef} preload="auto" />
           <audio ref={sfxRef} preload="auto" data-layer="sfx" />
+          <audio ref={musicRef} preload="auto" data-layer="music" />
           {!visual && <div className="emptyFrame">{end === 0 ? 'Tambahkan media ke linimasa' : 'Tidak ada video di titik ini'}</div>}
           {(unsupported || problem) && <div className="emptyFrame warnFrame">{unsupported ?? problem}</div>}
           {[...texts.map((c) => ['text', c] as const), ...subs.map((c) => ['subtitle', c] as const)].map(([kind, c]) => (
@@ -221,6 +227,7 @@ export function Preview({
               selected={selectedClipId === c.clip_id}
               {...(onSelectClip ? { onSelect: () => onSelectClip(c.clip_id) } : {})}
               {...(onMoveText && !busy ? { onMove: (x: number, y: number) => onMoveText(c.clip_id, x, y) } : {})}
+              time={t}
             />
           ))}
           {project.timeline.brand_logo && brand?.kit.logo && brand.logoUrl && (

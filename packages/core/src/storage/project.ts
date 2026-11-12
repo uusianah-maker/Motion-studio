@@ -1,4 +1,5 @@
 import { StorageError } from './errors.js';
+import { type Word, validateWords } from './words.js';
 import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 
@@ -10,9 +11,13 @@ export interface MediaRef {
   version_id: string;
 }
 
-/** U3: `sfx` = short sound effects mixed over everything (separate from music/voice on `audio`). */
-export type TrackKind = 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'sfx' | 'effects';
-const TRACK_KINDS: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'sfx', 'effects'];
+/**
+ * U3: sound lanes mixed over the picture's own sound: `audio` (voice-over / any sound), `music`
+ * (background music under the voice) and `sfx` (short effects). Each lane keeps its clips apart,
+ * but the lanes play together.
+ */
+export type TrackKind = 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';
+const TRACK_KINDS: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'music', 'sfx', 'effects'];
 
 export interface Clip {
   clip_id: string;
@@ -27,6 +32,8 @@ export interface Clip {
   style?: Partial<TextStyle>;
   /** Sound level of a media clip, 0..1 (X04). Missing = 1 (full). 0 = muted. */
   volume?: number;
+  /** U3b: word timings of a caption (relative to the clip start); `text` = the words joined. */
+  words?: Word[];
 }
 
 export const CANVAS_RATIOS = ['9:16', '3:4', '1:1', '16:9'] as const;
@@ -238,6 +245,14 @@ function validateTracks(timeline: Obj, where: string): Track[] {
         if (!clip.media) fail(`${cw}.volume`, 'volume hanya untuk klip media');
         clip.volume = v as number;
       }
+      if (co.words !== undefined) {
+        if (kind !== 'text' && kind !== 'subtitle') fail(`${cw}.words`, 'kata hanya untuk klip teks/subtitle');
+        try {
+          clip.words = validateWords(co.words, end - start, `${cw}.words`);
+        } catch (e) {
+          fail(`${cw}.words`, e instanceof Error ? e.message : 'tidak valid');
+        }
+      }
       if (co.style !== undefined) {
         if (kind !== 'text' && kind !== 'subtitle') fail(`${cw}.style`, 'gaya hanya untuk klip teks/subtitle');
         try {
@@ -251,7 +266,7 @@ function validateTracks(timeline: Obj, where: string): Track[] {
     const track: Track = { track_id: id(to.track_id, `${w}.track_id`), kind, clips };
     if (to.muted !== undefined) {
       if (typeof to.muted !== 'boolean') fail(`${w}.muted`, 'harus true/false');
-      if (!['video', 'broll', 'audio', 'sfx'].includes(kind)) fail(`${w}.muted`, 'mute hanya untuk track media');
+      if (!['video', 'broll', 'audio', 'music', 'sfx'].includes(kind)) fail(`${w}.muted`, 'mute hanya untuk track media');
       track.muted = to.muted as boolean;
     }
     return track;

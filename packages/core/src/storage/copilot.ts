@@ -61,7 +61,7 @@ export const fmtTime = (ms: number) => {
   const sec = Number.isInteger(rest) ? String(rest).padStart(2, '0') : rest.toFixed(1).padStart(4, '0');
   return `${m}:${sec}`;
 };
-const TRACK_NAME: Record<TrackKind, string> = { video: 'video', broll: 'b-roll', text: 'teks', subtitle: 'subtitle', audio: 'audio', sfx: 'SFX', effects: 'efek' };
+const TRACK_NAME: Record<TrackKind, string> = { video: 'video', broll: 'b-roll', text: 'teks', subtitle: 'subtitle', audio: 'audio', music: 'musik', sfx: 'SFX', effects: 'efek' };
 const quote = (t: string) => `“${t.length > 40 ? `${t.slice(0, 39)}…` : t}”`;
 
 function findClip(t: Timeline, id: string) {
@@ -72,7 +72,7 @@ function findClip(t: Timeline, id: string) {
   return null;
 }
 
-const STYLE_WORD: Record<keyof TextStyle, string> = { x: 'posisi', y: 'posisi', size: 'ukuran', width: 'lebar', color: 'warna', bg: 'kotak', bg_opacity: 'opasitas kotak', bold: 'tebal', outline: 'outline', align: 'perataan', font: 'font' };
+const STYLE_WORD: Record<keyof TextStyle, string> = { x: 'posisi', y: 'posisi', size: 'ukuran', width: 'lebar', color: 'warna', bg: 'kotak', bg_opacity: 'opasitas kotak', bold: 'tebal', outline: 'outline', align: 'perataan', font: 'font', anim: 'animasi', anim_ms: 'durasi animasi', highlight: 'sorot kata' };
 /** "warna #e53935, kotak, posisi" — which properties a style change touches. */
 export const styleSummary = (s: Partial<TextStyle>) =>
   [
@@ -504,9 +504,9 @@ export function planLocal(prompt: string, ctx: PlanContext): LocalPlanResult {
       }
 
       // ---- sound (X04): "bisukan track musik/audio/video/b-roll", "volume 40%", "bisukan klip"
-      const trackMute = /\b(bisukan|mute|matikan suara|nyalakan suara|unmute)\b.*\btrack\s+(video|b-?roll|audio|musik)\b/.exec(lowBare);
+      const trackMute = /\b(bisukan|mute|matikan suara|nyalakan suara|unmute)\b.*\btrack\s+(video|b-?roll|audio|musik|music|sfx)\b/.exec(lowBare);
       if (trackMute) {
-        const kind = trackMute[2] === 'video' ? 'video' : trackMute[2]!.startsWith('b') ? 'broll' : 'audio';
+        const kind = trackMute[2] === 'video' ? 'video' : trackMute[2]!.startsWith('b') ? 'broll' : trackMute[2]!.startsWith('mus') ? 'music' : trackMute[2] === 'sfx' ? 'sfx' : 'audio';
         push({ op: 'set_track_mute', track_kind: kind, muted: !/nyalakan suara|unmute/.test(trackMute[1]!) }, 'mute track');
         continue;
       }

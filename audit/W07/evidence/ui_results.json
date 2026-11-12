@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-12T19:42:54.398Z",
+  "at": "2026-11-12T19:55:45.791Z",
   "summary": {
     "PASS": 19
   },
@@ -22,7 +22,7 @@
     {
       "id": "PV-03 Putar: video jalan + jam timeline maju",
       "ok": true,
-      "detail": "{\"t\":1.00127,\"paused\":false,\"ready\":4,\"src\":true} time=00:01 / 00:08"
+      "detail": "{\"t\":1.017391,\"paused\":false,\"ready\":4,\"src\":true} time=00:01 / 00:08"
     },
     {
       "id": "PV-04 Jeda: video berhenti",

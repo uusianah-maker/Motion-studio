@@ -109,7 +109,7 @@ describe('X04 audio volume & mute', () => {
     expect(run('volume 40%', [vid])).toEqual([{ op: 'set_volume', clip_id: vid, volume: 0.4 }]);
     expect(run('bisukan klip ini', [vid])).toEqual([{ op: 'set_volume', clip_id: vid, volume: 0 }]);
     expect(run('bisukan track video')).toEqual([{ op: 'set_track_mute', track_kind: 'video', muted: true }]);
-    expect(run('nyalakan suara track musik')).toEqual([{ op: 'set_track_mute', track_kind: 'audio', muted: false }]);
+    expect(run('nyalakan suara track musik')).toEqual([{ op: 'set_track_mute', track_kind: 'music', muted: false }]); // U3: music has its own track
     const r = planLocal('volume 40%', { timeline: base, selected_clip_ids: [txt] });
     expect(r.ok ? 'OK' : r.message).toMatch(/Volume hanya untuk klip video\/audio/);
     const c = checkPlan(base, run('volume 40%; bisukan track video', [vid]));

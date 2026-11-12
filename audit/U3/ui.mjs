@@ -88,6 +88,39 @@ try {
   check('U3a-05 Render: loudness terukur ±−14 LUFS, metadata bersih', Math.abs(lufs + 14) < 1.5 && (await dialog.getByText(/metadata bersih \(terverifikasi\)/).isVisible()), `${lufs} LUFS`);
   await page.keyboard.press('Escape');
 
+  // U3b — per-word captions.
+  const v0 = (await proj()).revision;
+  await svc.editTimeline({
+    project_id: 'u3',
+    expected_revision: v0,
+    actor: 'user',
+    ops: [{ op: 'add_clip', track_kind: 'subtitle', text: 'x', words: [{ text: 'Celana', start_ms: 0, end_ms: 500 }, { text: 'anti', start_ms: 500, end_ms: 900 }, { text: 'kusut', start_ms: 900, end_ms: 1400 }], style: { anim: 'pop', highlight: { words: ['kusut'], color: '#ff0000', scale: 1.2, current: false } }, start_ms: 1000, duration_ms: 1600 }],
+  });
+  await page.reload();
+  await page.getByRole('heading', { name: 'Uji U3' }).waitFor();
+  const ruler = await page.getByRole('slider', { name: 'Posisi playhead' }).boundingBox();
+  const total = Number(await page.getByRole('slider', { name: 'Posisi playhead' }).getAttribute('aria-valuemax'));
+  const seek = async (ms) => {
+    await page.mouse.click(ruler.x + (ruler.width * ms) / total, ruler.y + ruler.height / 2);
+    await page.waitForTimeout(250);
+  };
+  const vis = () => page.evaluate(() => [...document.querySelectorAll('.overlayText[data-kind="subtitle"] [data-word]')].filter((e) => getComputedStyle(e).visibility === 'visible').map((e) => e.getAttribute('data-word')));
+  await seek(1700);
+  const mid = await vis();
+  await seek(2200);
+  const all = await vis();
+  check('U3b-01 Pratinjau: kata muncul sesuai ucapan (1,7 dtk: 2 kata; 2,2 dtk: 3 kata), sisanya tak terlihat', mid.join() === 'Celana,anti' && all.join() === 'Celana,anti,kusut', `${mid} | ${all}`);
+  const hot = await page.evaluate(() => getComputedStyle(document.querySelector('.overlayText [data-word="kusut"]')).color);
+  check('U3b-02 Kata kunci "kusut" berwarna sorot di pratinjau', hot === 'rgb(255, 0, 0)', hot);
+  await page.locator('.track .clip.subtitle').first().click();
+  const insp = page.getByRole('region', { name: 'Inspector klip' });
+  check('U3b-03 Inspector: Animasi "Pop" + kata kunci "kusut" + jumlah kata bertimecode', (await insp.getByLabel('Animasi teks').inputValue()) === 'pop' && (await insp.getByLabel('Kata kunci disorot').inputValue()) === 'kusut' && (await insp.getByText(/3 kata bertimecode/).count()) === 1);
+  await insp.getByLabel('Animasi teks').selectOption('fade');
+  check('U3b-04 Ganti animasi di inspector tersimpan', await until(async () => (await proj()).timeline.tracks.find((t) => t.kind === 'subtitle').clips[0].style.anim === 'fade'));
+  await page.getByRole('button', { name: 'Tambah musik musik.wav' }).click();
+  check('U3b-05 "＋ Musik" menaruh musik di track Musik (terpisah dari Audio & SFX)', await until(async () => (await proj()).timeline.tracks.find((t) => t.kind === 'music')?.clips.length === 1));
+  await page.screenshot({ path: path.join(EVID, 'captions.png') });
+
   check('U3-99 0 error JS', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('U3-XX run selesai tanpa exception', false, String(e?.stack ?? e));

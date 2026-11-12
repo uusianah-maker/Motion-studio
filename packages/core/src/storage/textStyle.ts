@@ -26,18 +26,31 @@ export interface TextStyle {
   align: TextAlign;
   /** X06/U1: 'brand' = the brand's title font, 'caption' = its caption font (default font if missing). */
   font: 'default' | 'brand' | 'caption';
+  /** U3b: how text (or each word of a caption with word timings) appears. */
+  anim: 'none' | 'pop' | 'fade';
+  anim_ms: number;
+  /** U3b: keywords drawn bigger / in another colour; `current` also marks the word being spoken. */
+  highlight: TextHighlight | null;
+}
+
+export interface TextHighlight {
+  words: string[];
+  color: string;
+  /** 1 = same size, 1.3 = 30 % bigger. */
+  scale: number;
+  current: boolean;
 }
 
 export type TextKind = 'text' | 'subtitle';
 
 export const DEFAULT_STYLES: Record<TextKind, TextStyle> = {
-  text: { x: 0.5, y: 0.2, size: 6.2, width: 0.84, color: '#ffffff', bg: null, bg_opacity: 0.6, bold: true, outline: true, align: 'center', font: 'default' },
-  subtitle: { x: 0.5, y: 0.78, size: 4.5, width: 0.76, color: '#ffffff', bg: '#000000', bg_opacity: 0.62, bold: true, outline: false, align: 'center', font: 'default' },
+  text: { x: 0.5, y: 0.2, size: 6.2, width: 0.84, color: '#ffffff', bg: null, bg_opacity: 0.6, bold: true, outline: true, align: 'center', font: 'default', anim: 'none', anim_ms: 120, highlight: null },
+  subtitle: { x: 0.5, y: 0.78, size: 4.5, width: 0.76, color: '#ffffff', bg: '#000000', bg_opacity: 0.62, bold: true, outline: false, align: 'center', font: 'default', anim: 'none', anim_ms: 120, highlight: null },
 };
 
 export const STYLE_LIMITS = { size: [2, 20], width: [0.2, 1] } as const;
 const HEX = /^#[0-9a-f]{6}$/;
-const KEYS: readonly (keyof TextStyle)[] = ['x', 'y', 'size', 'width', 'color', 'bg', 'bg_opacity', 'bold', 'outline', 'align', 'font'];
+const KEYS: readonly (keyof TextStyle)[] = ['x', 'y', 'size', 'width', 'color', 'bg', 'bg_opacity', 'bold', 'outline', 'align', 'font', 'anim', 'anim_ms', 'highlight'];
 
 const bad = (msg: string): never => {
   throw new StorageError('EDIT_INVALID', msg);
@@ -50,11 +63,11 @@ export function validateStyle(raw: unknown, where = 'style'): Partial<TextStyle>
   const extra = Object.keys(o).filter((k) => !KEYS.includes(k as keyof TextStyle));
   if (extra.length) bad(`${where}: field tidak dikenal ${extra.join(', ')}`);
   const out: Partial<TextStyle> = {};
-  const num = (k: 'x' | 'y' | 'size' | 'width' | 'bg_opacity', min: number, max: number) => {
+  const num = (k: 'x' | 'y' | 'size' | 'width' | 'bg_opacity' | 'anim_ms', min: number, max: number) => {
     if (o[k] === undefined) return;
     const v = o[k];
     if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) bad(`${where}.${k} harus angka ${min}–${max}`);
-    out[k] = Math.round((v as number) * 1000) / 1000;
+    out[k] = k === 'anim_ms' ? Math.round(v as number) : Math.round((v as number) * 1000) / 1000;
   };
   num('x', 0, 1);
   num('y', 0, 1);
@@ -81,6 +94,29 @@ export function validateStyle(raw: unknown, where = 'style'): Partial<TextStyle>
   if (o.font !== undefined) {
     if (o.font !== 'default' && o.font !== 'brand' && o.font !== 'caption') bad(`${where}.font harus default | brand | caption`);
     out.font = o.font as TextStyle['font'];
+  }
+  if (o.anim !== undefined) {
+    if (o.anim !== 'none' && o.anim !== 'pop' && o.anim !== 'fade') bad(`${where}.anim harus none | pop | fade`);
+    out.anim = o.anim as TextStyle['anim'];
+  }
+  num('anim_ms', 0, 2000);
+  if (o.highlight !== undefined) {
+    if (o.highlight === null) out.highlight = null;
+    else {
+      const h = o.highlight as Record<string, unknown>;
+      if (typeof h !== 'object' || Array.isArray(h) || Object.keys(h).some((k) => !['words', 'color', 'scale', 'current'].includes(k))) bad(`${where}.highlight tidak valid`);
+      const words = h.words === undefined ? [] : Array.isArray(h.words) ? (h.words as unknown[]) : bad(`${where}.highlight.words harus daftar`);
+      if (words.length > 30) bad(`${where}.highlight.words maksimal 30`);
+      const color = h.color === undefined ? '#ffd23f' : typeof h.color === 'string' && HEX.test(h.color.toLowerCase()) ? h.color.toLowerCase() : bad(`${where}.highlight.color harus #rrggbb`);
+      const scale = h.scale === undefined ? 1.15 : typeof h.scale === 'number' && h.scale >= 1 && h.scale <= 2 ? Math.round(h.scale * 100) / 100 : bad(`${where}.highlight.scale harus 1–2`);
+      const current = h.current === undefined ? false : typeof h.current === 'boolean' ? h.current : bad(`${where}.highlight.current harus true/false`);
+      out.highlight = {
+        words: [...new Set(words.map((w, i) => (typeof w === 'string' && w.trim() && w.length <= 40 ? w.trim() : bad(`${where}.highlight.words[${i}] tidak valid`))))],
+        color,
+        scale,
+        current,
+      };
+    }
   }
   return out;
 }

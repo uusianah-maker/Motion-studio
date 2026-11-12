@@ -82,6 +82,11 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 .assetLib { display: flex; flex-direction: column; gap: 8px; }
 .assetRow { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .assetRow .ellipsis { max-width: 220px; }
+.wanim.pop { animation-name: wordPop; animation-timing-function: ease-out; animation-fill-mode: both; }
+.wanim.fade { animation-name: wordFade; animation-timing-function: linear; animation-fill-mode: both; }
+@keyframes wordPop { from { transform: scale(0.7); } to { transform: scale(1); } }
+@keyframes wordFade { from { opacity: 0; } to { opacity: 1; } }
+.overlayText .w { white-space: pre; }
 .importRow { padding: 0 15px 8px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

@@ -1,7 +1,7 @@
 {
-  "at": "2026-11-12T19:45:23.402Z",
-  "passed": 6,
-  "total": 6,
+  "at": "2026-11-12T19:57:56.423Z",
+  "passed": 11,
+  "total": 11,
   "results": [
     {
       "id": "U3a-01 \"＋ SFX\" menaruh SFX di track SFX (bersamaan dengan musik di track Audio)",
@@ -27,6 +27,31 @@
       "id": "U3a-05 Render: loudness terukur ±−14 LUFS, metadata bersih",
       "ok": true,
       "detail": "-13.5 LUFS"
+    },
+    {
+      "id": "U3b-01 Pratinjau: kata muncul sesuai ucapan (1,7 dtk: 2 kata; 2,2 dtk: 3 kata), sisanya tak terlihat",
+      "ok": true,
+      "detail": "Celana,anti | Celana,anti,kusut"
+    },
+    {
+      "id": "U3b-02 Kata kunci \"kusut\" berwarna sorot di pratinjau",
+      "ok": true,
+      "detail": "rgb(255, 0, 0)"
+    },
+    {
+      "id": "U3b-03 Inspector: Animasi \"Pop\" + kata kunci \"kusut\" + jumlah kata bertimecode",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U3b-04 Ganti animasi di inspector tersimpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "U3b-05 \"＋ Musik\" menaruh musik di track Musik (terpisah dari Audio & SFX)",
+      "ok": true,
+      "detail": ""
     },
     {
       "id": "U3-99 0 error JS",

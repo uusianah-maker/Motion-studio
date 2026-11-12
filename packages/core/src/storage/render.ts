@@ -1,4 +1,6 @@
 import { promises as fsp } from 'node:fs';
+import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
+import { readFontInfo } from './fontInfo.js';
 import { type LogoCorner, brandRenderRefs, readBrandFor } from './brand.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -143,6 +145,8 @@ export interface RenderBrand {
   /** U1: caption font (style `font: 'caption'`), copied as fontc<ext>. */
   font_caption?: string | null;
   logo: { path: string; corner: LogoCorner; size: number; opacity: number } | null;
+  /** U3b: font families/metrics for libass captions (defaults: Arial metrics). */
+  fonts?: Partial<AssFonts>;
 }
 
 export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInput>, settings: RenderSettings, font: string | null, regularFont: string | null = font, brand: RenderBrand = { font: null, logo: null }): RenderPlan {
@@ -207,7 +211,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
 
   // Audio track: mixed over the visual sound at its timeline position, like the preview.
   const mixes: string[] = [];
-  for (const c of [...clipsOf(t, 'audio'), ...clipsOf(t, 'sfx')]) {
+  for (const c of [...clipsOf(t, 'audio'), ...clipsOf(t, 'music'), ...clipsOf(t, 'sfx')]) {
     const src = media(c);
     const startFrame = Math.round((c.start_ms * fps) / 1000);
     const endFrame = Math.min(total_frames, Math.round((c.end_ms * fps) / 1000));
@@ -228,11 +232,17 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   const short = Math.min(W, H);
   const draws: string[] = [];
   const hex = (c: string) => `0x${c.slice(1)}`;
+  const assClips: { kind: 'text' | 'subtitle'; clip: Clip }[] = [];
   for (const kind of ['text', 'subtitle'] as const) {
     for (const c of clipsOf(t, kind)) {
       if (!c.text?.trim() || c.start_ms >= total_ms) continue;
       if (!font) throw new StorageError('RENDER_UNAVAILABLE', 'Font untuk teks tidak ditemukan (set MOTION_FONT)');
       const s = effectiveStyle(kind, c.style);
+      // U3b: captions with word timings / animation / keyword highlights go through libass.
+      if (needsAss(s, c)) {
+        assClips.push({ kind, clip: c });
+        continue;
+      }
       const fs = Math.max(8, Math.round((short * s.size) / 100));
       const name = `t${files.length}.txt`;
       files.push({ name, content: layoutText(c.text, s, ratio) });
@@ -252,6 +262,12 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
         `drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}:enable='gte(t,${s6(c.start_ms / 1000)})*lt(t,${s6(c.end_ms / 1000)})'`,
       );
     }
+  }
+  if (assClips.length) {
+    const f = brand.fonts ?? {};
+    files.push({ name: 'captions.ass', content: buildAss({ clips: assClips, width: W, height: H, ratio, total_ms, fonts: { bold: f.bold ?? DEFAULT_FONT_INFO, regular: f.regular ?? { ...DEFAULT_FONT_INFO, bold: false }, brand: f.brand ?? null, caption: f.caption ?? null } }) });
+    // Fonts are looked up by family name among the files copied into the job folder.
+    draws.push('ass=filename=captions.ass:fontsdir=.');
   }
   // X06: Brand Kit logo in a corner, over everything (text included), for the whole video.
   if (brand.logo) {
@@ -428,7 +444,17 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       const fontExt = brandFont ? (/\.(ttf|otf)$/i.exec(reg.versions[brandRefs.font!.version_id]!.original_name)?.[0] ?? '.ttf').toLowerCase() : '';
       const capFont = brandRefs.font_caption ? local.get(brandRefs.font_caption.version_id)! : null;
       const capExt = capFont ? (/\.(ttf|otf)$/i.exec(reg.versions[brandRefs.font_caption!.version_id]!.original_name)?.[0] ?? '.ttf').toLowerCase() : '';
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo });
+      const info = async (f: string | null) => (f ? await readFontInfo(f).catch(() => null) : null);
+      const fonts: Partial<AssFonts> = {};
+      const fb = await info(font);
+      const fr = await info(regularFont);
+      const fk = await info(brandFont);
+      const fc = await info(capFont);
+      if (fb) fonts.bold = fb;
+      if (fr) fonts.regular = fr;
+      if (fk) fonts.brand = fk;
+      if (fc) fonts.caption = fc;
+      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));

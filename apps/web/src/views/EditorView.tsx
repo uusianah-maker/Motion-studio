@@ -22,6 +22,7 @@ const TRACKS: { kind: Track['kind']; label: string }[] = [
   { kind: 'text', label: 'T  Teks & CTA' },
   { kind: 'subtitle', label: '☷  Subtitle' },
   { kind: 'audio', label: '♫  Audio' },
+  { kind: 'music', label: '♬  Musik' },
   { kind: 'sfx', label: '♪  SFX' },
   { kind: 'effects', label: '✧  Efek' },
 ];
@@ -212,7 +213,7 @@ export function EditorView({
   /** Source length from the import probe (W07); undefined = unknown (not probed / no ffprobe). */
   const sourceMs = (c: Clip) => (c.media ? versionOf(c.media.version_id)?.probe?.duration_ms : undefined);
 
-  const addToTimeline = (m: Media, kind: 'video' | 'audio' | 'sfx') => {
+  const addToTimeline = (m: Media, kind: 'video' | 'audio' | 'music' | 'sfx') => {
     const trackEnd = Math.max(0, ...(tracks.find((t) => t.kind === kind)?.clips.map((c) => c.end_ms) ?? [0]));
     const probe = versionOf(m.current_version_id)?.probe;
     void edit([{ op: 'add_clip', track_kind: kind, media: { media_id: m.media_id, version_id: m.current_version_id }, start_ms: trackEnd, duration_ms: probe?.duration_ms ?? DEFAULT_CLIP_MS }]);
@@ -424,6 +425,9 @@ export function EditorView({
                     <button className="btn small" disabled={locked || !project || cur?.probe === null || (!!cur?.probe && !cur.probe.audio_codec)} onClick={() => addToTimeline(m, 'sfx')} aria-label={`Tambah SFX ${m.display_name}`} title="Tambah sebagai efek suara (track SFX, bisa bersamaan dengan musik)">
                       ＋ SFX
                     </button>
+                    <button className="btn small" disabled={locked || !project || cur?.probe === null || (!!cur?.probe && !cur.probe.audio_codec)} onClick={() => addToTimeline(m, 'music')} aria-label={`Tambah musik ${m.display_name}`} title="Tambah sebagai musik latar (track Musik, di bawah suara)">
+                      ＋ Musik
+                    </button>
                     <button className="btn small" disabled={locked || !project || !cur?.probe?.audio_codec} onClick={() => setSttMedia(m)} aria-label={`Transkrip ${m.display_name}`} title="Transkrip & subtitle dari suara media ini">
                       CC
                     </button>
@@ -514,14 +518,14 @@ export function EditorView({
               <div className="track" key={t.kind}>
                 <div className="trackLabel">
                   {t.label}
-                  {(t.kind === 'video' || t.kind === 'broll' || t.kind === 'audio' || t.kind === 'sfx') && (
+                  {(t.kind === 'video' || t.kind === 'broll' || t.kind === 'audio' || t.kind === 'music' || t.kind === 'sfx') && (
                     <button
                       className={`trackMute${tracks.some((x) => x.kind === t.kind && x.muted) ? ' on' : ''}`}
                       disabled={locked || !project}
                       aria-pressed={tracks.some((x) => x.kind === t.kind && x.muted)}
                       aria-label={`${tracks.some((x) => x.kind === t.kind && x.muted) ? 'Nyalakan suara' : 'Bisukan'} track ${t.label.replace(/^\S+\s+/, '')}`}
                       title="Bisukan/nyalakan suara track ini (pratinjau & render)"
-                      onClick={() => void edit([{ op: 'set_track_mute', track_kind: t.kind as 'video' | 'broll' | 'audio' | 'sfx', muted: !tracks.some((x) => x.kind === t.kind && x.muted) }])}
+                      onClick={() => void edit([{ op: 'set_track_mute', track_kind: t.kind as 'video' | 'broll' | 'audio' | 'music' | 'sfx', muted: !tracks.some((x) => x.kind === t.kind && x.muted) }])}
                     >
                       {tracks.some((x) => x.kind === t.kind && x.muted) ? '🔇' : '🔊'}
                     </button>
