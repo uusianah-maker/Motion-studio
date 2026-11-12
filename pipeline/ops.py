@@ -59,6 +59,25 @@ def pilih_sfx_brand(bk: dict, stem: str):
     return None
 
 
+VOLUME_MUSIK = 0.12  # jauh di bawah suara; loudness akhir dinormalkan render (set_loudness)
+
+
+def pilih_musik(bk: dict, preset: dict):
+    """(aset musik, alasan). Hanya instrumental=True, lisensi_iklan=True, tidak kena sfx_dilarang.
+    Kalau preset menyebut mood, utamakan musik dengan mood/tag itu."""
+    calon = [a for a in bk.get("aset", []) if a.get("jenis") == "musik"]
+    if not calon:
+        return None, "belum ada musik di library brand"
+    boleh = [a for a in calon if a.get("instrumental") is True and _boleh_iklan(a, bk.get("sfx_dilarang", []))]
+    if not boleh:
+        return None, f"{len(calon)} musik di library, tapi tidak ada yang instrumental + berlisensi iklan"
+    mood = str((preset.get("audio") or {}).get("mood") or "").lower()
+    if mood:
+        cocok = [a for a in boleh if mood in str(a.get("mood", "")).lower() or mood in [t.lower() for t in a.get("tag", [])]]
+        boleh = cocok or boleh
+    return boleh[0], ""
+
+
 def _halaman(captions):
     """Kelompokkan caption per halaman (pageBreakAfter dari edit.py)."""
     pages, cur = [], []
@@ -88,7 +107,9 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     preset = preset or {}
     u3 = mode == "u3"
     warna = bk["warna"]
-    ops = [{"op": "set_canvas", "ratio": "9:16"}, {"op": "set_brand_logo", "on": bool(bk.get("logo") or bk.get("logo_aturan"))}]
+    lufs = (preset.get("audio") or {}).get("lufs", -14)
+    ops = [{"op": "set_canvas", "ratio": "9:16"}, {"op": "set_brand_logo", "on": bool(bk.get("logo") or bk.get("logo_aturan"))},
+           {"op": "set_loudness", "lufs": lufs}]
     menunggu = []
 
     # 1. Video: potongan sumber berurutan tanpa celah. Akhir potongan dibatasi panjang
@@ -173,7 +194,7 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     if props.get("disclaimer"):
         menunggu.append("teks disclaimer kecil (track text dipakai hook/CTA; perlu preset disclaimer di U3)")
 
-    # 5. SFX: aset lokal mesin sampai library aset per brand (U2) siap.
+    # 5. SFX di track `sfx` (U3a) dengan volume; dari library brand, kalau tidak ada: SFX bawaan mesin.
     aset_lokal = {}
     sfx = sorted(props.get("sfx", []), key=lambda s: s["atMs"])
     for i, s in enumerate(sfx):
@@ -190,12 +211,18 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
             continue
         if not brand:
             aset_lokal[kunci] = str(p).replace("\\", "/")
-        op = {"op": "add_clip", "track_kind": "sfx" if u3 else "audio", "media": kunci, "start_ms": s["atMs"], "duration_ms": dur}
-        if u3:
-            op["volume"] = s.get("volume", 1)
-        ops.append(op)
-    if sfx and not u3:
-        menunggu.append("volume SFX & track SFX terpisah dari musik (sekarang SFX di track audio, volume penuh)")
+        ops.append({"op": "add_clip", "track_kind": "sfx", "media": kunci, "start_ms": s["atMs"], "duration_ms": dur,
+                    "volume": s.get("volume", 1)})
+
+    # 5b. Musik latar di track `audio`: hanya instrumental + boleh iklan + tidak dilarang.
+    total_ms = video_ms + penutup_ms
+    musik, alasan_musik = pilih_musik(bk, preset)
+    if musik:
+        dur_m = min(total_ms, musik.get("durasi_ms") or total_ms)
+        ops.append({"op": "add_clip", "track_kind": "audio", "media": musik["kunci"], "start_ms": 0, "duration_ms": dur_m,
+                    "in_ms": 0, "volume": VOLUME_MUSIK})
+        if dur_m < total_ms:
+            alasan_musik = f"musik {dur_m / 1000:.1f} dtk lebih pendek dari video {total_ms / 1000:.1f} dtk (berhenti sebelum akhir)"
 
     # 6. Efek video (zoom, zoom-through) hanya di mode u3.
     if u3:
@@ -231,7 +258,10 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         "kata_kunci": [{"teks": k["text"], "detik": round(k["atMs"] / 1000, 2)} for k in laporan.get("kataKunci", [])],
         "efek": [{"jenis": "kotak_kaca", "dari": 0, "sampai": hook_end / 1000}] if hook else [],
         "audio": {"sfx": sum(1 for o in ops if o.get("media", "").startswith("$sfx:")),
-                  "musik": None, "alasan_tanpa_musik": "belum ada musik berlisensi di library brand"},
+                  "musik": (musik or {}).get("nama") or (musik or {}).get("kunci"),
+                  "lisensi_musik": (musik or {}).get("sumber_lisensi") or (musik or {}).get("status_lisensi"),
+                  "alasan_tanpa_musik" if not musik else "catatan_musik": alasan_musik,
+                  "loudness_lufs": lufs},
         "cta": cta,
         "posisi_caption": laporan.get("posisiCaption", {}).get("y"),
         "peringatan": peringatan,

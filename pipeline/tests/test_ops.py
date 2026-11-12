@@ -52,7 +52,7 @@ class Ops(unittest.TestCase):
         self.assertEqual(v[0]["start_ms"] + v[0]["duration_ms"], v[1]["start_ms"])
 
     def test_tidak_ada_tumpang_tindih_dan_min_100ms(self):
-        for kind in ("video", "subtitle", "text", "audio"):
+        for kind in ("video", "subtitle", "text", "audio", "sfx", "broll"):
             prev = -1
             for o in self.per_track(kind):
                 self.assertGreaterEqual(o["start_ms"], prev, kind)
@@ -63,9 +63,11 @@ class Ops(unittest.TestCase):
         self.assertFalse(any("clip_id" in o for o in self.ops))
 
     def test_mode_kompat_tanpa_field_u3(self):
-        terlarang = {"words", "volume", "effect"}
+        # U3a sudah ada (track sfx, volume, set_loudness); U3b+ belum (words, effect).
+        terlarang = {"words", "effect"}
         self.assertFalse(any(terlarang & set(o) for o in self.ops))
-        self.assertFalse(any(o.get("track_kind") in ("effects", "sfx") for o in self.ops))
+        self.assertFalse(any(o.get("track_kind") == "effects" for o in self.ops))
+        self.assertIn({"op": "set_loudness", "lufs": -14}, self.ops[:3])
         self.assertTrue(self.rencana["menunggu_u3"])
 
     def test_kata_kunci_kapital(self):
@@ -104,6 +106,25 @@ class Ops(unittest.TestCase):
         cta = [o for o in doc["ops"] if o.get("track_kind") == "text" and o["text"].startswith("Cek")][0]
         self.assertEqual(cta["start_ms"], pen[0]["start_ms"])
         self.assertFalse(any("penutup" in m for m in rencana["menunggu_u3"]))
+
+    def test_musik_hanya_instrumental_berlisensi(self):
+        props, laporan = contoh()
+        props["sfx"] = [{"src": "sfx/pop.wav", "atMs": 1000, "volume": 0.35}]
+        aset = [
+            {"kunci": "$musik:lirik", "jenis": "musik", "tag": [], "lisensi_iklan": True, "instrumental": False, "durasi_ms": 60000},
+            {"kunci": "$musik:unduhan", "jenis": "musik", "tag": [], "lisensi_iklan": False, "instrumental": True, "durasi_ms": 60000},
+            {"kunci": "$musik:ceria", "jenis": "musik", "tag": ["pop-ceria"], "lisensi_iklan": True, "instrumental": True,
+             "durasi_ms": 60000, "nama": "Pop Ceria", "sumber_lisensi": "Artlist"},
+        ]
+        rencana, doc, _ = susun(props, laporan, dict(BK, aset=aset), placement="tiktok", root=ROOT)
+        audio = [o for o in doc["ops"] if o.get("track_kind") == "audio"]
+        self.assertEqual([o["media"] for o in audio], ["$musik:ceria"])
+        self.assertLess(audio[0]["volume"], 0.3)
+        sfx = [o for o in doc["ops"] if o.get("track_kind") == "sfx"]
+        self.assertTrue(sfx and all("volume" in o for o in sfx))  # SFX di track sfx (U3a), bersamaan dengan musik
+        self.assertEqual(rencana["audio"]["musik"], "Pop Ceria")
+        _, doc2, _ = susun(props, laporan, dict(BK, aset=aset[:2]), placement="tiktok", root=ROOT)
+        self.assertFalse([o for o in doc2["ops"] if o.get("track_kind") == "audio"])
 
     def test_mode_u3_menambah_field_usulan(self):
         props, laporan = contoh()

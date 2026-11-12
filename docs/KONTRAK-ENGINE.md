@@ -228,4 +228,6 @@ Tidak mengubah apa pun yang sudah disepakati; hanya menambah field opsional.
 | `rencana.json` | `kamus_baru: { salah: benar }` | hanya dari `engine ulang`; Motion Studio menyimpannya ke Brand Kit |
 
 Mode `kompat` sudah diuji dengan `validateOps` + `applyOps` asli Motion Studio (`pipeline/validasi_ops.mjs`).
-Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "brand"`, dan SFX di track `audio` (tidak ada musik).
+Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "brand"`.
+
+**Sejak U3a (ucok, 269aee8):** `set_loudness` (lufs dari preset, default −14) di awal `ops`; SFX di track `sfx` dengan `volume`; musik latar di track `audio` (`volume` 0,12) hanya kalau aset musik `instrumental: true` + `lisensi_iklan: true`; penutup brand = klip `broll` media `visual.penutup.aset` sesudah video, CTA di atasnya.
