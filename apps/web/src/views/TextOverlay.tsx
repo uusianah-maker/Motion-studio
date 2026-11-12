@@ -1,7 +1,7 @@
 import { type CSSProperties, useRef, useState } from 'react';
 import { type TextStyle, effectiveStyle, layoutText } from '../../../../packages/core/dist/storage/textStyle.js';
 import type { Clip } from '../api';
-import { BRAND_FONT_FAMILY } from '../brand';
+import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY } from '../brand';
 
 /** #rrggbb + opacity → rgba() */
 const rgba = (hex: string, a: number) => `rgba(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)}, ${a})`;
@@ -43,7 +43,7 @@ export function TextOverlay({
     color: s.color,
     fontWeight: s.bold ? 800 : 400,
     // X06: brand font (registered by useBrand); falls back to the default face if not loaded.
-    ...(s.font === 'brand' ? { fontFamily: `'${BRAND_FONT_FAMILY}', Arial, sans-serif` } : {}),
+    ...(s.font === 'brand' ? { fontFamily: `'${BRAND_FONT_FAMILY}', Arial, sans-serif` } : s.font === 'caption' ? { fontFamily: `'${BRAND_CAPTION_FAMILY}', Arial, sans-serif` } : {}),
     textAlign: s.align,
     background: s.bg ? rgba(s.bg, s.bg_opacity) : 'transparent',
     padding: s.bg ? `${px * 0.4}px` : 0,

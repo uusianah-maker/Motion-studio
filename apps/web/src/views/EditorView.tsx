@@ -69,7 +69,7 @@ export function EditorView({
   const [cutClip, setCutClip] = useState<Clip | null>(null);
   const [variantsOpen, setVariantsOpen] = useState(false);
   /** X06: Brand Kit (logo + font) for preview, inspector swatches and the Brand preset. */
-  const brand = useBrand(api);
+  const brand = useBrand(api, { brandId: project?.brand_id ?? null });
   const [selected, setSelected] = useState<string | null>(null);
   const [playhead, setPlayhead] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -251,7 +251,7 @@ export function EditorView({
             ◫ Varian
           </button>
         )}
-        {project && <ProjectMenu api={api} project={project} busy={busy} run={run} onDuplicated={(id) => onProjectCreated?.(id)} />}
+        {project && <ProjectMenu api={api} project={project} busy={busy} run={run} onDuplicated={(id) => onProjectCreated?.(id)} brandName={brand?.kit.brand_id ? `${brand.kit.kode} · ${brand.kit.name}` : null} />}
         <button className="btn primary" disabled={!project} onClick={() => setRenderOpen(true)} title="Render proyek ke MP4 (metadata dibersihkan)">
           ↧ Render
         </button>

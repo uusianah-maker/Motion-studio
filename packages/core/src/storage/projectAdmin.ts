@@ -1,4 +1,5 @@
 import { promises as fsp } from 'node:fs';
+import { readBrand } from './brand.js';
 import { commitProject } from './deps.js';
 import { StorageError } from './errors.js';
 import { guard } from './guard.js';
@@ -44,9 +45,11 @@ export function cleanName(x: unknown): string {
 const clipRefs = (t: Timeline): MediaRef[] => t.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.media ? [c.media] : [])));
 
 /** Rename and/or archive/activate. History (undo/redo) is kept; the revision moves on. */
-export async function updateProjectMeta(ws: Workspace, input: { project_id: string; expected_revision: number; name?: unknown; status?: unknown; actor: Actor }): Promise<ProjectManifest> {
+export async function updateProjectMeta(ws: Workspace, input: { project_id: string; expected_revision: number; name?: unknown; status?: unknown; brand_id?: unknown; actor: Actor }): Promise<ProjectManifest> {
   await guard(ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'meta' });
-  if (input.name === undefined && input.status === undefined) bad('Tidak ada yang diubah');
+  if (input.name === undefined && input.status === undefined && input.brand_id === undefined) bad('Tidak ada yang diubah');
+  // U1: brand per project (null = back to the workspace default brand).
+  if (input.brand_id !== undefined && input.brand_id !== null) await readBrand(ws, typeof input.brand_id === 'string' ? input.brand_id : '');
   if (input.status !== undefined && input.status !== 'active' && input.status !== 'archived') bad('Status harus active atau archived');
   const current = await readProject(ws, input.project_id);
   if (current.revision !== input.expected_revision) throw new StorageError('CONFLICT', 'Revisi proyek sudah berubah; muat ulang dulu', { expected: input.expected_revision, actual: current.revision });
@@ -55,6 +58,8 @@ export async function updateProjectMeta(ws: Workspace, input: { project_id: stri
     ...(input.name !== undefined ? { name: cleanName(input.name) } : {}),
     ...(input.status !== undefined ? { status: input.status as ProjectManifest['status'] } : {}),
   };
+  if (input.brand_id === null) delete next.brand_id;
+  else if (input.brand_id !== undefined) next.brand_id = input.brand_id as string;
   return commitProject(ws, { manifest: next, expected_revision: input.expected_revision, actor: input.actor });
 }
 
@@ -63,10 +68,10 @@ export async function updateProjectMeta(ws: Workspace, input: { project_id: stri
  * If the commit is refused (e.g. a media version is in Trash) the half-made project is removed,
  * so a failed duplicate/import leaves nothing behind.
  */
-export async function createWithTimeline(ws: Workspace, input: { project_id: string; name: string; timeline: Timeline; actor: Actor; variant?: VariantInfo }): Promise<ProjectManifest> {
+export async function createWithTimeline(ws: Workspace, input: { project_id: string; name: string; timeline: Timeline; actor: Actor; variant?: VariantInfo; brand_id?: string }): Promise<ProjectManifest> {
   const fresh = await createProject(ws, { project_id: input.project_id, name: input.name });
   try {
-    return await commitProject(ws, { manifest: { ...fresh, timeline: input.timeline, ...(input.variant ? { variant: input.variant } : {}) }, expected_revision: 0, actor: input.actor });
+    return await commitProject(ws, { manifest: { ...fresh, timeline: input.timeline, ...(input.variant ? { variant: input.variant } : {}), ...(input.brand_id ? { brand_id: input.brand_id } : {}) }, expected_revision: 0, actor: input.actor });
   } catch (e) {
     // Checkpoint G G-3: the folder was created by this call a moment ago (fresh, unguessable id;
     // `createProject` refuses an existing one), so it is removed whatever step failed — even if the
@@ -80,7 +85,7 @@ export async function duplicateProject(ws: Workspace, input: { project_id: strin
   await guard(ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'duplicate' });
   const src = await readProject(ws, input.project_id);
   const name = input.name === undefined ? cleanName(`${src.name} (salinan)`.slice(0, MAX_PROJECT_NAME)) : cleanName(input.name);
-  return createWithTimeline(ws, { project_id: input.new_project_id, name, timeline: structuredClone(src.timeline), actor: input.actor });
+  return createWithTimeline(ws, { project_id: input.new_project_id, name, timeline: structuredClone(src.timeline), actor: input.actor, ...(src.brand_id ? { brand_id: src.brand_id } : {}) });
 }
 
 export async function exportProject(ws: Workspace, projectId: string, now: number): Promise<ProjectExport> {

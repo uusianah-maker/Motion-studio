@@ -39,17 +39,62 @@ export interface MediaAnalysis {
 }
 
 /** X06: workspace Brand Kit. */
+export type Ref = { media_id: string; version_id: string };
+export type Platform = 'tiktok' | 'instagram' | 'shopee' | 'youtube';
+/** F: one content preset per brand. */
+export interface BrandPreset {
+  id: string;
+  nama: string;
+  tujuan: string;
+  placement: Platform[];
+  durasi: { min: number; target: number; max: number };
+  turunan: string[];
+  babak: { dari: number; sampai: number; isi: string }[];
+  ritme: string;
+  caption: { mode: 'per_kata' | 'kalimat'; maks_kata: number; pop_ms: number };
+  hook: { teks: boolean; maks_kata: number; dari_ucapan: boolean };
+  efek: { wajib: string[]; boleh: string[]; jangan: string[]; maks: number; jarak_dtk: number };
+  audio: { suara_asli: boolean; sfx: string; musik: string; lufs: number };
+  qc: string[];
+}
+/** X06 → U1: one Brand Kit per brand (sheet A–F). */
 export interface BrandKit {
-  schema_version: 1;
+  schema_version: 2;
+  brand_id: string;
   revision: number;
   updated_at: number;
   name: string;
+  kode: string;
+  handles: Partial<Record<Platform, string>>;
+  target: string;
+  nada: string[];
+  bahasa: 'id' | 'en' | 'campur';
+  produk: { nama: string; varian: string[]; ukuran: string }[];
   colors: string[];
   text_color: string;
-  font: { media_id: string; version_id: string } | null;
-  logo: { ref: { media_id: string; version_id: string }; corner: 'tl' | 'tr' | 'bl' | 'br'; size: number; opacity: number } | null;
+  outline: { color: string; px: number };
+  warna_dilarang: string[];
+  font: Ref | null;
+  font_caption: Ref | null;
+  logo: { ref: Ref; corner: 'tl' | 'tr' | 'bl' | 'br'; size: number; opacity: number; show: 'sepanjang' | 'penutup' | 'sepanjang+penutup' } | null;
+  logo_light: Ref | null;
+  outro: { ref: Ref | null; detik: number };
+  gaya: string;
+  grading: string;
+  cta: Partial<Record<Platform, string>>;
+  cta_wajib: string;
+  disclaimer: { teks: string; kapan: 'selalu' | 'varian_warna' | 'harga' | 'manual' } | null;
+  kosakata: string[];
+  kamus: { salah: string; benar: string }[];
+  kata_kunci: string[];
+  kapital: 'normal' | 'kata_kunci' | 'semua';
+  emoji: boolean;
   /** X08: promo prices with an end date + banned claims, checked before every render. */
   guard: BrandGuard;
+  klaim_boleh: string[];
+  visual_dilarang: string[];
+  area_bebas_teks: ('wajah' | 'produk' | 'bawah_15' | 'atas_10' | 'kanan_tombol')[];
+  presets: BrandPreset[];
 }
 export interface BrandGuard {
   prices: { text: string; valid_until: string }[];
@@ -67,7 +112,7 @@ export interface GuardIssue {
   match: string;
   valid_until?: string;
 }
-export type BrandKitInput = Pick<BrandKit, 'name' | 'colors' | 'text_color' | 'font' | 'logo' | 'guard'>;
+export type BrandKitInput = Omit<BrandKit, 'schema_version' | 'brand_id' | 'revision' | 'updated_at'>;
 
 /** X05: a project file (timeline + which media versions it uses; never files or paths). */
 export interface ProjectExport {
@@ -84,6 +129,8 @@ export interface ProjectSummary {
   status?: 'active' | 'archived';
   /** X09: set on variant projects. */
   variant?: VariantTag;
+  /** U1: the project's brand (missing = workspace default brand). */
+  brand_id?: string;
   revision?: number;
   created_at?: number;
   updated_at?: number;
@@ -124,7 +171,8 @@ export interface Track {
   /** X04: media track silenced in preview and render. */
   muted?: boolean;
 }
-export interface Project extends Required<Omit<ProjectSummary, 'error' | 'variant'>> {
+export interface Project extends Required<Omit<ProjectSummary, 'error' | 'variant' | 'brand_id'>> {
+  brand_id?: string;
   variant?: VariantTag;
   timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' }; brand_logo?: boolean };
   history: { undo: number; redo: number; undo_label: string | null; redo_label: string | null };
@@ -419,8 +467,16 @@ export function createApi(token: string | null, base = '') {
     project: (id: string) => call<{ project: Project }>('GET', `/api/projects/${encodeURIComponent(id)}`).then((r) => r.project),
     brand: () => call<{ brand: BrandKit }>('GET', '/api/brand').then((r) => r.brand),
     saveBrand: (expected_revision: number, kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', '/api/brand', { json: { expected_revision, kit } }).then((r) => r.brand),
+    // U1: brands
+    brands: () => call<{ brands: BrandKit[]; default_id: string | null }>('GET', '/api/brands'),
+    brandById: (id: string) => call<{ brand: BrandKit }>('GET', `/api/brands/${encodeURIComponent(id)}`).then((r) => r.brand),
+    createBrand: (kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', '/api/brands', { json: { kit } }).then((r) => r.brand),
+    saveBrandById: (id: string, expected_revision: number, kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', `/api/brands/${encodeURIComponent(id)}`, { json: { expected_revision, kit } }).then((r) => r.brand),
+    setDefaultBrand: (id: string) => call<{ default_id: string }>('POST', `/api/brands/${encodeURIComponent(id)}/default`, { json: {} }),
+    deleteBrand: (id: string) => call<{ deleted: string }>('POST', `/api/brands/${encodeURIComponent(id)}/delete`, { json: {} }),
+    exportBrand: (id: string) => call<{ export: Record<string, unknown> }>('GET', `/api/brands/${encodeURIComponent(id)}/export`).then((r) => r.export),
     /** X05: rename and/or archive (read-only) / activate. */
-    updateProject: (id: string, expected_revision: number, patch: { name?: string; status?: 'active' | 'archived' }) =>
+    updateProject: (id: string, expected_revision: number, patch: { name?: string; status?: 'active' | 'archived'; brand_id?: string | null }) =>
       call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/meta`, { json: { expected_revision, ...patch } }).then((r) => r.project),
     duplicateProject: (id: string, name?: string) =>
       call<{ project: ProjectSummary }>('POST', `/api/projects/${encodeURIComponent(id)}/duplicate`, { json: name ? { name } : {} }).then((r) => r.project),

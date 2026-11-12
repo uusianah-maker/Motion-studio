@@ -15,7 +15,7 @@ import {
   loadRegistry,
   pickOps,
   planLocal,
-  readBrandKit,
+  readBrandFor,
   type BrandContext,
   readProject,
   applyOps,
@@ -104,7 +104,7 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
     const project = await readProject(ws, input.project_id);
     const checked = checkPlan(project.timeline, input.ops, await sourceDuration(), maxOpsFor(input.source));
     // X08 Brand guard: issues this plan would ADD (not ones already on the timeline).
-    const kit = await readBrandKit(ws);
+    const kit = await readBrandFor(ws, project.brand_id);
     const today = localDate(now());
     const key = (i: GuardIssue) => `${i.clip_id}|${i.kind}|${i.match}|${i.text}`;
     const before = new Set(checkBrandGuard(project.timeline, kit.guard, today).map(key));
@@ -170,14 +170,14 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
         const reqMode = body.mode ?? null;
         if (reqMode !== null && reqMode !== 'local' && reqMode !== 'auto' && reqMode !== 'ai') throw bad('mode harus local | auto | ai');
         // Checkpoint F F-5: a request may narrow the admin's mode (e.g. force "local"), never widen it.
-        // X06: the planner may use the Brand Kit's colours / font / logo (never file ids).
-        const kit = await readBrandKit(ws);
-        const brand: BrandContext = { colors: kit.colors, text_color: kit.text_color, has_font: !!kit.font, has_logo: !!kit.logo };
         const RANK: Record<CopilotMode, number> = { local: 0, auto: 1, ai: 2 };
         const allowed: CopilotMode = opts.mode ? await opts.mode() : 'local';
         const mode: CopilotMode = reqMode && RANK[reqMode as CopilotMode] < RANK[allowed] ? (reqMode as CopilotMode) : allowed;
         const projectId = params.project_id!;
         const project = await readProject(ws, projectId);
+        // X06/U1: the planner may use the project's brand colours / font / logo (never file ids).
+        const kit = await readBrandFor(ws, project.brand_id);
+        const brand: BrandContext = { colors: kit.colors, text_color: kit.text_color, has_font: !!kit.font, has_logo: !!kit.logo };
 
         if (mode !== 'ai') {
           const local = planLocal(prompt, { timeline: project.timeline, selected_clip_ids: sel as string[], playhead_ms: playhead, brand });

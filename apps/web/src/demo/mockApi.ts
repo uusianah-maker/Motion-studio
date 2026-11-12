@@ -3,6 +3,7 @@
  * saved or sent anywhere (no server, no AI calls, no render). Used to share how the app looks
  * and feels before it is online. The Copilot rule engine is the real one from the core.
  */
+import { emptyKit } from '../brand';
 import { checkBrandGuard, localDate, validateGuard } from '../../../../packages/core/dist/storage/brandGuard.js';
 import { checkPlan, diffTimelines, planLocal } from '../../../../packages/core/dist/storage/copilot.js';
 import { applyOps } from '../../../../packages/core/dist/storage/timeline.js';
@@ -119,7 +120,23 @@ interface Stored {
 const hookRef = { media_id: 'm_00000000000000a1', version_id: V_HOOK };
 const brollRef = { media_id: 'm_00000000000000b1', version_id: V_BROLL };
 const projects = new Map<string, Stored>();
-let brandKit: BrandKit = { schema_version: 1, revision: 1, updated_at: Date.now(), name: 'Toko Demo', colors: ['#7a1f5c', '#f4d35e'], text_color: '#ffffff', font: null, logo: null, guard: { prices: [], banned: ['paling murah'], banned_level: 'block' } };
+const demoBrand = (brand_id: string, name: string, kode: string, colors: string[], banned: string[]): BrandKit => ({
+  ...emptyKit(),
+  schema_version: 2,
+  brand_id,
+  revision: 1,
+  updated_at: Date.now(),
+  name,
+  kode,
+  colors,
+  guard: { prices: [], banned, banned_level: 'block' },
+});
+const brandStore = new Map<string, BrandKit>([
+  ['b-demo', demoBrand('b-demo', 'Toko Demo', 'TD', ['#7a1f5c', '#f4d35e'], ['paling murah'])],
+  ['b-lucy', demoBrand('b-lucy', 'Lucy Pants', 'LCY', ['#1b998b'], [])],
+]);
+let defaultBrand = 'b-demo';
+const brandOf = (id?: string | null) => brandStore.get(id ?? '') ?? brandStore.get(defaultBrand)!;
 function addProject(id: string, name: string, tracks: Project['timeline']['tracks'], ageDays: number) {
   const t = now() - ageDays * DAY;
   projects.set(id, {
@@ -343,18 +360,50 @@ export function createDemoApi(): Api {
       }
       return { jobs, skipped };
     },
-    brand: async () => clone(brandKit),
-    saveBrand: async (rev, kit) => {
-      if (rev !== brandKit.revision) fail(409, 'CONFLICT', 'Brand Kit sudah berubah; muat ulang dulu');
-      if (!kit.name.trim()) fail(422, 'EDIT_INVALID', 'Brand Kit: nama 1–60 karakter');
-      brandKit = { ...brandKit, ...clone(kit), revision: brandKit.revision + 1, updated_at: now() };
-      return clone(brandKit);
+    brand: async () => clone(brandOf(null)),
+    saveBrand: async (rev, kit) => api.saveBrandById(defaultBrand, rev, kit),
+    brands: async () => ({ brands: clone([...brandStore.values()].sort((a, b) => a.name.localeCompare(b.name))), default_id: defaultBrand }),
+    brandById: async (id) => clone(brandStore.get(id) ?? fail(404, 'NOT_FOUND', 'Brand tidak ditemukan')),
+    createBrand: async (kit) => {
+      if (!kit.name.trim()) fail(422, 'EDIT_INVALID', 'Brand Kit: nama wajib diisi');
+      const kode = (kit.kode || kit.name.slice(0, 3)).toUpperCase();
+      if ([...brandStore.values()].some((b) => b.kode === kode)) fail(422, 'EDIT_INVALID', `Brand Kit: kode ${kode} sudah dipakai`);
+      const b: BrandKit = { ...clone(kit), kode, schema_version: 2, brand_id: nid('b'), revision: 1, updated_at: now() };
+      brandStore.set(b.brand_id, b);
+      return clone(b);
+    },
+    saveBrandById: async (id, rev, kit) => {
+      const cur = brandStore.get(id) ?? fail(404, 'NOT_FOUND', 'Brand tidak ditemukan');
+      if (rev !== cur.revision) fail(409, 'CONFLICT', 'Brand Kit sudah berubah; muat ulang dulu');
+      if (!kit.name.trim()) fail(422, 'EDIT_INVALID', 'Brand Kit: nama wajib diisi');
+      const b: BrandKit = { ...cur, ...clone(kit), kode: (kit.kode || cur.kode).toUpperCase(), revision: cur.revision + 1, updated_at: now() };
+      brandStore.set(id, b);
+      return clone(b);
+    },
+    setDefaultBrand: async (id) => {
+      if (!brandStore.has(id)) fail(404, 'NOT_FOUND', 'Brand tidak ditemukan');
+      defaultBrand = id;
+      return { default_id: id };
+    },
+    deleteBrand: async (id) => {
+      if ([...projects.values()].some((s) => s.p.brand_id === id)) fail(422, 'PRECONDITION', 'Brand masih dipakai proyek');
+      brandStore.delete(id);
+      if (defaultBrand === id) defaultBrand = [...brandStore.keys()][0] ?? '';
+      return { deleted: id };
+    },
+    exportBrand: async (id) => {
+      const k = brandStore.get(id) ?? fail(404, 'NOT_FOUND', 'Brand tidak ditemukan');
+      return { schema: 'brand-kit-export/1', brand: { id: k.brand_id, nama: k.name, kode: k.kode }, visual: { warna: k.colors, warna_teks: k.text_color }, aturan: { terlarang: k.guard.banned, level: k.guard.banned_level }, aset: [], preset: {} };
     },
     updateProject: async (id, rev, patch) => {
       const s = get(id);
       if (s.p.revision !== rev) fail(409, 'CONFLICT', 'Revisi proyek sudah berubah');
       if (patch.name !== undefined) s.p.name = patch.name.trim() || fail(422, 'EDIT_INVALID', 'Nama proyek tidak boleh kosong');
       if (patch.status) s.p.status = patch.status;
+      if (patch.brand_id !== undefined) {
+        if (patch.brand_id === null) delete s.p.brand_id;
+        else s.p.brand_id = (brandStore.get(patch.brand_id) ?? fail(404, 'NOT_FOUND', 'Brand tidak ditemukan')).brand_id;
+      }
       s.p.revision++;
       s.p.updated_at = now();
       return view(s);
@@ -626,7 +675,8 @@ export function createDemoApi(): Api {
     },
     brandCheck: async (id) => {
       const today = localDate(now());
-      return { today, issues: checkBrandGuard(get(id).p.timeline, validateGuard(brandKit.guard), today) as GuardIssue[] };
+      const p = get(id).p;
+      return { today, issues: checkBrandGuard(p.timeline, validateGuard(brandOf(p.brand_id).guard), today) as GuardIssue[] };
     },
     renderTools: async () => ({ ok: true, version: '9.0.2 (demo)', problems: [], font: true }),
     startRender: async (id, opts) => {

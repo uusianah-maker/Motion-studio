@@ -19,7 +19,7 @@
     "start": "node apps/server/dist/main.js",
     "check:deploy": "node scripts/check-deploy.mjs",
     "build:demo": "tsc -b packages/core && vite build apps/web --config apps/web/vite.demo.config.ts --logLevel warn && node scripts/build-demo.mjs",
-    "test:ui": "npm run build && node audit/W05/ui.mjs && node audit/W06/ui.mjs && node audit/W07/ui.mjs && node audit/W08/ui.mjs && node audit/W09/ui.mjs && node audit/W11/ui.mjs && node audit/W12/ui.mjs && node audit/W13/ui.mjs && node audit/W14/ui.mjs && node audit/W15/e2e-online.mjs && node audit/X01/ui.mjs && node audit/X02/ui.mjs && node audit/X03/ui.mjs && node audit/X04/ui.mjs && node audit/X05/ui.mjs && node audit/X06/ui.mjs && node audit/X07/ui.mjs && node audit/X08/ui.mjs && node audit/X09/ui.mjs"
+    "test:ui": "npm run build && node audit/W05/ui.mjs && node audit/W06/ui.mjs && node audit/W07/ui.mjs && node audit/W08/ui.mjs && node audit/W09/ui.mjs && node audit/W11/ui.mjs && node audit/W12/ui.mjs && node audit/W13/ui.mjs && node audit/W14/ui.mjs && node audit/W15/e2e-online.mjs && node audit/X01/ui.mjs && node audit/X02/ui.mjs && node audit/X03/ui.mjs && node audit/X04/ui.mjs && node audit/X05/ui.mjs && node audit/X06/ui.mjs && node audit/X07/ui.mjs && node audit/X08/ui.mjs && node audit/X09/ui.mjs && node audit/U1/ui.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

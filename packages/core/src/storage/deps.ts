@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { brandReferences, readBrandKit } from './brand.js';
+import { brandFiles, brandReferences, listBrands } from './brand.js';
 import { promises as fsp } from 'node:fs';
+import path from 'node:path';
 import { audit } from './audit.js';
 import { StorageError, isStorageError } from './errors.js';
 import { isSafeId, newId } from './ids.js';
@@ -169,7 +170,7 @@ export async function releaseOrphanLeases(ws: Workspace, opts: { selfPid?: numbe
 export type Holder =
   | { kind: 'project'; project_id: string; status: 'active' | 'archived'; source: 'timeline' | 'snapshot' | 'undo'; detail: string }
   | { kind: 'lease'; lease_id: string; job: JobKind; status: LeaseStatus }
-  | { kind: 'brand'; slot: 'font' | 'logo' };
+  | { kind: 'brand'; brand_id: string; slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro' };
 
 export interface DependencyIndex {
   schema_version: 1;
@@ -194,6 +195,10 @@ async function inputsFingerprint(ws: Workspace, projectIds: string[]): Promise<s
   h.update(await fsp.readFile(metaPath(ws, META_FILES.registry)));
   h.update('brand\n');
   h.update(await fsp.readFile(metaPath(ws, META_FILES.brand)).catch((e: NodeJS.ErrnoException) => (e.code === 'ENOENT' ? Buffer.from('none') : Promise.reject(e))));
+  for (const f of await brandFiles(ws)) {
+    h.update(`brand:${path.basename(f)}\n`);
+    h.update(await fsp.readFile(f));
+  }
   return h.digest('hex');
 }
 
@@ -239,11 +244,13 @@ export async function buildIndex(ws: Workspace): Promise<IndexResult> {
       add(r.ref.version_id, { kind: 'project', project_id: id, status: m.status, source: r.source, detail: r.detail });
     }
   }
-  // X06: the Brand Kit holds its font + logo like a project holds its clips.
+  // X06/U1: each Brand Kit holds its fonts, logos and outro like a project holds its clips.
   try {
-    for (const b of brandReferences(await readBrandKit(ws))) {
-      checkRef(b.ref, `Brand Kit (${b.slot})`);
-      add(b.ref.version_id, { kind: 'brand', slot: b.slot });
+    for (const kit of await listBrands(ws)) {
+      for (const b of brandReferences(kit)) {
+        checkRef(b.ref, `Brand Kit ${kit.kode} (${b.slot})`);
+        add(b.ref.version_id, { kind: 'brand', brand_id: kit.brand_id, slot: b.slot });
+      }
     }
   } catch (e) {
     errors.push(`Brand Kit: ${isStorageError(e) ? e.message : String(e)}`);

@@ -114,7 +114,7 @@ export async function createVariants(ws: Workspace, input: { master_id: string; 
   for (const { b, timeline } of planned) {
     const { label, ...brief } = b;
     const variant: VariantInfo = { master_id: master.project_id, number: ++number, label, brief, approved_revision: null };
-    out.push(await createWithTimeline(ws, { project_id: input.newId(), name: `${master.name} · ${label}`.slice(0, MAX_PROJECT_NAME), timeline, actor: input.actor, variant }));
+    out.push(await createWithTimeline(ws, { project_id: input.newId(), name: `${master.name} · ${label}`.slice(0, MAX_PROJECT_NAME), timeline, actor: input.actor, variant, ...(master.brand_id ? { brand_id: master.brand_id } : {}) }));
   }
   return out;
 }

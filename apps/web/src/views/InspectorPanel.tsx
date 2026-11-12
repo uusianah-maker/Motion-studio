@@ -254,10 +254,13 @@ export function InspectorPanel({
           </div>
           <label className="inspFull">
             Font
-            <select aria-label="Font teks" value={s.font} onChange={(e) => change({ font: e.target.value as 'default' | 'brand' })}>
+            <select aria-label="Font teks" value={s.font} onChange={(e) => change({ font: e.target.value as TextStyle['font'] })}>
               <option value="default">Bawaan</option>
               <option value="brand" disabled={!brand?.font && s.font !== 'brand'}>
-                Brand{brand?.font ? '' : ' (belum ada di Brand Kit)'}
+                Brand · judul{brand?.font ? '' : ' (belum ada di Brand Kit)'}
+              </option>
+              <option value="caption" disabled={!brand?.font_caption && s.font !== 'caption'}>
+                Brand · caption{brand?.font_caption ? '' : ' (belum ada di Brand Kit)'}
               </option>
             </select>
           </label>

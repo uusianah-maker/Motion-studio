@@ -73,6 +73,8 @@ export interface ProjectManifest {
   snapshots: Snapshot[];
   /** X09: this project is a variant of a master (ratio / hook / CTA brief + approval). */
   variant?: VariantInfo;
+  /** U1: the brand whose Brand Kit this project uses (missing = workspace default brand). */
+  brand_id?: string;
 }
 
 export interface VariantBrief {
@@ -160,6 +162,7 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
     timeline,
     snapshots,
     ...(o.variant !== undefined ? { variant: validateVariantInfo(o.variant) } : {}),
+    ...(o.brand_id !== undefined ? { brand_id: id(o.brand_id, 'brand_id') } : {}),
   };
 }
 

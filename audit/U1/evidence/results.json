@@ -1,0 +1,67 @@
+{
+  "at": "2026-11-12T19:03:31.193Z",
+  "passed": 12,
+  "total": 12,
+  "results": [
+    {
+      "id": "X-U1-01 Brand pertama tersimpan & jadi bawaan (★); kode jadi huruf besar",
+      "ok": true,
+      "detail": " AYS · Aysilla Factory ★ ＋ Brand baru"
+    },
+    {
+      "id": "X-U1-02 Isian A–F tersimpan (handle, produk, outline, CTA, disclaimer, kamus, kata kunci, kapital, klaim, area, preset)",
+      "ok": true,
+      "detail": "{\"nada\":[\"santai\",\"meyakinkan\",\"ceria\"],\"preset\":\"aysilla-konversi\"}"
+    },
+    {
+      "id": "X-U1-03 Kode brand dobel ditolak dengan pesan jelas",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U1-04 Brand kedua (LCY) tersimpan; daftar berisi 2 brand",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U1-05 Ekspor brand_kit-AYS.json bentuk kontrak (brand-kit-export/1), tanpa path file",
+      "ok": true,
+      "detail": "brand_kit-AYS.json"
+    },
+    {
+      "id": "X-U1-06 Proyek tanpa pilihan → brand bawaan (AYS): \"termurah\" tidak dilarang",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U1-07 Pilih brand proyek \"LCY\" di menu ⋯ Proyek → tersimpan di proyek",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U1-08 Brand guard kini memakai aturan LCY: \"termurah\" diblokir",
+      "ok": true,
+      "detail": "[\"termurah\"]"
+    },
+    {
+      "id": "X-U1-09 Dialog render ikut brand proyek (merah: klaim \"termurah\")",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U1-10 \"Jadikan bawaan\" memindah ★ ke LCY",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "X-U1-11 HP 390px: halaman Brand Kit tanpa scroll samping & tidak ada isian terpotong",
+      "ok": true,
+      "detail": "overflow 0px; terpotong: "
+    },
+    {
+      "id": "X-U1-12 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -65,6 +65,20 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 .variantInfo { flex: 1; min-width: 160px; display: flex; flex-direction: column; }
 .variantRender { min-width: 110px; }
 @media (max-width: 700px) { .briefRow { grid-template-columns: 24px minmax(0, 1fr) 100px; } .briefRow input[aria-label^="Hook"], .briefRow input[aria-label^="CTA"] { grid-column: 2 / 4; } }
+.brandList { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.brandList .swatch { width: 12px; height: 12px; vertical-align: -1px; }
+.brandSection { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.brandSection legend { padding: 0 6px; }
+.brandGrid > * { min-width: 0; }
+.brandSection label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.brandSection label.inline { flex-direction: row; align-items: center; }
+.brandSection input:not([type]), .brandSection input[type="date"], .brandSection select, .brandSection textarea { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.brandSection .row { min-width: 0; }
+.brandSection .row > input:not([type]), .brandSection .row > select { flex: 1 1 120px; width: auto; }
+.brandSection .inspGrid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.presetCard { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.brandSampleCaption { position: absolute; bottom: 22%; font-weight: 800; font-size: 14px; }
+.brandToc { display: flex; gap: 10px; margin-top: 10px; }
 .importRow { padding: 0 15px 8px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

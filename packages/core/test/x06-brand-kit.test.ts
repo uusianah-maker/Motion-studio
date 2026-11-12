@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { brandRenderRefs, validateBrandInput } from '../src/storage/brand.js';
+import { EMPTY_BRAND, brandRenderRefs, validateBrandInput } from '../src/storage/brand.js';
 import { checkPlan, planLocal } from '../src/storage/copilot.js';
 import { buildIndex, holdersOf } from '../src/storage/deps.js';
 import { isStorageError } from '../src/storage/errors.js';
@@ -83,8 +83,8 @@ describe('X06 Brand Kit', () => {
     expect(await code(() => svc.setBrandKit({ expected_revision: 1, kit: KIT, actor: 'ai' }))).toBe('FORBIDDEN');
     const idx = await buildIndex(ws);
     if (!idx.ok) throw new Error(idx.errors.join());
-    expect(holdersOf(idx.index, logo.version_id)).toEqual([{ kind: 'brand', slot: 'logo' }]);
-    expect(holdersOf(idx.index, font.version_id)).toEqual([{ kind: 'brand', slot: 'font' }]);
+    expect(holdersOf(idx.index, logo.version_id)).toEqual([{ kind: 'brand', brand_id: expect.any(String), slot: 'logo' }]);
+    expect(holdersOf(idx.index, font.version_id)).toEqual([{ kind: 'brand', brand_id: expect.any(String), slot: 'font' }]);
   });
 
   it('style font + set_brand_logo op: validated, undoable shape, stored manifest checked', () => {
@@ -159,7 +159,7 @@ describe('X06 Brand Kit', () => {
     const noFont = buildRenderPlan(t, inputs, { ...DEFAULT_RENDER, short_side: 360 }, 'C:/f/arialbd.ttf', 'C:/f/arial.ttf');
     expect(noFont.graph).not.toContain('fontk');
     expect(noFont.graph).not.toContain('overlay');
-    expect(brandRenderRefs({ tracks: [] }, { schema_version: 1, revision: 1, updated_at: 0, ...KIT, guard: { prices: [], banned: [], banned_level: 'block' }, logo: { ref: { media_id: 'm', version_id: 'v' }, corner: 'tl', size: 10, opacity: 1 } })).toEqual({ font: null, logo: null });
+    expect(brandRenderRefs({ tracks: [] }, { ...EMPTY_BRAND, logo: { ref: { media_id: 'm', version_id: 'v' }, corner: 'tl', size: 10, opacity: 1, show: 'sepanjang' } })).toEqual({ font: null, font_caption: null, logo: null });
   });
 
   it.skipIf(!hasFfmpeg || !sysFont)('real render: logo lands in its corner, brand-font text renders, logo + font leased with the clip', async () => {

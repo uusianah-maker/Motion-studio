@@ -133,6 +133,39 @@ export class StorageService {
     return brand.readBrandKit(this.ws);
   }
 
+  // ---- U1 multi-brand
+  listBrands() {
+    return brand.listBrands(this.ws);
+  }
+
+  defaultBrandId() {
+    return brand.defaultBrandId(this.ws);
+  }
+
+  readBrand(brandId: string) {
+    return brand.readBrand(this.ws, brandId);
+  }
+
+  readBrandFor(brandId: string | null | undefined) {
+    return brand.readBrandFor(this.ws, brandId);
+  }
+
+  createBrand(input: { kit: unknown; actor: Actor }) {
+    return mutate(this.ws, 'svc.createBrand', input.actor, () => brand.createBrand(this.ws, { ...input, newId: () => `b-${newId('c').slice(2, 14)}` }));
+  }
+
+  setDefaultBrand(input: Parameters<typeof brand.setDefaultBrand>[1]) {
+    return brand.setDefaultBrand(this.ws, input);
+  }
+
+  deleteBrand(input: Parameters<typeof brand.deleteBrand>[1]) {
+    return mutate(this.ws, 'svc.deleteBrand', input.actor, () => brand.deleteBrand(this.ws, input));
+  }
+
+  exportBrandKit(brandId: string, opts: { paths: boolean }) {
+    return brand.exportBrandKit(this.ws, brandId, opts);
+  }
+
   setBrandKit(input: Parameters<typeof brand.setBrandKit>[1]) {
     return mutate(this.ws, 'svc.setBrandKit', input.actor, () => brand.setBrandKit(this.ws, input));
   }

@@ -15,12 +15,15 @@ export function ProjectMenu({
   busy,
   run,
   onDuplicated,
+  brandName = null,
 }: {
   api: Api;
   project: Project;
   busy: boolean;
   run: (fn: (p: Project) => Promise<Project>) => Promise<void>;
   onDuplicated: (projectId: string) => Promise<void> | void;
+  /** U1: "AYS · Aysilla Factory" of the brand this project uses (null = none yet). */
+  brandName?: string | null;
 }) {
   const [name, setName] = useState(project.name);
   const [error, setError] = useState<unknown>(null);
@@ -29,6 +32,18 @@ export function ProjectMenu({
   useEffect(() => setName(project.name), [project.project_id, project.name]);
   const archived = project.status === 'archived';
   const close = () => ref.current?.removeAttribute('open');
+  // U1: brands to choose from (loaded when the menu opens).
+  const [brands, setBrands] = useState<{ brand_id: string; kode: string; name: string }[] | null>(null);
+  const [defaultId, setDefaultId] = useState<string | null>(null);
+  const loadBrands = () => {
+    api.brands().then(
+      (r) => {
+        setBrands(r.brands.map((b) => ({ brand_id: b.brand_id, kode: b.kode, name: b.name })));
+        setDefaultId(r.default_id);
+      },
+      () => setBrands([]),
+    );
+  };
 
   const side = async (fn: () => Promise<void>) => {
     setWorking(true);
@@ -44,7 +59,7 @@ export function ProjectMenu({
   };
 
   return (
-    <details className="projMenu" ref={ref}>
+    <details className="projMenu" ref={ref} onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && loadBrands()}>
       <summary className="btn" aria-label="Kelola proyek" title="Ganti nama, duplikat, arsip, ekspor">
         ⋯ Proyek
       </summary>
@@ -63,6 +78,23 @@ export function ProjectMenu({
             Simpan nama
           </button>
         </form>
+        <label className="small">
+          Brand proyek
+          <select
+            aria-label="Brand proyek"
+            disabled={busy || !brands}
+            value={project.brand_id ?? ''}
+            onChange={(e) => void run((p) => api.updateProject(p.project_id, p.revision, { brand_id: e.target.value || null }))}
+          >
+            <option value="">{`Bawaan workspace${brands && defaultId ? ` (${brands.find((b) => b.brand_id === defaultId)?.kode ?? ''})` : ''}`}</option>
+            {(brands ?? []).map((b) => (
+              <option key={b.brand_id} value={b.brand_id}>
+                {b.kode} · {b.name}
+              </option>
+            ))}
+          </select>
+          {brandName && <span className="muted"> Dipakai: {brandName}</span>}
+        </label>
         <button className="btn small" disabled={busy || working} onClick={() => void side(async () => onDuplicated((await api.duplicateProject(project.project_id)).project_id))}>
           ⧉ Duplikat
         </button>

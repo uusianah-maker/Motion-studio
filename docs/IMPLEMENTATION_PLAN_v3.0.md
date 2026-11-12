@@ -27,9 +27,23 @@ Aturan tetap:
 - [x] X07 **Deteksi hening & adegan → review potongan** (FFmpeg, tanpa LLM), sesuai PRD T15. *Selesai 2026-11-13: tombol "✂ Deteksi jeda & adegan" di inspector klip media → centang jeda/adegan → rencana + diff → Terapkan (satu undo); jeda dihapus di semua track (subtitle tetap sinkron); UI Chrome 13/13.*
 - [x] X08 **Brand guard** sebelum render: harga kedaluwarsa dan daftar klaim terlarang. *Selesai 2026-11-13: aturan di Brand Kit (harga promo + tanggal berlaku, klaim terlarang, level blokir/peringatan); dialog render menampilkan masalah per klip & waktu; merah = render diblokir, kuning = harus dicentang "render tetap" (tercatat di audit); Copilot menolak menulis klaim/harga terlarang; UI Chrome 9/9.*
 - [x] X09 **Varian:** rasio / hook / CTA → antrean render. *Selesai 2026-11-13: tombol "◫ Varian" di master → brief (rasio/hook/CTA) → tiap varian proyek sendiri (V1, V2, …), master tidak berubah → setujui satu per satu (persetujuan terikat revisi) → "Render yang disetujui" mengantrekan render; status & file per varian; UI Chrome 13/13.*
-- [ ] X10 **Peran Owner / Editor / Reviewer** + komentar di timecode + approval.
+- [ ] X10 **Peran Owner / Editor / Reviewer** + komentar di timecode + approval. *→ dipindah ke U7 (PC-16).*
 
 **CHECKPOINT H**
+
+## Fase C — Satu aplikasi tanpa Remotion (PC-16, keputusan owner 2026-11-13)
+Kontrak dengan mesin: `D:\VIBECODING
+emotion\docs\KONTRAK-ENGINE.md` v0.3. Isian brand: `D:\VIBECODING
+emotion\docs\BRAND-KIT-LENGKAP.md`.
+- [x] U1 **Brand Kit multi-brand** + isian A–F + brand per proyek + ekspor `brand_kit.json` (kontrak bagian 4). *Selesai 2026-11-13: brand banyak (kode unik, bawaan ★), isian A–F lengkap (E menyusul U2), font judul + caption, logo terang, penutup, brand dipilih per proyek (render, Brand guard, Copilot ikut brand proyek), ekspor `brand-kit-export/1` (`docs/BRAND_KIT_EXPORT.md`), migrasi otomatis Brand Kit lama; UI Chrome 12/12.*
+- [ ] U2 **Library aset per brand** (SFX, musik, b-roll, logo, penutup) dengan tag & status lisensi.
+- [ ] U3 **Render pengganti Remotion** (FFmpeg + libass): caption per kata (pop + sorot kata kunci), judul kotak kaca, zoom / punch-in, zoom-through, penutup, disclaimer, −14 LUFS, track `sfx`, `Clip.blur` / `Clip.crop`.
+- [ ] U4 **Halaman Generate Otomatis** (upload + brief → mesin → kartu rencana → setujui → render → QC).
+- [ ] U5 **Halaman Batch Remix** (tabel rencana → coret / setujui → antrean render).
+- [ ] U6 **Runner job** (panggil CLI mesin, `06_ENGINE/<job_id>`, lease sumber, placeholder → MediaRef, progres).
+- [ ] U7 **Peran Owner / Editor / Reviewer + komentar di timecode + persetujuan** (dulu X10).
+
+**CHECKPOINT H** setelah U1–U5; **CHECKPOINT I** setelah U6–U7.
 
 ## Ditunda
 - Reframing otomatis, auto B-roll.

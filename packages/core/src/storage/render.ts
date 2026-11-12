@@ -1,5 +1,5 @@
 import { promises as fsp } from 'node:fs';
-import { type LogoCorner, brandRenderRefs, readBrandKit } from './brand.js';
+import { type LogoCorner, brandRenderRefs, readBrandFor } from './brand.js';
 import os from 'node:os';
 import path from 'node:path';
 import { audit } from './audit.js';
@@ -140,6 +140,8 @@ export const MAX_RENDER_SEGMENTS = 200;
 /** X06: Brand Kit pieces a render uses (local paths); `null` = not used / not set. */
 export interface RenderBrand {
   font: string | null;
+  /** U1: caption font (style `font: 'caption'`), copied as fontc<ext>. */
+  font_caption?: string | null;
   logo: { path: string; corner: LogoCorner; size: number; opacity: number } | null;
 }
 
@@ -238,7 +240,12 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       ].join(':');
       const face = s.bold || !regularFont ? font : regularFont;
       // X06: the brand font when the style asks for it and the kit has one (else the default face).
-      const fontFile = s.font === 'brand' && brand.font ? `fontk${path.extname(brand.font).toLowerCase()}` : `${s.bold || !regularFont ? 'fontb' : 'fontr'}${path.extname(face).toLowerCase()}`;
+      const fontFile =
+        s.font === 'brand' && brand.font
+          ? `fontk${path.extname(brand.font).toLowerCase()}`
+          : s.font === 'caption' && brand.font_caption
+            ? `fontc${path.extname(brand.font_caption).toLowerCase()}`
+            : `${s.bold || !regularFont ? 'fontb' : 'fontr'}${path.extname(face).toLowerCase()}`;
       draws.push(
         `drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}:enable='gte(t,${s6(c.start_ms / 1000)})*lt(t,${s6(c.end_ms / 1000)})'`,
       );
@@ -372,10 +379,10 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
 
     const reg = await loadRegistry(ws);
     // X06: the brand pieces this revision needs must be exactly the ones preflight checked + leased.
-    const brandRefs = brandRenderRefs(project.timeline, await readBrandKit(ws));
+    const brandRefs = brandRenderRefs(project.timeline, await readBrandFor(ws, project.brand_id));
     const leased = new Set(lease.media.map((m) => m.version_id));
-    for (const r of [brandRefs.font, brandRefs.logo?.ref]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
-    const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
+    for (const r of [brandRefs.font, brandRefs.font_caption, brandRefs.logo?.ref]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
+    const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.font_caption?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
     const clipVersions = new Set(project.timeline.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.media ? [c.media.version_id] : []))));
     const versions = lease.media.map((m) => reg.versions[m.version_id]!);
     const rels = await Promise.all(versions.map((v) => ws.blobs.resolve(v.rel_path, MEDIA_AREAS)));
@@ -400,12 +407,15 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       const brandFont = brandRefs.font ? local.get(brandRefs.font.version_id)! : null;
       const brandLogo = brandRefs.logo ? { path: local.get(brandRefs.logo.ref.version_id)!, corner: brandRefs.logo.corner, size: brandRefs.logo.size, opacity: brandRefs.logo.opacity } : null;
       const fontExt = brandFont ? (/\.(ttf|otf)$/i.exec(reg.versions[brandRefs.font!.version_id]!.original_name)?.[0] ?? '.ttf').toLowerCase() : '';
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, logo: brandLogo });
+      const capFont = brandRefs.font_caption ? local.get(brandRefs.font_caption.version_id)! : null;
+      const capExt = capFont ? (/\.(ttf|otf)$/i.exec(reg.versions[brandRefs.font_caption!.version_id]!.original_name)?.[0] ?? '.ttf').toLowerCase() : '';
+      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));
       if (regularFont) await fsp.copyFile(regularFont, path.join(jobDir, `fontr${path.extname(regularFont).toLowerCase()}`));
       if (brandFont) await fsp.copyFile(brandFont, path.join(jobDir, `fontk${fontExt}`));
+      if (capFont) await fsp.copyFile(capFont, path.join(jobDir, `fontc${capExt}`));
 
       hooks.onPhase?.('encoding');
       hooks.onProgress?.(0);

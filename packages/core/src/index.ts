@@ -33,7 +33,24 @@ export { StorageService, describeOps } from './storage/service.js';
 export { MAX_VARIANTS_PER_RUN, type VariantState, validateBriefs, variantOps, variantState } from './storage/variants.js';
 export { type BrandGuard, EMPTY_GUARD, GUARD_LIMITS, type GuardIssue, bannedIn, checkBrandGuard, localDate } from './storage/brandGuard.js';
 export { ANALYSIS_LIMITS, type AnalysisParams, DEFAULT_ANALYSIS, MAX_CUTS, type MediaAnalysis, analyzeMedia, cutOps } from './storage/analysis.js';
-export { type BrandKit, type BrandLogo, EMPTY_BRAND, LOGO_CORNERS, LOGO_LIMITS, MAX_BRAND_COLORS, brandRenderRefs, readBrandKit } from './storage/brand.js';
+export {
+  type BrandKit,
+  type BrandLogo,
+  type BrandPreset,
+  CAPITALS,
+  DISCLAIMER_WHEN,
+  EMPTY_BRAND,
+  LANGS,
+  LOGO_CORNERS,
+  LOGO_LIMITS,
+  LOGO_SHOW,
+  MAX_BRAND_COLORS,
+  PLATFORMS,
+  TEXT_FREE_AREAS,
+  brandRenderRefs,
+  readBrandFor,
+  readBrandKit,
+} from './storage/brand.js';
 export { EXPORT_FORMAT, MAX_PROJECT_NAME, type ProjectExport, assertEditable, cleanName } from './storage/projectAdmin.js';
 export { COLOR_WORDS, type PresetId, TEXT_PRESETS, TONES, type TextPreset, presetById } from './storage/textPresets.js';
 export {

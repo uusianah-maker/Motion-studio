@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { type GuardIssue, checkBrandGuard, localDate } from './brandGuard.js';
-import { brandRenderRefs, readBrandKit } from './brand.js';
+import { brandRenderRefs, readBrandFor } from './brand.js';
 import { audit } from './audit.js';
 import { type Lease, createLease, loadLeases, releaseLease } from './deps.js';
 import { StorageError } from './errors.js';
@@ -88,7 +88,7 @@ export async function renderPreflight(
   for (const t of project.timeline.tracks) for (const c of t.clips) if (c.media) refs.push(c.media);
   if (!refs.length) problems.push({ code: 'NO_MEDIA' });
   // X06: Brand Kit font/logo this render uses are verified and leased like clip media.
-  const kit = await readBrandKit(ws);
+  const kit = await readBrandFor(ws, project.brand_id);
   const brand = brandRenderRefs(project.timeline, kit);
   // X08 Brand guard: expired prices / banned claims on screen.
   const issues = checkBrandGuard(project.timeline, kit.guard, localDate(ws.clock.now()));
@@ -98,6 +98,7 @@ export async function renderPreflight(
   if (warning.length && !input.accept_brand_warnings) problems.push({ code: 'BRAND_WARNING', issues: warning });
   else if (warning.length) notes.push(`Peringatan Brand guard diterima user untuk render ini: ${[...new Set(warning.map((w) => w.match))].join(', ')}`);
   if (brand.font) refs.push(brand.font);
+  if (brand.font_caption) refs.push(brand.font_caption);
   if (brand.logo) refs.push(brand.logo.ref);
 
   for (const ref of refs) {

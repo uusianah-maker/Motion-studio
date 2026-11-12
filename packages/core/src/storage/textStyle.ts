@@ -24,8 +24,8 @@ export interface TextStyle {
   /** Dark outline + shadow for legibility on busy footage. */
   outline: boolean;
   align: TextAlign;
-  /** X06: 'brand' = the Brand Kit font (falls back to the default font when the kit has none). */
-  font: 'default' | 'brand';
+  /** X06/U1: 'brand' = the brand's title font, 'caption' = its caption font (default font if missing). */
+  font: 'default' | 'brand' | 'caption';
 }
 
 export type TextKind = 'text' | 'subtitle';
@@ -79,8 +79,8 @@ export function validateStyle(raw: unknown, where = 'style'): Partial<TextStyle>
     out.align = o.align as TextAlign;
   }
   if (o.font !== undefined) {
-    if (o.font !== 'default' && o.font !== 'brand') bad(`${where}.font harus default | brand`);
-    out.font = o.font as 'default' | 'brand';
+    if (o.font !== 'default' && o.font !== 'brand' && o.font !== 'caption') bad(`${where}.font harus default | brand | caption`);
+    out.font = o.font as TextStyle['font'];
   }
   return out;
 }

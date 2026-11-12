@@ -155,6 +155,7 @@ const projectSummary = (m: ProjectManifest) => ({
   created_at: m.created_at,
   updated_at: m.updated_at,
   ...(m.variant ? { variant: { master_id: m.variant.master_id, number: m.variant.number, state: variantState(m) } } : {}),
+  ...(m.brand_id ? { brand_id: m.brand_id } : {}),
 });
 
 // ------------------------------------------------------------------ upload
@@ -394,11 +395,58 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       path: '/api/projects/:project_id/brand-check',
       handle: async ({ ws, params, svc }) => {
         const project = await readProject(ws, params.project_id!);
-        const kit = await svc.readBrandKit();
+        const kit = await svc.readBrandFor(project.brand_id);
         const today = localDate(ws.clock.now());
-        return { today, issues: checkBrandGuard(project.timeline, kit.guard, today) };
+        return { today, brand_id: kit.brand_id || null, issues: checkBrandGuard(project.timeline, kit.guard, today) };
       },
     },
+
+    // U1 Brand Kits per brand. The export for the browser never contains local paths.
+    {
+      method: 'GET',
+      path: '/api/brands',
+      handle: async ({ svc }) => ({ brands: await svc.listBrands(), default_id: await svc.defaultBrandId() }),
+    },
+    {
+      method: 'POST',
+      path: '/api/brands',
+      handle: async ({ req, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['kit']);
+        const r = await svc.createBrand({ kit: body.kit, actor });
+        return { brand: r.result, clocks_ok: r.clocks.ok };
+      },
+    },
+    { method: 'GET', path: '/api/brands/:brand_id', handle: async ({ svc, params }) => ({ brand: await svc.readBrand(params.brand_id!) }) },
+    {
+      method: 'POST',
+      path: '/api/brands/:brand_id',
+      handle: async ({ req, svc, params, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['expected_revision', 'kit']);
+        const r = await svc.setBrandKit({ brand_id: params.brand_id!, expected_revision: revision(body), kit: body.kit, actor });
+        return { brand: r.result, clocks_ok: r.clocks.ok };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/brands/:brand_id/default',
+      handle: async ({ req, svc, params, actor }) => {
+        onlyKeys(await readJsonBody(req), []);
+        await svc.setDefaultBrand({ brand_id: params.brand_id!, actor });
+        return { default_id: params.brand_id! };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/brands/:brand_id/delete',
+      handle: async ({ req, svc, params, actor }) => {
+        onlyKeys(await readJsonBody(req), []);
+        const r = await svc.deleteBrand({ brand_id: params.brand_id!, actor });
+        return { deleted: params.brand_id!, clocks_ok: r.clocks.ok };
+      },
+    },
+    { method: 'GET', path: '/api/brands/:brand_id/export', handle: async ({ svc, params }) => ({ export: await svc.exportBrandKit(params.brand_id!, { paths: false }) }) },
 
     // X06 Brand Kit (workspace level).
     { method: 'GET', path: '/api/brand', handle: async ({ svc }) => ({ brand: await svc.readBrandKit() }) },
@@ -419,8 +467,8 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       path: '/api/projects/:project_id/meta',
       handle: async ({ req, params, svc, actor }) => {
         const body = await readJsonBody(req);
-        onlyKeys(body, ['expected_revision', 'name', 'status']);
-        const r = await svc.updateProjectMeta({ project_id: params.project_id!, expected_revision: revision(body), name: body.name, status: body.status, actor });
+        onlyKeys(body, ['expected_revision', 'name', 'status', 'brand_id']);
+        const r = await svc.updateProjectMeta({ project_id: params.project_id!, expected_revision: revision(body), name: body.name, status: body.status, brand_id: body.brand_id, actor });
         return { project: projectView(r.result), clocks_ok: r.clocks.ok };
       },
     },

@@ -1,30 +1,40 @@
 import { promises as fsp } from 'node:fs';
+import path from 'node:path';
 import { audit } from './audit.js';
+import { type BrandGuard, EMPTY_GUARD, validateGuard } from './brandGuard.js';
 import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { isSafeId } from './ids.js';
-import { type BrandGuard, EMPTY_GUARD, validateGuard } from './brandGuard.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
-import { probeImage } from './probe.js';
 import { type Actor, MEDIA_AREAS } from './permissions.js';
-import type { MediaRef, Timeline } from './project.js';
+import { probeImage } from './probe.js';
+import { CANVAS_RATIOS, type MediaRef, type Timeline } from './project.js';
 import { type Registry, type VersionRecord, loadRegistry, saveRegistry } from './registry.js';
-import { META_FILES, type Workspace, metaPath, withWorkspaceLock } from './workspace.js';
+import { LAYOUT, META_FILES, type Workspace, listProjectIds, metaPath, readProject, withWorkspaceLock } from './workspace.js';
 
 /**
- * Brand Kit (X06, PRD §7 "Brand kit with fonts/colors/logo"): one per workspace. Colours feed the
- * presets, inspector swatches and Copilot ("pakai warna brand"); the font is used by text clips
- * whose style says `font: 'brand'`; the logo is burned in on projects that switch it on.
- * Font and logo are ordinary imported media versions: the Brand Kit holds them (dependency
- * index), so they are never moved to Trash while in use, and renders lease + re-verify them.
+ * Brand Kits (X06 → U1 / PC-16): one kit PER BRAND, chosen per project. Fields follow the team's
+ * Brand Kit sheet A–F (identity, visual, text, rules, presets; assets come with U2). Fonts, logos
+ * and the outro are ordinary imported media versions: a kit holds them in the dependency index
+ * (never moved to Trash while in use) and renders lease + re-verify them. A kit can be exported in
+ * the engine contract shape (`brand-kit-export/1`, KONTRAK-ENGINE §4).
  */
 
 export const LOGO_CORNERS = ['tl', 'tr', 'bl', 'br'] as const;
 export type LogoCorner = (typeof LOGO_CORNERS)[number];
 export const LOGO_LIMITS = { size: [5, 40] as const, opacity: [0.1, 1] as const };
 export const MAX_BRAND_COLORS = 6;
+export const LOGO_SHOW = ['sepanjang', 'penutup', 'sepanjang+penutup'] as const;
+export const LANGS = ['id', 'en', 'campur'] as const;
+export const CAPITALS = ['normal', 'kata_kunci', 'semua'] as const;
+export const PLATFORMS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
+export const TEXT_FREE_AREAS = ['wajah', 'produk', 'bawah_15', 'atas_10', 'kanan_tombol'] as const;
+export const DISCLAIMER_WHEN = ['selalu', 'varian_warna', 'harga', 'manual'] as const;
 const LOGO_EXT = ['.png', '.jpg', '.jpeg', '.webp'];
 const FONT_EXT = ['.ttf', '.otf'];
+const OUTRO_EXT = ['.mp4', '.mov', '.webm', '.png', '.jpg', '.jpeg', '.webp'];
+
+type Platform = (typeof PLATFORMS)[number];
 
 export interface BrandLogo {
   ref: MediaRef;
@@ -32,95 +42,417 @@ export interface BrandLogo {
   /** Logo width as % of the canvas width. */
   size: number;
   opacity: number;
+  /** When the logo shows (B "Kapan logo tampil"); the per-project switch still decides if at all. */
+  show: (typeof LOGO_SHOW)[number];
+}
+
+export interface BrandProduct {
+  nama: string;
+  varian: string[];
+  ukuran: string;
+}
+
+/** F: one content preset (konversi, awareness, …). Free text where the sheet is free text. */
+export interface BrandPreset {
+  id: string;
+  nama: string;
+  tujuan: string;
+  placement: Platform[];
+  /** Seconds. */
+  durasi: { min: number; target: number; max: number };
+  turunan: string[];
+  babak: { dari: number; sampai: number; isi: string }[];
+  ritme: string;
+  caption: { mode: 'per_kata' | 'kalimat'; maks_kata: number; pop_ms: number };
+  hook: { teks: boolean; maks_kata: number; dari_ucapan: boolean };
+  efek: { wajib: string[]; boleh: string[]; jangan: string[]; maks: number; jarak_dtk: number };
+  audio: { suara_asli: boolean; sfx: string; musik: string; lufs: number };
+  qc: string[];
 }
 
 export interface BrandKit {
-  schema_version: 1;
+  schema_version: 2;
+  brand_id: string;
   revision: number;
   updated_at: number;
+  // A. Identity
   name: string;
+  /** 2–5 letters/digits, unique per workspace (job ids, file names). */
+  kode: string;
+  handles: Partial<Record<Platform, string>>;
+  target: string;
+  nada: string[];
+  bahasa: (typeof LANGS)[number];
+  produk: BrandProduct[];
+  // B. Visual
   /** Brand colours, most important first (`colors[0]` = main colour). */
   colors: string[];
   /** Text colour that reads well on the main colour. */
   text_color: string;
+  outline: { color: string; px: number };
+  warna_dilarang: string[];
+  /** Title font (hook, judul, CTA): style `font: 'brand'`. */
   font: MediaRef | null;
+  /** Caption font: style `font: 'caption'`. */
+  font_caption: MediaRef | null;
   logo: BrandLogo | null;
+  /** Light version of the logo for dark footage. */
+  logo_light: MediaRef | null;
+  outro: { ref: MediaRef | null; detik: number };
+  gaya: string;
+  grading: string;
+  // C. Text & language
+  cta: Partial<Record<Platform, string>>;
+  cta_wajib: string;
+  disclaimer: { teks: string; kapan: (typeof DISCLAIMER_WHEN)[number] } | null;
+  kosakata: string[];
+  kamus: { salah: string; benar: string }[];
+  kata_kunci: string[];
+  kapital: (typeof CAPITALS)[number];
+  emoji: boolean;
+  // D. Rules
   /** X08: promo prices with an end date + banned claims, checked before every render. */
   guard: BrandGuard;
+  klaim_boleh: string[];
+  visual_dilarang: string[];
+  area_bebas_teks: (typeof TEXT_FREE_AREAS)[number][];
+  // F. Presets
+  presets: BrandPreset[];
 }
 
-export type BrandKitInput = Pick<BrandKit, 'name' | 'colors' | 'text_color' | 'font' | 'logo' | 'guard'>;
+export type BrandKitInput = Omit<BrandKit, 'schema_version' | 'brand_id' | 'revision' | 'updated_at'>;
 
-export const EMPTY_BRAND: BrandKit = { schema_version: 1, revision: 0, updated_at: 0, name: 'Brand', colors: [], text_color: '#ffffff', font: null, logo: null, guard: EMPTY_GUARD };
+const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
+  handles: {},
+  target: '',
+  nada: [],
+  bahasa: 'id',
+  produk: [],
+  colors: [],
+  text_color: '#ffffff',
+  outline: { color: '#000000', px: 0 },
+  warna_dilarang: [],
+  font: null,
+  font_caption: null,
+  logo: null,
+  logo_light: null,
+  outro: { ref: null, detik: 2 },
+  gaya: '',
+  grading: '',
+  cta: {},
+  cta_wajib: '',
+  disclaimer: null,
+  kosakata: [],
+  kamus: [],
+  kata_kunci: [],
+  kapital: 'normal',
+  emoji: false,
+  guard: EMPTY_GUARD,
+  klaim_boleh: [],
+  visual_dilarang: [],
+  area_bebas_teks: [],
+  presets: [],
+};
+
+/** "No brand yet": what a project without any kit sees (nothing to apply, nothing to check). */
+export const EMPTY_BRAND: BrandKit = { schema_version: 2, brand_id: '', revision: 0, updated_at: 0, name: 'Brand', kode: 'BRD', ...EMPTY_FIELDS };
 
 const HEX = /^#[0-9a-f]{6}$/;
+const KODE = /^[A-Z0-9]{2,5}$/;
+const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const bad = (msg: string): never => {
   throw new StorageError('EDIT_INVALID', `Brand Kit: ${msg}`);
 };
 const ext = (name: string) => (/\.[a-z0-9]+$/i.exec(name)?.[0] ?? '').toLowerCase();
+const oneLine = (s: string) => [...s].map((c) => (c.charCodeAt(0) < 32 ? ' ' : c)).join('').replace(/\s+/g, ' ').trim();
+const exists = (f: string) =>
+  fsp.access(f).then(
+    () => true,
+    () => false,
+  );
 
-function ref(x: unknown, where: string): MediaRef {
-  const o = x as Record<string, unknown> | null;
-  if (!o || typeof o !== 'object' || Array.isArray(o)) return bad(`${where} harus referensi media`);
-  const extra = Object.keys(o).filter((k) => k !== 'media_id' && k !== 'version_id');
-  if (extra.length || !isSafeId(o.media_id) || !isSafeId(o.version_id)) bad(`${where} tidak valid`);
+// ------------------------------------------------------------------ field validators
+
+const obj = (x: unknown, w: string, keys: readonly string[]): Record<string, unknown> => {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return bad(`${w} harus objek`);
+  const extra = Object.keys(x).filter((k) => !keys.includes(k));
+  if (extra.length) bad(`${w}: field tidak dikenal ${extra.join(', ')}`);
+  return x as Record<string, unknown>;
+};
+const text = (x: unknown, w: string, max: number, opt = true): string => {
+  if (x === undefined || x === null) return opt ? '' : bad(`${w} wajib diisi`);
+  if (typeof x !== 'string') return bad(`${w} harus teks`);
+  const t = oneLine(x);
+  if (!opt && !t) bad(`${w} wajib diisi`);
+  if (t.length > max) bad(`${w} maksimal ${max} karakter`);
+  return t;
+};
+const list = (x: unknown, w: string, maxItems: number, maxLen: number): string[] => {
+  if (x === undefined || x === null) return [];
+  if (!Array.isArray(x)) return bad(`${w} harus daftar`);
+  if (x.length > maxItems) bad(`${w} maksimal ${maxItems}`);
+  return [...new Set(x.map((v, i) => text(v, `${w} ${i + 1}`, maxLen)).filter(Boolean))];
+};
+const num = (x: unknown, w: string, min: number, max: number, dflt?: number): number => {
+  if (x === undefined && dflt !== undefined) return dflt;
+  if (typeof x !== 'number' || !Number.isFinite(x) || x < min || x > max) return bad(`${w} harus angka ${min}–${max}`);
+  return Math.round(x * 100) / 100;
+};
+const bool = (x: unknown, w: string, dflt: boolean): boolean => (x === undefined ? dflt : typeof x === 'boolean' ? x : bad(`${w} harus ya/tidak`));
+const oneOf = <T extends string>(x: unknown, w: string, allowed: readonly T[], dflt: T): T => (x === undefined ? dflt : allowed.includes(x as T) ? (x as T) : bad(`${w} harus ${allowed.join(' | ')}`));
+const hex = (x: unknown, w: string, dflt?: string): string => {
+  if (x === undefined && dflt !== undefined) return dflt;
+  return typeof x === 'string' && HEX.test(x.toLowerCase()) ? x.toLowerCase() : bad(`${w} harus #rrggbb`);
+};
+function ref(x: unknown, w: string): MediaRef | null {
+  if (x === undefined || x === null) return null;
+  const o = obj(x, w, ['media_id', 'version_id']);
+  if (!isSafeId(o.media_id) || !isSafeId(o.version_id)) bad(`${w} tidak valid`);
   return { media_id: o.media_id as string, version_id: o.version_id as string };
 }
+const perPlatform = (x: unknown, w: string, max: number): Partial<Record<Platform, string>> => {
+  if (x === undefined || x === null) return {};
+  const o = obj(x, w, PLATFORMS);
+  const out: Partial<Record<Platform, string>> = {};
+  for (const p of PLATFORMS) {
+    const t = text(o[p], `${w} ${p}`, max);
+    if (t) out[p] = t;
+  }
+  return out;
+};
 
-/** Shape check for the editable part (HTTP body or stored file). */
+function validatePreset(x: unknown, i: number): BrandPreset {
+  const w = `preset ${i + 1}`;
+  const o = obj(x, w, ['id', 'nama', 'tujuan', 'placement', 'durasi', 'turunan', 'babak', 'ritme', 'caption', 'hook', 'efek', 'audio', 'qc']);
+  const id = typeof o.id === 'string' && SLUG.test(o.id) ? o.id : bad(`${w}: id huruf kecil/angka/strip, mis. "aysilla-konversi"`);
+  const d = obj(o.durasi ?? {}, `${w} durasi`, ['min', 'target', 'max']);
+  const durasi = { min: num(d.min, `${w} durasi min`, 1, 600, 15), target: num(d.target, `${w} durasi target`, 1, 600, 20), max: num(d.max, `${w} durasi maks`, 1, 600, 30) };
+  if (!(durasi.min <= durasi.target && durasi.target <= durasi.max)) bad(`${w}: durasi harus min ≤ target ≤ maks`);
+  const placement = Array.isArray(o.placement) ? (o.placement as unknown[]).map((p) => oneOf(p, `${w} placement`, PLATFORMS, 'tiktok')) : o.placement === undefined ? [] : bad(`${w} placement harus daftar`);
+  const turunan = list(o.turunan, `${w} turunan`, 8, 10);
+  for (const t of turunan) if (t !== 'cover' && !CANVAS_RATIOS.includes(t as never)) bad(`${w}: turunan "${t}" harus ${CANVAS_RATIOS.join(', ')} atau cover`);
+  const babak = o.babak === undefined ? [] : Array.isArray(o.babak) ? o.babak : bad(`${w} babak harus daftar`);
+  if (babak.length > 12) bad(`${w}: babak maksimal 12`);
+  const c = obj(o.caption ?? {}, `${w} caption`, ['mode', 'maks_kata', 'pop_ms']);
+  const h = obj(o.hook ?? {}, `${w} hook`, ['teks', 'maks_kata', 'dari_ucapan']);
+  const e = obj(o.efek ?? {}, `${w} efek`, ['wajib', 'boleh', 'jangan', 'maks', 'jarak_dtk']);
+  const a = obj(o.audio ?? {}, `${w} audio`, ['suara_asli', 'sfx', 'musik', 'lufs']);
+  return {
+    id,
+    nama: text(o.nama, `${w} nama`, 60, false),
+    tujuan: text(o.tujuan, `${w} tujuan`, 120),
+    placement: [...new Set(placement)],
+    durasi,
+    turunan,
+    babak: babak.map((b, j) => {
+      const bo = obj(b, `${w} babak ${j + 1}`, ['dari', 'sampai', 'isi']);
+      const dari = num(bo.dari, `${w} babak ${j + 1} dari`, 0, 600);
+      const sampai = num(bo.sampai, `${w} babak ${j + 1} sampai`, 0, 600);
+      if (sampai <= dari) bad(`${w} babak ${j + 1}: "sampai" harus setelah "dari"`);
+      return { dari, sampai, isi: text(bo.isi, `${w} babak ${j + 1} isi`, 80, false) };
+    }),
+    ritme: text(o.ritme, `${w} ritme`, 300),
+    caption: { mode: oneOf(c.mode, `${w} caption mode`, ['per_kata', 'kalimat'] as const, 'per_kata'), maks_kata: num(c.maks_kata, `${w} caption maks kata`, 1, 12, 3), pop_ms: num(c.pop_ms, `${w} caption pop`, 0, 1000, 100) },
+    hook: { teks: bool(h.teks, `${w} hook teks`, true), maks_kata: num(h.maks_kata, `${w} hook maks kata`, 1, 20, 6), dari_ucapan: bool(h.dari_ucapan, `${w} hook dari ucapan`, true) },
+    efek: { wajib: list(e.wajib, `${w} efek wajib`, 20, 40), boleh: list(e.boleh, `${w} efek boleh`, 20, 40), jangan: list(e.jangan, `${w} efek jangan`, 20, 40), maks: num(e.maks, `${w} efek maks`, 0, 30, 3), jarak_dtk: num(e.jarak_dtk, `${w} jarak efek`, 0, 60, 4) },
+    audio: { suara_asli: bool(a.suara_asli, `${w} suara asli`, true), sfx: text(a.sfx, `${w} sfx`, 200), musik: text(a.musik, `${w} musik`, 200), lufs: num(a.lufs, `${w} LUFS`, -30, -6, -14) },
+    qc: list(o.qc, `${w} qc`, 30, 120),
+  };
+}
+
+const INPUT_KEYS = ['name', 'kode', ...Object.keys(EMPTY_FIELDS)] as const;
+
+/** Shape check for the editable part (HTTP body or stored file). Missing fields = empty (older kits). */
 export function validateBrandInput(raw: unknown): BrandKitInput {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return bad('harus objek');
-  const o = raw as Record<string, unknown>;
-  const extra = Object.keys(o).filter((k) => !['name', 'colors', 'text_color', 'font', 'logo', 'guard'].includes(k));
-  if (extra.length) bad(`field tidak dikenal ${extra.join(', ')}`);
-  const name = typeof o.name === 'string' ? [...o.name].map((c) => (c.charCodeAt(0) < 32 ? ' ' : c)).join('').trim() : '';
-  if (!name || name.length > 60) bad('nama 1–60 karakter');
-  if (!Array.isArray(o.colors) || o.colors.length > MAX_BRAND_COLORS) bad(`warna maksimal ${MAX_BRAND_COLORS}`);
-  const colors = (o.colors as unknown[]).map((c, i) => (typeof c === 'string' && HEX.test(c.toLowerCase()) ? c.toLowerCase() : bad(`warna ${i + 1} harus #rrggbb`)));
+  const o = obj(raw, 'kit', INPUT_KEYS);
+  const name = text(o.name, 'nama', 60, false);
+  // An empty code field means "derive it from the name".
+  const kode = o.kode === undefined || o.kode === null || (typeof o.kode === 'string' && !o.kode.trim()) ? deriveKode(name) : typeof o.kode === 'string' && KODE.test(o.kode.trim().toUpperCase()) ? o.kode.trim().toUpperCase() : bad('kode brand 2–5 huruf/angka, mis. AYS');
+  const rawColors = o.colors === undefined ? [] : Array.isArray(o.colors) ? (o.colors as unknown[]) : bad('warna harus daftar');
+  if (rawColors.length > MAX_BRAND_COLORS) bad(`warna maksimal ${MAX_BRAND_COLORS}`);
+  const colors = rawColors.map((c, i) => hex(c, `warna ${i + 1}`));
   if (new Set(colors).size !== colors.length) bad('warna tidak boleh dobel');
-  if (typeof o.text_color !== 'string' || !HEX.test(o.text_color.toLowerCase())) bad('warna teks harus #rrggbb');
-  const font = o.font === null || o.font === undefined ? null : ref(o.font, 'font');
   let logo: BrandLogo | null = null;
   if (o.logo !== null && o.logo !== undefined) {
-    const l = o.logo as Record<string, unknown>;
-    if (typeof l !== 'object' || Array.isArray(l)) bad('logo harus objek');
-    const lx = Object.keys(l).filter((k) => !['ref', 'corner', 'size', 'opacity'].includes(k));
-    if (lx.length) bad(`logo: field tidak dikenal ${lx.join(', ')}`);
-    if (!LOGO_CORNERS.includes(l.corner as LogoCorner)) bad('posisi logo harus tl | tr | bl | br');
-    const num = (v: unknown, [min, max]: readonly [number, number], what: string) => (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? Math.round(v * 100) / 100 : bad(`${what} harus ${min}–${max}`));
-    logo = { ref: ref(l.ref, 'logo'), corner: l.corner as LogoCorner, size: num(l.size, LOGO_LIMITS.size, 'ukuran logo'), opacity: num(l.opacity, LOGO_LIMITS.opacity, 'opasitas logo') };
+    const l = obj(o.logo, 'logo', ['ref', 'corner', 'size', 'opacity', 'show']);
+    logo = {
+      ref: ref(l.ref, 'logo') ?? bad('logo: pilih file logo'),
+      corner: oneOf(l.corner, 'posisi logo', LOGO_CORNERS, 'tr'),
+      size: num(l.size, 'ukuran logo', ...LOGO_LIMITS.size),
+      opacity: num(l.opacity, 'opasitas logo', ...LOGO_LIMITS.opacity),
+      show: oneOf(l.show, 'kapan logo tampil', LOGO_SHOW, 'sepanjang'),
+    };
   }
-  // A kit saved before X08 has no guard: same as an empty one.
-  return { name, colors, text_color: (o.text_color as string).toLowerCase(), font, logo, guard: validateGuard(o.guard) };
+  const ol = obj(o.outline ?? EMPTY_FIELDS.outline, 'outline', ['color', 'px']);
+  const out = obj(o.outro ?? EMPTY_FIELDS.outro, 'penutup', ['ref', 'detik']);
+  const produk = o.produk === undefined ? [] : Array.isArray(o.produk) ? o.produk : bad('produk harus daftar');
+  if (produk.length > 50) bad('produk maksimal 50');
+  const kamus = o.kamus === undefined ? [] : Array.isArray(o.kamus) ? o.kamus : bad('kamus harus daftar');
+  if (kamus.length > 300) bad('kamus maksimal 300 pasang');
+  const presets = o.presets === undefined ? [] : Array.isArray(o.presets) ? o.presets : bad('preset harus daftar');
+  if (presets.length > 12) bad('preset maksimal 12');
+  const presetList = presets.map(validatePreset);
+  if (new Set(presetList.map((p) => p.id)).size !== presetList.length) bad('id preset tidak boleh dobel');
+  let disclaimer: BrandKitInput['disclaimer'] = null;
+  if (o.disclaimer !== undefined && o.disclaimer !== null) {
+    const d = obj(o.disclaimer, 'disclaimer', ['teks', 'kapan']);
+    const t = text(d.teks, 'disclaimer', 160);
+    disclaimer = t ? { teks: t, kapan: oneOf(d.kapan, 'kapan disclaimer', DISCLAIMER_WHEN, 'selalu') } : null;
+  }
+  const areas = o.area_bebas_teks === undefined ? [] : Array.isArray(o.area_bebas_teks) ? [...new Set(o.area_bebas_teks as unknown[])] : bad('area bebas teks harus daftar');
+  return {
+    name,
+    kode,
+    handles: perPlatform(o.handles, 'handle', 40),
+    target: text(o.target, 'target penonton', 200),
+    nada: list(o.nada, 'nada', 5, 30),
+    bahasa: oneOf(o.bahasa, 'bahasa', LANGS, 'id'),
+    produk: produk.map((p, i) => {
+      const po = obj(p, `produk ${i + 1}`, ['nama', 'varian', 'ukuran']);
+      return { nama: text(po.nama, `produk ${i + 1} nama`, 60, false), varian: list(po.varian, `produk ${i + 1} varian`, 30, 40), ukuran: text(po.ukuran, `produk ${i + 1} ukuran`, 40) };
+    }),
+    colors,
+    text_color: hex(o.text_color, 'warna teks', '#ffffff'),
+    outline: { color: hex(ol.color, 'warna outline', '#000000'), px: num(ol.px, 'tebal outline', 0, 20, 0) },
+    warna_dilarang: list(o.warna_dilarang, 'warna dilarang', 20, 30),
+    font: ref(o.font, 'font judul'),
+    font_caption: ref(o.font_caption, 'font caption'),
+    logo,
+    logo_light: ref(o.logo_light, 'logo terang'),
+    outro: { ref: ref(out.ref, 'penutup'), detik: num(out.detik, 'durasi penutup', 0.5, 10, 2) },
+    gaya: text(o.gaya, 'gaya keseluruhan', 120),
+    grading: text(o.grading, 'color grading', 120),
+    cta: perPlatform(o.cta, 'CTA', 120),
+    cta_wajib: text(o.cta_wajib, 'CTA wajib', 200),
+    disclaimer,
+    kosakata: list(o.kosakata, 'kosakata Whisper', 300, 60),
+    kamus: kamus.map((k, i) => {
+      const ko = obj(k, `kamus ${i + 1}`, ['salah', 'benar']);
+      return { salah: text(ko.salah, `kamus ${i + 1} salah`, 60, false), benar: text(ko.benar, `kamus ${i + 1} benar`, 60, false) };
+    }),
+    kata_kunci: list(o.kata_kunci, 'kata kunci', 100, 40),
+    kapital: oneOf(o.kapital, 'aturan kapital', CAPITALS, 'normal'),
+    emoji: bool(o.emoji, 'emoji', false),
+    // A kit saved before X08 has no guard: same as an empty one.
+    guard: validateGuard(o.guard),
+    klaim_boleh: list(o.klaim_boleh, 'klaim boleh', 100, 80),
+    visual_dilarang: list(o.visual_dilarang, 'visual dilarang', 50, 80),
+    area_bebas_teks: areas.map((a) => oneOf(a, 'area bebas teks', TEXT_FREE_AREAS, 'wajah')),
+    presets: presetList,
+  };
 }
+
+/** "Aysilla Factory" → "AF"; "Lucy" → "LUCY"; never shorter than 2. */
+export function deriveKode(name: string): string {
+  const words = name
+    .normalize('NFKD')
+    .replace(/[^A-Za-z0-9 ]/g, '')
+    .split(/\s+/)
+    .filter(Boolean);
+  const k = (words.length >= 2 ? words.map((w) => w[0]).join('') : (words[0] ?? '')).toUpperCase().slice(0, 5);
+  return k.length >= 2 ? k : `${k}BR`.slice(0, 5);
+}
+
+// ------------------------------------------------------------------ storage
+
+const BRANDS_DIR = 'brands';
+const dir = (ws: Workspace) => path.join(ws.root, LAYOUT.meta, BRANDS_DIR);
+const brandFile = (ws: Workspace, id: string) => path.join(dir(ws), `${id}.json`);
+const indexFile = (ws: Workspace) => path.join(dir(ws), 'index.json');
 
 function validateStored(x: unknown): BrandKit {
   const o = x as Record<string, unknown>;
-  if (!o || o.schema_version !== 1 || !Number.isSafeInteger(o.revision) || typeof o.updated_at !== 'number') throw new StorageError('WORKSPACE_INVALID', 'brand_kit.json tidak valid');
+  if (!o || (o.schema_version !== 1 && o.schema_version !== 2) || !Number.isSafeInteger(o.revision) || typeof o.updated_at !== 'number') throw new StorageError('WORKSPACE_INVALID', 'file Brand Kit tidak valid');
   try {
-    const { schema_version: _s, revision, updated_at, ...rest } = o;
+    const { schema_version: _s, revision, updated_at, brand_id, ...rest } = o;
     void _s;
-    return { schema_version: 1, revision: revision as number, updated_at: updated_at as number, ...validateBrandInput(rest) };
+    if (!isSafeId(brand_id)) throw new Error('brand_id tidak valid');
+    return { schema_version: 2, brand_id: brand_id as string, revision: revision as number, updated_at: updated_at as number, ...validateBrandInput(rest) };
   } catch (e) {
-    throw new StorageError('WORKSPACE_INVALID', `brand_kit.json tidak valid: ${e instanceof Error ? e.message : String(e)}`);
+    throw new StorageError('WORKSPACE_INVALID', `file Brand Kit tidak valid: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
-/** The workspace Brand Kit; an empty kit (revision 0) when none was saved yet. */
-export async function readBrandKit(ws: Workspace): Promise<BrandKit> {
-  const file = metaPath(ws, META_FILES.brand);
-  try {
-    await fsp.access(file);
-  } catch {
-    return { ...EMPTY_BRAND };
-  }
-  return readJson(file, validateStored);
+const validateIndex = (x: unknown): { default_id: string | null } => {
+  const o = x as Record<string, unknown>;
+  if (!o || (o.default_id !== null && !isSafeId(o.default_id))) throw new StorageError('WORKSPACE_INVALID', 'index Brand Kit tidak valid');
+  return { default_id: o.default_id as string | null };
+};
+
+/**
+ * One-time move of the X06 single kit (`.motionstudio/brand_kit.json`) into `brands/`, as the
+ * default brand. Runs under the workspace lock; the old file is renamed, never deleted.
+ */
+async function migrateLegacy(ws: Workspace): Promise<void> {
+  const legacy = metaPath(ws, META_FILES.brand);
+  if (!(await exists(legacy))) return;
+  await withWorkspaceLock(ws, 'brand.migrate', async () => {
+    if (!(await exists(legacy))) return;
+    const raw = JSON.parse(await fsp.readFile(legacy, 'utf8')) as Record<string, unknown>;
+    const { schema_version: _s, revision, updated_at, ...rest } = raw;
+    void _s;
+    const kit: BrandKit = { schema_version: 2, brand_id: 'b-utama', revision: Number(revision) || 1, updated_at: Number(updated_at) || ws.clock.now(), ...validateBrandInput(rest) };
+    await fsp.mkdir(dir(ws), { recursive: true });
+    await writeJsonAtomic(brandFile(ws, kit.brand_id), kit);
+    await writeJsonAtomic(indexFile(ws), { default_id: kit.brand_id });
+    await fsp.rename(legacy, `${legacy}.migrated`);
+    await audit(ws, { op: 'brand.migrate', actor: 'system', outcome: 'ok', brand_id: kit.brand_id });
+  });
 }
 
-/** Media versions the kit holds (for the dependency index). */
-export const brandReferences = (k: BrandKit): { slot: 'font' | 'logo'; ref: MediaRef }[] => [
+/** All brands, sorted by name. */
+export async function listBrands(ws: Workspace): Promise<BrandKit[]> {
+  await migrateLegacy(ws);
+  const names = await fsp.readdir(dir(ws)).catch(() => [] as string[]);
+  const out: BrandKit[] = [];
+  for (const n of names.filter((x) => x.endsWith('.json') && x !== 'index.json').sort()) out.push(await readJson(path.join(dir(ws), n), validateStored));
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Brand files (for the dependency-index fingerprint): sorted absolute paths. */
+export async function brandFiles(ws: Workspace): Promise<string[]> {
+  const names = await fsp.readdir(dir(ws)).catch(() => [] as string[]);
+  return names
+    .filter((x) => x.endsWith('.json'))
+    .sort()
+    .map((n) => path.join(dir(ws), n));
+}
+
+export async function defaultBrandId(ws: Workspace): Promise<string | null> {
+  await migrateLegacy(ws);
+  const idx = await readJson(indexFile(ws), validateIndex).catch(() => ({ default_id: null }));
+  if (idx.default_id && (await exists(brandFile(ws, idx.default_id)))) return idx.default_id;
+  return (await listBrands(ws))[0]?.brand_id ?? null;
+}
+
+export async function readBrand(ws: Workspace, brandId: string): Promise<BrandKit> {
+  if (!isSafeId(brandId)) throw new StorageError('NOT_FOUND', 'Brand tidak ditemukan');
+  await migrateLegacy(ws);
+  const f = brandFile(ws, brandId);
+  if (!(await exists(f))) throw new StorageError('NOT_FOUND', 'Brand tidak ditemukan', { brand_id: brandId });
+  return readJson(f, validateStored);
+}
+
+/** The kit a project uses: its own brand, else the workspace default, else the empty kit. */
+export async function readBrandFor(ws: Workspace, brandId: string | null | undefined): Promise<BrandKit> {
+  if (brandId) {
+    const k = await readBrand(ws, brandId).catch((e: unknown) => (e instanceof StorageError && e.code === 'NOT_FOUND' ? null : Promise.reject(e)));
+    if (k) return k;
+  }
+  const d = await defaultBrandId(ws);
+  return d ? readBrand(ws, d) : { ...EMPTY_BRAND };
+}
+
+/** The default brand (X06 API: one "workspace" kit). */
+export const readBrandKit = (ws: Workspace): Promise<BrandKit> => readBrandFor(ws, null);
+
+/** Media versions a kit holds (for the dependency index). */
+export const brandReferences = (k: BrandKit): { slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro'; ref: MediaRef }[] => [
   ...(k.font ? [{ slot: 'font' as const, ref: k.font }] : []),
+  ...(k.font_caption ? [{ slot: 'font_caption' as const, ref: k.font_caption }] : []),
   ...(k.logo ? [{ slot: 'logo' as const, ref: k.logo.ref }] : []),
+  ...(k.logo_light ? [{ slot: 'logo_light' as const, ref: k.logo_light }] : []),
+  ...(k.outro.ref ? [{ slot: 'outro' as const, ref: k.outro.ref }] : []),
 ];
 
 function usable(reg: Registry, r: MediaRef, what: string): VersionRecord {
@@ -142,38 +474,183 @@ async function head(ws: Workspace, v: VersionRecord): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-/** Save the kit (user only, optimistic revision). Font/logo must be usable files of the right kind. */
-export async function setBrandKit(ws: Workspace, input: { expected_revision: number; kit: unknown; actor: Actor }): Promise<BrandKit> {
-  await guard(ws, input.actor, 'commit_project', { step: 'brand_kit' });
-  const kit = validateBrandInput(input.kit);
-  return withWorkspaceLock(ws, 'setBrandKit', async () => {
-    const current = await readBrandKit(ws);
-    if (current.revision !== input.expected_revision) throw new StorageError('CONFLICT', 'Brand Kit sudah berubah; muat ulang dulu', { expected: input.expected_revision, actual: current.revision });
-    const reg = await loadRegistry(ws);
-    if (kit.font) {
-      const v = usable(reg, kit.font, 'Font brand');
-      if (!FONT_EXT.includes(ext(v.original_name)) || !isFontMagic(await head(ws, v))) bad('font harus file .ttf atau .otf');
-    }
-    if (kit.logo) {
-      const v = usable(reg, kit.logo.ref, 'Logo');
-      const img = LOGO_EXT.includes(ext(v.original_name)) ? await ws.blobs.withLocalFile(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS), probeImage) : null;
-      if (!img) bad('logo harus gambar PNG/JPG/WebP yang bisa dibaca (maks 8192 px)');
-    }
-    const saved: BrandKit = { schema_version: 1, revision: current.revision + 1, updated_at: ws.clock.now(), ...kit };
-    await writeJsonAtomic(metaPath(ws, META_FILES.brand), saved);
-    for (const { ref: r } of brandReferences(saved)) {
-      const v = reg.versions[r.version_id]!;
-      v.ever_referenced = true;
-      v.unreferenced_since = null;
-    }
-    await saveRegistry(ws, reg);
-    await audit(ws, { op: 'brand.save', actor: input.actor, outcome: 'ok', revision: saved.revision, colors: saved.colors.length, font: saved.font?.version_id ?? null, logo: saved.logo?.ref.version_id ?? null });
-    return saved;
+/** Files of the right kind, usable now. */
+async function checkFiles(ws: Workspace, reg: Registry, kit: BrandKitInput): Promise<void> {
+  const fonts: [MediaRef | null, string][] = [
+    [kit.font, 'Font judul'],
+    [kit.font_caption, 'Font caption'],
+  ];
+  for (const [r, what] of fonts) {
+    if (!r) continue;
+    const v = usable(reg, r, what);
+    if (!FONT_EXT.includes(ext(v.original_name)) || !isFontMagic(await head(ws, v))) bad(`${what.toLowerCase()} harus file .ttf atau .otf`);
+  }
+  const images: [MediaRef | null, string][] = [
+    [kit.logo?.ref ?? null, 'Logo'],
+    [kit.logo_light, 'Logo terang'],
+  ];
+  for (const [r, what] of images) {
+    if (!r) continue;
+    const v = usable(reg, r, what);
+    const img = LOGO_EXT.includes(ext(v.original_name)) ? await ws.blobs.withLocalFile(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS), probeImage) : null;
+    if (!img) bad(`${what.toLowerCase()} harus gambar PNG/JPG/WebP yang bisa dibaca (maks 8192 px)`);
+  }
+  if (kit.outro.ref) {
+    const v = usable(reg, kit.outro.ref, 'Penutup');
+    if (!OUTRO_EXT.includes(ext(v.original_name))) bad('penutup harus video (MP4/MOV/WebM) atau gambar');
+  }
+}
+
+async function save(ws: Workspace, kit: BrandKit, actor: Actor, op: string): Promise<BrandKit> {
+  const reg = await loadRegistry(ws);
+  await checkFiles(ws, reg, kit);
+  const clash = (await listBrands(ws)).find((b) => b.brand_id !== kit.brand_id && b.kode === kit.kode);
+  if (clash) bad(`kode ${kit.kode} sudah dipakai brand "${clash.name}"`);
+  await fsp.mkdir(dir(ws), { recursive: true });
+  await writeJsonAtomic(brandFile(ws, kit.brand_id), kit);
+  if (!(await exists(indexFile(ws)))) await writeJsonAtomic(indexFile(ws), { default_id: kit.brand_id });
+  for (const { ref: r } of brandReferences(kit)) {
+    const v = reg.versions[r.version_id]!;
+    v.ever_referenced = true;
+    v.unreferenced_since = null;
+  }
+  await saveRegistry(ws, reg);
+  await audit(ws, { op, actor, outcome: 'ok', brand_id: kit.brand_id, kode: kit.kode, revision: kit.revision, font: kit.font?.version_id ?? null, logo: kit.logo?.ref.version_id ?? null });
+  return kit;
+}
+
+/** New brand (user only). The first brand becomes the default. */
+export async function createBrand(ws: Workspace, input: { kit: unknown; actor: Actor; newId: () => string }): Promise<BrandKit> {
+  await guard(ws, input.actor, 'commit_project', { step: 'brand_create' });
+  const fields = validateBrandInput(input.kit);
+  return withWorkspaceLock(ws, 'brand.create', async () => {
+    await migrateLegacy(ws);
+    return save(ws, { schema_version: 2, brand_id: input.newId(), revision: 1, updated_at: ws.clock.now(), ...fields }, input.actor, 'brand.create');
   });
 }
 
-/** Media a render of `t` needs from the kit: the logo when switched on, the font when a text uses it. */
-export function brandRenderRefs(t: Timeline, k: BrandKit): { font: MediaRef | null; logo: BrandLogo | null } {
-  const usesFont = t.tracks.some((tr) => (tr.kind === 'text' || tr.kind === 'subtitle') && tr.clips.some((c) => c.text?.trim() && c.style?.font === 'brand'));
-  return { font: usesFont ? k.font : null, logo: t.brand_logo && k.logo ? k.logo : null };
+/**
+ * Save a brand (user only, optimistic revision). Without `brand_id` this is the default brand —
+ * the X06 single-kit API — and saving revision 0 creates it.
+ */
+export async function setBrandKit(ws: Workspace, input: { brand_id?: string; expected_revision: number; kit: unknown; actor: Actor }): Promise<BrandKit> {
+  await guard(ws, input.actor, 'commit_project', { step: 'brand_kit' });
+  const fields = validateBrandInput(input.kit);
+  return withWorkspaceLock(ws, 'setBrandKit', async () => {
+    const id = input.brand_id ?? (await defaultBrandId(ws));
+    const current = id ? await readBrand(ws, id) : { ...EMPTY_BRAND, brand_id: 'b-utama' };
+    if (current.revision !== input.expected_revision) throw new StorageError('CONFLICT', 'Brand Kit sudah berubah; muat ulang dulu', { expected: input.expected_revision, actual: current.revision });
+    return save(ws, { schema_version: 2, brand_id: current.brand_id, revision: current.revision + 1, updated_at: ws.clock.now(), ...fields }, input.actor, 'brand.save');
+  });
+}
+
+export async function setDefaultBrand(ws: Workspace, input: { brand_id: string; actor: Actor }): Promise<void> {
+  await guard(ws, input.actor, 'commit_project', { step: 'brand_default' });
+  await withWorkspaceLock(ws, 'brand.default', async () => {
+    await readBrand(ws, input.brand_id);
+    await writeJsonAtomic(indexFile(ws), { default_id: input.brand_id });
+    await audit(ws, { op: 'brand.default', actor: input.actor, outcome: 'ok', brand_id: input.brand_id });
+  });
+}
+
+/** Projects that chose this brand. */
+export async function projectsUsingBrand(ws: Workspace, brandId: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of await listProjectIds(ws)) {
+    const p = await readProject(ws, id).catch(() => null);
+    if (p?.brand_id === brandId) out.push(p.project_id);
+  }
+  return out;
+}
+
+/** Delete a brand nobody uses (its files stay in the media library; nothing is purged). */
+export async function deleteBrand(ws: Workspace, input: { brand_id: string; actor: Actor }): Promise<void> {
+  await guard(ws, input.actor, 'commit_project', { step: 'brand_delete' });
+  await withWorkspaceLock(ws, 'brand.delete', async () => {
+    const kit = await readBrand(ws, input.brand_id);
+    const used = await projectsUsingBrand(ws, kit.brand_id);
+    if (used.length) throw new StorageError('PRECONDITION', `Brand "${kit.name}" masih dipakai ${used.length} proyek; pindahkan proyeknya ke brand lain dulu`, { projects: used });
+    await fsp.rm(brandFile(ws, kit.brand_id));
+    const rest = (await listBrands(ws)).filter((b) => b.brand_id !== kit.brand_id);
+    const idx = await readJson(indexFile(ws), validateIndex).catch(() => ({ default_id: null as string | null }));
+    if (idx.default_id === kit.brand_id) await writeJsonAtomic(indexFile(ws), { default_id: rest[0]?.brand_id ?? null });
+    await audit(ws, { op: 'brand.delete', actor: input.actor, outcome: 'ok', brand_id: kit.brand_id, kode: kit.kode });
+  });
+}
+
+/** Media a render of `t` needs from the kit: logo when switched on, each font a text uses. */
+export function brandRenderRefs(t: Timeline, k: BrandKit): { font: MediaRef | null; font_caption: MediaRef | null; logo: BrandLogo | null } {
+  const uses = (f: 'brand' | 'caption') => t.tracks.some((tr) => (tr.kind === 'text' || tr.kind === 'subtitle') && tr.clips.some((c) => c.text?.trim() && c.style?.font === f));
+  return { font: uses('brand') ? k.font : null, font_caption: uses('caption') ? k.font_caption : null, logo: t.brand_logo && k.logo ? k.logo : null };
+}
+
+// ------------------------------------------------------------------ export for the engine
+
+export interface BrandExportAsset {
+  kunci: string;
+  jenis: 'font' | 'logo' | 'penutup';
+  path?: string;
+  tag: string[];
+  lisensi_iklan: boolean;
+}
+
+/**
+ * The kit in the engine contract shape (KONTRAK-ENGINE §4, `brand-kit-export/1`). Media are
+ * placeholders (`$logo`, `$font:judul`, …). `paths: true` (runner only, same PC) adds each file's
+ * local path; the browser download never contains paths.
+ */
+export async function exportBrandKit(ws: Workspace, brandId: string, opts: { paths: boolean }): Promise<Record<string, unknown>> {
+  const k = await readBrand(ws, brandId);
+  const reg = await loadRegistry(ws);
+  const aset: BrandExportAsset[] = [];
+  const add = async (kunci: string, jenis: BrandExportAsset['jenis'], r: MediaRef | null) => {
+    if (!r) return null;
+    const v = usable(reg, r, kunci);
+    const item: BrandExportAsset = { kunci, jenis, tag: [jenis], lisensi_iklan: true };
+    if (opts.paths) item.path = await ws.blobs.withLocalFile(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS), async (abs) => abs);
+    aset.push(item);
+    return kunci;
+  };
+  const fontJudul = await add('$font:judul', 'font', k.font);
+  const fontCaption = await add('$font:caption', 'font', k.font_caption);
+  const logo = await add('$logo', 'logo', k.logo?.ref ?? null);
+  const logoLight = await add('$logo:terang', 'logo', k.logo_light);
+  const outro = await add('$penutup', 'penutup', k.outro.ref);
+  return {
+    schema: 'brand-kit-export/1',
+    brand: { id: k.brand_id, nama: k.name, kode: k.kode, handle: k.handles, target: k.target, nada: k.nada, bahasa: k.bahasa, produk: k.produk },
+    visual: {
+      warna: k.colors,
+      warna_teks: k.text_color,
+      outline: { warna: k.outline.color, px: k.outline.px },
+      warna_dilarang: k.warna_dilarang,
+      font_judul: fontJudul,
+      font_caption: fontCaption,
+      logo: logo ? { aset: logo, aset_terang: logoLight, pojok: k.logo!.corner, ukuran: k.logo!.size, opasitas: k.logo!.opacity, tampil: k.logo!.show } : null,
+      penutup: { aset: outro, detik: k.outro.detik },
+      gaya: k.gaya,
+      grading: k.grading,
+    },
+    teks: {
+      cta: k.cta,
+      cta_wajib: k.cta_wajib,
+      disclaimer: k.disclaimer,
+      kosakata_whisper: k.kosakata,
+      kamus: Object.fromEntries(k.kamus.map((x) => [x.salah, x.benar])),
+      kata_kunci: k.kata_kunci,
+      kapital: k.kapital,
+      emoji: k.emoji,
+    },
+    aturan: {
+      terlarang: k.guard.banned,
+      level: k.guard.banned_level,
+      harga: k.guard.prices.map((p) => ({ teks: p.text, berlaku_sampai: p.valid_until })),
+      klaim_boleh: k.klaim_boleh,
+      visual_dilarang: k.visual_dilarang,
+      area_bebas_teks: k.area_bebas_teks,
+    },
+    // U2 adds the brand's SFX / music / b-roll library here.
+    aset,
+    preset: Object.fromEntries(k.presets.map((p) => [p.id, p])),
+  };
 }
