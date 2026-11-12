@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Api, Project, ProjectSummary, VariantTag } from './api';
 import { AiView } from './views/AiView';
+import { BatchView } from './views/BatchView';
 import { BrandView } from './views/BrandView';
 import { EditorView } from './views/EditorView';
+import { GenerateView } from './views/GenerateView';
 import { MediaView } from './views/MediaView';
 import { StorageView } from './views/StorageView';
 import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 
-export type View = 'editor' | 'media' | 'brand' | 'trash' | 'storage' | 'ai';
+export type View = 'generate' | 'batch' | 'editor' | 'media' | 'brand' | 'trash' | 'storage' | 'ai';
 
+// PC-16: one app — Generate Otomatis, Batch Remix, Editor (+ library / admin pages).
 const NAV: { id: View; sym: string; label: string }[] = [
+  { id: 'generate', sym: '⚡', label: 'Generate' },
+  { id: 'batch', sym: '▦', label: 'Batch' },
   { id: 'editor', sym: '▤', label: 'Editor' },
   { id: 'media', sym: '◇', label: 'Media' },
   { id: 'brand', sym: '◆', label: 'Brand' },
@@ -119,6 +124,8 @@ export function App({ api, workspaceId, account = null }: { api: Api; workspaceI
       <div className="page">
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
         {view === 'editor' && <EditorView api={api} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} />}
+        {view === 'generate' && <GenerateView api={api} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />}
+        {view === 'batch' && <BatchView api={api} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />}
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
         {view === 'brand' && <BrandView api={api} />}
         {view === 'trash' && <TrashView api={api} />}

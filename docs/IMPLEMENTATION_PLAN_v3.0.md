@@ -32,15 +32,13 @@ Aturan tetap:
 **CHECKPOINT H**
 
 ## Fase C — Satu aplikasi tanpa Remotion (PC-16, keputusan owner 2026-11-13)
-Kontrak dengan mesin: `D:\VIBECODING
-emotion\docs\KONTRAK-ENGINE.md` v0.3. Isian brand: `D:\VIBECODING
-emotion\docs\BRAND-KIT-LENGKAP.md`.
+Kontrak dengan mesin: `D:\VIBECODING\remotion\docs\KONTRAK-ENGINE.md` v0.3. Isian brand: `D:\VIBECODING\remotion\docs\BRAND-KIT-LENGKAP.md`.
 - [x] U1 **Brand Kit multi-brand** + isian A–F + brand per proyek + ekspor `brand_kit.json` (kontrak bagian 4). *Selesai 2026-11-13: brand banyak (kode unik, bawaan ★), isian A–F lengkap (E menyusul U2), font judul + caption, logo terang, penutup, brand dipilih per proyek (render, Brand guard, Copilot ikut brand proyek), ekspor `brand-kit-export/1` (`docs/BRAND_KIT_EXPORT.md`), migrasi otomatis Brand Kit lama; UI Chrome 12/12.*
 - [x] U2 **Library aset per brand** (SFX, musik, b-roll, logo, penutup) dengan tag & status lisensi. *Selesai 2026-11-13: library di bagian E halaman Brand (unggah banyak, saring jenis/tag, tag saran, lisensi + bukti + boleh-iklan, musik mood/BPM/instrumental, b-roll produk/varian/teks bawaan), SFX dilarang, video referensi; ekspor aset dengan durasi/orientasi dari file; UI Chrome 9/9.*
-- [ ] U3 **Render pengganti Remotion** (FFmpeg + libass): caption per kata (pop + sorot kata kunci), judul kotak kaca, zoom / punch-in, zoom-through, penutup, disclaimer, −14 LUFS, track `sfx`, `Clip.blur` / `Clip.crop`.
-- [ ] U4 **Halaman Generate Otomatis** (upload + brief → mesin → kartu rencana → setujui → render → QC).
-- [ ] U5 **Halaman Batch Remix** (tabel rencana → coret / setujui → antrean render).
-- [ ] U6 **Runner job** (panggil CLI mesin, `06_ENGINE/<job_id>`, lease sumber, placeholder → MediaRef, progres).
+- [x] U3 **Render pengganti Remotion** (FFmpeg + libass): caption per kata (pop + sorot kata kunci), judul kotak kaca, zoom / punch-in, zoom-through, penutup, disclaimer, −14 LUFS, track `sfx`, `Clip.blur` / `Clip.crop`. *Selesai 2026-11-13 (U3a–U3d): track SFX + Musik, loudness dua lintasan; caption per kata libass (pop/fade, sorot warna/ukuran/kotak); kotak kaca (`bg_blur`); track Efek zoom cut/halus + zoom-through (kurva sama di pratinjau & render); `Clip.crop` + `Clip.blur` (waktu sumber) untuk Batch Remix; preset teks Disclaimer; penutup = klip b-roll (kontrak §8); UI Chrome U3 21/21.*
+- [x] U4 **Halaman Generate Otomatis** (upload + brief → mesin → kartu rencana → setujui → render → QC). *Selesai 2026-11-13: menu ⚡ Generate; brand + proyek baru/lama + video + brief (produk/varian dari Brand Kit, harga, placement, preset, catatan, AI opsional); progres per tahap; kartu "Rencana edit siap, render ditahan" (hook, durasi, dibuang, audio, kata kunci, peringatan/kata ragu, daftar operasi); setujui = satu langkah undo; render & QC di Editor; riwayat job; UI Chrome U4 18/18 (bersama U5).*
+- [x] U5 **Halaman Batch Remix** (tabel rencana → coret / setujui → antrean render). *Selesai 2026-11-13: menu ▦ Batch; nama batch, jumlah, tujuan, preset, akun sendiri, hak pakai; tabel varian (hook, VO, shot, musik, durasi, QC, tanda UJI untuk musik tanpa lisensi); setujui/coret sekali simpan → varian disetujui jadi proyek varian X09 yang sudah disetujui; render hanya yang disetujui (render nyata dengan crop/blur di UI test).*
+- [x] U6 **Runner job** (panggil CLI mesin, `06_ENGINE/<job_id>`, lease sumber, placeholder → MediaRef, progres). *Selesai 2026-11-13: `MOTION_ENGINE_ROOT`; job id `KODE-YYYYMMDD-NNN`; job.json + brand_kit.json (path lokal) + refs.json; lease `engine` selama mesin jalan; JSON-lines progres; kode keluar 0/2/1, batas waktu + hentikan pohon proses; placeholder → MediaRef (sumber, aset brand, `aset_lokal`, footage batch → media bersama), placeholder asing & path di luar folder mesin ditolak; rencana masuk jalur Copilot sumber `engine`.*
 - [ ] U7 **Peran Owner / Editor / Reviewer + komentar di timecode + persetujuan** (dulu X10).
 
 **CHECKPOINT H** setelah U1–U5; **CHECKPOINT I** setelah U6–U7.

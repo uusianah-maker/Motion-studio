@@ -238,7 +238,7 @@ export function EditorView({
 
   const names = new Map(media.map((m) => [m.media_id, m.display_name]));
   const usable = media.filter((m) => (m.scope.kind === 'shared' || m.scope.project_id === projectId) && m.versions.some((v) => v.version_id === m.current_version_id && v.lifecycle === 'active' && v.integrity === 'ok'));
-  const clipName = (c: Clip) => (c.media ? names.get(c.media.media_id) ?? c.media.media_id : c.text ?? 'Klip');
+  const clipName = (c: Clip) => (c.media ? names.get(c.media.media_id) ?? c.media.media_id : c.effect ? (c.effect.type === 'zoom' ? `Zoom ${c.effect.scale.toFixed(1)}×` : 'Zoom-through') : c.text ?? 'Klip');
 
   return (
     <div className="editorGrid">
@@ -376,6 +376,14 @@ export function EditorView({
               clip={sel}
               name={clipName(sel)}
               sourceMs={sourceMs(sel)}
+              sourceSize={(() => {
+                const p = sel.media ? versionOf(sel.media.version_id)?.probe : null;
+                return p?.width && p.height ? { w: p.width, h: p.height } : null;
+              })()}
+              canvasRatio={(() => {
+                const [a, b] = (project.timeline.canvas?.ratio ?? '9:16').split(':').map(Number);
+                return a! / b!;
+              })()}
               busy={busy}
               readOnly={project.status === 'archived'}
               brand={brand?.kit ?? null}
@@ -469,6 +477,19 @@ export function EditorView({
           </button>
           <button className="smallbtn" disabled={locked || !project} onClick={() => addText('subtitle')} title="Tambah subtitle di playhead">
             ＋ Subtitle
+          </button>
+          <button
+            className="smallbtn"
+            disabled={locked || !project}
+            title="Tambah zoom (punch-in) 1 detik di playhead"
+            onClick={() => {
+              const taken = tracks.find((x) => x.kind === 'effects')?.clips ?? [];
+              let start = Math.round(playhead / 100) * 100;
+              for (const c of [...taken].sort((a, b) => a.start_ms - b.start_ms)) if (c.start_ms < start + 1000 && start < c.end_ms) start = c.end_ms;
+              void edit([{ op: 'add_clip', track_kind: 'effects', start_ms: start, duration_ms: 1000, effect: { type: 'zoom', scale: 1.2, mode: 'smooth', x: 0.5, y: 0.5 } }]);
+            }}
+          >
+            ＋ Zoom
           </button>
           <button className="smallbtn" disabled={locked || !project?.history.undo} onClick={() => step('undo')} title={project?.history.undo_label ? `Undo: ${project.history.undo_label} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}>
             ↶ Undo

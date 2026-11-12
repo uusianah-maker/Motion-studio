@@ -6,7 +6,7 @@
  */
 import type { TextKind, TextStyle } from './textStyle.js';
 
-export type PresetId = 'hook' | 'usp' | 'cta' | 'sale' | 'subtitle';
+export type PresetId = 'hook' | 'usp' | 'cta' | 'sale' | 'subtitle' | 'disclaimer';
 
 export interface TextPreset {
   id: PresetId;
@@ -25,6 +25,8 @@ export const TEXT_PRESETS: readonly TextPreset[] = [
   { id: 'cta', label: 'CTA', hint: 'Ajakan bertindak di bawah, kotak kuning', track: 'text', text: 'Cek keranjang kuning sekarang!', duration_ms: 3000, style: { x: 0.5, y: 0.66, size: 6, width: 0.82, color: '#111111', bg: '#ffd23f', bg_opacity: 1, bold: true, outline: false, align: 'center' } },
   { id: 'sale', label: 'Sale', hint: 'Diskon/harga besar, kotak merah', track: 'text', text: 'DISKON 50%', duration_ms: 2500, style: { x: 0.5, y: 0.36, size: 10, width: 0.86, color: '#ffffff', bg: '#e53935', bg_opacity: 1, bold: true, outline: false, align: 'center' } },
   { id: 'subtitle', label: 'Subtitle', hint: 'Teks bicara di bawah, kotak hitam transparan', track: 'subtitle', text: 'Subtitle baru', duration_ms: 3000, style: { x: 0.5, y: 0.78, size: 4.5, width: 0.76, color: '#ffffff', bg: '#000000', bg_opacity: 0.62, bold: true, outline: false, align: 'center' } },
+  // U3 (contract §5.3): small print, e.g. the Brand Kit disclaimer ("Warna dapat sedikit berbeda…").
+  { id: 'disclaimer', label: 'Disclaimer', hint: 'Teks kecil di bawah (catatan/ketentuan dari Brand Kit)', track: 'text', text: 'Warna dapat sedikit berbeda karena cahaya', duration_ms: 3000, style: { x: 0.5, y: 0.93, size: 2.6, width: 0.9, color: '#ffffff', bg: null, bold: false, outline: true, align: 'center' } },
 ];
 
 export const presetById = (id: string): TextPreset | undefined => TEXT_PRESETS.find((p) => p.id === id);

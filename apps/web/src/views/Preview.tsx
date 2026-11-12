@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { blurAt, placeOnCanvas } from '../../../../packages/core/dist/storage/framing.js';
+import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
 import type { LoadedBrand } from '../brand';
 import type { Api, Clip, Media, Project } from '../api';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
@@ -82,6 +84,9 @@ export function Preview({
   const audio = clipAt(clipsOf('audio'), t);
   const sfx = clipAt(clipsOf('sfx'), t);
   const music = clipAt(clipsOf('music'), t);
+  // U3c: zoom effect covering the playhead (same curve as the render's zoompan).
+  const fx = clipsOf('effects').find((c) => c.effect && t >= c.start_ms && t < c.end_ms);
+  const zoom = fx?.effect ? zoomAt(fx.effect, t - fx.start_ms, fx.end_ms - fx.start_ms) : 1;
   const texts = clipsOf('text').filter((c) => t >= c.start_ms && t < c.end_ms);
   const subs = clipsOf('subtitle').filter((c) => t >= c.start_ms && t < c.end_ms);
   const versionOf = (c: Clip | null) => (c?.media ? media.flatMap((m) => m.versions).find((v) => v.version_id === c.media!.version_id) : undefined);
@@ -181,6 +186,13 @@ export function Preview({
   }, [visualGain, audioGain, sfxGain, musicGain]);
 
   const v = versionOf(visual);
+  // U3d: crop + blurred areas of the visual clip (same geometry as the render).
+  const srcSize = v?.probe?.width && v.probe.height ? { w: v.probe.width, h: v.probe.height } : null;
+  const crop = visual?.crop;
+  const srcNow = visual ? (visual.in_ms ?? 0) + (t - visual.start_ms) : 0;
+  const blurs = srcSize ? blurAt(visual?.blur, srcNow) : [];
+  const zoomStyle = zoom !== 1 && fx?.effect ? { transform: `scale(${zoom})`, transformOrigin: `${fx.effect.x * 100}% ${fx.effect.y * 100}%` } : {};
+  const cropStyle = crop ? ({ objectViewBox: `inset(${crop.y * 100}% ${(1 - crop.x - crop.w) * 100}% ${(1 - crop.y - crop.h) * 100}% ${crop.x * 100}%)` } as Record<string, string>) : {};
   const unsupported = v && v.preview === false ? `Codec ${v.probe?.video_codec ?? '?'} belum bisa dipratinjau di browser (tetap bisa dirender).` : null;
   const [st, sr, sb, sl] = safeInsets(ratio);
 
@@ -210,7 +222,25 @@ export function Preview({
       </div>
       <div className="canvasArea">
         <div className="canvas live" ref={canvasRef} style={{ aspectRatio: aspectCss(ratio) }} aria-label="Area pratinjau">
-          <video ref={videoRef} playsInline preload="auto" aria-label="Video pratinjau" className={visual?.media && !unsupported ? '' : 'off'} />
+          <video
+            ref={videoRef}
+            playsInline
+            preload="auto"
+            aria-label="Video pratinjau"
+            data-zoom={zoom.toFixed(3)}
+            data-crop={crop ? `${crop.x},${crop.y},${crop.w},${crop.h}` : undefined}
+            className={visual?.media && !unsupported ? '' : 'off'}
+            style={{ ...zoomStyle, ...cropStyle }}
+          />
+          {blurs.length > 0 && srcSize && (
+            <div className="blurLayer" style={zoomStyle} aria-hidden="true">
+              {blurs.map((b, i) => {
+                const r = placeOnCanvas(srcSize, crop, canvasPx, b);
+                const px = `${(b.radius * Math.min(canvasPx.w, canvasPx.h)) / 1080}px`;
+                return <div key={i} className="blurBox" data-blur={i} style={{ left: r.left, top: r.top, width: r.width, height: r.height, backdropFilter: `blur(${px})`, WebkitBackdropFilter: `blur(${px})` }} />;
+              })}
+            </div>
+          )}
           <audio ref={audioRef} preload="auto" />
           <audio ref={sfxRef} preload="auto" data-layer="sfx" />
           <audio ref={musicRef} preload="auto" data-layer="music" />

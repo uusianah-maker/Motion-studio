@@ -1,4 +1,6 @@
 import { StorageError } from './errors.js';
+import { type BlurRegion, type Crop, validateBlur, validateCrop } from './framing.js';
+import { type ClipEffect, validateEffect } from './effects.js';
 import { type Word, validateWords } from './words.js';
 import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
@@ -34,6 +36,12 @@ export interface Clip {
   volume?: number;
   /** U3b: word timings of a caption (relative to the clip start); `text` = the words joined. */
   words?: Word[];
+  /** U3c: picture effect of a clip on the `effects` track (zoom, zoom-through). */
+  effect?: ClipEffect;
+  /** U3d: part of the source shown (fractions of the source frame). */
+  crop?: Crop;
+  /** U3d: blurred areas of the source, timed in SOURCE ms. */
+  blur?: BlurRegion[];
 }
 
 export const CANVAS_RATIOS = ['9:16', '3:4', '1:1', '16:9'] as const;
@@ -244,6 +252,24 @@ function validateTracks(timeline: Obj, where: string): Track[] {
         if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) fail(`${cw}.volume`, 'harus angka 0–1');
         if (!clip.media) fail(`${cw}.volume`, 'volume hanya untuk klip media');
         clip.volume = v as number;
+      }
+      if (co.effect !== undefined) {
+        if (kind !== 'effects') fail(`${cw}.effect`, 'efek hanya di track efek');
+        try {
+          clip.effect = validateEffect(co.effect, `${cw}.effect`);
+        } catch (e) {
+          fail(`${cw}.effect`, e instanceof Error ? e.message : 'tidak valid');
+        }
+      }
+      for (const k of ['crop', 'blur'] as const) {
+        if (co[k] === undefined) continue;
+        if (!clip.media) fail(`${cw}.${k}`, 'crop/blur hanya untuk klip media');
+        try {
+          if (k === 'crop') clip.crop = validateCrop(co.crop, `${cw}.crop`);
+          else clip.blur = validateBlur(co.blur, `${cw}.blur`);
+        } catch (e) {
+          fail(`${cw}.${k}`, e instanceof Error ? e.message : 'tidak valid');
+        }
       }
       if (co.words !== undefined) {
         if (kind !== 'text' && kind !== 'subtitle') fail(`${cw}.words`, 'kata hanya untuk klip teks/subtitle');

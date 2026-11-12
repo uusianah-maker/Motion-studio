@@ -1,4 +1,6 @@
 import { promises as fsp } from 'node:fs';
+import { framingFilters } from './framing.js';
+import { zoomExpr } from './effects.js';
 import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
 import { readFontInfo } from './fontInfo.js';
 import { type LogoCorner, brandRenderRefs, readBrandFor } from './brand.js';
@@ -136,6 +138,55 @@ export const STRIP_METADATA_ARGS: readonly string[] = [
  * audio; audio-track clips are mixed on top at their timeline position; text/subtitle clips are
  * burned in with drawtext (text from files: no escaping, no `%` expansion). Pure function.
  */
+/**
+ * U3c: zoom effects (effects track) and frosted-glass text boxes, applied to the edited picture
+ * BEFORE titles/captions are drawn, so text never zooms or blurs. `[vraw]` → `[vcat]`.
+ */
+function pictureEffects(t: Timeline, o: { W: number; H: number; fps: number; total_ms: number; ratio: string }): string[] {
+  const { W, H } = o;
+  const out: string[] = [];
+  let label = 'vraw';
+  const zooms = clipsOf(t, 'effects').filter((c) => c.effect && c.start_ms < o.total_ms);
+  if (zooms.length) {
+    // One expression for the whole video: the effect covering the frame's time (`it`, seconds),
+    // else 1 (effects never overlap). Commas inside expressions are escaped for the filtergraph.
+    const when = (c: Clip) => `between(it\\,${(c.start_ms / 1000).toFixed(3)}\\,${(Math.min(c.end_ms, o.total_ms) / 1000 - 0.0005).toFixed(4)})`;
+    const zz = zooms.reduceRight((acc, c) => `if(${when(c)}\\,${zoomExpr(c.effect!, c.start_ms, c.end_ms).replace(/\bt\b/g, 'it').replace(/,/g, '\\,')}\\,${acc})`, '1');
+    const xx = zooms.reduceRight((acc, c) => `if(${when(c)}\\,${c.effect!.x}\\,${acc})`, '0.5');
+    const yy = zooms.reduceRight((acc, c) => `if(${when(c)}\\,${c.effect!.y}\\,${acc})`, '0.5');
+    // zoompan: one output frame per input frame (d=1), the visible window shrinks by `zoom` around
+    // the effect centre and is scaled back to the canvas. (A per-frame `scale` + `crop` does not
+    // work: crop keeps its first input size.)
+    out.push(`[${label}]zoompan=z='${zz}':x='(iw-iw/zoom)*(${xx})':y='(ih-ih/zoom)*(${yy})':d=1:s=${W}x${H}:fps=${o.fps},setsar=1,format=yuv420p[vzoom]`);
+    label = 'vzoom';
+  }
+  // Glass boxes: blur the picture under each text box that asks for it, for the clip's time.
+  const short = Math.min(W, H);
+  let k = 0;
+  for (const kind of ['text', 'subtitle'] as const) {
+    for (const c of clipsOf(t, kind)) {
+      const s = effectiveStyle(kind, c.style);
+      if (!s.bg_blur || !c.text?.trim() || c.start_ms >= o.total_ms) continue;
+      const fs = Math.max(8, Math.round((short * s.size) / 100));
+      const lines = layoutText(c.text, s, o.ratio).split('\n');
+      const pad = Math.round(fs * 0.4);
+      const bw = Math.min(W, Math.round(Math.max(...lines.map((l) => l.length)) * fs * 0.56 + 2 * pad));
+      const bh = Math.min(H, Math.round(lines.length * fs * 1.2 + 2 * pad));
+      const bx = Math.max(0, Math.min(W - bw, Math.round(s.x * W - bw / 2)));
+      const by = Math.max(0, Math.min(H - bh, Math.round(s.y * H - bh / 2)));
+      const sigma = Math.max(1, Math.round((s.bg_blur * short) / 1080));
+      const en = `between(t,${(c.start_ms / 1000).toFixed(3)},${(Math.min(c.end_ms, o.total_ms) / 1000).toFixed(3)})`;
+      out.push(`[${label}]split=2[gb${k}][gc${k}]`);
+      out.push(`[gc${k}]crop=${bw}:${bh}:${bx}:${by},gblur=sigma=${sigma}[gl${k}]`);
+      out.push(`[gb${k}][gl${k}]overlay=${bx}:${by}:enable='${en}'[g${k}]`);
+      label = `g${k}`;
+      k++;
+    }
+  }
+  out.push(`[${label}]null[vcat]`);
+  return out;
+}
+
 /** Upper bound on visual segments per render (Checkpoint E E4). */
 export const MAX_RENDER_SEGMENTS = 200;
 
@@ -196,9 +247,16 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const startMs = (seg.from_frame * 1000) / fps;
       idx = input(src, (seg.clip.in_ms ?? 0) + (startMs - seg.clip.start_ms), durMs);
     }
+    // U3d: blur areas + crop of the source before it is fitted onto the canvas.
+    const startMs = (seg.from_frame * 1000) / fps;
+    const framing =
+      hasV && seg.clip
+        ? framingFilters({ crop: seg.clip.crop, blur: seg.clip.blur, srcStartMs: (seg.clip.in_ms ?? 0) + (startMs - seg.clip.start_ms), durMs, shortSide: Math.min(src!.probe.width ?? 1080, src!.probe.height ?? 1080), inLabel: `fi${k}`, outLabel: `fo${k}`, id: `s${k}` })
+        : null;
+    if (framing) graph.push(`[${idx}:v:0]setpts=PTS-STARTPTS[fi${k}]`, ...framing);
     graph.push(
       hasV
-        ? `[${idx}:v:0]setpts=PTS-STARTPTS,fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p,tpad=stop_mode=clone:stop=${frames},trim=end_frame=${frames},setpts=PTS-STARTPTS[v${k}]`
+        ? `${framing ? `[fo${k}]` : `[${idx}:v:0]setpts=PTS-STARTPTS,`}fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p,tpad=stop_mode=clone:stop=${frames},trim=end_frame=${frames},setpts=PTS-STARTPTS[v${k}]`
         : `color=c=black:s=${W}x${H}:r=${fps}:d=${s6(durMs / 1000)},format=yuv420p,setsar=1,trim=end_frame=${frames}[v${k}]`,
     );
     graph.push(
@@ -207,7 +265,8 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
         : `anullsrc=r=${AUDIO_RATE}:cl=stereo,${AFMT},atrim=end_sample=${samples}[a${k}]`,
     );
   });
-  graph.push(`${segments.map((_, k) => `[v${k}][a${k}]`).join('')}concat=n=${segments.length}:v=1:a=1[vcat][acat]`);
+  graph.push(`${segments.map((_, k) => `[v${k}][a${k}]`).join('')}concat=n=${segments.length}:v=1:a=1[vraw][acat]`);
+  graph.push(...pictureEffects(t, { W, H, fps, total_ms, ratio }));
 
   // Audio track: mixed over the visual sound at its timeline position, like the preview.
   const mixes: string[] = [];

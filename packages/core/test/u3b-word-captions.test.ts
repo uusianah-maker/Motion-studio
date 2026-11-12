@@ -77,7 +77,7 @@ describe('U3b per-word captions (libass)', () => {
       tracks: [
         { track_id: 'v', kind: 'video', clips: [{ clip_id: 'v', start_ms: 0, end_ms: 3000, media: { media_id: 'm_1', version_id: 'v_1' } }] },
         { track_id: 't', kind: 'text', clips: [{ clip_id: 'title', start_ms: 0, end_ms: 1000, text: 'Judul biasa' }] },
-        { track_id: 's', kind: 'subtitle', clips: [{ clip_id: 'cap', start_ms: 1000, end_ms: 2200, text: 'Celana anti kusut!', words: W3, style: { anim: 'pop', anim_ms: 100, highlight: { words: ['anti'], color: '#e53935', scale: 1.3, current: false } } }] },
+        { track_id: 's', kind: 'subtitle', clips: [{ clip_id: 'cap', start_ms: 1000, end_ms: 2200, text: 'Celana anti kusut!', words: W3, style: { anim: 'pop', anim_ms: 100, highlight: { words: ['anti'], color: '#e53935', scale: 1.3, current: false, box: false } } }] },
       ],
     };
     const ass = buildAss({ clips: [{ kind: 'subtitle', clip: t.tracks[2]!.clips[0]! }], width: 1080, height: 1920, ratio: '9:16', total_ms: 3000, fonts: { bold: { family: 'Arial', unitsPerEm: 2048, winHeight: 2288, bold: true }, regular: { family: 'Arial', unitsPerEm: 2048, winHeight: 2288, bold: false }, brand: null, caption: null } });

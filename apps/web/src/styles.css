@@ -87,6 +87,20 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 @keyframes wordPop { from { transform: scale(0.7); } to { transform: scale(1); } }
 @keyframes wordFade { from { opacity: 0; } to { opacity: 1; } }
 .overlayText .w { white-space: pre; }
+.canvas.live video { transition: none; }
+.enginePage { display: flex; flex-direction: column; gap: 14px; }
+.engineJob { display: flex; flex-direction: column; gap: 8px; }
+.engineLog { max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: 10px; background: #0d1017; padding: 8px; border-radius: 8px; }
+.planCard { display: flex; flex-direction: column; gap: 10px; }
+.planOps { max-height: 260px; overflow: auto; margin: 6px 0; padding-left: 20px; }
+.tableScroll { overflow-x: auto; max-width: 100%; }
+.batchTable tr.struck td { opacity: 0.45; text-decoration: line-through; }
+.batchTable tr.struck td:last-child { opacity: 1; text-decoration: none; }
+.seg { display: inline-flex; gap: 4px; }
+.btn.sel { background: #3a2f6b; border-color: #7d68e0; color: #fff; }
+.linkBtn { background: none; border: none; color: #ae99ff; cursor: pointer; padding: 2px 4px; text-decoration: underline; }
+.blurLayer { position: absolute; inset: 0; pointer-events: none; }
+.blurBox { position: absolute; }
 .importRow { padding: 0 15px 8px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

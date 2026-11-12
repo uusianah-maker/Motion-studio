@@ -50,6 +50,7 @@ export type Area =
   | 'project_manifest'
   | 'project_cache'
   | 'project_output'
+  | 'project_engine'
   | 'backup'
   | 'meta'
   | 'trash'
@@ -61,6 +62,8 @@ const PROJECT_AREAS: Record<string, Area> = {
   '03_PROJECT': 'project_manifest',
   '04_CACHE': 'project_cache',
   '05_OUTPUT': 'project_output',
+  // U6: engine job folders (job.json, plans, logs): not media, never scanned by GC.
+  '06_ENGINE': 'project_engine',
 };
 
 /** Classify a workspace-relative path into a storage area. */

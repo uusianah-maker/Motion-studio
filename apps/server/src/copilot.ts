@@ -69,7 +69,7 @@ export interface PlanRecord {
 
 const PLAN_TTL_MS = 6 * 3_600_000;
 /** Plans built by the server from a transcript may be long (one subtitle per cue). */
-const maxOpsFor = (source: PlanSource) => (source === 'transcript' || source === 'analysis' ? MAX_SERVER_OPS : undefined);
+const maxOpsFor = (source: PlanSource) => (source === 'transcript' || source === 'analysis' || source === 'engine' ? MAX_SERVER_OPS : undefined);
 const MAX_PLANS = 300;
 const notFound = () => new ApiError(404, 'NOT_FOUND', 'Rencana tidak ada atau sudah kedaluwarsa; buat rencana baru');
 

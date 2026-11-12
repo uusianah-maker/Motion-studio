@@ -1,4 +1,6 @@
 import { StorageError } from './errors.js';
+import { type ClipEffect, validateEffect } from './effects.js';
+import { type BlurRegion, type Crop, validateBlur, validateCrop } from './framing.js';
 import { type Word, cutWords, sliceWords, validateWords } from './words.js';
 import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
@@ -24,7 +26,7 @@ const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle',
 export const SOUND_TRACKS: readonly TrackKind[] = ['audio', 'music', 'sfx'];
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[] }
+  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[] }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -38,6 +40,8 @@ export type EditOp =
   | { op: 'split_at'; track_kind: TrackKind; at_ms: number }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
+  /** U3d: crop (null = whole frame) and/or blurred areas of a media clip. */
+  | { op: 'set_framing'; clip_id: string; crop?: Crop | null; blur?: BlurRegion[] }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'music' | 'sfx'; muted: boolean }
   /** U3: final loudness (LUFS) or null = leave the mix as is. */
   | { op: 'set_loudness'; lufs: number | null };
@@ -70,7 +74,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
     };
     switch (o.op) {
       case 'add_clip': {
-        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words']);
+        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words', 'effect', 'crop', 'blur']);
         if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
         let media: MediaRef | undefined;
         if (o.media !== undefined) {
@@ -87,6 +91,11 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           start_ms: ms(o.start_ms, 'start_ms'),
           duration_ms: ms(o.duration_ms, 'duration_ms'),
           ...(o.in_ms !== undefined ? { in_ms: ms(o.in_ms, 'in_ms') } : {}),
+          // U3d: framing set at creation (a plan never refers to its own new clip).
+          ...(o.crop !== undefined ? { crop: validateCrop(o.crop, `ops[${i}].crop`) } : {}),
+          ...(o.blur !== undefined ? { blur: validateBlur(o.blur, `ops[${i}].blur`) } : {}),
+          // U3c: zoom / zoom-through on the effects track.
+          ...(o.effect !== undefined ? { effect: validateEffect(o.effect, `ops[${i}].effect`) } : {}),
           // U3b: per-word caption timings (relative to the clip start).
           ...(o.words !== undefined ? { words: validateWords(o.words, ms(o.duration_ms, 'duration_ms'), `ops[${i}].words`) } : {}),
           // U3 (contract §5.2): volume set at creation, so a plan never refers to its own new clip.
@@ -134,6 +143,16 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) bad(`ops[${i}]: volume harus angka 0–1`);
         return { op: 'set_volume', clip_id: clipId(o.clip_id), volume: Math.round((v as number) * 100) / 100 };
       }
+      case 'set_framing': {
+        keys(['op', 'clip_id', 'crop', 'blur']);
+        if (o.crop === undefined && o.blur === undefined) bad(`ops[${i}]: isi crop dan/atau blur`);
+        return {
+          op: 'set_framing',
+          clip_id: clipId(o.clip_id),
+          ...(o.crop !== undefined ? { crop: o.crop === null ? null : validateCrop(o.crop, `ops[${i}].crop`) } : {}),
+          ...(o.blur !== undefined ? { blur: validateBlur(o.blur, `ops[${i}].blur`) } : {}),
+        };
+      }
       case 'set_track_mute':
         keys(['op', 'track_kind', 'muted']);
         if (!['video', 'broll', 'audio', 'music', 'sfx'].includes(o.track_kind as string)) bad(`ops[${i}]: track_kind harus video | broll | audio | music | sfx`);
@@ -162,6 +181,9 @@ function splitInto(track: Track, index: number, at: number, newClipId: () => str
   if (clip.text !== undefined) right.text = clip.text;
   if (clip.style) right.style = { ...clip.style };
   if (clip.volume !== undefined) right.volume = clip.volume;
+  if (clip.effect) right.effect = { ...clip.effect };
+  if (clip.crop) right.crop = { ...clip.crop };
+  if (clip.blur) right.blur = clip.blur.map((b) => ({ ...b }));
   if (clip.media) {
     right.media = { ...clip.media };
     right.in_ms = (clip.in_ms ?? 0) + (at - clip.start_ms);
@@ -202,6 +224,9 @@ const clone = (t: Timeline): Timeline => ({
       ...(c.media ? { media: { ...c.media } } : {}),
       ...(c.style ? { style: { ...c.style, ...(c.style.highlight ? { highlight: { ...c.style.highlight, words: [...c.style.highlight.words] } } : {}) } } : {}),
       ...(c.words ? { words: c.words.map((w) => ({ ...w })) } : {}),
+      ...(c.effect ? { effect: { ...c.effect } } : {}),
+      ...(c.crop ? { crop: { ...c.crop } } : {}),
+      ...(c.blur ? { blur: c.blur.map((b) => ({ ...b })) } : {}),
     })),
   })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
@@ -279,6 +304,16 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
           if (!op.media) bad('Volume hanya untuk klip video/audio');
           if (op.volume !== 1) clip.volume = op.volume;
         }
+        if (op.effect) {
+          if (op.track_kind !== 'effects') bad('Efek hanya di track efek');
+          clip.effect = { ...op.effect };
+        }
+        if (op.crop || op.blur) {
+          if (!op.media) bad('Crop/blur hanya untuk klip video/b-roll');
+          if (op.crop) clip.crop = { ...op.crop };
+          if (op.blur?.length) clip.blur = op.blur.map((b) => ({ ...b }));
+        }
+        if (op.track_kind === 'effects' && !op.effect) bad('Klip di track efek wajib punya efek (zoom / zoom_through)');
         if (op.words) {
           if (!TEXT_TRACKS.includes(op.track_kind)) bad('Kata per kata hanya untuk klip teks/subtitle');
           clip.words = op.words.map((w) => ({ ...w }));
@@ -343,6 +378,8 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
                 const right: Clip = { ...c, clip_id: newClipId(), start_ms: from, end_ms: c.end_ms - len, in_ms: (c.in_ms ?? 0) + (to - c.start_ms) };
                 if (c.style) right.style = { ...c.style };
                 right.media = { ...c.media };
+                if (c.crop) right.crop = { ...c.crop };
+                if (c.blur) right.blur = c.blur.map((b) => ({ ...b }));
                 out.push({ ...c, end_ms: from }, right);
               } else out.push(withWords({ ...c, end_ms: c.end_ms - len }, c.words ? cutWords(c.words, from - c.start_ms, to - c.start_ms) : undefined));
             } else if (c.start_ms < from) out.push(withWords({ ...c, end_ms: from }, c.words ? sliceWords(c.words, 0, from - c.start_ms) : undefined));
@@ -380,6 +417,17 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         if (!clip.media) bad('Volume hanya untuk klip video/audio', { clip_id: op.clip_id });
         if (op.volume === 1) delete clip.volume;
         else clip.volume = op.volume;
+        break;
+      }
+      case 'set_framing': {
+        const { clip } = locate(t, op.clip_id);
+        if (!clip.media) bad('Crop/blur hanya untuk klip video/b-roll', { clip_id: op.clip_id });
+        if (op.crop === null) delete clip.crop;
+        else if (op.crop) clip.crop = { ...op.crop };
+        if (op.blur) {
+          if (op.blur.length) clip.blur = op.blur.map((b) => ({ ...b }));
+          else delete clip.blur;
+        }
         break;
       }
       case 'set_track_mute': {

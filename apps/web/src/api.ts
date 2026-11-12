@@ -169,10 +169,18 @@ export interface Clip {
   volume?: number;
   /** U3b: caption word timings relative to the clip start. */
   words?: { text: string; start_ms: number; end_ms: number }[];
+  /** U3c: effects-track clip: zoom / zoom-through. */
+  effect?: ClipEffect;
+  /** U3d: part of the source shown + blurred areas (source fractions, source ms). */
+  crop?: Crop;
+  blur?: BlurRegion[];
 }
+export type Crop = { x: number; y: number; w: number; h: number };
+export type BlurRegion = Crop & { dari_ms: number; sampai_ms: number; radius: number };
+export type ClipEffect = { type: 'zoom'; scale: number; mode: 'cut' | 'smooth'; x: number; y: number } | { type: 'zoom_through'; scale: number; x: number; y: number };
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number }
+  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[] }
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -184,6 +192,7 @@ export type EditOp =
   | { op: 'split_at'; track_kind: Track['kind']; at_ms: number }
   | { op: 'set_style'; clip_id: string; style: Partial<TextStyle> }
   | { op: 'set_volume'; clip_id: string; volume: number }
+  | { op: 'set_framing'; clip_id: string; crop?: Crop | null; blur?: BlurRegion[] }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'music' | 'sfx'; muted: boolean }
   | { op: 'set_loudness'; lufs: number | null };
 export interface Track {
@@ -308,7 +317,7 @@ export interface EditPlan {
   plan_id: string;
   project_id: string;
   project_revision: number;
-  source: 'local' | 'ai' | 'transcript' | 'analysis';
+  source: 'local' | 'ai' | 'transcript' | 'analysis' | 'engine';
   prompt: string;
   operations: PlanOperation[];
   rationale: string;
@@ -461,6 +470,70 @@ export async function authMode(base = ''): Promise<'local' | 'google'> {
   return data.mode === 'google' ? 'google' : 'local';
 }
 
+// ---- U6 engine runner (Generate Otomatis / Batch Remix)
+export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
+export interface EngineJob {
+  job_id: string;
+  project_id: string;
+  mode: 'generate' | 'batch' | 'ulang';
+  state: EngineState;
+  tahap: string;
+  persen: number;
+  pesan: string;
+  created_at: number;
+  started_at: number | null;
+  finished_at: number | null;
+  exit_code: number | null;
+  alasan: string | null;
+}
+export interface EngineBrief {
+  produk: string;
+  varian: string;
+  harga: string;
+  placement: 'tiktok' | 'instagram' | 'shopee' | 'youtube';
+  catatan: string;
+}
+export interface EngineStart {
+  mode: 'generate' | 'batch';
+  sources: { kunci: string; ref: { media_id: string; version_id: string } }[];
+  preset: string;
+  brief: EngineBrief;
+  ai: boolean;
+  mode_ops?: 'kompat' | 'u3';
+  batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[] };
+}
+/** Engine plan summary (KONTRAK-ENGINE §5.1); every field optional — the engine writes it. */
+export interface EngineRencana {
+  status?: string;
+  durasi?: { mentah?: number; akhir?: number; target?: number[] };
+  dibuang?: { dari?: number; sampai?: number; jenis?: string; teks?: string }[];
+  hook?: { teks?: string };
+  kata_kunci?: { teks?: string; detik?: number }[];
+  efek?: { jenis?: string }[];
+  audio?: { sfx?: number; musik?: string | null; alasan_tanpa_musik?: string | null };
+  cta?: string;
+  menunggu_u3?: string[];
+}
+export interface BatchRow {
+  id: string;
+  vo?: string;
+  hook?: string;
+  shot?: string[];
+  musik?: string | null;
+  durasi?: number;
+  cta?: string;
+  bukan_iklan?: boolean;
+  qc_lulus?: boolean;
+}
+export type BatchRowStatus = 'usul' | 'disetujui' | 'dicoret';
+export interface BatchTable {
+  batch?: string;
+  jumlah_diminta?: number;
+  jumlah_jadi?: number;
+  alasan_kurang?: string | null;
+  varian: BatchRow[];
+}
+
 export function createApi(token: string | null, base = '') {
   const authHeaders = (): Record<string, string> => ({ 'x-motion-request': '1', ...(token ? { authorization: `Bearer ${token}` } : {}) });
   async function call<T>(method: string, path: string, init: { json?: unknown; body?: Blob | File; headers?: Record<string, string> } = {}): Promise<T> {
@@ -601,6 +674,18 @@ export function createApi(token: string | null, base = '') {
     renders: (id: string) => call<{ jobs: RenderJob[]; outputs: RenderOutputFile[] }>('GET', `/api/projects/${encodeURIComponent(id)}/renders`),
     cancelRender: (jobId: string) => call<{ job: RenderJob }>('POST', `/api/render/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }).then((r) => r.job),
     /** Short-lived signed link to play (or download) one finished output. */
+    // U6 engine runner
+    engineInfo: () => call<{ installed: boolean; running: number; waiting: number }>('GET', '/api/engine'),
+    engineJobs: (id: string) => call<{ jobs: EngineJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs`).then((r) => r.jobs),
+    engineStart: (id: string, body: EngineStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
+    engineJob: (id: string, jobId: string) => call<{ job: EngineJob; log: string | null }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}`),
+    engineCancel: (id: string, jobId: string) => call<{ ok?: true; job?: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }),
+    enginePlan: (id: string, jobId: string, variant?: string) =>
+      call<PlanReply & { rencana: EngineRencana }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/plan`, { json: variant ? { variant } : {} }),
+    engineBatch: (id: string, jobId: string) =>
+      call<{ batch: BatchTable; decisions: Record<string, { status: BatchRowStatus; project_id: string | null }> }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch`),
+    engineDecide: (id: string, jobId: string, rows: { varian: string; status: BatchRowStatus }[]) =>
+      call<{ decisions: Record<string, { status: BatchRowStatus; project_id: string | null }> }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch/decide`, { json: { rows } }).then((r) => r.decisions),
     outputUrl: (id: string, name: string, download = false) =>
       call<{ url: string; expires_at: number }>('GET', `/api/projects/${encodeURIComponent(id)}/output-url?${new URLSearchParams({ name, ...(download ? { download: '1' } : {}) })}`),
   };

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "U4-01 Menu PC-16: Generate, Batch, Editor di navigasi utama",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U4-02 Upload + brief → mesin jalan (progres) → kartu \"Rencana edit siap, render ditahan\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U4-03 Status job: Rencana siap (job id AYS-YYYYMMDD-001)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U4-04 Kartu rencana: hook, durasi mentah → akhir, kata yang perlu dicek",
+    "ok": true,
+    "detail": "Rencana edit siap — render ditahan sampai disetujui | Hook | Celana adem | Durasi | 3,0 dtk → 1,5 dtk | target 15–30 dtk"
+  },
+  {
+    "id": "U4-05 Sebelum disetujui timeline tidak berubah (brand proyek = brand terpilih)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U4-06 Setujui = diterapkan ke timeline sebagai satu langkah (video + subtitle kata + musik mesin)",
+    "ok": true,
+    "detail": "video,subtitle,music"
+  },
+  {
+    "id": "U4-07 Caption per kata + sorot dari mesin terbawa (words + pop + highlight)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U4-08 Riwayat job proyek tampil",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U4-09 \"Buka di Editor\" membuka proyek draf untuk render & QC",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U5-01 Mesin menyusun batch → tabel 3 varian (hook, VO, shot, durasi, QC)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U5-02 Varian bermusik tanpa lisensi ditandai UJI (bukan iklan)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U5-03 Baris dicoret tampil dicoret sebelum disimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U5-04 Simpan: 2 baris disetujui jadi proyek varian yang sudah disetujui; yang dicoret tidak",
+    "ok": true,
+    "detail": "varian-001 · Hook 1 | UJI · varian-003 · Hook 3"
+  },
+  {
+    "id": "U5-05 \"Render varian disetujui\" memasukkan tepat 2 render ke antrean",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U5-06 Dua varian benar-benar dirender (FFmpeg, crop & blur area, VO terpisah)",
+    "ok": true,
+    "detail": "2 output"
+  },
+  {
+    "id": "U5-07 Batch sebelumnya bisa dibuka lagi",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U4-10 Layar HP: tidak ada isian yang keluar layar",
+    "ok": true,
+    "detail": "0 keluar"
+  },
+  {
+    "id": "U4-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

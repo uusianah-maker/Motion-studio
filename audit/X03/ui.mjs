@@ -36,7 +36,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
   await page.getByRole('heading', { name: 'Uji Preset' }).waitFor();
   const presets = page.getByRole('region', { name: 'Preset teks' });
-  check('X3-01 Perpustakaan preset: Hook, USP, CTA, Sale, Subtitle', (await presets.getByRole('button').count()) === 5);
+  check('X3-01 Perpustakaan preset: Hook, USP, CTA, Sale, Subtitle, Disclaimer (U3)', (await presets.getByRole('button').count()) === 6);
 
   await presets.getByRole('button', { name: 'Tambah preset Sale' }).click();
   await page.locator('.track .clip', { hasText: 'DISKON 50%' }).waitFor();

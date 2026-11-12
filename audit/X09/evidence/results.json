@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-12T19:57:41.710Z",
+  "at": "2026-11-12T20:36:12.401Z",
   "passed": 13,
   "total": 13,
   "results": [
@@ -41,7 +41,7 @@
     {
       "id": "X9-08 Daftar proyek menandai varian (V1 ✓, V2, V3)",
       "ok": true,
-      "detail": "V2 · Revisi 3 · 13 Nov 2026, 02.57 | V1 ✓ · Revisi 2 · 13 Nov 2026, 02.57 | V3 · Revisi 1 · 13 Nov 2026, 02.57 | Revisi 1 · 13 Nov 2026, 02.57"
+      "detail": "V2 · Revisi 3 · 13 Nov 2026, 03.36 | V1 ✓ · Revisi 2 · 13 Nov 2026, 03.36 | V3 · Revisi 1 · 13 Nov 2026, 03.36 | Revisi 1 · 13 Nov 2026, 03.36"
     },
     {
       "id": "X9-09 Hanya yang disetujui & belum diubah dirender; sisanya dijelaskan",

@@ -16,7 +16,8 @@ export const PLAN_SCHEMA_VERSION = 1;
 export const MAX_PLAN_OPS = 60;
 export const MAX_PROMPT_LEN = 1000;
 
-export type PlanSource = 'local' | 'ai' | 'transcript' | 'analysis';
+/** `engine` (U6): a plan made by the engine CLI (Generate Otomatis / Batch Remix). */
+export type PlanSource = 'local' | 'ai' | 'transcript' | 'analysis' | 'engine';
 
 export interface PlanOperation {
   op: EditOp;
@@ -72,7 +73,7 @@ function findClip(t: Timeline, id: string) {
   return null;
 }
 
-const STYLE_WORD: Record<keyof TextStyle, string> = { x: 'posisi', y: 'posisi', size: 'ukuran', width: 'lebar', color: 'warna', bg: 'kotak', bg_opacity: 'opasitas kotak', bold: 'tebal', outline: 'outline', align: 'perataan', font: 'font', anim: 'animasi', anim_ms: 'durasi animasi', highlight: 'sorot kata' };
+const STYLE_WORD: Record<keyof TextStyle, string> = { x: 'posisi', y: 'posisi', size: 'ukuran', width: 'lebar', color: 'warna', bg: 'kotak', bg_opacity: 'opasitas kotak', bold: 'tebal', outline: 'outline', align: 'perataan', font: 'font', anim: 'animasi', anim_ms: 'durasi animasi', highlight: 'sorot kata', bg_blur: 'kotak kaca' };
 /** "warna #e53935, kotak, posisi" — which properties a style change touches. */
 export const styleSummary = (s: Partial<TextStyle>) =>
   [
@@ -122,6 +123,8 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return `Ubah gaya ${ref(op.clip_id)}: ${styleSummary(op.style)}`;
     case 'set_volume':
       return op.volume === 0 ? `Bisukan ${ref(op.clip_id)}` : `Volume ${ref(op.clip_id)} → ${Math.round(op.volume * 100)}%`;
+    case 'set_framing':
+      return [op.crop === null ? `Tampilkan bingkai penuh ${ref(op.clip_id)}` : op.crop ? `Crop ${ref(op.clip_id)} ke ${Math.round(op.crop.w * 100)}%×${Math.round(op.crop.h * 100)}%` : '', op.blur ? (op.blur.length ? `${op.blur.length} area blur di ${ref(op.clip_id)}` : `Hapus blur ${ref(op.clip_id)}`) : ''].filter(Boolean).join(' · ');
     case 'set_track_mute':
       return `${op.muted ? 'Bisukan' : 'Nyalakan suara'} track ${TRACK_NAME[op.track_kind]}`;
   }
@@ -296,7 +299,7 @@ export function parseStyleWords(low: string, base?: Partial<TextStyle>, brand?: 
     }
   }
   const colorOf = (w: string) => (/^#[0-9a-f]{6}$/.test(w) ? w : Object.hasOwn(COLOR_WORDS, w) ? COLOR_WORDS[w] : undefined); // G-4: no inherited keys
-  const preset = /\b(?:preset|jadikan|gaya|style)\s+(hook|usp|cta|sale|subtitle)\b/.exec(low);
+  const preset = /\b(?:preset|jadikan|gaya|style)\s+(hook|usp|cta|sale|subtitle|disclaimer)\b/.exec(low);
   if (preset) {
     style = { ...presetById(preset[1] as PresetId)!.style };
     hit = true;

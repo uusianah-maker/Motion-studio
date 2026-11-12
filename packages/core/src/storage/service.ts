@@ -18,6 +18,7 @@ import { newId } from './ids.js';
 import * as admin from './projectAdmin.js';
 import * as brand from './brand.js';
 import * as variants from './variants.js';
+import * as engine from './engine.js';
 import { type Workspace, readProject, withWorkspaceLock } from './workspace.js';
 
 /**
@@ -126,6 +127,12 @@ export class StorageService {
 
   listVariants(masterId: string) {
     return variants.listVariants(this.ws, masterId);
+  }
+
+  // ---- U5 Batch Remix: approve / strike rows of an engine batch
+  decideBatch(input: { project_id: string; job_id: string; rows: unknown; config: engine.EngineConfig | null; actor: Actor }) {
+    if (input.actor !== 'user') throw new StorageError('FORBIDDEN', 'Hanya pengguna yang boleh menyetujui batch');
+    return mutate(this.ws, 'svc.decideBatch', input.actor, () => engine.decideBatch(this.ws, input.config, { ...input, actor: 'user', newId: newProjectId }));
   }
 
   // ---- X06 Brand Kit (workspace level). Saving reconciles clocks: font/logo become held.
@@ -265,6 +272,7 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_canvas: 'Ubah rasio',
   set_style: 'Ubah gaya teks',
   set_volume: 'Ubah volume',
+  set_framing: 'Crop / blur',
   set_brand_logo: 'Logo brand',
   remove_range: 'Hapus jeda',
   set_loudness: 'Loudness',

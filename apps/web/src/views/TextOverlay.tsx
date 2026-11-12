@@ -1,5 +1,5 @@
 import { type CSSProperties, useRef, useState } from 'react';
-import { type TextStyle, effectiveStyle, layoutText } from '../../../../packages/core/dist/storage/textStyle.js';
+import { type TextStyle, contrastText, effectiveStyle, layoutText } from '../../../../packages/core/dist/storage/textStyle.js';
 import { spokenCount, wordKey } from '../../../../packages/core/dist/storage/words.js';
 import type { Clip } from '../api';
 import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY } from '../brand';
@@ -35,7 +35,16 @@ function renderText(clip: Clip, s: TextStyle, ratio: string, time: number | unde
               className={`w${fresh ? ` wanim ${anim}` : ''}`}
               data-word={w.text}
               data-hot={hot || undefined}
-              style={{ visibility: i < spoken ? 'visible' : 'hidden', color: hot ? s.highlight!.color : undefined, display: 'inline-block', transform: hot && s.highlight!.scale !== 1 ? `scale(${s.highlight!.scale})` : undefined, animationDuration: `${s.anim_ms}ms` }}
+              style={{
+                visibility: i < spoken ? 'visible' : 'hidden',
+                color: hot ? (s.highlight!.box ? contrastText(s.highlight!.color) : s.highlight!.color) : undefined,
+                background: hot && s.highlight!.box ? s.highlight!.color : undefined,
+                padding: hot && s.highlight!.box ? '0 0.18em' : undefined,
+                borderRadius: hot && s.highlight!.box ? '0.18em' : undefined,
+                display: 'inline-block',
+                transform: hot && s.highlight!.scale !== 1 ? `scale(${s.highlight!.scale})` : undefined,
+                animationDuration: `${s.anim_ms}ms`,
+              }}
             >
               {w.text}
             </span>
@@ -94,6 +103,8 @@ export function TextOverlay({
     textAlign: s.align,
     background: s.bg ? rgba(s.bg, s.bg_opacity) : 'transparent',
     padding: s.bg ? `${px * 0.4}px` : 0,
+    // U3c: frosted glass behind the box (render: gblur of the same area).
+    ...(s.bg_blur > 0 ? { backdropFilter: `blur(${(s.bg_blur * Math.min(canvas.w, canvas.h)) / 1080}px)`, WebkitBackdropFilter: `blur(${(s.bg_blur * Math.min(canvas.w, canvas.h)) / 1080}px)` } : {}),
     textShadow: s.outline ? `0 0 ${Math.max(1, px * 0.06)}px #000c, 0 ${px * 0.08}px ${px * 0.12}px #0009` : 'none',
     pointerEvents: onSelect ? 'auto' : 'none',
     cursor: onMove ? 'move' : undefined,

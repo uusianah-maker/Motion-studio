@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
 import { type GoogleAuth, createGoogleAuth, parseAllowlist } from './auth.js';
-import { type CycleResult, RENDER_TMP_PREFIX, type RecoveryReport, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
+import { type CycleResult, RENDER_TMP_PREFIX, type RecoveryReport, engineConfigFromEnv, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
 import { openSpendGate } from './ai/budget.js';
 import { createAiPlanner } from './ai/planner.js';
 import { createRouter } from './ai/router.js';
@@ -20,6 +20,7 @@ import { openAiStore } from './ai/store.js';
 import { createCopilot } from './copilot.js';
 import { STT_TMP_PREFIX, transcribeRoutes } from './transcribe.js';
 import { cutRoutes } from './cuts.js';
+import { engineRoutes } from './engine.js';
 import { createRenderJobs } from './render.js';
 import { apiRoutes, sweepUploadTemp } from './routes.js';
 import { createStreamSigner } from './stream.js';
@@ -109,7 +110,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot })],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...engineRoutes(ws, { copilot, config: engineConfigFromEnv(env), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) })],
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 

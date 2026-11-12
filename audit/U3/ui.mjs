@@ -98,9 +98,10 @@ try {
   });
   await page.reload();
   await page.getByRole('heading', { name: 'Uji U3' }).waitFor();
-  const ruler = await page.getByRole('slider', { name: 'Posisi playhead' }).boundingBox();
   const total = Number(await page.getByRole('slider', { name: 'Posisi playhead' }).getAttribute('aria-valuemax'));
   const seek = async (ms) => {
+    // Re-measure: new track rows (Efek, SFX) move the ruler down.
+    const ruler = await page.getByRole('slider', { name: 'Posisi playhead' }).boundingBox();
     await page.mouse.click(ruler.x + (ruler.width * ms) / total, ruler.y + ruler.height / 2);
     await page.waitForTimeout(250);
   };
@@ -120,6 +121,51 @@ try {
   await page.getByRole('button', { name: 'Tambah musik musik.wav' }).click();
   check('U3b-05 "＋ Musik" menaruh musik di track Musik (terpisah dari Audio & SFX)', await until(async () => (await proj()).timeline.tracks.find((t) => t.kind === 'music')?.clips.length === 1));
   await page.screenshot({ path: path.join(EVID, 'captions.png') });
+
+  // U3c — zoom + glass.
+  await seek(400);
+  await page.getByRole('button', { name: '＋ Zoom' }).click();
+  check('U3c-01 "＋ Zoom" menaruh efek zoom 1 dtk di track Efek', await until(async () => (await proj()).timeline.tracks.find((t) => t.kind === 'effects')?.clips[0]?.effect?.type === 'zoom'));
+  await page.locator('.track .clip.effects').first().waitFor();
+  const zc = (await proj()).timeline.tracks.find((t) => t.kind === 'effects').clips[0];
+  await seek(zc.start_ms + 500);
+  const z = Number(await page.locator('video[aria-label="Video pratinjau"]').getAttribute('data-zoom'));
+  check('U3c-02 Pratinjau: video membesar di dalam efek (kurva sama dengan render)', z > 1.15 && z <= 1.2, String(z));
+  await page.locator('.track .clip.effects').first().click();
+  await page.getByRole('group', { name: 'Efek zoom' }).getByLabel('Jenis efek').selectOption('zoom_through');
+  check('U3c-03 Inspector efek: ganti ke Zoom-through tersimpan (satu langkah)', await until(async () => (await proj()).timeline.tracks.find((t) => t.kind === 'effects')?.clips[0]?.effect?.type === 'zoom_through'));
+  const rev = (await proj()).revision;
+  await svc.editTimeline({ project_id: 'u3', expected_revision: rev, actor: 'user', ops: [{ op: 'add_clip', track_kind: 'text', text: 'Kaca', style: { bg: '#ffffff', bg_opacity: 0.25, bg_blur: 12 }, start_ms: 0, duration_ms: 3000 }] });
+  await page.reload();
+  await page.getByRole('heading', { name: 'Uji U3' }).waitFor();
+  const glass = await page.evaluate(() => getComputedStyle([...document.querySelectorAll('.overlayText[data-kind="text"]')].find((e) => e.textContent.includes('Kaca'))).backdropFilter);
+  check('U3c-04 Kotak kaca: pratinjau memburamkan latar di belakang teks', /blur\(/.test(glass), glass);
+  await page.locator('.track .clip.text', { hasText: 'Kaca' }).click();
+  check('U3c-05 Inspector teks: slider "Kotak kaca (blur)" menunjukkan nilainya', (await page.getByRole('region', { name: 'Inspector klip' }).getByLabel('Kotak kaca blur').inputValue()) === '12');
+  await page.screenshot({ path: path.join(EVID, 'zoom-glass.png') });
+
+  // U3d — crop + blur areas on a video clip (canvas 1:1, source 9:16 → crop the middle).
+  await page.getByLabel('Rasio canvas').selectOption('1:1');
+  await until(async () => (await proj()).timeline.canvas?.ratio === '1:1');
+  await page.locator('.track .clip.video').first().click();
+  const fr = page.getByRole('group', { name: 'Bingkai (crop & blur)' });
+  await fr.getByLabel('Crop klip').selectOption('fill');
+  const vclip = async () => (await proj()).timeline.tracks.find((t) => t.kind === 'video').clips[0];
+  check('U3d-01 Inspector: "Isi canvas" menyimpan crop tengah (1:1 dari sumber 9:16)', await until(async () => JSON.stringify((await vclip()).crop) === JSON.stringify({ x: 0, y: 0.2188, w: 1, h: 0.5625 })), JSON.stringify((await vclip()).crop));
+  await fr.getByRole('button', { name: '＋ Blur area' }).click();
+  check('U3d-02 "＋ Blur area" menyimpan area blur sepanjang klip (waktu sumber)', await until(async () => (await vclip()).blur?.length === 1));
+  const vc = await vclip();
+  await seek(vc.start_ms + 300);
+  const crop = await page.locator('video[aria-label="Video pratinjau"]').getAttribute('data-crop');
+  const vb = await page.locator('video[aria-label="Video pratinjau"]').evaluate((v) => getComputedStyle(v).objectViewBox ?? v.style.objectViewBox);
+  check('U3d-03 Pratinjau: video menampilkan bagian yang di-crop', crop === '0,0.2188,1,0.5625' && /^inset\(21\.8\d% 0%( 21\.8\d%)?/.test(vb), `${crop} ${vb}`);
+  const bb = await page.locator('.blurBox').first().evaluate((e) => getComputedStyle(e).backdropFilter);
+  check('U3d-04 Pratinjau: area blur memburamkan video di posisinya', /blur\(/.test(bb), bb);
+  await page.screenshot({ path: path.join(EVID, 'crop-blur.png') });
+  await page.locator('.track .clip.video').first().click(); // the ruler click cleared the selection
+  await fr.getByRole('button', { name: /Hapus 1 blur/ }).click();
+  await fr.getByLabel('Crop klip').selectOption('full');
+  check('U3d-05 Hapus blur + bingkai penuh kembali ke video asli', await until(async () => { const c = await vclip(); return !c.crop && !c.blur; }));
 
   check('U3-99 0 error JS', errors.length === 0, errors.join(' | '));
 } catch (e) {

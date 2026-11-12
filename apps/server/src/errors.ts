@@ -17,6 +17,9 @@ export type HttpErrorCode =
   | 'AI_UNAVAILABLE'
   | 'AI_OUTPUT_INVALID'
   | 'BUDGET_EXCEEDED'
+  | 'ENGINE_MISSING'
+  | 'NOT_RUNNING'
+  | 'NOT_READY'
   | 'INTERNAL';
 
 /** Typed API error: `{ error: { code, message } }` with a fitting HTTP status. */

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { fillCrop } from '../../../../packages/core/dist/storage/framing.js';
 import { TEXT_PRESETS } from '../../../../packages/core/dist/storage/textPresets.js';
 import { DEFAULT_STYLES, type TextStyle, effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import type { BrandKit, Clip, EditOp, Track } from '../api';
@@ -23,6 +24,8 @@ export function InspectorPanel({
   readOnly = false,
   brand = null,
   onCutReview,
+  sourceSize = null,
+  canvasRatio = 9 / 16,
 }: {
   clip: SelectedClip;
   name: string;
@@ -36,6 +39,9 @@ export function InspectorPanel({
   brand?: BrandKit | null;
   /** X07: open "Deteksi jeda & adegan" for this media clip. */
   onCutReview?: () => void;
+  /** U3d: source frame size (probe) and canvas ratio w/h for the "fill" crop. */
+  sourceSize?: { w: number; h: number } | null;
+  canvasRatio?: number;
 }) {
   const isText = clip.kind === 'text' || clip.kind === 'subtitle';
   const [start, setStart] = useState(sec(clip.start_ms));
@@ -43,6 +49,16 @@ export function InspectorPanel({
   const [text, setText] = useState(clip.text ?? '');
   const [draft, setDraft] = useState<Partial<TextStyle>>({});
   const [vol, setVol] = useState(Math.round((clip.volume ?? 1) * 100));
+  // U3c: effect edits replace the clip in one step (delete + add = one undo).
+  const effectDraft = useRef(clip.effect ?? null);
+  const setEffectDraft = (e: NonNullable<Clip['effect']>) => {
+    effectDraft.current = e;
+  };
+  const commitEffect = () => {
+    const e = effectDraft.current;
+    if (!e || JSON.stringify(e) === JSON.stringify(clip.effect)) return;
+    submit([{ op: 'delete_clip', clip_id: clip.clip_id }, { op: 'add_clip', track_kind: 'effects', start_ms: clip.start_ms, duration_ms: clip.end_ms - clip.start_ms, effect: e }]);
+  };
   const volTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyRef = useRef(busy);
@@ -179,6 +195,68 @@ export function InspectorPanel({
           </span>
         </div>
       )}
+      {clip.effect && (
+        <div className="inspGrid" role="group" aria-label="Efek zoom">
+          <label>
+            Efek
+            <select aria-label="Jenis efek" value={clip.effect.type === 'zoom' ? `zoom-${clip.effect.mode}` : 'zoom_through'} onChange={(e) => {
+              const v = e.target.value;
+              const base = { scale: clip.effect!.scale, x: clip.effect!.x, y: clip.effect!.y };
+              submit([{ op: 'delete_clip', clip_id: clip.clip_id }, { op: 'add_clip', track_kind: 'effects', start_ms: clip.start_ms, duration_ms: clip.end_ms - clip.start_ms, effect: v === 'zoom_through' ? { type: 'zoom_through', ...base } : { type: 'zoom', mode: v === 'zoom-cut' ? 'cut' : 'smooth', ...base } }]);
+            }}>
+              <option value="zoom-smooth">Zoom halus (punch-in)</option>
+              <option value="zoom-cut">Zoom langsung (cut)</option>
+              <option value="zoom_through">Zoom-through (transisi)</option>
+            </select>
+          </label>
+          <label>
+            Besar zoom {clip.effect.scale.toFixed(2)}×
+            <input type="range" aria-label="Besar zoom" min={102} max={250} key={`${clip.clip_id}:${clip.effect.scale}`} defaultValue={Math.round(clip.effect.scale * 100)} onChange={(e) => setEffectDraft({ ...clip.effect!, scale: Number(e.target.value) / 100 })} onPointerUp={commitEffect} onKeyUp={commitEffect} onBlur={commitEffect} />
+          </label>
+        </div>
+      )}
+      {clip.media && (clip.kind === 'video' || clip.kind === 'broll') && (
+        <div className="inspGrid" role="group" aria-label="Bingkai (crop & blur)">
+          <label>
+            Crop
+            <select
+              aria-label="Crop klip"
+              value={!clip.crop ? 'full' : sourceSize && JSON.stringify(clip.crop) === JSON.stringify(fillCrop(sourceSize, canvasRatio)) ? 'fill' : 'custom'}
+              onChange={(e) => {
+                if (e.target.value === 'full') submit([{ op: 'set_framing', clip_id: clip.clip_id, crop: null }]);
+                else if (e.target.value === 'fill' && sourceSize) {
+                  const c = fillCrop(sourceSize, canvasRatio);
+                  submit([{ op: 'set_framing', clip_id: clip.clip_id, crop: c.w === 1 && c.h === 1 ? null : c }]); // same shape as the canvas: nothing to crop
+                }
+              }}
+            >
+              <option value="full">Bingkai penuh</option>
+              <option value="fill" disabled={!sourceSize}>
+                Isi canvas (crop tengah)
+              </option>
+              {clip.crop && <option value="custom">Crop khusus {`${Math.round(clip.crop.w * 100)}%×${Math.round(clip.crop.h * 100)}%`}</option>}
+            </select>
+          </label>
+          <span className="row" style={{ gap: 6, alignItems: 'end', flexWrap: 'wrap' }}>
+            <button
+              className="btn small"
+              disabled={(clip.blur?.length ?? 0) >= 8}
+              title="Blur area di tengah bingkai selama klip ini (geser angka lewat rencana engine)"
+              onClick={() => {
+                const from = clip.in_ms ?? 0;
+                submit([{ op: 'set_framing', clip_id: clip.clip_id, blur: [...(clip.blur ?? []), { x: 0.35, y: 0.4, w: 0.3, h: 0.2, dari_ms: from, sampai_ms: from + (clip.end_ms - clip.start_ms), radius: 20 }] }]);
+              }}
+            >
+              ＋ Blur area
+            </button>
+            {!!clip.blur?.length && (
+              <button className="btn small" onClick={() => submit([{ op: 'set_framing', clip_id: clip.clip_id, blur: [] }])}>
+                Hapus {clip.blur.length} blur
+              </button>
+            )}
+          </span>
+        </div>
+      )}
       {clip.media && onCutReview && (
         <button className="btn small" onClick={onCutReview} title="Cari jeda & pergantian adegan, lalu pilih yang mau dipotong (FFmpeg, tanpa AI)">
           ✂ Deteksi jeda & adegan
@@ -251,6 +329,12 @@ export function InspectorPanel({
                 <input type="range" aria-label="Opasitas kotak" min={0} max={100} value={Math.round(s.bg_opacity * 100)} onChange={(e) => change({ bg_opacity: Number(e.target.value) / 100 })} />
               </label>
             )}
+            {s.bg && (
+              <label>
+                Kotak kaca (blur) {s.bg_blur}
+                <input type="range" aria-label="Kotak kaca blur" min={0} max={30} value={s.bg_blur} onChange={(e) => change({ bg_blur: Number(e.target.value) })} />
+              </label>
+            )}
           </div>
           <div className="inspGrid">
             <label>
@@ -276,14 +360,17 @@ export function InspectorPanel({
                 key={`${clip.clip_id}:${(s.highlight?.words ?? []).join('|')}`}
                 onBlur={(e) => {
                   const words = e.target.value.split(',').flatMap((w) => w.trim().split(/\s+/)).filter(Boolean);
-                  change({ highlight: words.length || s.highlight?.current ? { words, color: s.highlight?.color ?? brand?.colors[1] ?? '#ffd23f', scale: s.highlight?.scale ?? 1.15, current: s.highlight?.current ?? false } : null });
+                  change({ highlight: words.length || s.highlight?.current ? { words, color: s.highlight?.color ?? brand?.colors[1] ?? '#ffd23f', scale: s.highlight?.scale ?? 1.15, current: s.highlight?.current ?? false, box: s.highlight?.box ?? false } : null });
                 }}
               />
-              <input type="color" aria-label="Warna sorot" value={s.highlight?.color ?? '#ffd23f'} onChange={(e) => change({ highlight: { words: s.highlight?.words ?? [], scale: s.highlight?.scale ?? 1.15, current: s.highlight?.current ?? false, color: e.target.value } })} />
+              <input type="color" aria-label="Warna sorot" value={s.highlight?.color ?? '#ffd23f'} onChange={(e) => change({ highlight: { words: s.highlight?.words ?? [], scale: s.highlight?.scale ?? 1.15, current: s.highlight?.current ?? false, box: s.highlight?.box ?? false, color: e.target.value } })} />
             </span>
           </label>
           <label className="inline">
-            <input type="checkbox" aria-label="Sorot kata yang sedang diucapkan" checked={!!s.highlight?.current} onChange={(e) => change({ highlight: { words: s.highlight?.words ?? [], color: s.highlight?.color ?? '#ffd23f', scale: s.highlight?.scale ?? 1.15, current: e.target.checked } })} /> Sorot kata yang sedang diucapkan
+            <input type="checkbox" aria-label="Sorot kata yang sedang diucapkan" checked={!!s.highlight?.current} onChange={(e) => change({ highlight: { words: s.highlight?.words ?? [], color: s.highlight?.color ?? '#ffd23f', scale: s.highlight?.scale ?? 1.15, box: s.highlight?.box ?? false, current: e.target.checked } })} /> Sorot kata yang sedang diucapkan
+          </label>
+          <label className="inline">
+            <input type="checkbox" aria-label="Kotak di belakang kata sorot" checked={!!s.highlight?.box} onChange={(e) => change({ highlight: { words: s.highlight?.words ?? [], color: s.highlight?.color ?? '#ffd23f', scale: s.highlight?.scale ?? 1.15, current: s.highlight?.current ?? false, box: e.target.checked } })} /> Kotak warna sorot di belakang kata
           </label>
           <label className="inspFull">
             Font

@@ -12,7 +12,7 @@
  */
 import { type FontInfo, assFontSize } from './fontInfo.js';
 import type { Clip, TrackKind } from './project.js';
-import { type TextStyle, effectiveStyle, layoutText } from './textStyle.js';
+import { type TextStyle, contrastText, effectiveStyle, layoutText } from './textStyle.js';
 import { type Word, wordKey } from './words.js';
 
 export const DEFAULT_FONT_INFO: FontInfo = { family: 'Arial', unitsPerEm: 2048, winHeight: 2288, bold: true };
@@ -84,6 +84,8 @@ export function buildAss(input: AssInput): string {
       box ? `\\3c${assColor(s.bg!)}\\3a${assAlpha(s.bg_opacity)}\\bord${Math.round(px * 0.4)}\\shad0` : s.outline ? `\\3c&H000000&\\3a&H33&\\bord${Math.max(2, Math.round(px * 0.06))}\\4c&H000000&\\4a&H66&\\shad${Math.round(px * 0.08)}` : '\\bord0\\shad0',
     ].join('');
     const style = box ? 'Box' : 'Line';
+    // Back to the clip's own border after a boxed keyword.
+    const restore = s.highlight?.box ? (box ? `\\3c${assColor(s.bg!)}\\3a${assAlpha(s.bg_opacity)}\\bord${Math.round(px * 0.4)}` : s.outline ? `\\3c&H000000&\\3a&H33&\\bord${Math.max(2, Math.round(px * 0.06))}\\shad${Math.round(px * 0.08)}` : '\\bord0\\shad0') : '';
     const hl = s.highlight;
     const keys = new Set((hl?.words ?? []).map(wordKey));
     const words: Word[] = clip.words?.length ? clip.words : clip.text.split(/\s+/).filter(Boolean).map((t) => ({ text: t, start_ms: 0, end_ms: end - clip.start_ms }));
@@ -98,7 +100,9 @@ export function buildAss(input: AssInput): string {
     }
     const wordTag = (w: Word, i: number, state: 'hidden' | 'new' | 'shown', current: boolean) => {
       const isKey = keys.has(wordKey(w.text));
-      const color = (isKey || (current && hl?.current)) && hl ? `\\c${assColor(hl.color)}` : `\\c${assColor(s.color)}`;
+      const hot = (isKey || (current && !!hl?.current)) && !!hl;
+      // Boxed keyword: a thick outline in the highlight colour behind the word, text in contrast.
+      const color = hot ? (hl!.box ? `\\c${assColor(contrastText(hl!.color))}\\3c${assColor(hl!.color)}\\3a&H00&\\bord${Math.max(2, Math.round(px * 0.18))}\\shad0` : `\\c${assColor(hl!.color)}`) : `\\c${assColor(s.color)}${restore}`;
       const scale = (isKey || (current && hl?.current)) && hl ? Math.round(hl.scale * 100) : 100;
       if (state === 'hidden') return `{\\alpha&HFF&\\fscx${scale}\\fscy${scale}${color}}`;
       if (state === 'new' && s.anim === 'pop') return `{\\alpha&H00&${color}\\fscx${Math.round(scale * 0.7)}\\fscy${Math.round(scale * 0.7)}\\t(0,${s.anim_ms},\\fscx${scale}\\fscy${scale})}`;

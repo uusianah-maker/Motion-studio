@@ -30,6 +30,30 @@ export type { RestoreResult } from './storage/restore.js';
 export { type CycleResult, GcScheduler } from './storage/scheduler.js';
 export { recoverOnStartup, type RecoveryReport } from './storage/recovery.js';
 export { StorageService, describeOps } from './storage/service.js';
+export { type ClipEffect, RAMP_MS, validateEffect, zoomAt } from './storage/effects.js';
+export { type BlurRegion, type Crop, fillCrop, validateBlur, validateCrop } from './storage/framing.js';
+export {
+  type EngineConfig,
+  type EngineJobInput,
+  type EngineMode,
+  type EnginePlan,
+  type EngineStatus,
+  engineConfigFromEnv,
+  isJobId,
+  listEngineJobs,
+  loadEnginePlan,
+  prepareEngineJob,
+  readBatchDecisions,
+  decideBatch,
+  type BatchDecision,
+  readEngineBatch,
+  readEngineLog,
+  readEngineStatus,
+  runEngineJob,
+  settleOrphanJob,
+  validateEngineJob,
+} from './storage/engine.js';
+export { type Word as CaptionWord, sliceWords } from './storage/words.js';
 export { MAX_VARIANTS_PER_RUN, type VariantState, validateBriefs, variantOps, variantState } from './storage/variants.js';
 export { type BrandGuard, EMPTY_GUARD, GUARD_LIMITS, type GuardIssue, bannedIn, checkBrandGuard, localDate } from './storage/brandGuard.js';
 export { ANALYSIS_LIMITS, type AnalysisParams, DEFAULT_ANALYSIS, MAX_CUTS, type MediaAnalysis, analyzeMedia, cutOps } from './storage/analysis.js';

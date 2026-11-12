@@ -198,7 +198,7 @@ function commit(s: Stored, expected: number, ops: EditOp[], label: string): Proj
   return view(s);
 }
 
-const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_brand_logo: 'Logo brand', remove_range: 'Hapus jeda', split_at: 'Potong di adegan', set_loudness: 'Loudness', set_track_mute: 'Bisukan/nyalakan track' };
+const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_framing: 'Crop / blur', set_brand_logo: 'Logo brand', remove_range: 'Hapus jeda', split_at: 'Potong di adegan', set_loudness: 'Loudness', set_track_mute: 'Bisukan/nyalakan track' };
 
 // ------------------------------------------------------------------ copilot plans
 const plans = new Map<string, { plan: EditPlan; status: 'proposed' | 'applied' | 'rejected'; applied_revision: number | null }>();
@@ -691,6 +691,14 @@ export function createDemoApi(): Api {
       if (j.status === 'running' || j.status === 'queued') Object.assign(j, { status: 'cancelled', finished_at: now(), error: { code: 'CANCELLED', message: 'Render dibatalkan' } });
       return clone(j);
     },
+    engineInfo: async () => ({ installed: false, running: 0, waiting: 0 }),
+    engineJobs: async () => [],
+    engineStart: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
+    engineJob: async () => fail(404, 'NOT_FOUND', 'Job mesin tidak ditemukan'),
+    engineCancel: async () => fail(409, 'NOT_RUNNING', 'Job tidak sedang berjalan'),
+    enginePlan: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
+    engineBatch: async () => fail(404, 'NOT_FOUND', 'batch.json belum ada'),
+    engineDecide: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
     outputUrl: async () => ({ url: sampleUrl('hook') ?? fail(404, 'NOT_FOUND', 'Video contoh tidak termuat'), expires_at: now() + 600_000 }),
   };
   return api;

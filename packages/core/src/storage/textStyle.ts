@@ -26,6 +26,8 @@ export interface TextStyle {
   align: TextAlign;
   /** X06/U1: 'brand' = the brand's title font, 'caption' = its caption font (default font if missing). */
   font: 'default' | 'brand' | 'caption';
+  /** U3c: frosted-glass box — blur of the picture behind the text box (0 = off, max 30). */
+  bg_blur: number;
   /** U3b: how text (or each word of a caption with word timings) appears. */
   anim: 'none' | 'pop' | 'fade';
   anim_ms: number;
@@ -39,18 +41,26 @@ export interface TextHighlight {
   /** 1 = same size, 1.3 = 30 % bigger. */
   scale: number;
   current: boolean;
+  /** U3c: draw a box in the highlight colour behind the word (text then black/white for contrast). */
+  box: boolean;
 }
+
+/** Black or white, whichever reads better on `hex`. */
+export const contrastText = (hex: string): string => {
+  const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  return 0.2126 * v[0]! + 0.7152 * v[1]! + 0.0722 * v[2]! > 0.55 ? '#000000' : '#ffffff';
+};
 
 export type TextKind = 'text' | 'subtitle';
 
 export const DEFAULT_STYLES: Record<TextKind, TextStyle> = {
-  text: { x: 0.5, y: 0.2, size: 6.2, width: 0.84, color: '#ffffff', bg: null, bg_opacity: 0.6, bold: true, outline: true, align: 'center', font: 'default', anim: 'none', anim_ms: 120, highlight: null },
-  subtitle: { x: 0.5, y: 0.78, size: 4.5, width: 0.76, color: '#ffffff', bg: '#000000', bg_opacity: 0.62, bold: true, outline: false, align: 'center', font: 'default', anim: 'none', anim_ms: 120, highlight: null },
+  text: { x: 0.5, y: 0.2, size: 6.2, width: 0.84, color: '#ffffff', bg: null, bg_opacity: 0.6, bold: true, outline: true, align: 'center', font: 'default', bg_blur: 0, anim: 'none', anim_ms: 120, highlight: null },
+  subtitle: { x: 0.5, y: 0.78, size: 4.5, width: 0.76, color: '#ffffff', bg: '#000000', bg_opacity: 0.62, bold: true, outline: false, align: 'center', font: 'default', bg_blur: 0, anim: 'none', anim_ms: 120, highlight: null },
 };
 
 export const STYLE_LIMITS = { size: [2, 20], width: [0.2, 1] } as const;
 const HEX = /^#[0-9a-f]{6}$/;
-const KEYS: readonly (keyof TextStyle)[] = ['x', 'y', 'size', 'width', 'color', 'bg', 'bg_opacity', 'bold', 'outline', 'align', 'font', 'anim', 'anim_ms', 'highlight'];
+const KEYS: readonly (keyof TextStyle)[] = ['x', 'y', 'size', 'width', 'color', 'bg', 'bg_opacity', 'bold', 'outline', 'align', 'font', 'bg_blur', 'anim', 'anim_ms', 'highlight'];
 
 const bad = (msg: string): never => {
   throw new StorageError('EDIT_INVALID', msg);
@@ -63,7 +73,7 @@ export function validateStyle(raw: unknown, where = 'style'): Partial<TextStyle>
   const extra = Object.keys(o).filter((k) => !KEYS.includes(k as keyof TextStyle));
   if (extra.length) bad(`${where}: field tidak dikenal ${extra.join(', ')}`);
   const out: Partial<TextStyle> = {};
-  const num = (k: 'x' | 'y' | 'size' | 'width' | 'bg_opacity' | 'anim_ms', min: number, max: number) => {
+  const num = (k: 'x' | 'y' | 'size' | 'width' | 'bg_opacity' | 'anim_ms' | 'bg_blur', min: number, max: number) => {
     if (o[k] === undefined) return;
     const v = o[k];
     if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) bad(`${where}.${k} harus angka ${min}–${max}`);
@@ -100,17 +110,20 @@ export function validateStyle(raw: unknown, where = 'style'): Partial<TextStyle>
     out.anim = o.anim as TextStyle['anim'];
   }
   num('anim_ms', 0, 2000);
+  num('bg_blur', 0, 30);
   if (o.highlight !== undefined) {
     if (o.highlight === null) out.highlight = null;
     else {
       const h = o.highlight as Record<string, unknown>;
-      if (typeof h !== 'object' || Array.isArray(h) || Object.keys(h).some((k) => !['words', 'color', 'scale', 'current'].includes(k))) bad(`${where}.highlight tidak valid`);
+      if (typeof h !== 'object' || Array.isArray(h) || Object.keys(h).some((k) => !['words', 'color', 'scale', 'current', 'box'].includes(k))) bad(`${where}.highlight tidak valid`);
       const words = h.words === undefined ? [] : Array.isArray(h.words) ? (h.words as unknown[]) : bad(`${where}.highlight.words harus daftar`);
       if (words.length > 30) bad(`${where}.highlight.words maksimal 30`);
       const color = h.color === undefined ? '#ffd23f' : typeof h.color === 'string' && HEX.test(h.color.toLowerCase()) ? h.color.toLowerCase() : bad(`${where}.highlight.color harus #rrggbb`);
       const scale = h.scale === undefined ? 1.15 : typeof h.scale === 'number' && h.scale >= 1 && h.scale <= 2 ? Math.round(h.scale * 100) / 100 : bad(`${where}.highlight.scale harus 1–2`);
       const current = h.current === undefined ? false : typeof h.current === 'boolean' ? h.current : bad(`${where}.highlight.current harus true/false`);
+      const boxed = h.box === undefined ? false : typeof h.box === 'boolean' ? h.box : bad(`${where}.highlight.box harus true/false`);
       out.highlight = {
+        box: boxed,
         words: [...new Set(words.map((w, i) => (typeof w === 'string' && w.trim() && w.length <= 40 ? w.trim() : bad(`${where}.highlight.words[${i}] tidak valid`))))],
         color,
         scale,

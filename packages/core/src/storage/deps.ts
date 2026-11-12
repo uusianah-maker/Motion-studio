@@ -16,7 +16,8 @@ import { META_FILES, type Workspace, listProjectIds, manifestRel, metaPath, read
 
 // ------------------------------------------------------------------ leases
 
-export type JobKind = 'render' | 'ai';
+/** U6: `engine` = the engine CLI reading the sources while it plans. */
+export type JobKind = 'render' | 'ai' | 'engine';
 export type LeaseStatus = 'queued' | 'running';
 
 export interface LeasedMedia extends MediaRef {
@@ -49,7 +50,7 @@ function validateLeases(x: unknown): LeaseFile {
   const o = x as Partial<LeaseFile> | null;
   if (!o || o.schema_version !== 1 || !Array.isArray(o.leases)) bad('struktur');
   for (const l of o!.leases!) {
-    if (!isSafeId(l.lease_id) || (l.job !== 'render' && l.job !== 'ai') || (l.status !== 'queued' && l.status !== 'running') || !Array.isArray(l.media)) bad(`lease ${String(l?.lease_id)}`);
+    if (!isSafeId(l.lease_id) || (l.job !== 'render' && l.job !== 'ai' && l.job !== 'engine') || (l.status !== 'queued' && l.status !== 'running') || !Array.isArray(l.media)) bad(`lease ${String(l?.lease_id)}`);
     if (l.output_rel !== undefined && typeof l.output_rel !== 'string') bad(`lease ${l.lease_id} output`);
     if (l.worker_pid !== undefined && (!Number.isSafeInteger(l.worker_pid) || l.worker_pid <= 0)) bad(`lease ${l.lease_id} worker`);
     for (const m of l.media) if (!isSafeId(m.media_id) || !isSafeId(m.version_id) || typeof m.content_hash !== 'string') bad(`lease ${l.lease_id} media`);

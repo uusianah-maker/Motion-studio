@@ -112,23 +112,31 @@ async function isStale(lockPath: string, info: Partial<LockInfo> | null): Promis
 }
 
 /**
- * Break a stale lock without deleting a *fresh* one created in between:
- * rename it aside, verify the renamed file is the one judged stale, otherwise
- * put it back with link() (atomic create-if-absent).
+ * Break a stale lock without deleting a *fresh* one created in between. Breakers are serialised
+ * by a short-lived `<lock>.break` guard (O_EXCL). Inside it the lock is re-read and judged stale
+ * again: only breakers ever delete a lock they do not own, so while we hold the guard the stale
+ * file cannot be swapped for a fresh one before we remove it.
+ * (The old rename-aside + link-back left a window where a third contender could enter while the
+ * fresh holder's file was aside: two holders at once under heavy load — test H2, 2026-11-13.)
  */
 async function breakStale(lockPath: string, expectedToken: string | undefined): Promise<void> {
-  const aside = `${lockPath}.stale.${process.pid}.${randomBytes(4).toString('hex')}`;
+  const guardPath = `${lockPath}.break`;
+  let fh;
   try {
-    await fsp.rename(lockPath, aside);
+    fh = await fsp.open(guardPath, 'wx');
   } catch {
-    return; // someone else already moved it
+    // Another breaker is at work. A guard left by a crashed breaker is cleared once it is old.
+    const st = await fsp.stat(guardPath).catch(() => null);
+    if (st && Date.now() - st.mtimeMs > LOCK_TIMING.staleMs) await fsp.rm(guardPath, { force: true }).catch(() => undefined);
+    return;
   }
-  const got = await readLock(aside);
-  if (got?.token !== expectedToken) {
-    // We grabbed a lock that is not the stale one: restore it if the slot is still free.
-    await fsp.link(aside, lockPath).catch(() => undefined);
+  try {
+    await fh.close();
+    const got = await readLock(lockPath);
+    if (got?.token === expectedToken && (await isStale(lockPath, got))) await withFsRetry(() => fsp.rm(lockPath, { force: true }));
+  } finally {
+    await withFsRetry(() => fsp.rm(guardPath, { force: true })).catch(() => undefined);
   }
-  await fsp.rm(aside, { force: true });
 }
 
 async function createLock(lockPath: string, info: LockInfo): Promise<boolean> {

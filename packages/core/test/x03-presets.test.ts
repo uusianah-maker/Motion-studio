@@ -28,8 +28,8 @@ const msg = (prompt: string, ctx: Parameters<typeof planLocal>[1] = sel) => {
 };
 
 describe('X03 text presets + Copilot style words', () => {
-  it('the preset table is valid and covers Hook / USP / CTA / Sale / Subtitle', () => {
-    expect(TEXT_PRESETS.map((p) => p.id)).toEqual(['hook', 'usp', 'cta', 'sale', 'subtitle']);
+  it('the preset table is valid and covers Hook / USP / CTA / Sale / Subtitle / Disclaimer', () => {
+    expect(TEXT_PRESETS.map((p) => p.id)).toEqual(['hook', 'usp', 'cta', 'sale', 'subtitle', 'disclaimer']);
     for (const p of TEXT_PRESETS) {
       expect(validateStyle(p.style)).toEqual(p.style);
       expect(p.text.length).toBeGreaterThan(0);
@@ -51,6 +51,9 @@ describe('X03 text presets + Copilot style words', () => {
     expect(run('kotak kuning')).toEqual([{ op: 'set_style', clip_id: textId, style: { bg: '#ffd23f', bg_opacity: 1 } }]);
     expect(run('tanpa kotak')).toEqual([{ op: 'set_style', clip_id: textId, style: { bg: null } }]);
     expect(run('pakai preset cta')).toEqual([{ op: 'set_style', clip_id: textId, style: presetById('cta')!.style }]);
+    // U3: small print for the Brand Kit disclaimer.
+    expect(run('pakai preset disclaimer')).toEqual([{ op: 'set_style', clip_id: textId, style: presetById('disclaimer')!.style }]);
+    expect(presetById('disclaimer')!.style.size).toBeLessThan(3);
     expect(run('posisi teks bawah, lebih besar')).toEqual([{ op: 'set_style', clip_id: textId, style: { y: 0.75, size: 7.8 } }]);
     expect(run('gaya elegan')[0]).toMatchObject({ op: 'set_style', style: { color: '#f5e6c8', bold: false } });
   });

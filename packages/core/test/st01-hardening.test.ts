@@ -66,6 +66,29 @@ describe('H2/M1/M2/M3 lock safety', () => {
     expect(await exists(lock)).toBe(false);
   });
 
+  it('H2b: repeated rounds of 8 contenders racing to break a stale lock never overlap (U3 regression)', async () => {
+    const dir = await tempDir();
+    let worst = 0;
+    for (let round = 0; round < 15; round++) {
+      const lock = path.join(dir, `r${round}.lock`);
+      await fsp.writeFile(lock, JSON.stringify({ pid: 2 ** 30, host: os.hostname(), owner: 'dead', token: `old${round}`, acquired_at: 0 }));
+      let inside = 0;
+      await Promise.all(
+        Array.from({ length: 8 }, (_, i) =>
+          withLock(lock, `c${i}`, async () => {
+            inside++;
+            worst = Math.max(worst, inside);
+            await sleep(2);
+            inside--;
+          }, 10_000),
+        ),
+      );
+      expect(await exists(lock)).toBe(false);
+      expect(await exists(`${lock}.break`)).toBe(false);
+    }
+    expect(worst).toBe(1);
+  }, 60_000);
+
   it('M2: a live owner with a fresh heartbeat is not broken even if acquired long ago', async () => {
     const lock = path.join(await tempDir(), 'w.lock');
     await fsp.writeFile(lock, JSON.stringify({ pid: process.ppid, host: os.hostname(), owner: 'live', token: 't', acquired_at: 0 }));
