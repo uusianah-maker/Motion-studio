@@ -52,7 +52,7 @@ class Ops(unittest.TestCase):
         self.assertEqual(v[0]["start_ms"] + v[0]["duration_ms"], v[1]["start_ms"])
 
     def test_tidak_ada_tumpang_tindih_dan_min_100ms(self):
-        for kind in ("video", "subtitle", "text", "audio", "sfx", "broll"):
+        for kind in ("video", "subtitle", "text", "audio", "music", "sfx", "broll"):
             prev = -1
             for o in self.per_track(kind):
                 self.assertGreaterEqual(o["start_ms"], prev, kind)
@@ -117,14 +117,14 @@ class Ops(unittest.TestCase):
              "durasi_ms": 60000, "nama": "Pop Ceria", "sumber_lisensi": "Artlist"},
         ]
         rencana, doc, _ = susun(props, laporan, dict(BK, aset=aset), placement="tiktok", root=ROOT)
-        audio = [o for o in doc["ops"] if o.get("track_kind") == "audio"]
+        audio = [o for o in doc["ops"] if o.get("track_kind") == "music"]
         self.assertEqual([o["media"] for o in audio], ["$musik:ceria"])
         self.assertLess(audio[0]["volume"], 0.3)
         sfx = [o for o in doc["ops"] if o.get("track_kind") == "sfx"]
         self.assertTrue(sfx and all("volume" in o for o in sfx))  # SFX di track sfx (U3a), bersamaan dengan musik
         self.assertEqual(rencana["audio"]["musik"], "Pop Ceria")
         _, doc2, _ = susun(props, laporan, dict(BK, aset=aset[:2]), placement="tiktok", root=ROOT)
-        self.assertFalse([o for o in doc2["ops"] if o.get("track_kind") == "audio"])
+        self.assertFalse([o for o in doc2["ops"] if o.get("track_kind") == "music"])
 
     def test_mode_u3_menambah_field_usulan(self):
         props, laporan = contoh()

@@ -230,4 +230,6 @@ Tidak mengubah apa pun yang sudah disepakati; hanya menambah field opsional.
 Mode `kompat` sudah diuji dengan `validateOps` + `applyOps` asli Motion Studio (`pipeline/validasi_ops.mjs`).
 Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "brand"`.
 
-**Sejak U3a (ucok, 269aee8):** `set_loudness` (lufs dari preset, default −14) di awal `ops`; SFX di track `sfx` dengan `volume`; musik latar di track `audio` (`volume` 0,12) hanya kalau aset musik `instrumental: true` + `lisensi_iklan: true`; penutup brand = klip `broll` media `visual.penutup.aset` sesudah video, CTA di atasnya.
+**Sejak U3a (ucok, 269aee8):** `set_loudness` (lufs dari preset, default −14) di awal `ops`; SFX di track `sfx` dengan `volume`; musik latar di track `music` (U3b, `volume` 0,12) hanya kalau aset musik `instrumental: true` + `lisensi_iklan: true`; penutup brand = klip `broll` media `visual.penutup.aset` sesudah video, CTA di atasnya.
+
+**Tiga lajur suara berbunyi bersamaan:** `audio` (VO / suara asli terpisah), `music`, `sfx`. Masing-masing tidak boleh tumpang tindih di dalam lajurnya sendiri. Suara asli di dalam klip `video` tetap ikut kecuali `volume: 0`.

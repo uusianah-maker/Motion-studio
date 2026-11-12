@@ -214,12 +214,13 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         ops.append({"op": "add_clip", "track_kind": "sfx", "media": kunci, "start_ms": s["atMs"], "duration_ms": dur,
                     "volume": s.get("volume", 1)})
 
-    # 5b. Musik latar di track `audio`: hanya instrumental + boleh iklan + tidak dilarang.
+    # 5b. Musik latar di track `music` (U3b): hanya instrumental + boleh iklan + tidak dilarang.
+    #     Tiga lajur suara berbunyi bersamaan: audio (VO/suara), music, sfx.
     total_ms = video_ms + penutup_ms
     musik, alasan_musik = pilih_musik(bk, preset)
     if musik:
         dur_m = min(total_ms, musik.get("durasi_ms") or total_ms)
-        ops.append({"op": "add_clip", "track_kind": "audio", "media": musik["kunci"], "start_ms": 0, "duration_ms": dur_m,
+        ops.append({"op": "add_clip", "track_kind": "music", "media": musik["kunci"], "start_ms": 0, "duration_ms": dur_m,
                     "in_ms": 0, "volume": VOLUME_MUSIK})
         if dur_m < total_ms:
             alasan_musik = f"musik {dur_m / 1000:.1f} dtk lebih pendek dari video {total_ms / 1000:.1f} dtk (berhenti sebelum akhir)"
