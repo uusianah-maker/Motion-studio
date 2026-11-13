@@ -224,7 +224,8 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     if pen_aset:
         penutup_ms = round((pen.get("detik") or props.get("outroSeconds", 2.5)) * 1000)
         if pen_aset.get("durasi_ms"):
-            penutup_ms = min(penutup_ms, pen_aset["durasi_ms"])
+            # sisakan 1 frame: durasi_ms dibulatkan, file asli bisa 1 ms lebih pendek (Motion Studio menolak)
+            penutup_ms = min(penutup_ms, pen_aset["durasi_ms"] - 34)
         if penutup_ms >= MIN_CLIP_MS:
             ops.append({"op": "add_clip", "track_kind": "broll", "media": pen_aset["kunci"], "start_ms": video_ms,
                         "duration_ms": penutup_ms, "in_ms": 0})
