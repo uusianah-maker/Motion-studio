@@ -170,6 +170,11 @@ def ulang(job_dir: Path) -> int:
     if koreksi.get("hook"):
         cmd += ["--hook-text", koreksi["hook"]]
     rc = jalankan(cmd)
+    if rc == 2:
+        alasan = json.loads((out / "potongan.json").read_text(encoding="utf-8")).get("alasan", "ditolak")
+        tulis_ditolak(out, alasan)
+        progres("selesai", 100, f"ditolak: {alasan}")
+        return 2
     if rc != 0:
         raise RuntimeError(f"rencana ulang gagal (kode {rc})")
     tr = json.loads(transkrip.read_text(encoding="utf-8"))
