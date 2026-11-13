@@ -23,6 +23,19 @@ if [[ ! "$PUBKEY" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+(\ [A-Za-z0-9@._-]*)?$ ]]; the
   echo "Public key harus satu baris 'ssh-ed25519 AAAA...' (isi file motion_tunnel.pub dari PC)." >&2; exit 1
 fi
 
+# VPS bersama app lain (mis. Affiliate OS): hanya lanjut kalau 80/443 kosong atau dipegang service `caddy`
+# dengan /etc/caddy/Caddyfile — blok app lain tidak disentuh, cuma ditambah blok domain ini.
+for P in 80 443; do
+  HOLDER="$(ss -ltnpH "( sport = :$P )" 2>/dev/null | grep -o 'users:(("[^"]*' | head -1 | cut -d'"' -f2 || true)"
+  if [[ -n "$HOLDER" && "$HOLDER" != "caddy" ]]; then
+    echo "Port $P dipegang '$HOLDER', bukan Caddy. Skrip berhenti; tidak ada yang diubah." >&2; exit 1
+  fi
+  if [[ "$HOLDER" == "caddy" ]] && { ! systemctl is-active --quiet caddy || ! systemctl cat caddy 2>/dev/null | grep -q '/etc/caddy/Caddyfile'; }; then
+    echo "Caddy yang jalan bukan service 'caddy' dengan /etc/caddy/Caddyfile. Skrip berhenti; tidak ada yang diubah." >&2; exit 1
+  fi
+done
+cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.sebelum-motion-$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
+
 echo "==> Paket dasar"
 apt-get update -y
 apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg ufw
@@ -79,12 +92,12 @@ CADDYFILE=/etc/caddy/Caddyfile
 if grep -q "^# motion-studio:${DOMAIN}\$" "$CADDYFILE" 2>/dev/null; then
   echo "Blok ${DOMAIN} sudah ada, tidak diubah."
 else
-  if grep -q '^:80 {' "$CADDYFILE" 2>/dev/null; then
+  if grep -q '^:80 {' "$CADDYFILE" 2>/dev/null && [[ "$(grep -c '{' "$CADDYFILE")" -le 1 ]]; then
     # Masih Caddyfile contoh bawaan paket: simpan cadangan, mulai dari kosong.
     cp "$CADDYFILE" "${CADDYFILE}.bawaan-$(date +%Y%m%d%H%M%S)"
     : > "$CADDYFILE"
   fi
-  printf '%s\n' "$BLOCK" >> "$CADDYFILE"
+  printf '\n%s\n' "$BLOCK" >> "$CADDYFILE"
 fi
 caddy validate --config "$CADDYFILE" --adapter caddyfile
 systemctl enable --now caddy
@@ -99,7 +112,7 @@ if systemctl is-enabled ssh.socket >/dev/null 2>&1; then
 fi
 ufw allow 80/tcp
 ufw allow 443/tcp
-ufw --force enable
+ufw status | grep -q 'Status: active' || ufw --force enable
 
 echo
 echo "Selesai. Berikutnya di PC owner: jalankan deploy/windows/start-tunnel.ps1 -Vps <IP-VPS>"
