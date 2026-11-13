@@ -73,6 +73,14 @@ for p in "$P80" "$P443"; do
     exit 1
   fi
 done
+if [[ "$P80$P443" == *caddy* ]]; then
+  # Caddy app lain harus jalan lewat service `caddy` dengan /etc/caddy/Caddyfile, kalau tidak blok baru tidak terbaca.
+  if ! systemctl is-active --quiet caddy || ! systemctl cat caddy 2>/dev/null | grep -q '/etc/caddy/Caddyfile'; then
+    echo "Caddy yang jalan bukan service 'caddy' dengan /etc/caddy/Caddyfile. Skrip berhenti; tidak ada yang diubah." >&2
+    echo "Kirim hasil 'systemctl status caddy' dan 'ps aux | grep caddy' ke Claude." >&2
+    exit 1
+  fi
+fi
 if [[ -n "$PAPP" ]] && ! systemctl is-active --quiet motion-studio; then
   echo "Port $PORT sudah dipakai '$PAPP' (bukan Motion Studio). Skrip berhenti; tidak ada yang diubah." >&2; exit 1
 fi
