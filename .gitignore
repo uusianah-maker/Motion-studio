@@ -18,3 +18,10 @@ public/masuk/
 public/musik/
 _public/
 public/Output/
+
+# Konten tim (video mentah, hasil pisah, hasil jadi): besar, jangan masuk git.
+konten/**
+!konten/
+!konten/README.md
+# Stem musik hasil uji 13 Nov (lisensi belum jelas), jangan masuk git.
+public/vw_musik/
