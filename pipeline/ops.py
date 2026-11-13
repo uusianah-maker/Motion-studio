@@ -150,8 +150,11 @@ def _halaman(captions):
 
 
 def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, mode: str = "kompat",
-          preset: dict | None = None):
-    """Kembalikan (rencana, ops, qc)."""
+          preset: dict | None = None, batas_durasi: list | None = None):
+    """Kembalikan (rencana, ops, qc).
+
+    Durasi TANPA BATAS secara default (keputusan owner 13 Nov 2026, sama dengan Batch Remix):
+    durasi preset hanya saran. Batas aktif hanya kalau job memberi `batas_durasi: [min, maks]`."""
     preset = preset or {}
     warna = bk["warna"]
     lufs = (preset.get("audio") or {}).get("lufs", -14)
@@ -283,20 +286,21 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
 
     # rencana.json (5.1)
     dur = preset.get("durasi", {})
-    target = [dur.get("min", 15), dur.get("max", 30)]
+    saran = [dur.get("min", 15), dur.get("max", 30)]
+    target = list(batas_durasi) if batas_durasi else None
     akhir = round((video_ms + penutup_ms) / 1000, 2)
     peringatan = [{"level": "warn", "jenis": "ucapan", "teks": p} for p in laporan.get("peringatan", [])]
     peringatan += [{"level": bk.get("level_pelanggaran", "block"), "jenis": "kata_terlarang", "detik": x["atSec"], "teks": x["frasa"]}
                    for x in laporan.get("superlatifDisembunyikan", [])]
     status = "siap"
-    if not (target[0] <= akhir <= target[1]):
+    if target and not (target[0] <= akhir <= target[1]):
         status = "perlu_keputusan"
         peringatan.append({"level": "warn", "jenis": "durasi",
                            "teks": f"durasi {akhir} dtk di luar target {target[0]}-{target[1]} dtk; pilih bagian tengah yang dibuang"})
     rencana = {
         "schema": "engine-rencana/1",
         "status": status,
-        "durasi": {"mentah": laporan["originalSec"], "akhir": akhir, "target": target},
+        "durasi": {"mentah": laporan["originalSec"], "akhir": akhir, "target": target, "saran": saran},
         "dibuang": [{"dari": r["fromSec"], "sampai": r["toSec"], "jenis": r["reason"], "teks": r["text"],
                      "sumber": "user" if "pilihan user" in r["reason"] else "aturan"} for r in laporan["removed"]],
         "hook": {"teks": hook["text"], "dari": hook.get("startMs", 0) / 1000, "sampai": hook_end / 1000, "sumber": "aturan"} if hook else None,
@@ -325,7 +329,8 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     qc = {
         "schema": "engine-qc-rencana/1",
         "butir": [
-            {"butir": "durasi sesuai target", "lulus": target[0] <= akhir <= target[1], "nilai": akhir},
+            {"butir": "durasi sesuai target", "lulus": not target or target[0] <= akhir <= target[1],
+             "nilai": akhir if target else f"{akhir} dtk (tanpa batas; saran {saran[0]}-{saran[1]} dtk)"},
             {"butir": "hook di 3 detik pertama", "lulus": bool(hook) and hook_end <= 3000},
             {"butir": "kata terlarang tidak tampil sebagai teks", "lulus": not terlarang, "nilai": terlarang},
             {"butir": "jumlah jenis efek <= batas preset", "lulus": len(jenis_efek) <= maks_efek, "nilai": sorted(jenis_efek)},

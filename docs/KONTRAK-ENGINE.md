@@ -226,7 +226,7 @@ Tidak mengubah apa pun yang sudah disepakati; hanya menambah field opsional.
 | `job.json` mode `batch` | `shot_tiktok: bool` (opsional) | paksa anggap semua footage unduhan TikTok (watermark + footer) saat membuat Shot Library |
 | `ops.json` | `mode`, `aset_lokal: [{ kunci, path }]` | aset milik mesin (mis. SFX bawaan `$sfx:pop`; Batch Remix: `$vokal:<id>`, `$musik:<id>`) selama library aset per brand (U2) belum ada; runner mengimpor sebagai media proyek seperti placeholder lain |
 | `job.json` mode `batch` | `buang_otomatis: string[]` (opsional) | jenis kalimat VO yang boleh dibuang otomatis (mis. `superlatif`, `urgensi`, `live`, `musiman`). Default kosong = semua kalimat dipakai, pelanggaran hanya jadi peringatan `saran_buang` (keputusan owner 13 Nov 2026) |
-| `job.json` mode `batch` | `batas_durasi: [min, maks]` (opsional) | default tanpa batas; `rencana.durasi.target = null`, `durasi.saran` hanya info |
+| `job.json` mode `generate` & `batch` | `batas_durasi: [min, maks]` (opsional) | default tanpa batas; `rencana.durasi.target = null`, `durasi.saran` hanya info |
 | `out/batch.json` (mode `batch`) | `media: { "<placeholder>": "<path>" }` | footage/vokal per placeholder (`$sumber:<id>`, `$vokal:<id>`, `$musik:<id>`) yang diimpor runner U6; path relatif ke root mesin atau absolut **di dalam** root mesin |
 | `rencana.json` | `menunggu_u3: string[]` | efek yang dilewati di mode `kompat` (caption pop, kotak kaca, zoom, penutup logo, volume SFX), ditampilkan di kartu rencana |
 | `rencana.json` | `posisi_caption` (0..1) | pusat vertikal caption hasil deteksi wajah |

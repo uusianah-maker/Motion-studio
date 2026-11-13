@@ -155,7 +155,7 @@ def main() -> None:
     print(f"File     : {hasil.relative_to(ROOT)}")
     print(f"Durasi   : {rep['originalSec']}s -> {rep['totalWithOutroSec']}s (termasuk outro)")
     if rep["overMax"]:
-        print("!! LEBIH DARI 30 DETIK: tentukan bagian tengah yang dibuang.")
+        print("(info) Lebih dari 30 detik. Durasi tanpa batas; buang bagian tengah dengan --buang kalau perlu.")
     print(f"Dibuang  : {len(rep['removed'])} bagian | kata kunci: {len(rep['kataKunci'])} | SFX: {len(rep['sfx'])}")
     print(f"Musik    : {rep['musik']}")
     if rep["doubts"]:

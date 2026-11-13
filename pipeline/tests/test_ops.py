@@ -83,9 +83,18 @@ class Ops(unittest.TestCase):
         # potongan terakhir sampai akhir sumber dipotong 1 frame (34 ms) supaya tidak melewati file
         self.assertEqual(v["in_ms"] + v["duration_ms"], 10000 - 34)
 
-    def test_qc_dan_status(self):
-        self.assertEqual(self.rencana["status"], "perlu_keputusan")  # 9 dtk < target min 15
-        self.assertFalse(self.qc["lulus"])
+    def test_durasi_tanpa_batas_default(self):
+        # keputusan owner 13 Nov 2026: durasi preset hanya saran, video 9 dtk tetap "siap"
+        self.assertEqual(self.rencana["status"], "siap")
+        self.assertIsNone(self.rencana["durasi"]["target"])
+        self.assertEqual(self.rencana["durasi"]["saran"], [15, 30])
+        self.assertTrue(next(b for b in self.qc["butir"] if b["butir"] == "durasi sesuai target")["lulus"])
+
+    def test_batas_durasi_dari_job(self):
+        props, laporan = contoh()
+        rencana, _, qc = susun(props, laporan, BK, placement="tiktok", root=ROOT, batas_durasi=[15, 30])
+        self.assertEqual(rencana["status"], "perlu_keputusan")
+        self.assertFalse(qc["lulus"])
 
     def test_sfx_dan_penutup_dari_library_brand(self):
         props, laporan = contoh()

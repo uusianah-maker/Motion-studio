@@ -383,6 +383,8 @@ def main() -> None:
         "di awal yang perlu ditutup). Default: sampai kalimat kedua mulai, maks 3 dtk",
     )
     ap.add_argument("--preset", help="id preset di Brand Kit ekspor (durasi target, batas efek)")
+    ap.add_argument("--batas-durasi", type=float, nargs=2, metavar=("MIN", "MAKS"),
+                    help="aktifkan batas durasi (default tanpa batas; durasi preset hanya saran)")
     ap.add_argument("--mode-ops", choices=["kompat", "u3"], default="kompat",
                     help="kompat = hanya operasi yang sudah ada di Motion Studio; u3 = + field usulan U3")
     ap.add_argument("--buang", nargs="*", default=[], help='rentang detik sumber yang dibuang, mis. "4.9-9.2"')
@@ -558,14 +560,14 @@ def main() -> None:
     # Keluaran kontrak mesin (KONTRAK-ENGINE v0.3): rencana.json + ops.json + qc_rencana.json.
     preset = bk.get("preset", {}).get(args.preset, {}) if args.preset else {}
     rencana, ops_doc, qc = susun_ops(props, report, bk, placement=args.placement, root=Path.cwd(),
-                                     mode=args.mode_ops, preset=preset)
+                                     mode=args.mode_ops, preset=preset, batas_durasi=args.batas_durasi)
     tulis_ops(out_dir, rencana, ops_doc, qc)
 
     print(f"Durasi: {report['originalSec']}s -> {report['editedVideoSec']}s (+outro = {total:.2f}s)")
     if report["overMax"]:
-        print(f"!! Lebih dari {args.max_seconds}s. Ekor tidak dipotong; tentukan bagian tengah yang dibuang.")
+        print(f"(info) Lebih dari {args.max_seconds}s; durasi tanpa batas, pilih bagian tengah yang dibuang kalau perlu.")
     if report["underMin"]:
-        print(f"!! Kurang dari {args.min_seconds}s.")
+        print(f"(info) Kurang dari {args.min_seconds}s.")
     print(f"Potongan: {len(cut['segments'])} dipakai, {len(cut['removed'])} dibuang")
     for r in cut["removed"]:
         print(f"  - {r['fromSec']:>6.2f}-{r['toSec']:<6.2f} {r['reason']} {r['text']}")
