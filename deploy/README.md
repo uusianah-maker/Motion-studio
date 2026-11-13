@@ -4,7 +4,7 @@
 Aplikasi, mesin (Generate Otomatis / Batch Remix), dan workspace jalan penuh di VPS. Tim bisa kerja bergantian kapan saja, dan PC owner boleh mati.
 
 1. **DNS**: buat A record `motion` → IP VPS. Kalau DNS di Cloudflare, set ke DNS only (awan abu-abu).
-2. **Di VPS** (Ubuntu 24.04, root):
+2. **Di VPS** (Ubuntu, root). Aman di VPS yang juga dipakai app lain (Affiliate OS). Mulai dengan `bash setup-vps-penuh.sh --cek` (hanya melapor):
    ```
    curl -fsSL https://raw.githubusercontent.com/uusianah-maker/Motion-studio/main/deploy/vps/setup-vps-penuh.sh -o setup-vps-penuh.sh
    sudo bash setup-vps-penuh.sh motion.domainlo.com

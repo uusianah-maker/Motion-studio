@@ -1,56 +1,120 @@
 #!/usr/bin/env bash
 # Motion Studio — jalur B: aplikasi, mesin, dan workspace PENUH di VPS (tidak butuh PC owner menyala).
-# Dijalankan OWNER di VPS Ubuntu 24.04 sebagai root:
+# Aman untuk VPS yang DIPAKAI BERSAMA app lain (mis. Affiliate OS):
+#   - Node.js & Python milik Motion Studio dipasang privat di /srv/motion (Node/Python sistem tidak diubah);
+#   - web server: hanya MENAMBAH blok domain di Caddy; berhenti kalau port 80/443 dipegang Nginx/Apache;
+#   - firewall: hanya menambah izin 80/443/SSH, tidak menyalakan ufw yang sedang mati;
+#   - prioritas CPU/disk Motion Studio lebih rendah dari app lain (render/Whisper tidak bikin app lain lemot).
+#
+# Pakai (root):
 #   curl -fsSL https://raw.githubusercontent.com/uusianah-maker/Motion-studio/main/deploy/vps/setup-vps-penuh.sh -o setup-vps-penuh.sh
-#   sudo bash setup-vps-penuh.sh motion.domainlo.com
+#   bash setup-vps-penuh.sh --cek                    # hanya MELAPOR, tidak mengubah apa pun
+#   bash setup-vps-penuh.sh motion.domainlo.com      # pasang / update
 # Aman diulang: menjalankan lagi = update ke versi GitHub terbaru (kode + mesin), data workspace tidak disentuh.
 #
 # Hasil:
 #   /srv/motion/app        kode (git clone repo Motion-studio; mesin ada di app/engine)
 #   /srv/motion/workspace  proyek, video, hasil render (MOTION_WORKSPACE)
-#   /srv/motion/state      kunci rahasia app & API key AI (MOTION_STATE_DIR) — ikut dicadangkan
+#   /srv/motion/state      kunci rahasia app & API key AI (MOTION_STATE_DIR)
 #   /srv/motion/hf-cache   model Whisper (diunduh otomatis saat transkrip pertama)
-#   service systemd `motion-studio` (127.0.0.1:4317) + Caddy HTTPS untuk domain + firewall SSH/80/443
+#   /srv/motion/node, /srv/motion/python  runtime privat
+#   service systemd `motion-studio` (127.0.0.1:4317) + blok Caddy HTTPS untuk domain
 set -euo pipefail
 
-DOMAIN="${1:-}"
 REPO="${MOTION_REPO:-https://github.com/uusianah-maker/Motion-studio.git}"
 BRANCH="${MOTION_BRANCH:-main}"
+NODE_VER="${MOTION_NODE_VERSION:-22.21.1}"
 BASE=/srv/motion
 APP="$BASE/app"
 PORT=4317
 
 if [[ $EUID -ne 0 ]]; then echo "Jalankan sebagai root (sudo)." >&2; exit 1; fi
+
+pemegang_port() { ss -ltnpH "( sport = :$1 )" 2>/dev/null | grep -o 'users:(("[^"]*' | head -1 | cut -d'"' -f2; }
+
+lapor() {
+  . /etc/os-release
+  echo "OS        : ${PRETTY_NAME:-?}"
+  echo "CPU       : $(nproc) core"
+  echo "RAM       : $(awk '/MemTotal/{printf "%.1f GB", $2/1048576}' /proc/meminfo) (swap: $(awk '/SwapTotal/{printf "%.1f GB", $2/1048576}' /proc/meminfo))"
+  echo "Disk /    : $(df -h / | awk 'NR==2{print $4" kosong dari "$2}')"
+  echo "GPU       : $(command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=name --format=csv,noheader | head -1 || echo tidak ada)"
+  echo "Port 80   : $(pemegang_port 80 || true)"
+  echo "Port 443  : $(pemegang_port 443 || true)"
+  echo "Port $PORT : $(pemegang_port $PORT || true)"
+  echo "Node      : $(command -v node >/dev/null && node -v || echo tidak ada)"
+  echo "Python    : $(python3 --version 2>/dev/null || echo tidak ada)"
+  echo "FFmpeg    : $(command -v ffmpeg >/dev/null && ffmpeg -version | head -1 | cut -d' ' -f1-3 || echo tidak ada)"
+  echo "Docker    : $(command -v docker >/dev/null && echo "ada ($(docker ps -q 2>/dev/null | wc -l) container jalan)" || echo tidak ada)"
+  echo "Caddy     : $(command -v caddy >/dev/null && caddy version | cut -d' ' -f1 || echo tidak ada)"
+  echo "Nginx     : $(command -v nginx >/dev/null && echo ada || echo tidak ada)"
+  echo "PM2       : $(command -v pm2 >/dev/null && echo ada || echo tidak ada)"
+  echo "Firewall  : $(ufw status 2>/dev/null | head -1 || echo 'ufw tidak ada')"
+  echo "Motion    : $([[ -d $APP/.git ]] && echo "terpasang ($(git -C $APP log -1 --format=%h 2>/dev/null))" || echo belum)"
+  echo "App lain yang mendengar di port publik:"
+  ss -ltnpH 2>/dev/null | awk '$4 !~ /^(127\.|\[::1\])/ {print "  " $4 "  " $6}' | sed 's/users:((//; s/,pid=.*//' | sort -u
+}
+
+if [[ "${1:-}" == "--cek" ]]; then lapor; exit 0; fi
+
+DOMAIN="${1:-}"
 if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
-  echo "Domain tidak valid: '$DOMAIN' (contoh: motion.domainlo.com)" >&2; exit 1
+  echo "Domain tidak valid: '$DOMAIN' (contoh: motion.domainlo.com). Untuk cek VPS saja: bash $0 --cek" >&2; exit 1
 fi
 . /etc/os-release
-if [[ "${ID:-}" != "ubuntu" ]]; then echo "Skrip ini untuk Ubuntu (24.04). Terdeteksi: ${PRETTY_NAME:-?}" >&2; exit 1; fi
+if [[ "${ID:-}" != "ubuntu" ]]; then echo "Skrip ini untuk Ubuntu. Terdeteksi: ${PRETTY_NAME:-?}" >&2; exit 1; fi
 
-echo "==> Paket dasar (git, FFmpeg, Python, firewall)"
+echo "==> Cek bentrok dengan app lain"
+P80="$(pemegang_port 80 || true)"; P443="$(pemegang_port 443 || true)"; PAPP="$(pemegang_port $PORT || true)"
+for p in "$P80" "$P443"; do
+  if [[ -n "$p" && "$p" != "caddy" ]]; then
+    echo "Port 80/443 dipegang '$p', bukan Caddy. Skrip berhenti supaya app lain tidak terganggu; tidak ada yang diubah." >&2
+    echo "Kirim hasil 'bash $0 --cek' ke Claude untuk dibuatkan konfigurasi '$p'." >&2
+    exit 1
+  fi
+done
+if [[ -n "$PAPP" ]] && ! systemctl is-active --quiet motion-studio; then
+  echo "Port $PORT sudah dipakai '$PAPP' (bukan Motion Studio). Skrip berhenti; tidak ada yang diubah." >&2; exit 1
+fi
+FREE_GB="$(df -BG --output=avail / | tail -1 | tr -dc 0-9)"
+if (( FREE_GB < 30 )); then echo "Disk kosong cuma ${FREE_GB} GB (minimal 30 GB). Skrip berhenti." >&2; exit 1; fi
+
+echo "==> Paket dasar (git, FFmpeg) — tidak mengubah Node/Python sistem"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y ca-certificates curl gnupg git ufw ffmpeg python3 python3-venv debian-keyring debian-archive-keyring apt-transport-https
-PYV="$(python3 -c 'import sys; print(sys.version_info[0]*100+sys.version_info[1])')"
-if (( PYV < 312 )); then
-  echo "Mesin butuh Python 3.12+ (Ubuntu 24.04). Python di VPS ini: $(python3 --version). Install ulang VPS dengan Ubuntu 24.04." >&2
-  exit 1
-fi
+apt-get install -y ca-certificates curl gnupg git ffmpeg xz-utils debian-keyring debian-archive-keyring apt-transport-https
 
-echo "==> Swap (build & Whisper butuh memori; dibuat kalau RAM < 8 GB dan belum ada swap)"
+echo "==> Swap (dibuat hanya kalau belum ada swap sama sekali dan RAM < 8 GB)"
 RAM_MB="$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)"
-if (( RAM_MB < 8000 )) && ! swapon --show | grep -q .; then
+if (( RAM_MB < 8000 )) && ! swapon --show | grep -q . && [[ ! -e /swapfile ]]; then
   fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
   grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-echo "==> Node.js 22"
-if ! command -v node >/dev/null || (( $(node -p 'process.versions.node.split(".")[0]') < 22 )); then
-  install -d -m 755 /etc/apt/keyrings
-  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
-  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
-  apt-get update -y
-  apt-get install -y nodejs
+echo "==> User & folder"
+id motion >/dev/null 2>&1 || useradd --system --home-dir "$BASE" --shell /usr/sbin/nologin motion
+install -d -m 750 -o motion -g motion "$BASE" "$BASE/workspace" "$BASE/hf-cache"
+install -d -m 700 -o motion -g motion "$BASE/state"
+NODE_DIR="$BASE/node"
+PATH_M="$NODE_DIR/bin:$BASE/bin:/usr/local/bin:/usr/bin:/bin"
+as_motion() { runuser -u motion -- env HOME="$BASE" PATH="$PATH_M" UV_PYTHON_INSTALL_DIR="$BASE/python" "$@"; }
+
+echo "==> Node.js $NODE_VER privat ($NODE_DIR)"
+if [[ "$("$NODE_DIR/bin/node" -v 2>/dev/null)" != "v$NODE_VER" ]]; then
+  ARCH="$(uname -m)"; case "$ARCH" in x86_64) NA=x64;; aarch64) NA=arm64;; *) echo "Arsitektur $ARCH tidak didukung" >&2; exit 1;; esac
+  TMPN="$(mktemp -d)"
+  curl -fsSL "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-linux-$NA.tar.xz" -o "$TMPN/node.tar.xz"
+  curl -fsSL "https://nodejs.org/dist/v$NODE_VER/SHASUMS256.txt" -o "$TMPN/SHASUMS256.txt"
+  (cd "$TMPN" && grep " node-v$NODE_VER-linux-$NA.tar.xz\$" SHASUMS256.txt | sed "s#node-v.*#node.tar.xz#" | sha256sum -c -)
+  rm -rf "$NODE_DIR" && install -d -o motion -g motion "$NODE_DIR"
+  tar -xJf "$TMPN/node.tar.xz" -C "$NODE_DIR" --strip-components=1 && chown -R motion:motion "$NODE_DIR"
+  rm -rf "$TMPN"
+fi
+
+echo "==> Python 3.12 privat untuk mesin (uv)"
+install -d -o motion -g motion "$BASE/bin" "$BASE/python"
+if [[ ! -x "$BASE/bin/uv" ]]; then
+  as_motion bash -c "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR='$BASE/bin' INSTALLER_NO_MODIFY_PATH=1 sh"
 fi
 
 echo "==> Caddy (HTTPS otomatis)"
@@ -61,12 +125,6 @@ if ! command -v caddy >/dev/null; then
   apt-get install -y caddy
 fi
 
-echo "==> User & folder"
-id motion >/dev/null 2>&1 || useradd --system --home-dir "$BASE" --shell /usr/sbin/nologin motion
-install -d -m 750 -o motion -g motion "$BASE" "$BASE/workspace" "$BASE/hf-cache"
-install -d -m 700 -o motion -g motion "$BASE/state"
-as_motion() { runuser -u motion -- env HOME="$BASE" "$@"; }
-
 echo "==> Kode dari GitHub ($REPO, $BRANCH)"
 if [[ -d "$APP/.git" ]]; then
   as_motion git -C "$APP" fetch --depth 1 origin "$BRANCH"
@@ -76,12 +134,11 @@ else
 fi
 
 echo "==> Build aplikasi"
-as_motion bash -c "cd '$APP' && npm ci --no-audit --no-fund && npm run build"
+as_motion bash -c "cd '$APP' && nice -n 10 npm ci --no-audit --no-fund && nice -n 10 npm run build"
 
-echo "==> Mesin (Python venv + Whisper, OpenCV)"
-[[ -x "$APP/engine/.venv/bin/python" ]] || as_motion python3 -m venv "$APP/engine/.venv"
-as_motion "$APP/engine/.venv/bin/pip" install --quiet --upgrade pip
-as_motion "$APP/engine/.venv/bin/pip" install --quiet -r "$APP/engine/pipeline/requirements.txt"
+echo "==> Mesin (venv Python 3.12 + Whisper, OpenCV)"
+[[ -x "$APP/engine/.venv/bin/python" ]] || as_motion "$BASE/bin/uv" venv --python 3.12 "$APP/engine/.venv"
+as_motion "$BASE/bin/uv" pip install --quiet --python "$APP/engine/.venv/bin/python" -r "$APP/engine/pipeline/requirements.txt"
 
 echo "==> Pengaturan (.env.local) — rahasia diisi owner sendiri, tidak lewat chat"
 ENVF="$APP/.env.local"
@@ -101,7 +158,7 @@ EOF
   chmod 600 "$ENVF"
 fi
 
-echo "==> Service systemd motion-studio"
+echo "==> Service systemd motion-studio (prioritas di bawah app lain)"
 cat > /etc/systemd/system/motion-studio.service <<EOF
 [Unit]
 Description=Motion Studio
@@ -115,9 +172,15 @@ WorkingDirectory=$APP
 Environment=NODE_ENV=production
 Environment=HOME=$BASE
 Environment=HF_HOME=$BASE/hf-cache
-ExecStart=/usr/bin/node $APP/apps/server/dist/main.js
+Environment=PATH=$PATH_M
+ExecStart=$NODE_DIR/bin/node $APP/apps/server/dist/main.js
 Restart=on-failure
 RestartSec=5
+# Render & Whisper berat: kalah prioritas dari app lain di VPS yang sama.
+Nice=10
+CPUWeight=50
+IOWeight=50
+MemoryHigh=70%
 NoNewPrivileges=true
 ProtectSystem=full
 PrivateTmp=true
@@ -128,17 +191,17 @@ EOF
 systemctl daemon-reload
 systemctl enable motion-studio >/dev/null
 
-echo "==> Caddyfile"
+echo "==> Caddyfile (hanya menambah blok ${DOMAIN}; blok app lain tidak disentuh)"
 CADDYFILE=/etc/caddy/Caddyfile
-if grep -q '^:80 {' "$CADDYFILE" 2>/dev/null; then
-  cp "$CADDYFILE" "${CADDYFILE}.bawaan-$(date +%Y%m%d%H%M%S)"
-  : > "$CADDYFILE"
+cp "$CADDYFILE" "${CADDYFILE}.sebelum-motion-$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
+if grep -q '^:80 {' "$CADDYFILE" 2>/dev/null && [[ "$(grep -c '{' "$CADDYFILE")" -le 1 ]]; then
+  : > "$CADDYFILE"   # masih Caddyfile contoh bawaan paket
 fi
 if grep -q "^# motion-studio:${DOMAIN}\$" "$CADDYFILE" 2>/dev/null; then
-  # Blok lama (mis. jalur A: terowongan 14317) diarahkan ke app lokal VPS.
   sed -i "/^# motion-studio:${DOMAIN//./\\.}\$/,/^}/ s/127\.0\.0\.1:14317/127.0.0.1:${PORT}/" "$CADDYFILE"
 else
   cat >> "$CADDYFILE" <<EOF
+
 # motion-studio:${DOMAIN}
 ${DOMAIN} {
 	reverse_proxy 127.0.0.1:${PORT} {
@@ -147,19 +210,19 @@ ${DOMAIN} {
 	header Strict-Transport-Security "max-age=15552000"
 	log
 }
-
 EOF
 fi
 caddy validate --config "$CADDYFILE" --adapter caddyfile
 systemctl enable --now caddy >/dev/null
 systemctl reload caddy
 
-echo "==> Firewall (SSH, 80, 443)"
-SSH_PORTS="$(sshd -T 2>/dev/null | awk '/^port /{print $2}' | sort -u)"
-for p in ${SSH_PORTS:-22}; do ufw allow "${p}/tcp" >/dev/null; done
-ufw allow 80/tcp >/dev/null
-ufw allow 443/tcp >/dev/null
-ufw --force enable >/dev/null
+echo "==> Firewall"
+if ufw status 2>/dev/null | grep -q 'Status: active'; then
+  ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
+  echo "ufw aktif: port 80 & 443 diizinkan (aturan lain tidak diubah)."
+else
+  echo "ufw tidak aktif: dibiarkan apa adanya supaya app lain tidak terputus."
+fi
 
 echo "==> Cek mesin"
 as_motion bash -c "cd '$APP/engine' && HF_HOME='$BASE/hf-cache' .venv/bin/python pipeline/engine.py cek" || true
