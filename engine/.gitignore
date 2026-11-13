@@ -1,0 +1,27 @@
+node_modules
+dist
+.DS_Store
+.env
+
+# Ignore the output video from Git but not videos you import into src/.
+out
+
+# Python venv untuk Whisper
+.venv
+__pycache__
+
+# Video mentah & musik: besar dan bisa milik pihak lain, jangan masuk git.
+# Aset kecil buatan sendiri (logo.svg, sfx/) tetap ikut.
+public/*.mp4
+public/*.mov
+public/masuk/
+public/musik/
+_public/
+public/Output/
+
+# Konten tim (video mentah, hasil pisah, hasil jadi): besar, jangan masuk git.
+konten/**
+!konten/
+!konten/README.md
+# Stem musik hasil uji 13 Nov (lisensi belum jelas), jangan masuk git.
+public/vw_musik/

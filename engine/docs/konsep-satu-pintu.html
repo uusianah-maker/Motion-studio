@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motion Studio Satu Pintu</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0c0e14;--panel:#151823;--panel2:#1c2030;--line:#292e3c;--muted:#8d97aa;--txt:#f3f5fa;--vio:#8467fb;--vio2:#28253e;--cyan:#59d0ce;--green:#66d6a5;--gold:#efc678;--red:#f08a87;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.5 Inter,system-ui,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}
+.app{display:grid;grid-template-columns:72px minmax(0,1fr);min-height:100vh}
+.rail{background:#11141c;border-right:1px solid var(--line);padding:14px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;position:sticky;top:0;height:100vh}
+.brand{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#7668ff,#38bfc8);display:grid;place-items:center;font-weight:800;margin-bottom:10px}
+.nav{width:56px;border:0;background:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:10px;padding:8px 2px;font-size:10px;position:relative}
+.nav .s{font-size:18px;line-height:1}
+.nav:hover{color:#c9cfdd}.nav.sel{background:var(--vio2);color:#ae99ff}
+.nav .dot{position:absolute;top:4px;right:8px;min-width:16px;height:16px;border-radius:99px;background:var(--gold);color:#1b1404;font-size:10px;font-weight:700;display:grid;place-items:center;padding:0 4px}
+.grow{flex:1}
+.me{width:36px;height:36px;border-radius:50%;background:var(--panel2);display:grid;place-items:center;font-weight:700;font-size:12px;border:1px solid var(--line)}
+main{padding:20px 24px 60px;min-width:0}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.top .sp{flex:1}
+h1{font-size:20px;margin:0}h2{font-size:14px;margin:0 0 10px}
+.sub{color:var(--muted);font-size:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.pad{padding:16px}
+.btn{border:1px solid var(--line);background:var(--panel2);padding:7px 13px;border-radius:9px;font-weight:600}
+.btn:hover{border-color:#3d4459}
+.btn.pri{background:var(--vio);border-color:var(--vio);color:#fff}
+.btn.sm{padding:4px 10px;font-size:12px}
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;white-space:nowrap}
+.b-vio{background:#2a2350;color:#b9a6ff}.b-cyan{background:#123236;color:var(--cyan)}.b-gold{background:#3a2f16;color:var(--gold)}
+.b-green{background:#16302a;color:var(--green)}.b-red{background:#3b1c1c;color:var(--red)}.b-dim{background:var(--panel2);color:var(--muted)}
+.muted{color:var(--muted)}
+.hide{display:none!important}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat{padding:14px}.stat b{display:block;font-size:24px}.stat span{color:var(--muted);font-size:12px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line)}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr.click{cursor:pointer}tr.click:hover td{background:var(--panel2)}
+.thumb{width:26px;height:42px;border-radius:5px;display:inline-block;vertical-align:middle}
+.filters{display:flex;gap:8px;flex-wrap:wrap;padding:12px;border-bottom:1px solid var(--line)}
+.filters input,.filters select,.field input,.field select,.field textarea{background:#10141e;border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.filters input{flex:1;min-width:150px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{border:0;background:var(--panel);padding:6px 12px;font-size:12px;color:var(--muted)}
+.seg button.on{background:var(--vio2);color:#cbbcff}
+/* pilih baru */
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.choice button{text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px}
+.choice button:hover{border-color:var(--vio)}
+.choice b{display:block;font-size:15px;margin:6px 0 4px}
+/* iklan */
+.plan{border:1px solid #6b5420;background:#221c0f;border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.plan.ok{border-color:#2c6b52;background:#10231c}
+.plan-h{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}.plan-h .sp{flex:1;min-width:220px}
+.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 16px;margin-top:10px;font-size:12px}
+.plan-grid b{display:block;font-size:11px;color:var(--muted);font-weight:600}
+.ad{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;align-items:start}
+.screen{position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:radial-gradient(120% 70% at 50% 30%,#8a7a68 0%,#5a4b3d 45%,#2a211a 100%)}
+.person{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:62%;height:78%}
+.person .head{position:absolute;left:50%;top:0;transform:translateX(-50%);width:42%;aspect-ratio:1/1.15;border-radius:50% 50% 46% 46%;background:#d9b99a}
+.person .hijab{position:absolute;left:50%;top:-4%;transform:translateX(-50%);width:62%;aspect-ratio:1/1.2;border-radius:48% 48% 30% 30%;background:#e9dccb}
+.person .body{position:absolute;left:0;right:0;bottom:0;height:68%;border-radius:40% 40% 0 0;background:#c9b49b}
+.person .pants{position:absolute;left:18%;right:18%;bottom:0;height:26%;background:#4b3a2e;border-radius:6px 6px 0 0}
+.hook{position:absolute;left:8%;right:8%;top:22%;padding:9px;border-radius:12px;background:rgba(255,255,255,.16);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.35);color:#fff;text-align:center;font:400 20px/1.1 Anton}
+.cap{position:absolute;left:6%;right:14%;top:72%;text-align:center;transform:translateY(-50%);font:700 26px/1.1 Oswald;color:#FFFDD0;-webkit-text-stroke:4px #000;paint-order:stroke fill}
+.logo-mini{position:absolute;right:5%;top:4%;font:700 9px Inter;color:#fff;background:rgba(0,0,0,.35);padding:3px 6px;border-radius:4px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding:0 8px;overflow-x:auto}
+.tab{border:0;background:none;padding:11px 12px 9px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--txt);border-color:var(--vio)}
+.tabbody{padding:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--panel2);border-radius:7px;padding:2px 8px}
+.chip.kw{border-color:var(--gold);color:var(--gold);font-weight:700}
+.chip.fix{text-decoration:underline;text-decoration-color:var(--cyan);text-underline-offset:3px}
+/* editor bebas */
+.ed{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px}
+.ed-prev{display:grid;grid-template-columns:200px minmax(0,1fr);gap:14px;align-items:start}
+.insp .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+.tl{padding:12px 14px;margin-top:14px}
+.trk{display:grid;grid-template-columns:70px 1fr;gap:8px;align-items:center;margin:5px 0}
+.trk>span{font-size:11px;color:var(--muted);font-weight:600}
+.lane{position:relative;height:30px;background:var(--panel2);border-radius:6px}
+.clip{position:absolute;top:3px;bottom:3px;border-radius:5px;font-size:10px;padding:0 6px;line-height:24px;white-space:nowrap;overflow:hidden;color:#fff}
+.c-vid{background:#5b4c3e}.c-txt{background:#4a3a9c}.c-cap{background:#2b6870}.c-sfx{background:#7a6a2a}.c-mus{background:#2c5e48}.c-fx{background:#6d2f6d}
+.ph{position:absolute;top:-4px;bottom:-4px;left:34%;width:2px;background:var(--red)}
+.copilot{display:flex;flex-direction:column;height:100%}
+.msgs{flex:1;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:260px}
+.msg{padding:8px 10px;border-radius:10px;max-width:92%;font-size:12px}
+.msg.u{align-self:flex-end;background:var(--vio2)}.msg.a{background:var(--panel2)}
+.msg .acts{display:flex;gap:6px;margin-top:6px}
+.cin{display:flex;gap:6px;padding:10px;border-top:1px solid var(--line)}
+.cin input{flex:1;background:#10141e;border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+/* media */
+.libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;padding:14px}
+.asset{padding:12px;display:flex;flex-direction:column;gap:6px}
+.asset .pv{height:70px;border-radius:8px;display:grid;place-items:center;font-weight:700}
+.tags{display:flex;gap:4px;flex-wrap:wrap}.tags span{font-size:10px;background:var(--panel2);border-radius:5px;padding:1px 6px;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field label{font-size:11px;font-weight:600;color:var(--muted)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.konflik{border:1px solid #6b2a2a;background:#2a1414;border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.konflik ul{margin:6px 0 0;padding-left:18px}
+.qrow{display:grid;grid-template-columns:26px 1fr auto auto auto;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.qrow .n{width:24px;height:24px;border-radius:50%;background:var(--panel2);display:grid;place-items:center;font-size:11px;font-weight:700}
+.bar{height:8px;border-radius:99px;background:var(--panel2);overflow:hidden}.bar div{height:100%;background:var(--vio)}
+.flow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;margin-top:8px}
+.flow span{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+.flow i{color:var(--muted);font-style:normal}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px;z-index:50}
+.modal .card{max-width:560px;width:100%;padding:20px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--vio);color:#fff;padding:10px 16px;border-radius:10px;font-weight:600;z-index:60}
+.dim{color:var(--muted)}
+.psec{margin-bottom:14px}
+.psec h2{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.konflik li{margin:3px 0}
+.swatch{display:flex;gap:8px;align-items:center}
+.swatch input[type=color]{width:36px;height:32px;padding:0;border:1px solid var(--line);border-radius:6px;background:none}
+.chiplist{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chiplist .chip{display:inline-flex;gap:6px;align-items:center}
+.chiplist .chip b{cursor:pointer;color:var(--muted);font-weight:400}
+.logobox{display:flex;gap:12px;align-items:center;padding:10px;border:1px dashed var(--line);border-radius:10px;flex-wrap:wrap}
+.logobox .lg{width:64px;height:64px;border-radius:8px;background:repeating-conic-gradient(var(--panel2) 0 25%,transparent 0 50%) 0 0/10px 10px;display:grid;place-items:center;font-weight:800;font-size:11px}
+table input,table select{background:#10141e;border:1px solid var(--line);border-radius:6px;padding:4px 6px;width:100%}
+.alert{padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px}
+.alert.bad{background:#2a1414;color:var(--red);border:1px solid #6b2a2a}
+.efx{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.efx div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:12px}
+.efx select{background:#10141e;border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px;width:auto}
+.efx select.w{color:var(--gold)}.efx select.b{color:var(--green)}.efx select.j{color:var(--muted)}
+.note{font-size:11px;color:var(--muted);text-align:center;margin-top:24px}
+@media (max-width:1100px){.ed{grid-template-columns:1fr}.plan-grid{grid-template-columns:1fr 1fr}}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  .rail{position:fixed;top:auto;bottom:0;left:0;right:0;height:auto;flex-direction:row;overflow-x:auto;padding:6px;z-index:40;border-right:0;border-top:1px solid var(--line)}
+  .brand,.grow,.me{display:none}
+  .nav{flex:none;width:58px}
+  main{padding:16px 16px 90px}
+  .grid4{grid-template-columns:1fr 1fr}
+  .ad,.ed-prev,.choice,.row2{grid-template-columns:1fr}
+  .ad .screen,.ed-prev .screen{max-width:240px;margin:0 auto}
+  .hidem{display:none}
+  .qrow{grid-template-columns:26px 1fr auto}
+  .qrow .hidem{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="brand">M</div>
+    <button class="nav sel" data-go="proyek"><span class="s">▦</span>Proyek</button>
+    <button class="nav" data-go="iklan"><span class="s">⚡</span>Iklan<span class="dot">2</span></button>
+    <button class="nav" data-go="editor"><span class="s">✂</span>Editor</button>
+    <button class="nav" data-go="media"><span class="s">♫</span>Media</button>
+    <button class="nav" data-go="brand"><span class="s">◐</span>Brand</button>
+    <button class="nav" data-go="antrean"><span class="s">⏵</span>Render</button>
+    <button class="nav" data-go="ai"><span class="s">✦</span>AI</button>
+    <button class="nav" data-go="storage"><span class="s">⛁</span>Storage</button>
+    <div class="grow"></div>
+    <div class="me" title="Masuk sebagai PIC brand">PIC</div>
+  </nav>
+
+  <main>
+  <!-- ================= PROYEK ================= -->
+  <section id="v-proyek">
+    <div class="top"><div><h1>Proyek</h1><div class="sub">Satu pintu: video iklan otomatis dan edit bebas ada di sini semua</div></div><div class="sp"></div><button class="btn pri" id="newBtn">+ Baru</button></div>
+    <div class="grid4">
+      <div class="card stat"><b>2</b><span>Rencana iklan menunggu persetujuan</span></div>
+      <div class="card stat"><b>2</b><span>Antrean render</span></div>
+      <div class="card stat"><b>1</b><span>Menunggu penilaian</span></div>
+      <div class="card stat"><b>4</b><span>Selesai hari ini</span></div>
+    </div>
+    <div class="card">
+      <div class="filters">
+        <input id="q" placeholder="Cari proyek / produk…">
+        <div class="seg" id="fType"><button class="on" data-v="">Semua</button><button data-v="iklan">Iklan otomatis</button><button data-v="bebas">Edit bebas</button></div>
+        <select id="fBrand"><option value="">Semua brand</option><option>Aysilla Factory</option><option>ALN Store</option></select>
+      </div>
+      <div style="overflow-x:auto"><table><thead><tr><th></th><th>Proyek</th><th>Jenis</th><th>Status</th><th class="hidem">Brand</th><th class="hidem">Versi</th><th class="hidem">Diubah</th></tr></thead><tbody id="rows"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ================= IKLAN OTOMATIS ================= -->
+  <section id="v-iklan" class="hide">
+    <div class="top"><div><h1>Loose Pants · awareness</h1><div class="sub">Iklan otomatis · AYS-20261112-035 · Aysilla Factory · preset aysilla-awareness</div></div><div class="sp"></div>
+      <button class="btn" id="toEditor">Buka di Editor bebas →</button></div>
+    <div class="plan" id="plan">
+      <div class="plan-h"><div class="sp"><b style="font-size:14px" id="planT">Rencana edit awareness a35 sudah siap. Render ditahan sampai kamu setuju.</b>
+        <div class="sub" id="planS">Draf dibuat mesin auto-edit (Whisper + aturan preset). Koreksi di tab, atau buka di Editor bebas kalau butuh edit manual penuh.</div></div>
+        <button class="btn pri" id="approve">Setujui &amp; render</button></div>
+      <div class="plan-grid">
+        <div><b>Durasi</b>43,0 → 29,6 dtk <span class="badge b-green">sesuai target</span></div>
+        <div><b>Dibuang</b>6 bagian (jeda, "eee", take ulang, kata terlarang)</div>
+        <div><b>Hook</b>"Males nyetrika celana?"</div>
+        <div><b>Kata kunci</b>LOOSE PANTS · ANTI KUSUT · ADEM · FLOWY</div>
+        <div><b>Efek (2/3)</b>Glass type · Digital zoom 8,4 dtk</div>
+        <div><b>Audio</b>SFX pop ×6, whoosh ×2 · tanpa musik</div>
+      </div>
+    </div>
+    <div class="ad">
+      <div>
+        <div class="screen"><div class="person"><div class="body"></div><div class="pants"></div><div class="hijab"></div><div class="head"></div></div><div class="logo-mini">AYSILLA</div><div class="hook">MALES NYETRIKA CELANA?</div><div class="cap">ANTI KUSUT</div></div>
+        <div class="sub" style="margin-top:8px">Pratinjau template iklan (Remotion Player)</div>
+      </div>
+      <div class="card" style="min-width:0">
+        <div class="tabs" id="adTabs"><button class="tab on" data-t="tr">Transkrip</button><button class="tab" data-t="pt">Potongan</button><button class="tab" data-t="gy">Gaya &amp; efek</button><button class="tab" data-t="hs">Hasil</button></div>
+        <div class="tabbody" data-b="tr"><div class="chips" id="chips"></div><div class="sub" style="margin-top:10px">Garis bawah = dikoreksi kamus brand · kuning = kata kunci. Klik kata untuk mengedit.</div></div>
+        <div class="tabbody hide" data-b="pt"><table><thead><tr><th>Buang</th><th>Detik</th><th>Jenis</th><th class="hidem">Teks hilang</th></tr></thead><tbody>
+          <tr><td><input type="checkbox" checked></td><td>0,0–1,2</td><td>Jeda</td><td class="hidem muted">(diam)</td></tr>
+          <tr><td><input type="checkbox" checked></td><td>4,9–9,2</td><td>Take ulang</td><td class="hidem muted">"nah ini lus.. eh"</td></tr>
+          <tr><td><input type="checkbox" checked></td><td>12,3–12,9</td><td>"eee"</td><td class="hidem muted">"eee"</td></tr>
+          <tr><td><input type="checkbox" checked></td><td>21,0–22,4</td><td>Kata terlarang</td><td class="hidem muted">"…yang termurah"</td></tr>
+          <tr><td><input type="checkbox" checked disabled></td><td>39,6–43,0</td><td><span class="badge b-green">dikunci</span> Ekor CTA</td><td class="hidem muted">tidak dibuang</td></tr>
+        </tbody></table></div>
+        <div class="tabbody hide" data-b="gy"><div class="row2"><div class="field"><label>Font caption</label><select><option>Oswald</option><option>Anton</option></select></div><div class="field"><label>Maks kata per layar</label><select><option>3</option><option>2</option></select></div></div>
+          <div class="field"><label>Efek</label><div class="chips"><span class="chip">Glass type · 0,0</span><span class="chip">Digital zoom · 8,4</span><button class="btn sm">+ efek</button></div></div>
+          <div class="field"><label>SFX (dari Media → Aset brand)</label><div class="chips"><span class="chip">pop-01 ×6</span><span class="chip">whoosh-02 ×2</span></div></div></div>
+        <div class="tabbody hide" data-b="hs" id="hasil"><div class="sub">Belum ada versi. Render ditahan sampai rencana disetujui.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= EDITOR BEBAS ================= -->
+  <section id="v-editor" class="hide">
+    <div class="top"><div><h1 id="edTitle">Rok Plisket · edit bebas</h1><div class="sub" id="edSub">Timeline multi-track, inspector, Copilot. Untuk koreksi yang tidak cukup lewat tab Iklan.</div></div><div class="sp"></div><button class="btn">↶ Undo</button><button class="btn pri" id="edRender">Render</button></div>
+    <div class="ed">
+      <div style="min-width:0">
+        <div class="ed-prev">
+          <div class="screen"><div class="person"><div class="body"></div><div class="pants"></div><div class="hijab"></div><div class="head"></div></div><div class="hook" id="edHook" style="top:18%">ROK PLISKET ANTI KUSUT</div><div class="cap" id="edCap">FLOWY</div></div>
+          <div class="card pad insp"><h2>Inspector · Teks "Hook"</h2>
+            <div class="row"><span class="muted">Waktu</span><span>0,0 – 2,8 dtk</span></div>
+            <div class="row"><span class="muted">Preset</span><span>Hook (brand Aysilla)</span></div>
+            <div class="row"><span class="muted">Font</span><span>Anton 8%</span></div>
+            <div class="row"><span class="muted">Warna</span><span>#FFFFFF · kotak kaca</span></div>
+            <div class="row"><span class="muted">Posisi</span><span>tengah, 18% dari atas</span></div>
+            <div class="row"><span class="muted">Volume klip</span><span>—</span></div>
+            <div class="sub" style="margin-top:8px">Seret teks di pratinjau untuk memindah.</div></div>
+        </div>
+        <div class="card tl">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Timeline</h2><span class="sub">0:00 – 0:28 · 30 fps · 9:16</span></div>
+          <div class="trk"><span>Video</span><div class="lane"><div class="clip c-vid" style="left:0;width:30%">take-02.mp4</div><div class="clip c-vid" style="left:30.5%;width:38%">take-04.mp4</div><div class="clip c-vid" style="left:69%;width:31%">broll-jemur.mp4</div><div class="ph"></div></div></div>
+          <div class="trk"><span>Teks</span><div class="lane"><div class="clip c-txt" style="left:0;width:10%">Hook</div><div class="clip c-txt" style="left:52%;width:14%">USP</div><div class="clip c-txt" style="left:86%;width:14%">CTA</div><div class="ph"></div></div></div>
+          <div class="trk"><span>Caption</span><div class="lane" id="capLane"><div class="ph"></div></div></div>
+          <div class="trk"><span>Efek</span><div class="lane"><div class="clip c-fx" style="left:0;width:9%">Glass</div><div class="clip c-fx" style="left:30%;width:8%">Zoom</div><div class="ph"></div></div></div>
+          <div class="trk"><span>SFX</span><div class="lane" id="sfxLane"><div class="ph"></div></div></div>
+          <div class="trk"><span>Musik</span><div class="lane"><div class="clip c-mus" style="left:0;width:100%">lofi-santai · −18 dB, turun saat ada suara</div><div class="ph"></div></div></div>
+        </div>
+      </div>
+      <div class="card copilot">
+        <div class="pad" style="border-bottom:1px solid var(--line)"><h2 style="margin:0">Copilot</h2><div class="sub">AI merencanakan, mesin lokal mengeksekusi. Tiap aksi bisa di-undo.</div></div>
+        <div class="msgs" id="msgs">
+          <div class="msg u">buang semua jeda lebih dari 0,5 detik</div>
+          <div class="msg a">Ketemu 4 jeda (total 3,1 dtk). Rencana: potong 4 bagian di track Video.<div class="acts"><button class="btn sm pri">Terapkan</button><button class="btn sm">Lihat</button></div></div>
+          <div class="msg u">pakai preset hook brand aysilla</div>
+          <div class="msg a">Teks "Hook" diganti ke preset Hook Aysilla (Anton, kotak kaca). ✓ Diterapkan.</div>
+        </div>
+        <div class="cin"><input id="cIn" placeholder="Minta Copilot… mis. tambah SFX pop di tiap kata kunci"><button class="btn pri" id="cSend">Kirim</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MEDIA ================= -->
+  <section id="v-media" class="hide">
+    <div class="top"><div><h1>Media &amp; aset</h1><div class="sub">Footage proyek, SHARED_MEDIA, dan aset brand (SFX, musik, font, logo) di satu library</div></div><div class="sp"></div><button class="btn pri">+ Upload</button></div>
+    <div class="card">
+      <div class="filters"><div class="seg" id="mType"><button class="on" data-v="footage">Footage</button><button data-v="sfx">SFX</button><button data-v="musik">Musik</button><button data-v="font">Font</button><button data-v="logo">Logo</button></div>
+        <select><option>Semua brand + global</option><option>Aysilla Factory</option><option>ALN Store</option></select><input placeholder="Cari nama / tag…"></div>
+      <div class="libgrid" id="mGrid"></div>
+    </div>
+  </section>
+
+  <!-- ================= BRAND ================= -->
+  <section id="v-brand" class="hide">
+    <div class="top"><div><h1>Brand kit &amp; preset</h1><div class="sub">Semua bisa diedit. Dipakai oleh iklan otomatis, preset teks editor, Copilot, dan brand guard sebelum render</div></div><div class="sp"></div>
+      <select class="btn"><option>Aysilla Factory</option><option>ALN Store</option></select>
+      <select class="btn" id="presetSel"><option>aysilla-awareness</option><option>aysilla-konversi</option><option>aysilla-branding</option></select>
+      <button class="btn pri" id="presetSave">Simpan preset</button></div>
+    <div class="konflik">
+      <b style="color:var(--bad)">5 isian bertentangan. Preset tetap bisa dipakai, tapi hasilnya bisa tidak konsisten.</b>
+      <ul>
+        <li><b>Warna:</b> kuning masuk "warna dilarang", tapi contoh warna kata kunci lama #F2C14E (kuning).</li>
+        <li><b>Durasi:</b> target TikTok 20 dtk, struktur babak 0–30 dtk, brief 30 dtk.</li>
+        <li><b>Efek:</b> 17 efek berstatus "Dipakai" tanpa babak/maks, padahal maks 3 per video.</li>
+        <li><b>Efek khas brand:</b> berisi tagline "Cuci Jemur Langsung Pakai", bukan nama efek.</li>
+        <li><b>CTA:</b> kalimat wajib "Penasaran sama celana anti kusut ini?" berbeda dengan CTA brief "Join Live, Share".</li>
+      </ul>
+    </div>
+    <div class="card pad psec"><h2>Brand kit · Aysilla Factory</h2>
+      <div class="row2">
+        <div class="field"><label>Nama brand</label><input value="Aysilla Factory"></div>
+        <div class="field"><label>Handle</label><input value="@aysillafactoryid"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Warna caption</label><div class="swatch"><input type="color" value="#FFFFFF"><code>#FFFFFF</code></div></div>
+        <div class="field"><label>Warna outline / bayangan</label><div class="swatch"><input type="color" value="#000000"><code>#000000</code> <span class="dim" style="font-size:12px">tebal 4 px</span></div></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Warna aksen kata kunci</label><div class="swatch"><input type="color" value="#000000"><code>#000000</code></div></div>
+        <div class="field"><label>Warna dilarang</label><div class="chiplist" data-chips><span class="chip">merah <b>×</b></span><span class="chip">kuning <b>×</b></span><span class="chip">biru <b>×</b></span><button class="btn sm">+</button></div></div>
+      </div>
+      <div class="field"><label>Logo</label>
+        <div class="logobox"><div class="lg">AYSILLA</div>
+          <div style="flex:1;min-width:180px"><b>logo.png</b> <span class="badge b-ok">PNG transparan · 1200 px</span><div class="dim" style="font-size:12px;margin-top:4px">logo-putih.png (latar gelap): <span class="badge b-wait">belum ada</span></div></div>
+          <button class="btn sm">Ganti logo</button></div></div>
+      <div class="row2">
+        <div class="field"><label>Posisi logo</label><select><option>Pojok kanan atas</option><option>Pojok kiri atas</option><option>Hanya di penutup</option></select></div>
+        <div class="field"><label>Ukuran logo: <span id="lgT">25%</span> lebar layar</label><input type="range" min="8" max="40" value="25" oninput="document.getElementById('lgT').textContent=this.value+'%'"></div>
+      </div>
+      <label style="display:flex;gap:6px;font-size:13px;margin:-4px 0 14px"><input type="checkbox" checked> Tampil sepanjang video + penutup video logo 2 dtk</label>
+      <div class="row2">
+        <div class="field"><label>Font judul</label><select><option>Anton</option><option>Poppins</option><option>Montserrat</option></select></div>
+        <div class="field"><label>Font caption</label><select><option>Oswald</option><option>Poppins</option><option>Anton</option></select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>CTA TikTok / Shopee</label><input value="Cek keranjang kuning sekarang"></div>
+        <div class="field"><label>CTA Instagram</label><input value="Cek link di bio"></div>
+      </div>
+      <div class="field"><label>Disclaimer (tampil saat video memperlihatkan varian warna)</label><input value="Warna dapat sedikit berbeda karena cahaya"></div>
+      <div class="field"><label>Kata terlarang</label><div class="chiplist" data-chips><span class="chip">paling murah <b>×</b></span><span class="chip">termurah <b>×</b></span><span class="chip">no. 1 <b>×</b></span><span class="chip">gratis ongkir (tanpa promo) <b>×</b></span><button class="btn sm">+</button></div></div>
+      <div class="field"><label>Kosakata Whisper (membantu transkrip mengenali istilah)</label><textarea rows="2">Aysilla Factory, Loose Pants, Lucy Pants, Nge loose, high waist, flowy, anti kusut, keranjang kuning, petite friendly, Espresso, Ivory, Latte, Smoke Grey</textarea></div>
+    </div>
+    <div class="card pad psec"><h2>Kamus kata <button class="btn sm">+ Tambah</button></h2>
+      <table><thead><tr><th>Terdengar / salah tulis</th><th>Ejaan benar</th></tr></thead><tbody>
+        <tr><td>Icila Factory</td><td>Aysilla Factory</td></tr><tr><td>Luspents</td><td>Loose Pants</td></tr><tr><td>Lusi pants</td><td>Lucy Pants</td></tr><tr><td>ngelus</td><td>Nge loose</td></tr><tr><td>hai weis</td><td>high waist</td></tr>
+      </tbody></table>
+    </div>
+    <div class="card pad psec"><h2>Caption &amp; durasi</h2>
+      <div class="row2">
+        <div class="field"><label>Model caption</label><select><option>Per kata</option><option>Per frasa</option></select></div>
+        <div class="field"><label>Maks kata per layar</label><input type="number" value="3" min="1" max="6"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Durasi min – maks (dtk)</label><div style="display:flex;gap:6px"><input type="number" value="15" style="width:80px"><input type="number" value="30" style="width:80px"></div></div>
+        <div class="field"><label>Jeda diam maksimum (dtk)</label><input type="number" value="0.5" step="0.1"></div>
+      </div>
+    </div>
+    <div class="card pad psec"><h2>Format &amp; durasi per placement</h2>
+      <div style="overflow-x:auto"><table><thead><tr><th>Placement</th><th>Rasio</th><th class="hidem">Resolusi</th><th>Dipakai</th><th>Durasi target</th></tr></thead><tbody>
+        <tr><td>TikTok in-feed / Shop</td><td>9:16</td><td class="hidem">1080×1920</td><td><input type="checkbox" checked style="width:auto"></td><td><input value="20" style="width:60px;border-color:var(--bad)"> dtk</td></tr>
+        <tr><td>Shopee Video</td><td>9:16</td><td class="hidem">1080×1920</td><td><input type="checkbox" checked style="width:auto"></td><td><input value="20" style="width:60px"> dtk</td></tr>
+        <tr><td>Meta Reels / Stories</td><td>9:16</td><td class="hidem">1080×1920</td><td><input type="checkbox" style="width:auto"></td><td><input value="" style="width:60px"> dtk</td></tr>
+        <tr><td>Meta Feed (turunan)</td><td>4:5</td><td class="hidem">1080×1350</td><td><input type="checkbox" style="width:auto"></td><td class="dim">dari master</td></tr>
+        <tr><td>Feed persegi</td><td>1:1</td><td class="hidem">1080×1080</td><td><input type="checkbox" style="width:auto"></td><td class="dim">opsional</td></tr>
+      </tbody></table></div>
+      <div class="row2" style="margin-top:12px">
+        <div class="field"><label>Frame rate</label><select><option>30 fps</option><option>60 fps (hanya jika footage 60 fps)</option></select></div>
+        <div class="field"><label>Penamaan file</label><input value="brand_jenis_produk_hook_v01.mp4"></div>
+      </div>
+      <label style="display:flex;gap:6px;font-size:13px"><input type="checkbox" checked> Buat otomatis: master 9:16 + 4:5 + cover/thumbnail</label>
+    </div>
+    <div class="card pad psec"><h2>Struktur video (babak)</h2>
+      <div class="alert bad">Babak berakhir di 30 dtk, padahal target TikTok 20 dtk. Mesin akan menyesuaikan proporsinya, tapi sebaiknya disamakan.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th style="width:24%">Babak</th><th style="width:18%">Detik</th><th>Isi yang harus ada</th></tr></thead><tbody>
+        <tr><td>Hook</td><td><input value="0–3"></td><td><input value="Masalah/hasil paling mencolok + teks judul (maks 6 kata)"></td></tr>
+        <tr><td>Masalah / konteks</td><td><input value="3–7"></td><td><input value="Males nyetrika / cari celana yang gak gampang kusut"></td></tr>
+        <tr><td>Produk &amp; bukti</td><td><input value="7–20"></td><td><input value="Try-on, detail bahan, before-after"></td></tr>
+        <tr><td>Penawaran</td><td><input value="20–25"></td><td><input value="Harga/promo HANYA yang tertulis di brief"></td></tr>
+        <tr><td>CTA &amp; penutup</td><td><input value="25–30"></td><td><input value="&quot;Cek keranjang kuning&quot; + video logo ending"></td></tr>
+      </tbody></table></div>
+    </div>
+    <div class="card pad psec"><h2>Ritme</h2>
+      <div class="row2">
+        <div class="field"><label>Pergantian shot / framing setiap (dtk)</label><div style="display:flex;gap:6px;align-items:center"><input type="number" value="2" style="width:70px"> – <input type="number" value="5" style="width:70px"></div></div>
+        <div class="field"><label>Salah ucap &amp; take ulang</label><select><option>Selalu pakai take terakhir yang bersih</option><option>Tanyakan ke PIC</option></select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Kalimat CTA wajib (tulis persis)</label><input value="Penasaran sama celana anti kusut ini?" style="border-color:var(--bad)"></div>
+        <div class="field"><label>Penutup wajib</label><select><option>Video logo ending, 2,5 dtk</option><option>Logo + handle, 2 dtk</option></select></div>
+      </div>
+    </div>
+    <div class="card pad psec"><h2>Efek (Wajib / Boleh / Jangan)</h2>
+      <div class="row2">
+        <div class="field"><label>Maks efek berbeda per video</label><input type="number" value="3" min="0" max="6"></div>
+        <div class="field"><label>Jarak minimal antar efek besar (dtk)</label><input type="number" value="5"></div>
+      </div>
+      <div class="efx" id="efxGrid"></div></div>
+    <div class="card pad psec"><h2>Audio</h2>
+      <div class="row2">
+        <div class="field"><label>SFX saat teks besar muncul</label><select><option>tag: pop</option><option>tag: ding</option></select></div>
+        <div class="field"><label>SFX saat transisi</label><select><option>tag: whoosh</option><option>tag: glitch</option></select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Sumber suara utama</label><select><option>Suara asli</option><option>VO ElevenLabs (K-3, belum v1)</option><option>Musik saja</option></select></div>
+        <div class="field"><label>SFX dilarang</label><input value="Suara kaget keras, efek kartun"></div>
+      </div>
+      <div class="field"><label>Musik latar</label><select><option>Hanya yang berlisensi iklan berbayar · tag: pop-ceria</option></select></div>
+      <div class="row2">
+        <div class="field"><label>Volume musik terhadap suara</label><select><option>Selalu di bawah suara, turun saat ada ucapan</option></select></div>
+        <div class="field"><label>Target loudness akhir</label><input value="-14 LUFS (cek standar platform)"></div>
+      </div>
+    </div>
+    <div class="card pad psec"><h2>Klaim &amp; larangan</h2>
+      <div class="field"><label>Klaim yang BOLEH disebut</label><div class="chiplist" data-chips><span class="chip">bahan adem <b>×</b></span><span class="chip">tidak nerawang <b>×</b></span><span class="chip">ukuran M–XL <b>×</b></span><span class="chip">flowy <b>×</b></span><span class="chip">anti kusut <b>×</b></span><span class="chip">polyester premium <b>×</b></span><button class="btn sm">+</button></div></div>
+      <div class="field"><label>Klaim yang DILARANG</label><div class="chiplist" data-chips><span class="chip">paling murah <b>×</b></span><span class="chip">no. 1 <b>×</b></span><span class="chip">klaim kesehatan <b>×</b></span><button class="btn sm">+</button></div></div>
+      <div class="field"><label>Visual yang dilarang</label><div class="chiplist" data-chips><span class="chip">produk kompetitor <b>×</b></span><span class="chip">logo lain <b>×</b></span><span class="chip">aurat terbuka <b>×</b></span><button class="btn sm">+</button></div></div>
+      <div class="field"><label>Area yang tidak boleh tertutup teks</label><div class="chiplist" data-chips><span class="chip">wajah <b>×</b></span><span class="chip">produk <b>×</b></span><span class="chip">15% bawah layar <b>×</b></span><span class="chip">sisi kanan (tombol) <b>×</b></span><button class="btn sm">+</button></div></div>
+    </div>
+    <div class="card pad psec"><h2>Checklist QC</h2>
+      <div style="overflow-x:auto"><table><thead><tr><th>Butir</th><th>Dicek</th></tr></thead><tbody id="qcCfg"></tbody></table></div>
+    </div>
+      <div class="card pad psec"><h2>Preset teks editor <span class="badge b-cyan">Editor</span> <span class="badge b-vio">Iklan</span></h2>
+      <div style="overflow-x:auto"><table><thead><tr><th>Preset</th><th>Font</th><th>Warna</th><th>Gaya</th><th>Posisi</th></tr></thead><tbody>
+        <tr><td><b>Hook</b></td><td><select><option>Anton</option><option>Oswald</option></select></td><td><input value="#FFFFFF" style="width:90px"></td><td><select><option>Kotak kaca</option><option>Outline</option><option>Kotak warna</option></select></td><td><select><option>Atas 18%</option><option>Tengah</option></select></td></tr>
+        <tr><td><b>USP</b></td><td><select><option>Oswald</option><option>Anton</option></select></td><td><input value="#FFFFFF" style="width:90px"></td><td><select><option>Outline</option><option>Kotak kaca</option></select></td><td><select><option>Tengah</option><option>Atas 18%</option></select></td></tr>
+        <tr><td><b>CTA</b></td><td><select><option>Anton</option></select></td><td><input value="#000000" style="width:90px"></td><td><select><option>Kotak warna</option><option>Outline</option></select></td><td><select><option>Bawah 72%</option></select></td></tr>
+        <tr><td><b>Sale</b></td><td><select><option>Anton</option></select></td><td><input value="#FFFFFF" style="width:90px"></td><td><select><option>Kotak warna</option></select></td><td><select><option>Tengah</option></select></td></tr>
+        <tr><td><b>Subtitle</b></td><td><select><option>Oswald</option></select></td><td><input value="#FFFFFF" style="width:90px"></td><td><select><option>Outline</option></select></td><td><select><option>Bawah 72%</option></select></td></tr>
+      </tbody></table></div>
+    </div>
+</section>
+
+  <!-- ================= ANTREAN RENDER ================= -->
+  <section id="v-antrean" class="hide">
+    <div class="top"><div><h1>Antrean render</h1><div class="sub">Satu antrean untuk semua jenis. Satu job jalan sekaligus di PC kantor.</div></div></div>
+    <div class="card" id="queue"></div>
+    <div class="card pad" style="margin-top:14px"><h2>Mesin render</h2>
+      <div class="row2"><div><span class="badge b-vio">Remotion</span> template iklan: caption per kata, glass title, efek, outro logo</div><div><span class="badge b-cyan">FFmpeg</span> proyek edit bebas: potong, gabung, teks, audio, ekspor</div></div>
+      <div class="sub" style="margin-top:8px">Setelah render: brand guard → QC → hapus metadata → masuk 05_OUTPUT proyek.</div></div>
+  </section>
+
+  <!-- ================= AI ================= -->
+  <section id="v-ai" class="hide">
+    <div class="top"><div><h1>AI &amp; biaya</h1><div class="sub">API didaftarkan manual. Langganan chat ≠ API.</div></div></div>
+    <div class="row2">
+      <div class="card pad"><h2>API terdaftar</h2>
+        <table><tbody>
+          <tr><td><b>Claude API</b><div class="sub">Copilot editor · keputusan iklan (hook, take ulang)</div></td><td><span class="badge b-gold">belum diisi (K-1)</span></td></tr>
+          <tr><td><b>Whisper lokal</b><div class="sub">transkrip, di PC kantor</div></td><td><span class="badge b-green">aktif · gratis</span></td></tr>
+          <tr><td><b>ElevenLabs</b><div class="sub">VO untuk video tanpa suara</div></td><td><span class="badge b-dim">nanti (K-3)</span></td></tr>
+        </tbody></table></div>
+      <div class="card pad"><h2>Anggaran bulan ini</h2><div class="bar"><div style="width:0%"></div></div><div class="sub" style="margin-top:6px">Rp0 dari batas Rp500.000 · AI berhenti otomatis kalau batas tercapai, mesin aturan tetap jalan</div>
+        <h2 style="margin-top:16px">Per job (contoh)</h2><div class="sub">Iklan otomatis rata-rata: belum diukur · Copilot per perintah: belum diukur</div></div>
+    </div>
+  </section>
+
+  <!-- ================= STORAGE ================= -->
+  <section id="v-storage" class="hide">
+    <div class="top"><div><h1>Storage &amp; sampah</h1><div class="sub">Workspace lokal: PROJECTS · SHARED_MEDIA · SHARED_ASSETS · BACKUP_PROJECTS</div></div></div>
+    <div class="row2">
+      <div class="card pad"><h2>Pemakaian disk</h2><div class="bar"><div style="width:38%"></div></div><div class="sub" style="margin-top:6px">142 GB dari 375 GB · footage tidak pernah dihapus otomatis</div>
+        <div class="flow"><span>PROJECTS 96 GB</span><span>SHARED_MEDIA 31 GB</span><span>SHARED_ASSETS 2 GB</span><span>Output 13 GB</span></div></div>
+      <div class="card pad"><h2>Sampah</h2>
+        <table><tbody>
+          <tr><td>glitch-01.wav <div class="sub">aset ALN · dipindah 2 hari lalu</div></td><td><button class="btn sm">Pulihkan</button></td></tr>
+          <tr><td>Gamis Harian v01 <div class="sub">versi lama · eligible 30 hari</div></td><td><button class="btn sm">Pulihkan</button></td></tr>
+        </tbody></table>
+        <div class="sub" style="margin-top:8px">Hapus permanen selalu manual + audit ulang.</div></div>
+    </div>
+  </section>
+
+  <p class="note">Konsep "satu pintu": Motion Studio + mesin auto-edit iklan. Data contoh, belum tersambung.</p>
+  </main>
+</div>
+
+<div class="modal hide" id="modal"><div class="card"><h2 id="mT"></h2><div id="mB"></div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px" id="mA"></div></div></div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2200)}
+function modal(t,b,acts){$('#mT').textContent=t;$('#mB').innerHTML=b;$('#mA').innerHTML='';acts.forEach(([l,c,f])=>{const x=document.createElement('button');x.className='btn '+c;x.textContent=l;x.onclick=()=>{$('#modal').classList.add('hide');f&&f()};$('#mA').appendChild(x)});$('#modal').classList.remove('hide')}
+function go(v){$$('main>section').forEach(s=>s.classList.toggle('hide',s.id!=='v-'+v));$$('.nav').forEach(n=>n.classList.toggle('sel',n.dataset.go===v));scrollTo(0,0)}
+$$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+
+/* proyek */
+const P=[
+ ['Loose Pants · awareness','iklan','Aysilla Factory','Rencana menunggu persetujuan','b-gold','–','5 mnt','#c9b49b','iklan'],
+ ['Lucy Pants · konversi','iklan','Aysilla Factory','Rencana menunggu persetujuan','b-gold','–','22 mnt','#8a7a68','iklan'],
+ ['Rok Plisket · edit bebas','bebas','Aysilla Factory','Sedang diedit','b-cyan','v01','8 mnt','#b89f84','editor'],
+ ['Hijab Pashmina Ceruty','iklan','ALN Store','Render 64%','b-vio','v02','3 mnt','#1F3A5F',''],
+ ['Loose Pants Espresso','iklan','Aysilla Factory','Menunggu penilaian','b-vio','v01','1 jam','#4b3a2e',''],
+ ['Promo 12.12 compilation','bebas','ALN Store','Selesai','b-green','v03','2 jam','#F5C518',''],
+ ['Kulot Ivory · konversi','iklan','Aysilla Factory','Selesai','b-green','v02','3 jam','#e9dccb',''],
+];
+let fType='';
+function rows(){const q=$('#q').value.toLowerCase(),fb=$('#fBrand').value;
+ $('#rows').innerHTML=P.filter(p=>(!fType||p[1]===fType)&&(!fb||p[2]===fb)&&(!q||p[0].toLowerCase().includes(q))).map(p=>`<tr class="click" data-go2="${p[8]}"><td><span class="thumb" style="background:${p[7]}"></span></td><td><b>${p[0]}</b></td><td><span class="badge ${p[1]==='iklan'?'b-vio':'b-cyan'}">${p[1]==='iklan'?'⚡ Iklan otomatis':'✂ Edit bebas'}</span></td><td><span class="badge ${p[4]}">${p[3]}</span></td><td class="hidem">${p[2]}</td><td class="hidem">${p[5]}</td><td class="hidem muted">${p[6]} lalu</td></tr>`).join('');
+ $$('#rows tr').forEach(r=>r.onclick=()=>r.dataset.go2?go(r.dataset.go2):toast('Konsep: buka "Loose Pants · awareness" atau "Rok Plisket"'))}
+$$('#fType button').forEach(b=>b.onclick=()=>{$$('#fType button').forEach(x=>x.classList.toggle('on',x===b));fType=b.dataset.v;rows()});
+$('#q').oninput=rows;$('#fBrand').onchange=rows;rows();
+$('#newBtn').onclick=()=>modal('Mulai dari mana?',`<div class="choice">
+  <button id="cA"><span class="badge b-vio">⚡ Iklan otomatis</span><b>Dari video mentah</b><span class="muted">Upload rekaman + brief. Mesin bikin draf (transkrip, potong, caption, efek). Kamu setujui dulu sebelum render.</span></button>
+  <button id="cB"><span class="badge b-cyan">✂ Edit bebas</span><b>Proyek kosong</b><span class="muted">Timeline multi-track seperti CapCut, dibantu Copilot dan preset brand.</span></button></div>
+  <div class="flow"><span>Video mentah</span><i>→</i><span>Draf otomatis</span><i>→</i><span>Setujui</span><i>→</i><span>Render</span><i>· bisa pindah ke</i><span>Editor bebas</span></div>`,[['Tutup','']]);
+document.addEventListener('click',e=>{if(e.target.closest('#cA')){$('#modal').classList.add('hide');go('iklan')}if(e.target.closest('#cB')){$('#modal').classList.add('hide');go('editor')}});
+
+/* iklan */
+const W="Kalian pernah gak sih males nyetrika celana? Nah ini Loose Pants dari Aysilla Factory. Bahannya anti kusut, adem, flowy banget. Cuci, jemur, langsung pakai. Cek keranjang kuning sekarang!".split(' ');
+const KW=new Set([9,10,15,16,17,18]),FX=new Set([9,10,12,13]);
+$('#chips').innerHTML=W.map((w,i)=>`<span class="chip ${KW.has(i)?'kw':''} ${FX.has(i)?'fix':''}">${w}</span>`).join('');
+$$('#adTabs .tab').forEach(b=>b.onclick=()=>{$$('#adTabs .tab').forEach(x=>x.classList.toggle('on',x===b));$$('[data-b]').forEach(x=>x.classList.toggle('hide',x.dataset.b!==b.dataset.t))});
+$('#approve').onclick=()=>modal('Setujui rencana & render?','Render v01 masuk <b>Antrean render</b> (mesin Remotion). Brand guard dan QC jalan otomatis setelahnya.',[['Kembali',''],['Setujui & render','pri',()=>{
+  $('#plan').classList.add('ok');$('#planT').textContent='Disetujui. v01 masuk antrean render (posisi 2).';$('#approve').disabled=true;
+  Q.splice(1,0,['Loose Pants · awareness v01','Remotion','Menunggu giliran','b-dim',0]);renderQ();
+  $('#hasil').innerHTML='<div class="sub">v01 di antrean posisi 2. Notifikasi muncul di Proyek saat selesai.</div>';toast('Masuk antrean render')}]]);
+$('#toEditor').onclick=()=>modal('Buka di Editor bebas?','Draf iklan diubah jadi proyek timeline: potongan → klip Video, caption per kata → track Caption, hook/CTA → teks berpreset, SFX & efek → track masing-masing. <br><br><span class="muted">Setelah dibuka di editor bebas, render memakai jalur editor. Versi iklan yang sudah ada tetap tersimpan.</span>',[['Batal',''],['Buka','pri',()=>{
+  $('#edTitle').textContent='Loose Pants · awareness (dari iklan otomatis)';$('#edSub').textContent='Timeline hasil konversi draf iklan. Bebas diedit manual.';
+  $('#edHook').textContent='MALES NYETRIKA CELANA?';$('#edCap').textContent='ANTI KUSUT';go('editor');toast('Draf iklan dibuka di Editor bebas')}]]);
+
+/* editor */
+$('#capLane').insertAdjacentHTML('afterbegin',Array.from({length:12},(_,i)=>`<div class="clip c-cap" style="left:${i*8.2}%;width:7.8%">${['Kalian','males','celana?','LOOSE','dari','ANTI','ADEM','FLOWY','Cuci','langsung','Cek','sekarang'][i]}</div>`).join(''));
+$('#sfxLane').insertAdjacentHTML('afterbegin',[1,13,30,34,42,51,58,95].map(x=>`<div class="clip c-sfx" style="left:${x}%;width:1.4%;padding:0"></div>`).join(''));
+$('#cSend').onclick=()=>{const v=$('#cIn').value.trim();if(!v)return;$('#msgs').insertAdjacentHTML('beforeend',`<div class="msg u">${v.replace(/</g,'&lt;')}</div><div class="msg a">Rencana: 6 SFX pop di kata kunci (track SFX). Belum diterapkan.<div class="acts"><button class="btn sm pri" onclick="this.parentElement.parentElement.lastChild.remove();this.closest('.msg').insertAdjacentHTML('beforeend',' ✓ Diterapkan.')">Terapkan</button><button class="btn sm">Batal</button></div></div>`);$('#cIn').value=''};
+$('#edRender').onclick=()=>modal('Render proyek?','Masuk antrean render (mesin FFmpeg). Brand guard cek kata terlarang & harga dulu.',[['Batal',''],['Render','pri',()=>toast('Masuk antrean render')]]);
+
+/* media */
+const M={footage:[['take-02.mp4','PROJECTS/Rok Plisket','0:41','#8a7a68',['proyek']],['take-04.mp4','PROJECTS/Rok Plisket','1:12','#6e5f50',['proyek']],['broll-jemur.mp4','SHARED_MEDIA','0:06','#4b3a2e',['b-roll','aysilla']],['a35-mentah.mp4','PROJECTS/Loose Pants','0:43','#c9b49b',['iklan otomatis']]],
+ sfx:[['pop-01.wav','global','0,18 dtk','#2a2350',['pop','teks-muncul','✓ lisensi']],['whoosh-02.wav','global','0,35 dtk','#2a2350',['whoosh','transisi','✓ lisensi']],['ding-01.wav','Aysilla','0,60 dtk','#2a2350',['penutup','✓ lisensi']]],
+ musik:[['lofi-santai.mp3','global','1:58','#16302a',['lofi','✓ iklan berbayar']],['pop-ceria.mp3','Aysilla','2:14','#3b1c1c',['✕ lisensi belum jelas']]],
+ font:[['Anton','Google Fonts','','#1c2030',['judul']],['Oswald','Google Fonts','','#1c2030',['caption']]],
+ logo:[['logo-aysilla.png','Aysilla','1200 px','#1c2030',['logo']],['logo-aln.png','ALN Store','1000 px','#1c2030',['logo']]]};
+let mt='footage';
+function mg(){$('#mGrid').innerHTML=M[mt].map(a=>`<div class="card asset"><div class="pv" style="background:${a[3]};${mt==='font'?`font:400 22px ${a[0]}`:''}">${mt==='font'?'ANTI KUSUT':mt==='footage'?'▶ '+a[2]:mt==='logo'?a[0].replace('.png','').toUpperCase():'♪'}</div><b>${a[0]}</b><div class="sub">${a[1]}${a[2]&&mt!=='footage'?' · '+a[2]:''}</div><div class="tags">${a[4].map(t=>`<span>${t}</span>`).join('')}</div></div>`).join('')}
+$$('#mType button').forEach(b=>b.onclick=()=>{$$('#mType button').forEach(x=>x.classList.toggle('on',x===b));mt=b.dataset.v;mg()});mg();
+
+/* antrean */
+const Q=[['Hijab Pashmina Ceruty v02','Remotion','Render 64%','b-vio',64],['Rok Plisket v01','FFmpeg','Menunggu giliran','b-dim',0],['Promo 12.12 v04','FFmpeg','Menunggu giliran','b-dim',0]];
+function renderQ(){$('#queue').innerHTML=Q.map((q,i)=>`<div class="qrow"><span class="n">${i+1}</span><div><b>${q[0]}</b>${q[4]?`<div class="bar" style="margin-top:6px"><div style="width:${q[4]}%"></div></div>`:''}</div><span class="badge ${q[1]==='Remotion'?'b-vio':'b-cyan'}">${q[1]}</span><span class="badge ${q[3]} hidem">${q[2]}</span><button class="btn sm hidem" ${i<2?'disabled':''} data-up="${i}">↑</button></div>`).join('');
+ $$('[data-up]').forEach(b=>b.onclick=()=>{const i=+b.dataset.up;[Q[i-1],Q[i]]=[Q[i],Q[i-1]];renderQ()})}
+renderQ();
+
+/* brand & preset */
+const E17=['Orbit','Couch wall','UI world','Frame break','Digital zoom','Phone mockup','Checklist','Headline wall','Zoom-through cut','Chart grow','Pull-back reveal','Green screen','Paper cut','Doodle boil','Vertigo','Cover story','Glass type'];
+const EDEF={4:'Boleh',6:'Boleh',8:'Boleh',10:'Boleh',15:'Boleh',16:'Wajib'};
+const ecls=v=>v==='Wajib'?'w':v==='Boleh'?'b':'j';
+$('#efxGrid').innerHTML=E17.map((e,i)=>{const v=EDEF[i]||'Jangan';return `<div><span>${String(i+1).padStart(2,'0')} ${e}</span><select class="${ecls(v)}">${['Wajib','Boleh','Jangan'].map(o=>`<option ${v===o?'selected':''}>${o}</option>`).join('')}</select></div>`}).join('');
+$$('#efxGrid select').forEach(x=>x.onchange=()=>{x.className=ecls(x.value);const n=$$('#efxGrid select').filter(y=>y.value!=='Jangan').length;toast(`${x.closest('div').firstChild.textContent}: ${x.value} · ${n} efek aktif`)});
+document.addEventListener('click',e=>{const x=e.target.closest('[data-chips] .chip b');if(x){x.parentElement.remove();return}
+  const add=e.target.closest('[data-chips] > button');if(add){const sp=document.createElement('span');sp.className='chip';sp.innerHTML='<input size="14" style="border:0;background:none;padding:0;outline:none" placeholder="ketik lalu Enter">';add.before(sp);const inp=sp.querySelector('input');inp.focus();
+    inp.onkeydown=k=>{if(k.key==='Enter'&&inp.value.trim()){sp.textContent=inp.value.trim()+' ';const b=document.createElement('b');b.textContent='×';sp.appendChild(b)}if(k.key==='Escape')sp.remove()}}});
+$$('.swatch input[type=color]').forEach(c=>c.oninput=()=>{c.nextElementSibling.textContent=c.value.toUpperCase()});
+const QCI=['Durasi sesuai target','Rasio & resolusi sesuai placement','Hook di 3 detik pertama','Tidak ada jeda / take salah tersisa','Ejaan nama produk sesuai kamus','Harga & promo sama persis dengan brief','Teks tidak menutup wajah, produk, area tombol','Logo & handle sesuai aturan','Efek hanya Wajib/Boleh, tidak lewat batas','Musik di bawah suara, tidak pecah','CTA & penutup sesuai struktur','Nama file sesuai format'];
+$('#qcCfg').innerHTML=QCI.map((q,i)=>`<tr><td>${q}</td><td><select>${['Otomatis','Manual (tim)','Tidak dicek'].map(o=>`<option ${(i===9||i===6?'Manual (tim)':'Otomatis')===o?'selected':''}>${o}</option>`).join('')}</select></td></tr>`).join('');
+$('#presetSave').onclick=()=>toast('Preset disimpan. 5 konflik masih terbuka.');
+</script>
+</body>
+</html>

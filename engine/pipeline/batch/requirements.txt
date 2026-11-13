@@ -1,0 +1,11 @@
+# Python Batch Remix (D:\VIBECODING\tools\demucs-venv), terpisah dari .venv repo.
+# Dipakai pisah.py (Demucs) dan batch/shotlib.py (OpenCV + OCR).
+#   python -m venv D:\VIBECODING\tools\demucs-venv
+#   ...\pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+#   ...\pip install -r pipeline\batch\requirements.txt
+demucs==4.1.0
+soundfile
+numpy
+# opencv-python (bukan -headless): rapidocr menariknya; dua paket opencv bersamaan bikin cv2 rusak.
+opencv-python==4.10.0.84
+rapidocr-onnxruntime==1.4.4

@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ruang Kontrol Auto-Edit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@500;700&family=Poppins:wght@600;800&family=Montserrat:wght@800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f5f2; --panel:#ffffff; --panel2:#f0eee9; --line:#e3e0d8; --text:#1d1b18; --dim:#6d675d;
+  --brand:#2b1e16; --accent:#b8860b; --accentbg:#fbf3df;
+  --ok:#1f7a4d; --okbg:#e3f4ea; --warn:#a15c00; --warnbg:#fff1d9; --bad:#b42318; --badbg:#fde8e6;
+  --info:#1d4ed8; --infobg:#e5edff; --violet:#6d28d9; --violetbg:#efe7ff;
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141210; --panel:#1d1a17; --panel2:#26221e; --line:#34302a; --text:#f2eee8; --dim:#a39b8f;
+  --brand:#f2e6d0; --accent:#e2b13c; --accentbg:#3a2f16;
+  --ok:#5cc78f; --okbg:#173126; --warn:#f0a842; --warnbg:#3a2a12; --bad:#f27166; --badbg:#3b1a17;
+  --info:#7fa3ff; --infobg:#1a2440; --violet:#b292ff; --violetbg:#2a1f45; --shadow:none;
+}}
+:root[data-theme="dark"]{
+  --bg:#141210; --panel:#1d1a17; --panel2:#26221e; --line:#34302a; --text:#f2eee8; --dim:#a39b8f;
+  --brand:#f2e6d0; --accent:#e2b13c; --accentbg:#3a2f16;
+  --ok:#5cc78f; --okbg:#173126; --warn:#f0a842; --warnbg:#3a2a12; --bad:#f27166; --badbg:#3b1a17;
+  --info:#7fa3ff; --infobg:#1a2440; --violet:#b292ff; --violetbg:#2a1f45; --shadow:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px}
+.logo{font-weight:700;font-size:15px;padding:4px 10px 16px;line-height:1.25}
+.logo small{display:block;font-weight:500;color:var(--dim);font-size:12px}
+.nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;border:0;background:none;text-align:left;color:var(--dim);font-weight:500;width:100%}
+.nav:hover{background:var(--panel2);color:var(--text)}
+.nav.on{background:var(--panel2);color:var(--text);font-weight:600}
+.nav svg{width:18px;height:18px;flex:none}
+.side-foot{margin-top:auto;font-size:12px;color:var(--dim);padding:10px}
+main{padding:24px 28px 60px;min-width:0}
+h1{font-size:22px;margin:0}
+h2{font-size:16px;margin:0 0 12px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.top .sp{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel);padding:8px 14px;border-radius:8px;font-weight:600}
+.btn:hover{border-color:var(--dim)}
+.btn.pri{background:var(--brand);color:var(--panel);border-color:var(--brand)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.pad{padding:16px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.stat{padding:14px 16px}
+.stat b{display:block;font-size:26px;line-height:1.2}
+.stat span{color:var(--dim);font-size:13px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;padding:12px;border-bottom:1px solid var(--line)}
+.filters input,.filters select,.field input,.field select,.field textarea{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.filters input{flex:1;min-width:160px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12px;color:var(--dim);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--panel2)}
+.thumb{width:28px;height:44px;border-radius:5px;display:inline-block;vertical-align:middle}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.b-wait{background:var(--warnbg);color:var(--warn)}
+.b-run{background:var(--infobg);color:var(--info)}
+.b-ok{background:var(--okbg);color:var(--ok)}
+.b-bad{background:var(--badbg);color:var(--bad)}
+.b-vio{background:var(--violetbg);color:var(--violet)}
+.b-dim{background:var(--panel2);color:var(--dim)}
+.dim{color:var(--dim)}
+.hide{display:none!important}
+/* editor */
+.plan{border:1px solid var(--warn);background:var(--warnbg);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+.plan.ok{border-color:var(--ok);background:var(--okbg)}
+.plan-h{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.plan-h .sp{flex:1;min-width:220px}
+.plan-h b{font-size:15px}
+.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 18px;margin-top:12px;font-size:13px}
+.plan-grid div b{display:block;font-size:12px;color:var(--dim);font-weight:600}
+.warnlist{margin:10px 0 0;padding-left:18px;font-size:13px}
+.editor{display:grid;grid-template-columns:200px 300px 1fr;gap:16px;align-items:start}
+.editor>*{min-width:0}
+.steps{list-style:none;margin:0;padding:6px 0}
+.steps li{display:flex;gap:10px;align-items:center;padding:6px 14px;font-size:13px;color:var(--dim)}
+.steps li i{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:none;display:grid;place-items:center;font-style:normal;font-size:11px}
+.steps li.done{color:var(--text)} .steps li.done i{background:var(--ok);border-color:var(--ok);color:#fff}
+.steps li.now{color:var(--text);font-weight:600} .steps li.now i{border-color:var(--warn);background:var(--warnbg)}
+.log{font-size:12px;padding:10px 14px;border-top:1px solid var(--line);max-height:180px;overflow:auto}
+.log div{padding:3px 0}
+.log time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-nums}
+.player{position:sticky;top:16px}
+.screen{position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:
+  radial-gradient(120% 70% at 50% 30%,#8a7a68 0%,#5a4b3d 45%,#2a211a 100%)}
+.person{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:62%;height:78%}
+.person .head{position:absolute;left:50%;top:0;transform:translateX(-50%);width:42%;aspect-ratio:1/1.15;border-radius:50% 50% 46% 46%;background:#d9b99a}
+.person .hijab{position:absolute;left:50%;top:-4%;transform:translateX(-50%);width:62%;aspect-ratio:1/1.2;border-radius:48% 48% 30% 30%;background:#e9dccb}
+.person .body{position:absolute;left:0;right:0;bottom:0;height:68%;border-radius:40% 40% 0 0;background:#c9b49b}
+.person .pants{position:absolute;left:18%;right:18%;bottom:0;height:26%;background:#4b3a2e;border-radius:6px 6px 0 0}
+.logo-mini{position:absolute;right:5%;top:4%;font:700 9px Inter;color:#fff;background:rgba(0,0,0,.35);padding:3px 6px;border-radius:4px;letter-spacing:.5px}
+.hook{position:absolute;left:8%;right:8%;top:22%;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.16);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.35);color:#fff;text-align:center;font:400 22px/1.1 Anton;letter-spacing:.5px;transition:opacity .2s}
+.cap{position:absolute;left:6%;right:14%;text-align:center;transform:translateY(-50%);font-size:30px;line-height:1.1;transition:top .2s}
+.cap span{display:inline-block;margin:0 4px;animation:pop .12s ease-out}
+.cap span.kw{padding:0 6px;border-radius:6px}
+@keyframes pop{from{transform:scale(.85);opacity:.4}to{transform:scale(1);opacity:1}}
+.safe{position:absolute;inset:auto 0 0 0;height:15%;background:repeating-linear-gradient(45deg,rgba(255,80,80,.25) 0 6px,transparent 6px 12px);display:none}
+.safe.r{inset:0 0 0 auto;width:12%;height:auto}
+.showsafe .safe{display:block}
+.timebar{display:flex;align-items:center;gap:10px;margin-top:10px}
+.timebar .track{flex:1;height:6px;background:var(--panel2);border-radius:99px;overflow:hidden}
+.timebar .fill{height:100%;width:0;background:var(--brand)}
+.timebar .t{font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim);min-width:74px;text-align:right}
+.play{width:34px;height:34px;border-radius:50%;border:0;background:var(--brand);color:var(--panel);display:grid;place-items:center}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding:0 8px;overflow-x:auto}
+.tab{border:0;background:none;padding:12px 12px 10px;font-weight:600;color:var(--dim);border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--text);border-color:var(--brand)}
+.tabbody{padding:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--panel2);border-radius:7px;padding:3px 8px;font-size:13px}
+.chip.fix{text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}
+.chip.cut{opacity:.4;text-decoration:line-through}
+.chip.kw{border-color:var(--accent);background:var(--accentbg);font-weight:700}
+.chip:hover{border-color:var(--dim)}
+.editbox{margin-top:14px;padding:12px;border:1px dashed var(--line);border-radius:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.editbox input[type=text]{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--dim);margin-bottom:12px;flex-wrap:wrap}
+.durbox{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:10px;background:var(--panel2);margin-bottom:12px;flex-wrap:wrap}
+.durbox b{font-size:20px}
+.alert{padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px}
+.alert.bad{background:var(--badbg);color:var(--bad)}
+.alert.ok{background:var(--okbg);color:var(--ok)}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.field label{font-size:12px;font-weight:600;color:var(--dim)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.swatch{display:flex;gap:8px;align-items:center}
+.swatch input[type=color]{width:36px;height:32px;padding:0;border:1px solid var(--line);border-radius:6px;background:none}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:var(--panel);padding:6px 12px;font-size:13px}
+.seg button.on{background:var(--brand);color:var(--panel)}
+.fxrow{display:grid;grid-template-columns:62px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.fxrow:last-child{border-bottom:0}
+.fxrow .t{font-variant-numeric:tabular-nums;color:var(--dim);font-size:13px}
+.iconbtn{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--panel);display:inline-grid;place-items:center;flex:none}
+.qc{list-style:none;padding:0;margin:0}
+.qc li{display:flex;gap:8px;padding:5px 0;font-size:13px}
+.progress{height:10px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:8px 0}
+.progress div{height:100%;width:0;background:var(--ok);transition:width .3s}
+/* library */
+.libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;padding:16px}
+.asset{padding:14px;display:flex;flex-direction:column;gap:8px}
+.asset .h{display:flex;gap:10px;align-items:center}
+.asset .h b{flex:1;font-size:14px}
+.tags{display:flex;gap:4px;flex-wrap:wrap}
+.tags span{font-size:11px;background:var(--panel2);border-radius:5px;padding:1px 6px;color:var(--dim)}
+.fontprev{font-size:26px;line-height:1.1;padding:6px 0}
+.drop{margin:16px 16px 0;border:2px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--dim)}
+.wave{display:flex;gap:2px;align-items:center;height:26px}
+.wave i{display:block;width:3px;background:var(--dim);border-radius:2px;opacity:.5}
+/* preset */
+.konflik{border:1px solid var(--bad);background:var(--badbg);border-radius:12px;padding:14px 16px;margin-bottom:16px}
+.konflik ul{margin:6px 0 0;padding-left:18px}
+.konflik li{margin:3px 0}
+.psec{margin-bottom:16px}
+.psec h2{display:flex;justify-content:space-between;align-items:center}
+.efx{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.efx div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px}
+.efx select{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px}
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px;z-index:50}
+.modal .card{max-width:440px;width:100%;padding:20px}
+.modal .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--brand);color:var(--panel);padding:10px 16px;border-radius:10px;font-weight:600;z-index:60;box-shadow:0 6px 24px rgba(0,0,0,.2)}
+.tl{margin-top:16px;padding:14px 16px}
+.tl-h{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.trk{display:grid;grid-template-columns:72px 1fr;align-items:center;gap:8px;margin:6px 0}
+.trk>span{font-size:12px;color:var(--dim);font-weight:600;line-height:1.1}
+.lane{position:relative;height:28px;background:var(--panel2);border-radius:6px;cursor:pointer}
+.blk{position:absolute;top:3px;bottom:3px;border-radius:4px;font-size:10px;overflow:hidden;white-space:nowrap;padding:0 4px;line-height:22px;color:#fff}
+.blk.keep{background:#7a6a58}.blk.cut{background:repeating-linear-gradient(45deg,var(--bad) 0 4px,transparent 4px 8px);border:1px solid var(--bad);color:var(--bad)}
+.blk.lock{background:var(--ok)}
+.blk.cap{background:var(--brand);color:var(--panel)}.blk.fx{background:var(--violet)}
+.mk{position:absolute;top:2px;bottom:2px;width:10px;margin-left:-5px;border-radius:3px;background:var(--accent);cursor:ew-resize;touch-action:none}
+.mk:hover,.mk.drag{outline:2px solid var(--text)}
+.ph{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--bad);pointer-events:none}
+.src{font-size:10px;margin-left:6px;vertical-align:middle}
+.queue{padding:14px 16px;margin-bottom:18px}
+.qrow{display:grid;grid-template-columns:26px 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.qrow:last-child{border-bottom:0}
+.qrow .n{width:24px;height:24px;border-radius:50%;background:var(--panel2);display:grid;place-items:center;font-size:12px;font-weight:700}
+.chiplist{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chiplist .chip{display:inline-flex;gap:6px;align-items:center}
+.chiplist .chip b{cursor:pointer;color:var(--dim);font-weight:400}
+.logobox{display:flex;gap:12px;align-items:center;padding:10px;border:1px dashed var(--line);border-radius:10px;flex-wrap:wrap}
+.logobox .lg{width:64px;height:64px;border-radius:8px;background:repeating-conic-gradient(var(--panel2) 0 25%,transparent 0 50%) 0 0/10px 10px;display:grid;place-items:center;font-weight:800;font-size:11px}
+table input{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 6px;width:100%}
+.rolebox select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px;margin-top:4px}
+.note{font-size:12px;color:var(--dim);margin-top:24px;text-align:center}
+@media (max-width:1180px){.editor{grid-template-columns:280px 1fr}.stepcol{grid-column:1/-1}.steps{display:flex;overflow-x:auto;padding:6px}.steps li{white-space:nowrap}.log{max-height:120px}}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  aside{position:fixed;top:auto;bottom:0;left:0;right:0;height:auto;flex-direction:row;padding:6px;z-index:40;border-right:0;border-top:1px solid var(--line);justify-content:space-around}
+  .logo,.side-foot{display:none}
+  .nav{flex-direction:column;gap:2px;font-size:11px;padding:6px;width:auto}
+  main{padding:16px 16px 90px}
+  .stats{grid-template-columns:1fr 1fr}
+  .editor{grid-template-columns:1fr}
+  .player{position:static;max-width:300px;margin:0 auto}
+  .plan-grid{grid-template-columns:1fr 1fr}
+  .hidem{display:none}
+  .row2{grid-template-columns:1fr}
+  td,th{padding:8px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="logo">Ruang Kontrol<br>Auto-Edit<small>Konsep tampilan · v0.2</small></div>
+    <button class="nav on" data-go="beranda"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Beranda</button>
+    <button class="nav" data-go="editor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>Editor</button>
+    <button class="nav" data-go="library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Library aset</button>
+    <button class="nav" data-go="preset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Brand &amp; preset</button>
+    <div class="side-foot"><div class="rolebox"><label style="font-size:11px;font-weight:600">Masuk sebagai (Fase 3)</label><select id="role"><option>Owner</option><option selected>PIC brand</option><option>Tim konten</option></select></div><br>Data contoh. Belum tersambung ke PC kantor.<br><button class="btn sm" id="themeBtn" style="margin-top:8px">Ganti tema</button></div>
+  </aside>
+
+  <main>
+  <!-- ============ BERANDA ============ -->
+  <section id="v-beranda">
+    <div class="top"><h1>Beranda</h1><div class="sp"></div><button class="btn pri" id="newJobBtn">+ Job baru</button></div>
+    <div class="stats">
+      <div class="card stat"><b id="s1">2</b><span>Menunggu persetujuan</span></div>
+      <div class="card stat"><b>1</b><span>Sedang render</span></div>
+      <div class="card stat"><b>1</b><span>Menunggu penilaian</span></div>
+      <div class="card stat"><b>3</b><span>Selesai hari ini</span></div>
+    </div>
+    <div class="card queue">
+      <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">Antrean proses <span class="dim" style="font-size:12px;font-weight:500">satu job diproses sekaligus · urutan bisa diubah Owner</span></h2>
+      <div id="queue"></div>
+    </div>
+    <div class="card">
+      <div class="filters">
+        <input id="q" placeholder="Cari produk…">
+        <select id="fBrand"><option value="">Semua brand</option><option>Aysilla Factory</option><option>ALN Store</option></select>
+        <select id="fStatus"><option value="">Semua status</option></select>
+      </div>
+      <div style="overflow-x:auto"><table><thead><tr><th></th><th>Produk</th><th class="hidem">Brand</th><th class="hidem">Jenis</th><th>Status</th><th class="hidem">Versi</th><th class="hidem">Pembuat</th><th class="hidem">Diubah</th></tr></thead><tbody id="jobRows"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ============ EDITOR ============ -->
+  <section id="v-editor" class="hide">
+    <div class="top">
+      <button class="btn sm" data-go="beranda">← Beranda</button>
+      <div><h1>Loose Pants · awareness</h1><div class="dim" style="font-size:13px">AYS-20261112-035 · Aysilla Factory · TikTok · dibuat Dita</div></div>
+    </div>
+
+    <div class="plan" id="planCard">
+      <div class="plan-h">
+        <div class="sp"><b id="planTitle">Rencana edit awareness a35 sudah siap. Render ditahan sampai kamu setuju.</b>
+          <div class="dim" style="font-size:13px;margin-top:2px" id="planSub">Cek ringkasan di bawah, koreksi di tab kalau perlu, lalu setujui.</div>
+          <div style="font-size:12px;margin-top:6px"><span class="badge b-dim">aturan</span> dari preset · <span class="badge b-vio">AI</span> usulan Claude (Fase 3) · <span class="badge b-run">manual</span> diubah tim</div></div>
+        <button class="btn pri" id="approveBtn">Setujui &amp; render</button>
+      </div>
+      <div class="plan-grid">
+        <div><b>Durasi</b><span id="pDur">43,0 → 31,2 dtk</span> <span id="pDurB" class="badge b-bad">lewat target 30</span></div>
+        <div><b>Dibuang <span class="badge b-dim src">aturan</span></b><span id="pCut">5 bagian (jeda, "eee", take ulang)</span></div>
+        <div><b>Hook (0–2,6 dtk) <span class="badge b-vio src">AI</span></b>"<span id="pHook">Males nyetrika celana?</span>"</div>
+        <div><b>Kata kunci <span class="badge b-dim src">aturan</span></b>LOOSE PANTS · ANTI KUSUT · ADEM · FLOWY</div>
+        <div><b>Efek (2 dari maks 3) <span class="badge b-dim src">aturan</span></b>Glass type (hook) · Digital zoom (8,4 dtk)</div>
+        <div><b>Audio</b><span id="pSfx">SFX pop ×6, whoosh ×2</span> · tanpa musik (folder musik kosong)</div>
+        <div><b>CTA &amp; penutup</b>"Cek keranjang kuning sekarang" + video logo 2,5 dtk</div>
+        <div><b>Disclaimer</b>Warna dapat sedikit berbeda karena cahaya</div>
+        <div><b>Gaya</b>Caption Oswald, maks 3 kata, posisi 72%</div>
+      </div>
+      <ul class="warnlist" id="pWarn">
+        <li>Durasi masih 1,2 dtk di atas target. Pilih bagian tengah yang dibuang di tab <b>Potongan</b>; ekor video tidak dipotong.</li>
+        <li>Kata "termurah" terucap di 21,4 dtk (kata terlarang). Tidak ditampilkan sebagai teks; putuskan potong atau biarkan.</li>
+      </ul>
+    </div>
+
+    <div class="editor">
+      <div class="card stepcol">
+        <ul class="steps" id="steps"></ul>
+        <div class="log" id="log"></div>
+      </div>
+
+      <div class="player">
+        <div class="screen" id="screen">
+          <div class="person"><div class="body"></div><div class="pants"></div><div class="hijab"></div><div class="head"></div></div>
+          <div class="logo-mini">AYSILLA</div>
+          <div class="hook" id="hookEl">MALES NYETRIKA CELANA?</div>
+          <div class="cap" id="capEl"></div>
+          <div class="safe"></div><div class="safe r"></div>
+        </div>
+        <div class="timebar">
+          <button class="play" id="playBtn" aria-label="Putar"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></button>
+          <div class="track"><div class="fill" id="fill"></div></div>
+          <div class="t" id="tlabel">0,0 / 31,2</div>
+        </div>
+        <label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:8px" class="dim"><input type="checkbox" id="safeT"> Tampilkan area aman (tombol TikTok)</label>
+        <div class="dim" style="font-size:12px;margin-top:4px">Preview = komponen yang sama dengan render. Perubahan di tab langsung terlihat.</div>
+      </div>
+
+      <div class="card" style="min-width:0">
+        <div class="tabs" id="tabs">
+          <button class="tab on" data-tab="transkrip">Transkrip</button>
+          <button class="tab" data-tab="potongan">Potongan</button>
+          <button class="tab" data-tab="gaya">Gaya</button>
+          <button class="tab" data-tab="efek">Efek &amp; SFX</button>
+          <button class="tab" data-tab="hasil">Hasil</button>
+        </div>
+
+        <div class="tabbody" data-body="transkrip">
+          <div class="legend"><span><span class="chip fix">kata</span> dikoreksi kamus</span><span><span class="chip kw">kata</span> kata kunci</span><span><span class="chip cut">kata</span> ikut terbuang</span></div>
+          <div class="chips" id="chips"></div>
+          <div class="editbox hide" id="editbox">
+            <span class="dim">Ubah</span> <b id="eOld"></b> <span class="dim">→</span>
+            <input type="text" id="eNew">
+            <label style="font-size:13px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="eDict"> simpan ke kamus brand</label>
+            <label style="font-size:13px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="eKw"> kata kunci</label>
+            <button class="btn sm pri" id="eSave">Simpan</button>
+            <button class="btn sm" id="eHide">Sembunyikan kata</button>
+          </div>
+        </div>
+
+        <div class="tabbody hide" data-body="potongan">
+          <div class="durbox"><div><div class="dim" style="font-size:12px">Durasi mentah</div><b>43,0</b> dtk</div><div style="font-size:20px">→</div><div><div class="dim" style="font-size:12px">Perkiraan akhir</div><b id="durEnd">31,2</b> dtk</div><div class="dim" style="font-size:13px">Target preset: 15–30 dtk</div></div>
+          <div id="durAlert"></div>
+          <div style="overflow-x:auto"><table><thead><tr><th>Buang</th><th>Detik</th><th>Jenis</th><th>Teks yang hilang</th><th class="hidem">Yakin</th><th></th></tr></thead><tbody id="cutRows"></tbody></table></div>
+        </div>
+
+        <div class="tabbody hide" data-body="gaya">
+          <div class="row2">
+            <div class="field"><label>Font caption</label><select id="gFont"><option>Oswald</option><option>Anton</option><option>Poppins</option><option>Montserrat</option></select></div>
+            <div class="field"><label>Maks kata per layar</label><div class="seg" id="gWords"><button>1</button><button>2</button><button class="on">3</button><button>4</button></div></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Warna caption</label><div class="swatch"><input type="color" id="gCol" value="#FFFDD0"><code id="gColT">#FFFDD0</code></div></div>
+            <div class="field"><label>Warna outline</label><div class="swatch"><input type="color" id="gOut" value="#000000"><code id="gOutT">#000000</code></div></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Gaya kata kunci</label><div class="seg" id="gKw"><button class="on" data-v="color">Warna</button><button data-v="box">Kotak</button></div></div>
+            <div class="field"><label>Warna aksen kata kunci</label><div class="swatch"><input type="color" id="gAcc" value="#FFFDD0"><code id="gAccT">#FFFDD0</code></div></div>
+          </div>
+          <div class="field"><label>Posisi caption (dari atas): <span id="gPosT">72%</span></label><input type="range" id="gPos" min="40" max="82" value="72"></div>
+          <div class="field"><label>Teks hook (harus diucapkan di video)</label><input id="gHook" value="Males nyetrika celana?"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" id="saveJob">Simpan untuk job ini</button><button class="btn sm" id="savePreset">Simpan ke preset aysilla-awareness</button></div>
+        </div>
+
+        <div class="tabbody hide" data-body="efek">
+          <h2>Efek <span class="dim" style="font-weight:500;font-size:13px">· maks 3 berbeda, jarak minimal 5 dtk</span></h2>
+          <div id="fxList"></div>
+          <button class="btn sm" id="addFx" style="margin:8px 0 18px">+ Tambah efek</button>
+          <h2>SFX <span class="dim" style="font-weight:500;font-size:13px">· dari library brand &amp; global</span></h2>
+          <div id="sfxList"></div>
+        </div>
+
+        <div class="tabbody hide" data-body="hasil">
+          <div id="renderBox"><div class="alert" style="background:var(--warnbg);color:var(--warn)">Belum ada versi. Render ditahan sampai rencana edit disetujui.</div></div>
+          <h2 style="margin-top:16px">Versi</h2>
+          <div id="versions" class="dim" style="font-size:13px">–</div>
+          <div id="qcBox" class="hide">
+            <h2 style="margin-top:16px">Laporan QC v01</h2>
+            <ul class="qc" id="qcList"></ul>
+            <h2 style="margin-top:16px">Penilaian</h2>
+            <textarea id="note" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px" placeholder="Catatan revisi dengan acuan detik, mis. &quot;detik 4 caption kecilin&quot;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px"><button class="btn pri" id="passBtn">Lulus</button><button class="btn" id="revBtn">Revisi</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card tl">
+      <div class="tl-h"><h2 style="margin:0">Timeline</h2><span class="dim" style="font-size:12px">Klik lajur untuk lompat · klik blok di Sumber untuk buang/pakai · geser penanda SFX</span></div>
+      <div class="trk"><span>Sumber<br><small>43 dtk</small></span><div class="lane" id="laneSrc"></div></div>
+      <div class="trk"><span>Caption</span><div class="lane" id="laneCap"></div></div>
+      <div class="trk"><span>Efek</span><div class="lane" id="laneFx"></div></div>
+      <div class="trk"><span>SFX</span><div class="lane" id="laneSfx"></div></div>
+      <div class="trk"><span></span><div class="dim" style="display:flex;justify-content:space-between;font-size:11px" id="ruler"></div></div>
+    </div>
+  </section>
+
+  <!-- ============ LIBRARY ============ -->
+  <section id="v-library" class="hide">
+    <div class="top"><h1>Library aset</h1><div class="sp"></div><button class="btn pri" id="upBtn">+ Upload aset</button></div>
+    <div class="card">
+      <div class="filters">
+        <div class="seg" id="libType"><button class="on" data-v="sfx">SFX</button><button data-v="musik">Musik</button><button data-v="font">Font</button><button data-v="logo">Logo</button><button data-v="broll">B-roll</button></div>
+        <select id="libScope"><option value="">Global + semua brand</option><option value="global">Global</option><option value="Aysilla Factory">Aysilla Factory</option><option value="ALN Store">ALN Store</option></select>
+        <input id="libQ" placeholder="Cari nama atau tag…">
+        <button class="btn sm" id="trashBtn">Sampah (0)</button>
+      </div>
+      <div class="drop">Tarik file ke sini (MP3/WAV, TTF/OTF, PNG, MP4). Nama file otomatis huruf kecil + tanda hubung.</div>
+      <div class="libgrid" id="libGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============ PRESET ============ -->
+  <section id="v-preset" class="hide">
+    <div class="top"><h1>Brand &amp; preset</h1><div class="sp"></div>
+      <select class="btn" id="presetSel"><option>aysilla-awareness</option><option>aysilla-konversi</option><option>aysilla-branding</option></select>
+      <button class="btn pri" id="presetSave">Simpan preset</button></div>
+    <div class="konflik">
+      <b style="color:var(--bad)">5 isian bertentangan. Preset tetap bisa dipakai, tapi hasilnya bisa tidak konsisten.</b>
+      <ul>
+        <li><b>Warna:</b> kuning masuk "warna dilarang", tapi contoh warna kata kunci lama #F2C14E (kuning).</li>
+        <li><b>Durasi:</b> target TikTok 20 dtk, struktur babak 0–30 dtk, brief 30 dtk.</li>
+        <li><b>Efek:</b> 17 efek berstatus "Dipakai" tanpa babak/maks, padahal maks 3 per video.</li>
+        <li><b>Efek khas brand:</b> berisi tagline "Cuci Jemur Langsung Pakai", bukan nama efek.</li>
+        <li><b>CTA:</b> kalimat wajib "Penasaran sama celana anti kusut ini?" berbeda dengan CTA brief "Join Live, Share".</li>
+      </ul>
+    </div>
+    <div class="card pad psec"><h2>Brand kit · Aysilla Factory</h2>
+      <div class="row2">
+        <div class="field"><label>Nama brand</label><input value="Aysilla Factory"></div>
+        <div class="field"><label>Handle</label><input value="@aysillafactoryid"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Warna caption</label><div class="swatch"><input type="color" value="#FFFFFF"><code>#FFFFFF</code></div></div>
+        <div class="field"><label>Warna outline / bayangan</label><div class="swatch"><input type="color" value="#000000"><code>#000000</code> <span class="dim" style="font-size:12px">tebal 4 px</span></div></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Warna aksen kata kunci</label><div class="swatch"><input type="color" value="#000000"><code>#000000</code></div></div>
+        <div class="field"><label>Warna dilarang</label><div class="chiplist" data-chips><span class="chip">merah <b>×</b></span><span class="chip">kuning <b>×</b></span><span class="chip">biru <b>×</b></span><button class="btn sm">+</button></div></div>
+      </div>
+      <div class="field"><label>Logo</label>
+        <div class="logobox"><div class="lg">AYSILLA</div>
+          <div style="flex:1;min-width:180px"><b>logo.png</b> <span class="badge b-ok">PNG transparan · 1200 px</span><div class="dim" style="font-size:12px;margin-top:4px">logo-putih.png (latar gelap): <span class="badge b-wait">belum ada</span></div></div>
+          <button class="btn sm">Ganti logo</button></div></div>
+      <div class="row2">
+        <div class="field"><label>Posisi logo</label><select><option>Pojok kanan atas</option><option>Pojok kiri atas</option><option>Hanya di penutup</option></select></div>
+        <div class="field"><label>Ukuran logo: <span id="lgT">25%</span> lebar layar</label><input type="range" min="8" max="40" value="25" oninput="document.getElementById('lgT').textContent=this.value+'%'"></div>
+      </div>
+      <label style="display:flex;gap:6px;font-size:13px;margin:-4px 0 14px"><input type="checkbox" checked> Tampil sepanjang video + penutup video logo 2 dtk</label>
+      <div class="row2">
+        <div class="field"><label>Font judul</label><select><option>Anton</option><option>Poppins</option><option>Montserrat</option></select></div>
+        <div class="field"><label>Font caption</label><select><option>Oswald</option><option>Poppins</option><option>Anton</option></select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>CTA TikTok / Shopee</label><input value="Cek keranjang kuning sekarang"></div>
+        <div class="field"><label>CTA Instagram</label><input value="Cek link di bio"></div>
+      </div>
+      <div class="field"><label>Disclaimer (tampil saat video memperlihatkan varian warna)</label><input value="Warna dapat sedikit berbeda karena cahaya"></div>
+      <div class="field"><label>Kata terlarang</label><div class="chiplist" data-chips><span class="chip">paling murah <b>×</b></span><span class="chip">termurah <b>×</b></span><span class="chip">no. 1 <b>×</b></span><span class="chip">gratis ongkir (tanpa promo) <b>×</b></span><button class="btn sm">+</button></div></div>
+      <div class="field"><label>Kosakata Whisper (membantu transkrip mengenali istilah)</label><textarea rows="2">Aysilla Factory, Loose Pants, Lucy Pants, Nge loose, high waist, flowy, anti kusut, keranjang kuning, petite friendly, Espresso, Ivory, Latte, Smoke Grey</textarea></div>
+    </div>
+    <div class="card pad psec"><h2>Kamus kata <button class="btn sm">+ Tambah</button></h2>
+      <table><thead><tr><th>Terdengar / salah tulis</th><th>Ejaan benar</th></tr></thead><tbody>
+        <tr><td>Icila Factory</td><td>Aysilla Factory</td></tr><tr><td>Luspents</td><td>Loose Pants</td></tr><tr><td>Lusi pants</td><td>Lucy Pants</td></tr><tr><td>ngelus</td><td>Nge loose</td></tr><tr><td>hai weis</td><td>high waist</td></tr>
+      </tbody></table>
+    </div>
+    <div class="card pad psec"><h2>Caption &amp; durasi</h2>
+      <div class="row2">
+        <div class="field"><label>Model caption</label><select><option>Per kata</option><option>Per frasa</option></select></div>
+        <div class="field"><label>Maks kata per layar</label><input type="number" value="3" min="1" max="6"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Durasi min – maks (dtk)</label><div style="display:flex;gap:6px"><input type="number" value="15" style="width:80px"><input type="number" value="30" style="width:80px"></div></div>
+        <div class="field"><label>Jeda diam maksimum (dtk)</label><input type="number" value="0.5" step="0.1"></div>
+      </div>
+    </div>
+    <div class="card pad psec"><h2>Format &amp; durasi per placement</h2>
+      <div style="overflow-x:auto"><table><thead><tr><th>Placement</th><th>Rasio</th><th class="hidem">Resolusi</th><th>Dipakai</th><th>Durasi target</th></tr></thead><tbody>
+        <tr><td>TikTok in-feed / Shop</td><td>9:16</td><td class="hidem">1080×1920</td><td><input type="checkbox" checked style="width:auto"></td><td><input value="20" style="width:60px;border-color:var(--bad)"> dtk</td></tr>
+        <tr><td>Shopee Video</td><td>9:16</td><td class="hidem">1080×1920</td><td><input type="checkbox" checked style="width:auto"></td><td><input value="20" style="width:60px"> dtk</td></tr>
+        <tr><td>Meta Reels / Stories</td><td>9:16</td><td class="hidem">1080×1920</td><td><input type="checkbox" style="width:auto"></td><td><input value="" style="width:60px"> dtk</td></tr>
+        <tr><td>Meta Feed (turunan)</td><td>4:5</td><td class="hidem">1080×1350</td><td><input type="checkbox" style="width:auto"></td><td class="dim">dari master</td></tr>
+        <tr><td>Feed persegi</td><td>1:1</td><td class="hidem">1080×1080</td><td><input type="checkbox" style="width:auto"></td><td class="dim">opsional</td></tr>
+      </tbody></table></div>
+      <div class="row2" style="margin-top:12px">
+        <div class="field"><label>Frame rate</label><select><option>30 fps</option><option>60 fps (hanya jika footage 60 fps)</option></select></div>
+        <div class="field"><label>Penamaan file</label><input value="brand_jenis_produk_hook_v01.mp4"></div>
+      </div>
+      <label style="display:flex;gap:6px;font-size:13px"><input type="checkbox" checked> Buat otomatis: master 9:16 + 4:5 + cover/thumbnail</label>
+    </div>
+    <div class="card pad psec"><h2>Struktur video (babak)</h2>
+      <div class="alert bad">Babak berakhir di 30 dtk, padahal target TikTok 20 dtk. Mesin akan menyesuaikan proporsinya, tapi sebaiknya disamakan.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th style="width:24%">Babak</th><th style="width:18%">Detik</th><th>Isi yang harus ada</th></tr></thead><tbody>
+        <tr><td>Hook</td><td><input value="0–3"></td><td><input value="Masalah/hasil paling mencolok + teks judul (maks 6 kata)"></td></tr>
+        <tr><td>Masalah / konteks</td><td><input value="3–7"></td><td><input value="Males nyetrika / cari celana yang gak gampang kusut"></td></tr>
+        <tr><td>Produk &amp; bukti</td><td><input value="7–20"></td><td><input value="Try-on, detail bahan, before-after"></td></tr>
+        <tr><td>Penawaran</td><td><input value="20–25"></td><td><input value="Harga/promo HANYA yang tertulis di brief"></td></tr>
+        <tr><td>CTA &amp; penutup</td><td><input value="25–30"></td><td><input value="&quot;Cek keranjang kuning&quot; + video logo ending"></td></tr>
+      </tbody></table></div>
+    </div>
+    <div class="card pad psec"><h2>Ritme</h2>
+      <div class="row2">
+        <div class="field"><label>Pergantian shot / framing setiap (dtk)</label><div style="display:flex;gap:6px;align-items:center"><input type="number" value="2" style="width:70px"> – <input type="number" value="5" style="width:70px"></div></div>
+        <div class="field"><label>Salah ucap &amp; take ulang</label><select><option>Selalu pakai take terakhir yang bersih</option><option>Tanyakan ke PIC</option></select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Kalimat CTA wajib (tulis persis)</label><input value="Penasaran sama celana anti kusut ini?" style="border-color:var(--bad)"></div>
+        <div class="field"><label>Penutup wajib</label><select><option>Video logo ending, 2,5 dtk</option><option>Logo + handle, 2 dtk</option></select></div>
+      </div>
+    </div>
+    <div class="card pad psec"><h2>Efek (Wajib / Boleh / Jangan)</h2>
+      <div class="row2">
+        <div class="field"><label>Maks efek berbeda per video</label><input type="number" value="3" min="0" max="6"></div>
+        <div class="field"><label>Jarak minimal antar efek besar (dtk)</label><input type="number" value="5"></div>
+      </div>
+      <div class="efx" id="efxGrid"></div></div>
+    <div class="card pad psec"><h2>Audio</h2>
+      <div class="row2">
+        <div class="field"><label>SFX saat teks besar muncul</label><select><option>tag: pop</option><option>tag: ding</option></select></div>
+        <div class="field"><label>SFX saat transisi</label><select><option>tag: whoosh</option><option>tag: glitch</option></select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Sumber suara utama</label><select><option>Suara asli</option><option>VO ElevenLabs (K-3, belum v1)</option><option>Musik saja</option></select></div>
+        <div class="field"><label>SFX dilarang</label><input value="Suara kaget keras, efek kartun"></div>
+      </div>
+      <div class="field"><label>Musik latar</label><select><option>Hanya yang berlisensi iklan berbayar · tag: pop-ceria</option></select></div>
+      <div class="row2">
+        <div class="field"><label>Volume musik terhadap suara</label><select><option>Selalu di bawah suara, turun saat ada ucapan</option></select></div>
+        <div class="field"><label>Target loudness akhir</label><input value="-14 LUFS (cek standar platform)"></div>
+      </div>
+    </div>
+    <div class="card pad psec"><h2>Klaim &amp; larangan</h2>
+      <div class="field"><label>Klaim yang BOLEH disebut</label><div class="chiplist" data-chips><span class="chip">bahan adem <b>×</b></span><span class="chip">tidak nerawang <b>×</b></span><span class="chip">ukuran M–XL <b>×</b></span><span class="chip">flowy <b>×</b></span><span class="chip">anti kusut <b>×</b></span><span class="chip">polyester premium <b>×</b></span><button class="btn sm">+</button></div></div>
+      <div class="field"><label>Klaim yang DILARANG</label><div class="chiplist" data-chips><span class="chip">paling murah <b>×</b></span><span class="chip">no. 1 <b>×</b></span><span class="chip">klaim kesehatan <b>×</b></span><button class="btn sm">+</button></div></div>
+      <div class="field"><label>Visual yang dilarang</label><div class="chiplist" data-chips><span class="chip">produk kompetitor <b>×</b></span><span class="chip">logo lain <b>×</b></span><span class="chip">aurat terbuka <b>×</b></span><button class="btn sm">+</button></div></div>
+      <div class="field"><label>Area yang tidak boleh tertutup teks</label><div class="chiplist" data-chips><span class="chip">wajah <b>×</b></span><span class="chip">produk <b>×</b></span><span class="chip">15% bawah layar <b>×</b></span><span class="chip">sisi kanan (tombol) <b>×</b></span><button class="btn sm">+</button></div></div>
+    </div>
+    <div class="card pad psec"><h2>Checklist QC</h2>
+      <div style="overflow-x:auto"><table><thead><tr><th>Butir</th><th>Dicek</th></tr></thead><tbody id="qcCfg"></tbody></table></div>
+    </div>
+  </section>
+  <p class="note">Konsep tampilan dengan data contoh, untuk menyepakati alur sebelum dibangun (PRD v0.2).</p>
+  </main>
+</div>
+
+<div class="modal hide" id="modal"><div class="card"><h2 id="mTitle"></h2><div id="mBody" style="font-size:14px"></div><div class="acts" id="mActs"></div></div></div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let trash=[],showTrash=false,role='PIC brand';
+const fmt=n=>n.toFixed(1).replace('.',',');
+function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2200)}
+function modal(title,body,acts){$('#mTitle').textContent=title;$('#mBody').innerHTML=body;const a=$('#mActs');a.innerHTML='';
+  acts.forEach(([l,cls,fn])=>{const b=document.createElement('button');b.className='btn '+cls;b.textContent=l;b.onclick=()=>{$('#modal').classList.add('hide');fn&&fn()};a.appendChild(b)});$('#modal').classList.remove('hide')}
+
+/* ---------- navigasi ---------- */
+function go(v){$$('main>section').forEach(s=>s.classList.toggle('hide',s.id!=='v-'+v));$$('.nav').forEach(n=>n.classList.toggle('on',n.dataset.go===v));window.scrollTo(0,0)}
+$$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+$('#themeBtn').onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;r.dataset.theme=dark?'light':'dark'};
+
+/* ---------- beranda ---------- */
+const ST={menunggu_persetujuan:['Menunggu persetujuan','b-wait'],render:['Render 64%','b-run'],menunggu_penilaian:['Menunggu penilaian','b-vio'],selesai:['Selesai','b-ok'],transkrip:['Transkrip','b-run'],ditolak:['Ditolak: bukan 9:16','b-bad'],revisi:['Revisi','b-wait']};
+const jobs=[
+ ['AYS-20261112-035','Loose Pants','Aysilla Factory','Awareness','menunggu_persetujuan','–','Dita','5 mnt lalu','#c9b49b',true],
+ ['AYS-20261112-034','Lucy Pants','Aysilla Factory','Konversi','menunggu_persetujuan','–','Riky','22 mnt lalu','#8a7a68'],
+ ['ALN-20261112-012','Hijab Pashmina Ceruty','ALN Store','Try-on','render','v02','Sinta','8 mnt lalu','#1F3A5F'],
+ ['AYS-20261112-031','Loose Pants Espresso','Aysilla Factory','Branding','menunggu_penilaian','v01','Dita','1 jam lalu','#4b3a2e'],
+ ['AYS-20261112-029','Kulot Ivory','Aysilla Factory','Konversi','selesai','v02','Riky','2 jam lalu','#e9dccb'],
+ ['ALN-20261112-010','Gamis Harian','ALN Store','Talking head','selesai','v01','Sinta','3 jam lalu','#F5C518'],
+ ['AYS-20261112-027','Loose Pants Latte','Aysilla Factory','Awareness','selesai','v03','Dita','4 jam lalu','#b89f84'],
+ ['ALN-20261112-009','Khimar Instan','ALN Store','Detail produk','ditolak','–','Sinta','5 jam lalu','#6b7f99'],
+];
+Object.entries(ST).forEach(([k,v])=>$('#fStatus').insertAdjacentHTML('beforeend',`<option value="${k}">${v[0].replace(/ \d+%|:.*/,'')}</option>`));
+function renderJobs(){const q=$('#q').value.toLowerCase(),fb=$('#fBrand').value,fs=$('#fStatus').value;
+  $('#jobRows').innerHTML=jobs.filter(j=>(!q||j[1].toLowerCase().includes(q))&&(!fb||j[2]===fb)&&(!fs||j[4]===fs)).map(j=>`<tr class="click" data-open="${j[9]?1:0}"><td><span class="thumb" style="background:${j[8]}"></span></td><td><b>${j[1]}</b><div class="dim" style="font-size:12px">${j[0]}</div></td><td class="hidem">${j[2]}</td><td class="hidem">${j[3]}</td><td><span class="badge ${ST[j[4]][1]}">${ST[j[4]][0]}</span></td><td class="hidem">${j[5]}</td><td class="hidem">${j[6]}</td><td class="hidem dim">${j[7]}</td></tr>`).join('')||'<tr><td colspan="8" class="dim">Tidak ada job.</td></tr>';
+  $$('#jobRows tr.click').forEach(r=>r.onclick=()=>{if(r.dataset.open==='1')go('editor');else toast('Konsep: hanya job Loose Pants · awareness yang bisa dibuka')})}
+['#q','#fBrand','#fStatus'].forEach(s=>$(s).oninput=renderJobs);renderJobs();
+$('#newJobBtn').onclick=()=>modal('Job baru',`
+  <div class="drop" style="margin:0 0 12px">Tarik video mentah ke sini</div>
+  <div class="row2"><div class="field"><label>Brand</label><select><option>Aysilla Factory</option><option>ALN Store</option></select></div>
+  <div class="field"><label>Preset</label><select><option>aysilla-awareness</option><option>aysilla-konversi</option><option>aysilla-branding</option></select></div></div>
+  <div class="row2"><div class="field"><label>Produk</label><input value="Loose Pants"></div><div class="field"><label>Placement</label><select><option>TikTok</option><option>Reels</option><option>Keduanya</option></select></div></div>
+  <div class="field"><label>Harga / promo (tulis persis, boleh kosong)</label><input placeholder="mis. 80rb-an"></div>
+  <div class="field"><label>CTA</label><input value="Cek keranjang kuning sekarang"></div>
+  <div class="alert" style="background:var(--warnbg);color:var(--warn);margin:0">Harga/angka hanya tampil jika ditulis di sini atau diucapkan di video.</div>`,
+  [['Batal',''],['Buat job','pri',()=>toast('Job masuk antrean. Draf siap, lalu menunggu persetujuanmu.')]]);
+
+/* ---------- data editor ---------- */
+const words="Kalian pernah gak sih males nyetrika celana? Nah ini Loose Pants dari Aysilla Factory. Bahannya anti kusut, adem, flowy banget. Cuci, jemur, langsung pakai. Penasaran sama celana anti kusut ini? Cek keranjang kuning sekarang!".split(' ');
+const fixed=new Set([9,10,12,13]); // Loose Pants, Aysilla Factory
+let kws=new Set([9,10,15,16,17,18]);
+const cuts=[
+ {a:0.0,b:1.2,j:'Jeda',t:'(diam)',y:98,on:true},
+ {a:4.9,b:9.2,j:'Take ulang',t:'"nah ini lus.. eh, Loose Pants…"',y:91,on:true},
+ {a:12.3,b:12.9,j:'"eee"',t:'"eee"',y:95,on:true},
+ {a:18.0,b:19.1,j:'Jeda',t:'(diam)',y:97,on:true},
+ {a:21.0,b:22.4,j:'Kata terlarang',t:'"…yang termurah"',y:80,on:false},
+ {a:26.4,b:31.0,j:'Take ulang',t:'"cuci jemur langsung… ulang ya"',y:88,on:true},
+ {a:39.6,b:43.0,j:'Ekor (CTA)',t:'"Cek keranjang kuning sekarang!"',y:0,on:false,lock:true},
+];
+const RAW=43.0, OUTRO=2.5;
+let approved=false;
+const style={font:'Oswald',words:3,col:'#FFFDD0',out:'#000000',acc:'#FFFDD0',kw:'color',pos:72};
+function finalDur(){return +(RAW-cuts.filter(c=>c.on).reduce((s,c)=>s+(c.b-c.a),0)).toFixed(1)}
+
+/* ---------- stepper & log ---------- */
+const STEPS=['Masuk','Cek input','Transkrip','Draf','Menunggu persetujuan','Render','QC','Menunggu penilaian','Selesai'];
+let stepNow=4;
+function renderSteps(){$('#steps').innerHTML=STEPS.map((s,i)=>`<li class="${i<stepNow?'done':i===stepNow?'now':''}"><i>${i<stepNow?'✓':''}</i>${s}</li>`).join('')}
+const logs=[['10:02','Masuk','mentah.mp4 43,0 dtk, 1080×1920'],['10:02','Cek input','9:16 ✓, suara jelas ✓'],['10:03','Transkrip','34 kata, 4 dikoreksi kamus, 21 dtk'],['10:03','Draf','7 potongan diusulkan, 2 efek, 8 SFX'],['10:03','Persetujuan','Render ditahan sampai disetujui']];
+function renderLog(){$('#log').innerHTML=logs.map(l=>`<div><time>${l[0]}</time><b>${l[1]}</b> · ${l[2]}</div>`).join('')}
+function addLog(t,m){const d=new Date();logs.push([d.toTimeString().slice(0,5),t,m]);renderLog();$('#log').scrollTop=1e4}
+renderSteps();renderLog();
+
+/* ---------- transkrip ---------- */
+let sel=-1;const hidden=new Set();
+const cutWords=new Set([24,25]);
+function renderChips(){$('#chips').innerHTML=words.map((w,i)=>`<button class="chip ${fixed.has(i)?'fix':''} ${kws.has(i)?'kw':''} ${hidden.has(i)?'cut':''}" data-i="${i}">${w}</button>`).join('');
+  $$('#chips .chip').forEach(c=>c.onclick=()=>{sel=+c.dataset.i;$('#editbox').classList.remove('hide');$('#eOld').textContent=words[sel];$('#eNew').value=words[sel];$('#eKw').checked=kws.has(sel);$('#eDict').checked=false;$('#eNew').focus()})}
+$('#eSave').onclick=()=>{const old=words[sel];words[sel]=$('#eNew').value;$('#eKw').checked?kws.add(sel):kws.delete(sel);if($('#eDict').checked){fixed.add(sel);toast(`"${old}" → "${words[sel]}" disimpan ke kamus Aysilla`)}else toast('Koreksi disimpan untuk job ini');$('#editbox').classList.add('hide');renderChips();buildPages();showPage(0)};
+$('#eHide').onclick=()=>{hidden.has(sel)?hidden.delete(sel):hidden.add(sel);$('#editbox').classList.add('hide');renderChips();buildPages();toast('Kata disembunyikan dari caption (audio tetap)')};
+renderChips();
+
+/* ---------- potongan ---------- */
+function renderCuts(){$('#cutRows').innerHTML=cuts.map((c,i)=>`<tr><td><input type="checkbox" ${c.on?'checked':''} ${c.lock?'disabled':''} data-c="${i}"></td><td style="font-variant-numeric:tabular-nums;white-space:nowrap">${fmt(c.a)}–${fmt(c.b)}</td><td>${c.lock?'<span class="badge b-dim">dikunci</span> ':''}${c.j}</td><td class="dim">${c.t}</td><td class="hidem">${c.y?c.y+'%':'–'}</td><td><button class="iconbtn" title="Putar cuplikan" data-p="${i}"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></button></td></tr>`).join('');
+  $$('#cutRows input').forEach(x=>x.onchange=()=>{cuts[+x.dataset.c].on=x.checked;updateDur()});
+  $$('#cutRows [data-p]').forEach(b=>b.onclick=()=>toast(`Memutar ${fmt(cuts[b.dataset.p].a)}–${fmt(cuts[b.dataset.p].b)} dtk`))}
+function updateDur(){const res=finalDur();
+  $('#durEnd').textContent=fmt(res);$('#pDur').textContent=`43,0 → ${fmt(res)} dtk`;$('#tlabel').textContent=`${fmt(t)} / ${fmt(res)}`;
+  const over=res>30;$('#pDurB').className='badge '+(over?'b-bad':'b-ok');$('#pDurB').textContent=over?'lewat target 30':'sesuai target';
+  $('#durAlert').innerHTML=over?`<div class="alert bad">Perkiraan ${fmt(res)} dtk, lewat target 30 dtk. Pilih bagian tengah yang dibuang; ekor video tidak dipotong.</div>`:`<div class="alert ok">Durasi sesuai target preset (15–30 dtk).</div>`;
+  const n=cuts.filter(c=>c.on).length;$('#pCut').textContent=`${n} bagian (jeda, "eee", take ulang${cuts[4].on?', kata terlarang':''})`;
+  $('#pWarn').children[0].style.display=over?'':'none';$('#pWarn').children[1].innerHTML=cuts[4].on?'Kata "termurah" (21,4 dtk) ikut dibuang. ✓':'Kata "termurah" terucap di 21,4 dtk (kata terlarang). Tidak ditampilkan sebagai teks; putuskan potong atau biarkan.';
+  dur_=res;renderTL()}
+let dur_=31.2,t=0;
+renderCuts();
+
+/* ---------- player ---------- */
+let pages=[];
+function buildPages(){pages=[];let cur=[];words.forEach((w,i)=>{if(hidden.has(i))return;cur.push(i);if(cur.length>=style.words||/[?.!,]$/.test(w)){pages.push(cur);cur=[]}});if(cur.length)pages.push(cur)}
+function showPage(p){const pg=pages[p]||[];const cap=$('#capEl');cap.style.top=style.pos+'%';cap.style.fontFamily=style.font;
+  const fw=style.font==='Poppins'||style.font==='Montserrat'?800:style.font==='Oswald'?700:400;
+  cap.innerHTML=pg.map(i=>{const k=kws.has(i);const w=k?words[i].toUpperCase().replace(/[?.!,]/g,''):words[i].replace(/[?.!,]$/,'');
+    const box=k&&style.kw==='box';
+    return `<span class="${k?'kw':''}" style="font-weight:${fw};color:${box?style.out:(k?style.acc:style.col)};${box?`background:${style.acc};`:`-webkit-text-stroke:${k?5:4}px ${style.out};paint-order:stroke fill;`}font-size:${k?'1.25em':'1em'}">${w}</span>`}).join('')}
+buildPages();showPage(0);
+let playing=null;
+function setT(x){t=x;$('#fill').style.width=(t/dur_*100)+'%';$('#tlabel').textContent=`${fmt(t)} / ${fmt(dur_)}`;$('#hookEl').style.opacity=t<2.6?1:0;
+  const p=Math.min(pages.length-1,Math.floor(t/(dur_-OUTRO)*pages.length));showPage(t>dur_-OUTRO?-1:p);updPH()}
+$('#playBtn').onclick=()=>{if(playing){clearInterval(playing);playing=null;return}if(t>=dur_)t=0;playing=setInterval(()=>{const n=t+0.1;if(n>=dur_){setT(dur_);clearInterval(playing);playing=null}else setT(n)},100)};
+$('.timebar .track').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();setT((e.clientX-r.left)/r.width*dur_)};
+$('#safeT').onchange=e=>$('#screen').classList.toggle('showsafe',e.target.checked);
+
+/* ---------- tabs ---------- */
+$$('.tab').forEach(b=>b.onclick=()=>{$$('.tab').forEach(x=>x.classList.toggle('on',x===b));$$('[data-body]').forEach(x=>x.classList.toggle('hide',x.dataset.body!==b.dataset.tab))});
+
+/* ---------- gaya ---------- */
+function syncPlan(){$('#pHook').textContent=$('#gHook').value}
+$('#gFont').onchange=e=>{style.font=e.target.value;showPage(0)};
+$$('#gWords button').forEach(b=>b.onclick=()=>{$$('#gWords button').forEach(x=>x.classList.toggle('on',x===b));style.words=+b.textContent;buildPages();showPage(0)});
+$$('#gKw button').forEach(b=>b.onclick=()=>{$$('#gKw button').forEach(x=>x.classList.toggle('on',x===b));style.kw=b.dataset.v;showPage(Math.max(0,pages.findIndex(p=>p.some(i=>kws.has(i)))))});
+[['#gCol','col','#gColT'],['#gOut','out','#gOutT'],['#gAcc','acc','#gAccT']].forEach(([s,k,l])=>$(s).oninput=e=>{style[k]=e.target.value;$(l).textContent=e.target.value.toUpperCase();showPage(Math.max(0,pages.findIndex(p=>p.some(i=>kws.has(i)))))});
+$('#gPos').oninput=e=>{style.pos=+e.target.value;$('#gPosT').textContent=e.target.value+'%';showPage(0)};
+$('#gHook').oninput=e=>{$('#hookEl').textContent=e.target.value.toUpperCase();$('#hookEl').style.opacity=1;syncPlan()};
+$('#saveJob').onclick=()=>toast('Gaya disimpan untuk job ini saja');
+$('#savePreset').onclick=()=>modal('Simpan ke preset?','Perubahan gaya akan dipakai untuk <b>semua job baru</b> aysilla-awareness. Job yang sudah ada tidak berubah.',[['Batal',''],['Simpan ke preset','pri',()=>toast('Preset aysilla-awareness diperbarui')]]);
+
+/* ---------- efek & sfx ---------- */
+const fx=[['0,0','Glass type','Judul hook','AI'],['8,4','Digital zoom','Zoom ke detail bahan saat "anti kusut"','aturan']];
+const sfx=[['0,1','pop-01','Hook muncul'],['3,2','pop-01','LOOSE PANTS'],['6,0','whoosh-02','Ganti framing'],['8,4','whoosh-02','Digital zoom'],['8,5','pop-01','ANTI KUSUT'],['10,1','pop-01','ADEM'],['10,9','pop-01','FLOWY'],['29,2','ding-01','Penutup logo']];
+function renderFx(){$('#fxList').innerHTML=fx.map((f,i)=>`<div class="fxrow"><span class="t">${f[0]} dtk</span><div><b>${f[1]}</b> <span class="badge ${f[3]==='manual'?'b-run':f[3]==='AI'?'b-vio':'b-dim'} src">${f[3]}</span><div class="dim" style="font-size:12px">${f[2]}</div></div><button class="btn sm" data-fx="${i}">Hapus</button></div>`).join('');
+  $$('[data-fx]').forEach(b=>b.onclick=()=>{fx.splice(+b.dataset.fx,1);renderFx();$('#addFx').disabled=false;toast('Efek dihapus')});renderTL()}
+function renderSfx(){$('#sfxList').innerHTML=sfx.map((s,i)=>`<div class="fxrow"><span class="t">${s[0]} dtk</span><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select data-s="${i}" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:3px 6px">${['pop-01','pop-02','whoosh-02','ding-01','glitter-01'].map(o=>`<option ${o===s[1]?'selected':''}>${o}</option>`).join('')}</select><span class="dim" style="font-size:12px">${s[2]}</span></div><button class="iconbtn" data-play="${i}" title="Putar"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></button></div>`).join('');
+  $$('[data-s]').forEach(x=>x.onchange=()=>{sfx[+x.dataset.s][1]=x.value;playSfx(x.value)});$$('[data-play]').forEach(b=>b.onclick=()=>playSfx(sfx[+b.dataset.play][1]));renderTL()}
+$('#addFx').onclick=()=>{if(fx.length>=3)return;fx.push(['22,0','Checklist','Daftar keunggulan: adem · flowy · anti kusut','manual']);renderFx();if(fx.length>=3){$('#addFx').disabled=true;toast('Batas preset: maks 3 efek berbeda')}};
+renderFx();renderSfx();
+
+/* ---------- audio contoh (disintesis, tanpa file) ---------- */
+let ac;function playSfx(name){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const now=ac.currentTime,g=ac.createGain();g.connect(ac.destination);
+  if(name.startsWith('pop')){const o=ac.createOscillator();o.type='sine';o.frequency.setValueAtTime(name==='pop-02'?900:620,now);o.frequency.exponentialRampToValueAtTime(140,now+.12);g.gain.setValueAtTime(.35,now);g.gain.exponentialRampToValueAtTime(.001,now+.14);o.connect(g);o.start(now);o.stop(now+.15)}
+  else if(name.startsWith('ding')||name.startsWith('glitter')){[1,2.4,3.9].forEach((m,k)=>{const o=ac.createOscillator();o.frequency.value=(name.startsWith('ding')?880:1400)*m;const gg=ac.createGain();gg.gain.setValueAtTime(.18/(k+1),now+k*(name.startsWith('glitter')?.05:0));gg.gain.exponentialRampToValueAtTime(.001,now+.6);o.connect(gg);gg.connect(ac.destination);o.start(now+k*(name.startsWith('glitter')?.05:0));o.stop(now+.65)})}
+  else{const len=ac.sampleRate*.35,b=ac.createBuffer(1,len,ac.sampleRate),d=b.getChannelData(0);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.sin(Math.PI*i/len);const s=ac.createBufferSource();s.buffer=b;const f=ac.createBiquadFilter();f.type='bandpass';f.frequency.setValueAtTime(400,now);f.frequency.exponentialRampToValueAtTime(3000,now+.3);g.gain.value=.5;s.connect(f);f.connect(g);s.start(now)}}catch(e){toast('Audio tidak tersedia di browser ini')}}
+
+/* ---------- persetujuan & render ---------- */
+$('#approveBtn').onclick=()=>{if(approved)return;
+  const over=dur_>30,ban=!cuts[4].on;
+  const w=[over?`Durasi ${fmt(dur_)} dtk, lewat target 30 dtk.`:'',ban?'Kata terlarang "termurah" masih ada di audio.':''].filter(Boolean);
+  modal('Setujui rencana & mulai render?',(w.length?`<div class="alert bad" style="margin-bottom:10px">Masih ada peringatan:<br>• ${w.join('<br>• ')}</div>`:'')+`Render v01 dimulai sekarang (perkiraan 1–2 menit). Rencana yang dipakai: ${cuts.filter(c=>c.on).length} potongan, ${fx.length} efek, ${sfx.length} SFX.`,
+    [['Kembali koreksi',''],[w.length?'Tetap render':'Setujui & render','pri',startRender]])};
+function startRender(){approved=true;stepNow=5;renderSteps();addLog('Persetujuan','Disetujui Dita, render v01 dimulai');
+  $('#planCard').classList.add('ok');$('#planTitle').textContent='Rencana disetujui. Render v01 berjalan…';$('#planSub').textContent='Perubahan berikutnya akan jadi versi baru dan menunggu persetujuan lagi.';$('#approveBtn').disabled=true;
+  $$('.tab')[4].click();$('#renderBox').innerHTML='<b>Render v01</b> <span class="dim" id="eta">· sisa ±70 dtk</span><div class="progress"><div id="pbar"></div></div><span id="pct" class="dim">0%</span>';
+  let p=0;const iv=setInterval(()=>{p+=Math.random()*9+4;if(p>=100){p=100;clearInterval(iv);setTimeout(doneRender,300)}$('#pbar').style.width=p+'%';$('#pct').textContent=Math.floor(p)+'%';$('#eta').textContent='· sisa ±'+Math.max(0,Math.round((100-p)*.7))+' dtk'},350)}
+function doneRender(){stepNow=7;renderSteps();addLog('Render','v01 selesai, 76 dtk');addLog('QC','11 dari 12 butir lulus');
+  $('#planTitle').textContent='v01 selesai. Tonton lalu beri penilaian.';
+  $('#renderBox').innerHTML='<div class="alert ok">Render v01 selesai (76 dtk).</div>';
+  $('#versions').innerHTML=verRows('v01');
+  const qc=[['ok','Durasi sesuai target'],[dur_<=30?'ok':'bad',`Durasi ${fmt(dur_)} dtk ${dur_<=30?'≤':'>'} 30`],['ok','Rasio 9:16, 1080×1920'],['ok','Hook di 3 detik pertama'],['ok','Tidak ada jeda > 0,5 dtk'],['ok','Ejaan sesuai kamus (4 koreksi)'],['ok','Tidak ada angka di luar brief'],[cuts[4].on?'ok':'bad','Kata terlarang tidak terdengar'],['ok','Teks tidak menutup wajah/produk/area tombol'],['ok','Logo & handle muncul'],['ok',`Efek ${fx.length} ≤ 3`],['ok','Nama file sesuai format']].slice(1);
+  $('#qcList').innerHTML=qc.map(q=>`<li><span class="badge ${q[0]==='ok'?'b-ok':'b-bad'}">${q[0]==='ok'?'Lulus':'Gagal'}</span>${q[1]}</li>`).join('');$('#qcBox').classList.remove('hide');}
+$('#passBtn').onclick=()=>{stepNow=9;renderSteps();addLog('Penilaian','Lulus, v01 final');$('#planTitle').textContent='Selesai. v01 ditandai Lulus.';toast('v01 Lulus, siap diunduh')};
+$('#revBtn').onclick=()=>{const n=$('#note').value.trim();if(!n){toast('Tulis catatan revisi dengan acuan detik dulu');return}
+  approved=false;stepNow=4;renderSteps();addLog('Revisi',n);$('#planCard').classList.remove('ok');applyRole();
+  $('#planTitle').textContent='Rencana revisi v02 sudah siap. Render ditahan sampai kamu setuju.';$('#planSub').textContent='Catatan: '+n;toast('Revisi dicatat. Render v02 menunggu persetujuan')};
+
+/* ---------- library ---------- */
+const lib={
+ sfx:[['pop-01','global',['pop','teks-muncul'],'0,18 dtk','Dibuat sendiri',1],['pop-02','Aysilla Factory',['pop','kata-kunci'],'0,15 dtk','Drive tim Aysilla',1],['whoosh-02','global',['whoosh','transisi'],'0,35 dtk','Dibuat sendiri',1],['ding-01','Aysilla Factory',['ding','penutup'],'0,60 dtk','Drive tim Aysilla',1],['glitter-01','Aysilla Factory',['glitter','kata-kunci'],'0,55 dtk','Drive tim Aysilla',1],['glitch-01','ALN Store',['glitch','transisi'],'0,30 dtk','Belum diisi',0]],
+ musik:[['pop-ceria-110bpm','Aysilla Factory',['pop-ceria','tanpa-lirik'],'2:14','Lisensi belum diisi',0],['lofi-santai','global',['lofi'],'1:58','Artlist · iklan berbayar',1]],
+ font:[['Anton','global',['judul','google-font'],'','Google Fonts',1],['Oswald','global',['caption','google-font'],'','Google Fonts',1],['Poppins','global',['caption','google-font'],'','Google Fonts',1],['Montserrat','ALN Store',['judul'],'','Google Fonts',1]],
+ logo:[['logo-aysilla','Aysilla Factory',['logo','png'],'1200 px','Milik brand',1],['logo-aysilla-putih','Aysilla Factory',['logo','latar-gelap'],'1200 px','Milik brand',1],['logo-aln','ALN Store',['logo'],'1000 px','Milik brand',1]],
+ broll:[['loose-pants-detail-01','Aysilla Factory',['detail-bahan'],'0:08','Milik brand',1],['loose-pants-jemur-01','Aysilla Factory',['cuci-jemur'],'0:06','Milik brand',1]],
+};
+let libType='sfx';
+function renderLib(){$('#trashBtn').textContent=`Sampah (${trash.length})`;if(showTrash){renderTrash();return}const sc=$('#libScope').value,q=$('#libQ').value.toLowerCase();
+  $('#libGrid').innerHTML=lib[libType].filter(a=>(!sc||a[1]===sc)&&(!q||a[0].includes(q)||a[2].some(t=>t.includes(q)))).map(a=>{
+    const lic=a[5]?'<span class="badge b-ok">Boleh iklan berbayar</span>':'<span class="badge b-bad">Lisensi belum jelas</span>';
+    const prev=libType==='font'?`<div class="fontprev" style="font-family:${a[0]};font-weight:${a[0]==='Anton'?400:700}">ANTI KUSUT</div>`:
+      (libType==='sfx'||libType==='musik')?`<div class="wave">${Array.from({length:28},(_,i)=>`<i style="height:${6+Math.abs(Math.sin(i*1.7+a[0].length))*20}px"></i>`).join('')}</div>`:
+      `<div style="height:60px;border-radius:8px;background:${libType==='logo'?'repeating-conic-gradient(var(--panel2) 0 25%,transparent 0 50%) 0 0/12px 12px':'linear-gradient(135deg,#8a7a68,#4b3a2e)'};display:grid;place-items:center;font-weight:700;color:${libType==='logo'?'var(--text)':'#fff'}">${libType==='logo'?a[0].replace('logo-','').toUpperCase():'▶ '+a[3]}</div>`;
+    return `<div class="card asset"><div class="h">${libType==='sfx'||libType==='musik'?`<button class="iconbtn" data-ps="${a[0]}"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></button>`:''}<b>${a[0]}</b><span class="dim" style="font-size:12px">${a[3]}</span></div>${prev}<div class="tags">${a[2].map(t=>`<span>${t}</span>`).join('')}</div><div class="dim" style="font-size:12px">${a[1]==='global'?'Global':a[1]} · ${a[4]}</div>${libType==='font'?'':lic}<div style="display:flex;gap:6px;margin-top:auto"><button class="btn sm" data-ed="${a[0]}">Edit</button><button class="btn sm" data-del="${a[0]}">Hapus</button></div></div>`}).join('')||'<div class="dim">Tidak ada aset.</div>';
+  $$('[data-ps]').forEach(b=>b.onclick=()=>playSfx(b.dataset.ps.startsWith('glitch')?'whoosh':b.dataset.ps.startsWith('pop-ceria')||b.dataset.ps.startsWith('lofi')?'ding-01':b.dataset.ps));libActions()}
+$$('#libType button').forEach(b=>b.onclick=()=>{$$('#libType button').forEach(x=>x.classList.toggle('on',x===b));libType=b.dataset.v;renderLib()});
+$('#libScope').onchange=renderLib;$('#libQ').oninput=renderLib;renderLib();
+$('#upBtn').onclick=()=>modal('Upload aset',`<div class="drop" style="margin:0 0 12px">Tarik file ke sini</div>
+  <div class="row2"><div class="field"><label>Jenis</label><select><option>SFX</option><option>Musik</option><option>Font</option><option>Logo</option><option>B-roll</option></select></div><div class="field"><label>Milik</label><select><option>Global</option><option>Aysilla Factory</option><option>ALN Store</option></select></div></div>
+  <div class="field"><label>Tag (pisahkan koma)</label><input placeholder="pop, kata-kunci"></div>
+  <div class="field"><label>Sumber & lisensi</label><input placeholder="mis. Artlist, lisensi komersial"></div>
+  <label style="display:flex;gap:6px;font-size:13px"><input type="checkbox"> Boleh dipakai untuk iklan berbayar</label>`,[['Batal',''],['Upload','pri',()=>toast('Aset ditambahkan ke library')]]);
+
+/* ---------- preset efek ---------- */
+const E17=['Orbit','Couch wall','UI world','Frame break','Digital zoom','Phone mockup','Checklist','Headline wall','Zoom-through cut','Chart grow','Pull-back reveal','Green screen','Paper cut','Doodle boil','Vertigo','Cover story','Glass type'];
+const def={4:'Boleh',6:'Boleh',8:'Boleh',10:'Boleh',15:'Boleh',16:'Wajib'};
+$('#efxGrid').innerHTML=E17.map((e,i)=>`<div><span>${String(i+1).padStart(2,'0')} ${e}</span><select>${['Wajib','Boleh','Jangan'].map(o=>`<option ${(def[i]||'Jangan')===o?'selected':''}>${o}</option>`).join('')}</select></div>`).join('');
+/* ---------- timeline ---------- */
+function num(x){return parseFloat(String(x).replace(',','.'))}
+function pct(x,tot){return (Math.max(0,x)/tot*100)+'%'}
+function renderTL(){
+  const src=$('#laneSrc');if(!src)return;
+  let h='',pos=0;
+  [...cuts].sort((a,b)=>a.a-b.a).forEach(c=>{
+    if(c.a>pos)h+=`<div class="blk keep" style="left:${pct(pos,RAW)};width:${pct(c.a-pos,RAW)}"></div>`;
+    h+=`<div class="blk ${c.lock?'lock':c.on?'cut':'keep'}" data-ci="${cuts.indexOf(c)}" title="${c.j} ${fmt(c.a)}–${fmt(c.b)} dtk" style="left:${pct(c.a,RAW)};width:${pct(c.b-c.a,RAW)};cursor:pointer;outline:1px dashed rgba(255,255,255,.5)">${c.lock?'CTA':c.on?'✕':''}</div>`;pos=c.b});
+  if(pos<RAW)h+=`<div class="blk keep" style="left:${pct(pos,RAW)};width:${pct(RAW-pos,RAW)}"></div>`;
+  src.innerHTML=h;
+  src.querySelectorAll('[data-ci]').forEach(b=>b.onclick=e=>{e.stopPropagation();const c=cuts[+b.dataset.ci];if(c.lock){toast('Ekor video (CTA) dikunci, tidak bisa dibuang');return}c.on=!c.on;renderCuts();updateDur();toast(c.on?`${fmt(c.a)}–${fmt(c.b)} dibuang`:`${fmt(c.a)}–${fmt(c.b)} dipakai lagi`)});
+  const body=dur_-OUTRO, n=pages.length||1;
+  $('#laneCap').innerHTML=pages.map((pg,i)=>`<div class="blk cap" style="left:${pct(i*body/n,dur_)};width:calc(${pct(body/n,dur_)} - 2px)" title="${pg.map(k=>words[k]).join(' ')}">${pg.map(k=>words[k]).join(' ')}</div>`).join('')+`<div class="blk lock" style="left:${pct(body,dur_)};width:${pct(OUTRO,dur_)}">Logo</div><div class="ph"></div>`;
+  $('#laneFx').innerHTML=fx.map(f=>`<div class="blk fx" style="left:${pct(num(f[0]),dur_)};width:${pct(2.6,dur_)}" title="${f[1]}">${f[1]}</div>`).join('')+'<div class="ph"></div>';
+  const ls=$('#laneSfx');
+  ls.innerHTML=sfx.map((s,i)=>`<div class="mk" data-si="${i}" style="left:${pct(num(s[0]),dur_)}" title="${s[1]} · ${s[0]} dtk (geser)"></div>`).join('')+'<div class="ph"></div>';
+  ls.querySelectorAll('.mk').forEach(m=>{m.onclick=e=>e.stopPropagation();m.onpointerdown=e=>{e.stopPropagation();e.preventDefault();m.setPointerCapture(e.pointerId);m.classList.add('drag');const r=ls.getBoundingClientRect(),i=+m.dataset.si;
+    m.onpointermove=ev=>{const x=Math.max(0,Math.min(dur_,(ev.clientX-r.left)/r.width*dur_));m.style.left=pct(x,dur_);sfx[i][0]=fmt(x)};
+    m.onpointerup=()=>{m.onpointermove=null;m.classList.remove('drag');renderSfx();toast(`SFX ${sfx[i][1]} dipindah ke ${sfx[i][0]} dtk`)}}});
+  const steps=6;$('#ruler').innerHTML=Array.from({length:steps+1},(_,i)=>`<span>${fmt(i*dur_/steps)}</span>`).join('');
+  updPH()}
+function updPH(){$$('.ph').forEach(p=>p.style.left=pct(t,dur_))}
+['#laneCap','#laneFx','#laneSfx'].forEach(s=>$(s).onclick=e=>{const r=e.currentTarget.getBoundingClientRect();setT(Math.max(0,Math.min(dur_,(e.clientX-r.left)/r.width*dur_)))});
+
+/* ---------- versi + turunan ---------- */
+function verRows(v){const row=(a,b,c)=>`<div class="fxrow" style="grid-template-columns:34px 1fr auto">${a}<span class="dim" style="font-size:13px">${b}</span><button class="btn sm" onclick="toast('Mengunduh ${c}')">Unduh</button></div>`;
+  return row(`<b>${v}</b>`,`aysilla_awareness_loose-pants_males-nyetrika_${v}.mp4 · 9:16 master · ${fmt(dur_)} dtk`,v+' 9:16')+row('',`…_${v}_4x5.mp4 · 1080×1350 Meta Feed (turunan otomatis)`,v+' 4:5')+row('',`…_${v}_cover.jpg · cover/thumbnail`,'cover '+v)}
+
+/* ---------- antrean ---------- */
+const queue=[['ALN-20261112-012','Hijab Pashmina Ceruty','Render v02 · 64%','b-run'],['AYS-20261112-036','Rok Plisket','Menunggu giliran','b-dim'],['AYS-20261112-037','Loose Pants Smoke Grey','Menunggu giliran','b-dim'],['ALN-20261112-013','Khimar Instan','Menunggu giliran','b-dim']];
+function renderQueue(){$('#queue').innerHTML=queue.map((q,i)=>`<div class="qrow"><span class="n">${i+1}</span><div><b>${q[1]}</b><div class="dim" style="font-size:12px">${q[0]}</div></div><span class="badge ${q[3]}">${q[2]}</span><button class="btn sm" data-up="${i}" ${i<2||role!=='Owner'?'disabled':''} title="${role!=='Owner'?'Hanya Owner':''}">↑ Naikkan</button></div>`).join('')+(role!=='Owner'?'<div class="dim" style="font-size:12px;margin-top:6px">Ubah urutan hanya untuk Owner.</div>':'');
+  $$('[data-up]').forEach(b=>b.onclick=()=>{const i=+b.dataset.up;[queue[i-1],queue[i]]=[queue[i],queue[i-1]];renderQueue();toast('Urutan antrean diubah')})}
+
+/* ---------- peran ---------- */
+
+function applyRole(){const tk=role==='Tim konten';$('#approveBtn').disabled=approved||tk;$('#approveBtn').title=tk?'Hanya PIC brand / Owner':'';
+  ['#savePreset','#presetSave','#passBtn','#revBtn'].forEach(s=>{$(s).disabled=tk;$(s).title=tk?'Hanya PIC brand / Owner':''});renderQueue()}
+$('#role').onchange=e=>{role=e.target.value;applyRole();toast('Masuk sebagai '+role)};
+
+/* ---------- library: edit, sampah ---------- */
+
+function renderTrash(){$('#libGrid').innerHTML=trash.length?trash.map((x,i)=>`<div class="card asset"><div class="h"><b>${x.a[0]}</b><span class="badge b-dim">${x.t}</span></div><div class="dim" style="font-size:12px">Ada di folder _sampah/, tidak dihapus permanen.</div><button class="btn sm" data-rs="${i}">Pulihkan</button></div>`).join(''):'<div class="dim">Sampah kosong.</div>';
+  $$('[data-rs]').forEach(b=>b.onclick=()=>{const x=trash.splice(+b.dataset.rs,1)[0];lib[x.t].push(x.a);renderLib();toast(x.a[0]+' dipulihkan')})}
+$('#trashBtn').onclick=()=>{showTrash=!showTrash;$('#trashBtn').classList.toggle('pri',showTrash);renderLib()};
+function libActions(){
+  $$('[data-del]').forEach(b=>b.onclick=()=>modal('Pindahkan ke sampah?',`<b>${b.dataset.del}</b> dipindah ke folder _sampah/ dan bisa dipulihkan. Video yang sudah dirender tidak berubah.`,[['Batal',''],['Pindahkan','pri',()=>{const i=lib[libType].findIndex(a=>a[0]===b.dataset.del);trash.push({t:libType,a:lib[libType].splice(i,1)[0]});renderLib();toast('Dipindah ke sampah')}]]));
+  $$('[data-ed]').forEach(b=>b.onclick=()=>{const a=lib[libType].find(x=>x[0]===b.dataset.ed);modal('Edit info aset',`<div class="field"><label>Nama file</label><input id="edN" value="${a[0]}"></div><div class="field"><label>Milik</label><select id="edM">${['global','Aysilla Factory','ALN Store'].map(o=>`<option ${o===a[1]?'selected':''}>${o}</option>`).join('')}</select></div><div class="field"><label>Tag (pisahkan koma)</label><input id="edT" value="${a[2].join(', ')}"></div><div class="field"><label>Sumber &amp; lisensi</label><input id="edL" value="${a[4]}"></div><label style="display:flex;gap:6px;font-size:13px"><input type="checkbox" id="edB" ${a[5]?'checked':''}> Boleh dipakai untuk iklan berbayar</label>`,[['Batal',''],['Simpan','pri',()=>{a[0]=$('#edN').value.trim().toLowerCase().replace(/\s+/g,'-');a[1]=$('#edM').value;a[2]=$('#edT').value.split(',').map(x=>x.trim()).filter(Boolean);a[4]=$('#edL').value;a[5]=$('#edB').checked?1:0;renderLib();toast('Info aset disimpan')}]])})}
+
+/* ---------- chip tambah/hapus di preset ---------- */
+document.addEventListener('click',e=>{const x=e.target.closest('[data-chips] .chip b');if(x){x.parentElement.remove();return}
+  const add=e.target.closest('[data-chips] > button');if(add){const sp=document.createElement('span');sp.className='chip';sp.innerHTML='<input size="14" style="border:0;background:none;padding:0;outline:none" placeholder="ketik lalu Enter">';add.before(sp);const inp=sp.querySelector('input');inp.focus();
+    inp.onkeydown=k=>{if(k.key==='Enter'&&inp.value.trim()){sp.textContent=inp.value.trim()+' ';const b=document.createElement('b');b.textContent='×';sp.appendChild(b)}if(k.key==='Escape')sp.remove()}}});
+
+/* ---------- checklist QC di preset ---------- */
+const QCI=['Durasi sesuai target','Rasio & resolusi sesuai placement','Hook di 3 detik pertama','Tidak ada jeda / take salah tersisa','Ejaan nama produk sesuai kamus','Harga & promo sama persis dengan brief','Teks tidak menutup wajah, produk, area tombol','Logo & handle sesuai aturan','Efek hanya Wajib/Boleh, tidak lewat batas','Musik di bawah suara, tidak pecah','CTA & penutup sesuai struktur','Nama file sesuai format'];
+$('#qcCfg').innerHTML=QCI.map((q,i)=>`<tr><td>${q}</td><td><select style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:3px 6px">${['Otomatis','Manual (tim)','Tidak dicek'].map(o=>`<option ${(i===9||i===6?'Manual (tim)':'Otomatis')===o?'selected':''}>${o}</option>`).join('')}</select></td></tr>`).join('');
+
+applyRole();
+
+updateDur();
+$('#presetSave').onclick=()=>toast('Preset disimpan. 5 konflik masih terbuka.');
+</script>
+</body>
+</html>

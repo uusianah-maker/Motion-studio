@@ -1,0 +1,245 @@
+"""CLI mesin untuk dipanggil Motion Studio (V5, KONTRAK-ENGINE v0.3 bagian 2).
+
+  engine generate <job_dir>   Generate Otomatis: satu video -> rencana.json + ops.json + qc_rencana.json
+  engine ulang    <job_dir>   susun ulang draf memakai <job_dir>/koreksi.json (tanpa transkrip ulang)
+  engine batch    <job_dir>   Batch Remix (modul yuki: pipeline/batch/perencana.py)
+  engine cek                  cek alat (ffmpeg, Whisper, GPU, OpenCV) untuk halaman status
+
+Jalankan dari D:\\VIBECODING\\remotion dengan Python .venv:
+  .venv\\Scripts\\python pipeline\\engine.py generate PROJECTS\\<proyek>\\06_ENGINE\\<job_id>
+
+Stdout: satu objek JSON per baris (progres). Log lain ke stderr.
+Kode keluar: 0 berhasil · 2 ditolak (alasan di rencana.json) · 1 gagal teknis.
+Mesin TIDAK merender dan tidak menulis apa pun di luar <job_dir>.
+"""
+
+import json
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PY = sys.executable
+JOB_SCHEMA = "engine-job/1"
+
+
+class Ditolak(Exception):
+    pass
+
+
+def progres(tahap: str, persen: int, pesan: str = "") -> None:
+    print(json.dumps({"tahap": tahap, "persen": persen, "pesan": pesan}, ensure_ascii=False), flush=True)
+
+
+def log(*a) -> None:
+    print(*a, file=sys.stderr, flush=True)
+
+
+def jalankan(cmd: list[str]) -> int:
+    """Proses anak: stdout-nya dialihkan ke stderr supaya stdout tetap JSON progres saja."""
+    log("$ " + " ".join(cmd))
+    return subprocess.run(cmd, cwd=ROOT, stdout=sys.stderr, stderr=sys.stderr).returncode
+
+
+def baca_job(job_dir: Path) -> dict:
+    p = job_dir / "job.json"
+    if not p.exists():
+        raise FileNotFoundError(f"job.json tidak ada di {job_dir}")
+    job = json.loads(p.read_text(encoding="utf-8"))
+    if job.get("schema") != JOB_SCHEMA:
+        raise ValueError(f"job.json schema harus {JOB_SCHEMA}")
+    return job
+
+
+def sumber_utama(job: dict) -> Path:
+    for s in job.get("sumber", []):
+        if s.get("kunci") == "$sumber":
+            return Path(s["path"])
+    raise ValueError("job.json: sumber dengan kunci $sumber tidak ada")
+
+
+def tulis_ditolak(out: Path, alasan: str) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "rencana.json").write_text(
+        json.dumps({"schema": "engine-rencana/1", "status": "ditolak", "alasan": alasan}, ensure_ascii=False, indent=2),
+        encoding="utf-8", newline="\n")
+
+
+def cek_input(video: Path) -> dict:
+    if not video.exists():
+        raise Ditolak(f"file video tidak ditemukan: {video}")
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height:format=duration", "-of", "json", str(video)],
+        capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Ditolak(f"file tidak bisa dibaca sebagai video: {r.stderr.strip()[:200]}")
+    info = json.loads(r.stdout)
+    vs = [s for s in info.get("streams", []) if s.get("codec_type") == "video"]
+    aus = [s for s in info.get("streams", []) if s.get("codec_type") == "audio"]
+    if not vs:
+        raise Ditolak("tidak ada gambar video di file")
+    if not aus:
+        raise Ditolak("video tidak punya suara; Generate Otomatis butuh orang bicara")
+    w, h = vs[0].get("width", 0), vs[0].get("height", 0)
+    dur = float(info.get("format", {}).get("duration", 0))
+    peringatan = []
+    if not h or abs(w / h - 9 / 16) > 0.02:
+        peringatan.append(f"rasio {w}x{h} bukan 9:16; hasil akan dipotong ke 9:16")
+    if dur < 5:
+        raise Ditolak(f"video terlalu pendek ({dur:.1f} dtk)")
+    return {"lebar": w, "tinggi": h, "durasi": dur, "peringatan": peringatan}
+
+
+def argumen_edit(job: dict, job_dir: Path, transkrip: Path, video: Path, out: Path) -> list[str]:
+    brief = job.get("brief", {})
+    cmd = [PY, "pipeline/edit.py", str(transkrip), "--brandkit", str(job_dir / job.get("brand_kit", "brand_kit.json")),
+           "--video", str(video), "--out", str(out), "--placement", brief.get("placement", "tiktok"),
+           "--mode-ops", job.get("mode_ops", "kompat")]
+    if job.get("preset"):
+        cmd += ["--preset", job["preset"]]
+    if brief.get("area_produk"):
+        cmd += ["--area-produk", brief["area_produk"]]
+    if job.get("batas_durasi"):
+        cmd += ["--batas-durasi", *map(str, job["batas_durasi"])]
+    return cmd
+
+
+def selesai(out: Path, cek: dict | None = None, kamus_baru=None) -> int:
+    r = json.loads((out / "rencana.json").read_text(encoding="utf-8"))
+    if cek and cek["peringatan"]:
+        r["peringatan"] = [{"level": "warn", "jenis": "input", "teks": p} for p in cek["peringatan"]] + r["peringatan"]
+    if kamus_baru:
+        r["kamus_baru"] = kamus_baru
+    (out / "rencana.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+    ops = json.loads((out / "ops.json").read_text(encoding="utf-8"))
+    progres("selesai", 100, f"{r['status']} · {r['durasi']['mentah']} -> {r['durasi']['akhir']} dtk · {len(ops['ops'])} operasi")
+    return 0
+
+
+def generate(job_dir: Path) -> int:
+    job = baca_job(job_dir)
+    out = job_dir / "out"
+    video = sumber_utama(job)
+    progres("cek_input", 5, video.name)
+    try:
+        cek = cek_input(video)
+    except Ditolak as e:
+        tulis_ditolak(out, str(e))
+        progres("selesai", 100, f"ditolak: {e}")
+        return 2
+    out.mkdir(parents=True, exist_ok=True)
+    transkrip = out / "transkrip.json"
+    progres("transkrip", 15, f"{cek['durasi']:.0f} dtk audio")
+    t0 = time.perf_counter()
+    rc = jalankan([PY, "pipeline/transcribe.py", str(video), str(transkrip),
+                   "--brandkit", str(job_dir / job.get("brand_kit", "brand_kit.json"))])
+    if rc != 0:
+        raise RuntimeError(f"transkrip gagal (kode {rc})")
+    n = len(json.loads(transkrip.read_text(encoding="utf-8"))["words"])
+    progres("transkrip", 60, f"{n} kata, {time.perf_counter() - t0:.0f} dtk")
+    progres("rencana", 70, "potong, caption, hook, efek")
+    rc = jalankan(argumen_edit(job, job_dir, transkrip, video, out))
+    if rc == 2:
+        alasan = json.loads((out / "potongan.json").read_text(encoding="utf-8")).get("alasan", "ditolak")
+        tulis_ditolak(out, alasan)
+        progres("selesai", 100, f"ditolak: {alasan}")
+        return 2
+    if rc != 0:
+        raise RuntimeError(f"rencana gagal (kode {rc})")
+    return selesai(out, cek)
+
+
+def ulang(job_dir: Path) -> int:
+    """Susun ulang dengan koreksi tim (kontrak bagian 6), memakai transkrip yang sudah ada."""
+    job = baca_job(job_dir)
+    out = job_dir / "out"
+    transkrip = out / "transkrip.json"
+    if not transkrip.exists():
+        raise FileNotFoundError("transkrip belum ada; jalankan generate dulu")
+    p = job_dir / "koreksi.json"
+    koreksi = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    progres("rencana", 30, "menerapkan koreksi")
+    cmd = argumen_edit(job, job_dir, transkrip, sumber_utama(job), out)
+    kata = koreksi.get("kata", [])
+    if kata:
+        cmd += ["--koreksi", *[f"{k['detik']}:{k['jadi']}" for k in kata]]
+    if koreksi.get("buang"):
+        cmd += ["--buang", *[f"{a}-{b}" for a, b in koreksi["buang"]]]
+    if koreksi.get("hook"):
+        cmd += ["--hook-text", koreksi["hook"]]
+    rc = jalankan(cmd)
+    if rc == 2:
+        alasan = json.loads((out / "potongan.json").read_text(encoding="utf-8")).get("alasan", "ditolak")
+        tulis_ditolak(out, alasan)
+        progres("selesai", 100, f"ditolak: {alasan}")
+        return 2
+    if rc != 0:
+        raise RuntimeError(f"rencana ulang gagal (kode {rc})")
+    tr = json.loads(transkrip.read_text(encoding="utf-8"))
+    kamus_baru = {}
+    for k in kata:
+        if k.get("simpan_ke_kamus"):
+            asal = min(tr["words"], key=lambda w: abs(w["startMs"] - k["detik"] * 1000))["text"].strip(".,?!")
+            kamus_baru[asal] = k["jadi"]
+    if koreksi.get("pakai"):
+        log("catatan: 'pakai' (paksa pakai bagian yang dibuang mesin) belum didukung; diabaikan")
+    return selesai(out, kamus_baru=kamus_baru or None)
+
+
+def batch(job_dir: Path) -> int:
+    progres("rencana", 5, "Batch Remix")
+    return jalankan([PY, "pipeline/batch/perencana.py", str(job_dir)])
+
+
+def cek_alat() -> int:
+    hasil = {}
+    for alat in ("ffmpeg", "ffprobe"):
+        hasil[alat] = bool(shutil.which(alat))
+    try:
+        import faster_whisper  # noqa: F401
+
+        hasil["whisper"] = True
+    except Exception:  # noqa: BLE001
+        hasil["whisper"] = False
+    try:
+        import ctranslate2
+
+        hasil["gpu"] = ctranslate2.get_cuda_device_count() > 0
+    except Exception:  # noqa: BLE001
+        hasil["gpu"] = False
+    try:
+        import cv2  # noqa: F401
+
+        hasil["opencv"] = True
+    except Exception:  # noqa: BLE001
+        hasil["opencv"] = False
+    hasil["ok"] = all(hasil[k] for k in ("ffmpeg", "ffprobe", "whisper", "opencv"))
+    print(json.dumps(hasil), flush=True)
+    return 0 if hasil["ok"] else 1
+
+
+def main() -> int:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "cek"):
+        log(__doc__)
+        return 1
+    cmd = sys.argv[1]
+    if cmd == "cek":
+        return cek_alat()
+    if len(sys.argv) < 3:
+        log(f"pakai: engine {cmd} <job_dir>")
+        return 1
+    job_dir = Path(sys.argv[2]).resolve()
+    try:
+        return {"generate": generate, "ulang": ulang, "batch": batch}[cmd](job_dir)
+    except Exception as e:  # noqa: BLE001 - gagal teknis: kode 1, pesan ke progres
+        log(f"GAGAL: {e!r}")
+        progres("gagal", 100, str(e)[:300])
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
