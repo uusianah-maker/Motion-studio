@@ -1,5 +1,24 @@
 # Paket deploy Motion Studio (W15)
 
+## Jalur B (dipakai sejak 13 Nov 2026): semua di VPS
+Aplikasi, mesin (Generate Otomatis / Batch Remix), dan workspace jalan penuh di VPS. Tim bisa kerja bergantian kapan saja, dan PC owner boleh mati.
+
+1. **DNS**: buat A record `motion` → IP VPS. Kalau DNS di Cloudflare, set ke DNS only (awan abu-abu).
+2. **Di VPS** (Ubuntu 24.04, root):
+   ```
+   curl -fsSL https://raw.githubusercontent.com/uusianah-maker/Motion-studio/main/deploy/vps/setup-vps-penuh.sh -o setup-vps-penuh.sh
+   sudo bash setup-vps-penuh.sh motion.domainlo.com
+   ```
+3. **Login Google**: ikuti `docs/SETUP_GOOGLE_LOGIN.md`. Redirect URI: `https://motion.domainlo.com/api/auth/callback`.
+   - Isi tiga baris Google di `/srv/motion/app/.env.local` (lewat `nano`, jangan lewat chat).
+   - Lalu jalankan `systemctl restart motion-studio`.
+4. **Update** ke versi GitHub terbaru: jalankan lagi `setup-vps-penuh.sh` dengan domain yang sama. Data workspace tidak disentuh.
+5. **Log**: `journalctl -u motion-studio -f`.
+
+Catatan:
+- Batch Remix di Linux masih butuh penyesuaian path Python di `engine/pipeline/batch/` (bagian yuki).
+- Bagian di bawah ini adalah jalur A (VPS hanya pintu ke PC owner), disimpan sebagai cadangan.
+
 Arahan owner (PC-14): **VPS cuma jadi pintu supaya app bisa dibuka online. File video, render (FFmpeg), dan semua data tetap di PC owner.**
 
 ```
