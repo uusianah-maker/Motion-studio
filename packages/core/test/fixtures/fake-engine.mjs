@@ -64,6 +64,6 @@ const ops = [
 const lokalPath = what === 'kabur' ? 'C:/Windows/win.ini' : 'aset/musik-lokal.wav';
 fs.writeFileSync(path.join(out, 'ops.json'), JSON.stringify({ schema: 'ms-ops/1', mode: job.mode_ops ?? 'kompat', ops, aset_lokal: [{ kunci: '$musik:lokal-01', path: lokalPath }] }));
 fs.writeFileSync(path.join(out, 'qc_rencana.json'), JSON.stringify({ butir: [{ butir: 'durasi sesuai target', lulus: false, nilai: 1.5 }, { butir: 'hook di 3 detik pertama', lulus: true }] }));
-fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap', posisi_caption: 0.72, audio: { sfx: 1, musik: '$musik:lokal-01', lisensi_musik: 'milik_sendiri' }, durasi: { mentah: 3, akhir: 1.5, target: [15, 30] }, hook: { teks: 'Celana adem', dari: 0, sampai: 1.2, sumber: 'aturan' }, peringatan: [], ragu: [{ detik: 0.6, teks: 'adem', alasan: 'Whisper kurang yakin (0.41)' }], mode_job: mode }));
+fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap', posisi_caption: 0.72, audio: { sfx: 1, musik: '$musik:lokal-01', lisensi_musik: 'milik_sendiri' }, durasi: { mentah: 3, akhir: 1.5, target: null, saran: [15, 30] }, hook: { teks: 'Celana adem', dari: 0, sampai: 1.2, sumber: 'aturan' }, peringatan: [], ragu: [{ detik: 0.6, teks: 'adem', alasan: 'Whisper kurang yakin (0.41)' }], mode_job: mode }));
 say('selesai', 100);
 process.exit(0);

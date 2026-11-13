@@ -95,7 +95,7 @@ export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }:
           <b>
             {sec(d?.mentah)} → {sec(d?.akhir)}
           </b>
-          {d?.target && <span className="muted small">target {d.target.join('–')} dtk</span>}
+          {d?.target ? <span className="muted small">target {d.target.join('–')} dtk</span> : <span className="muted small">tanpa batas durasi{d?.saran?.length ? ` · saran ${d.saran.join('–')} dtk` : ''}</span>}
         </div>
         <div className="stat">
           <small>Dibuang</small>

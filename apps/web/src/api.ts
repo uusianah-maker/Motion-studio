@@ -526,7 +526,8 @@ export interface EngineStart {
 /** Engine plan summary (KONTRAK-ENGINE §5.1); every field optional — the engine writes it. */
 export interface EngineRencana {
   status?: string;
-  durasi?: { mentah?: number; akhir?: number; target?: number[] };
+  /** target null = no length limit (owner, 13 Nov); saran = the preset's suggestion, info only. */
+  durasi?: { mentah?: number; akhir?: number; target?: number[] | null; saran?: number[] | null };
   dibuang?: { dari?: number; sampai?: number; jenis?: string; teks?: string }[];
   hook?: { teks?: string };
   kata_kunci?: { teks?: string; detik?: number }[];

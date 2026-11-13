@@ -17,7 +17,7 @@
   {
     "id": "U4-04 Kartu rencana: hook, durasi mentah → akhir, kata yang perlu dicek",
     "ok": true,
-    "detail": "Rencana edit siap — render ditahan sampai disetujui | Hook | Celana adem | Durasi | 3,0 dtk → 1,5 dtk | target 15–30 dtk"
+    "detail": "Rencana edit siap — render ditahan sampai disetujui | Hook | Celana adem | Durasi | 3,0 dtk → 1,5 dtk | tanpa batas durasi · saran 15–30 dtk"
   },
   {
     "id": "U4-04b Kartu rencana: cek mesin (qc_rencana), posisi caption, musik + lisensi",
@@ -67,7 +67,7 @@
   {
     "id": "U5-04 Simpan: 2 baris disetujui jadi proyek varian yang sudah disetujui; yang dicoret tidak",
     "ok": true,
-    "detail": "UJI · varian-003 · Hook 3 | varian-001 · Hook 1"
+    "detail": "varian-001 · Hook 1 | UJI · varian-003 · Hook 3"
   },
   {
     "id": "U5-05 \"Render varian disetujui\" memasukkan tepat 2 render ke antrean",
