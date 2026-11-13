@@ -169,7 +169,9 @@ Hasil uji 13 Nov memakai efek yang belum ada di Motion Studio. Usulan bentuknya:
 | Blur area per klip (watermark, teks bawaan) — Batch Remix | `Clip.blur: [{ x, y, w, h, dari_ms, sampai_ms, radius }]`, waktu dihitung terhadap `in_ms` sumber (watermark TikTok pindah posisi di detik 5,0 sumber) |
 | Crop / zoom statis per klip (buang wajah kreator lain) — Batch Remix | `Clip.crop: { x, y, w, h }` (0..1), lalu di-scale ke kanvas |
 
-Blur watermark hanya boleh dipakai pada footage yang hak pakainya jelas milik brand (lihat keputusan hak pakai IN1–IN23, masih terbuka).
+Blur watermark hanya boleh dipakai pada footage yang hak pakainya jelas (`hak_pakai_jelas: true`), diputuskan owner **per batch**. Default batch baru: `false`.
+
+**Keputusan owner 13 Nov 2026 (dijawab di sesi yuki): "Semua boleh"** untuk batch `2026-11-13_video-winning` (IN1–IN23): footage dari semua akun watermark (@aysilla_factory, @aln_store.id, @distcover IN18, @vionaputri_17 IN1/IN21) boleh dipakai untuk iklan.
 
 Sampai operasi ini ada, mesin hanya memakai operasi yang sudah ada (caption tanpa animasi, tanpa zoom). Draf tetap bisa dirender.
 

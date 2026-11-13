@@ -60,6 +60,10 @@ X09 (Varian) yang sudah selesai tetap dipakai untuk varian sederhana dari satu p
 4. **Lepas Remotion:** V6, setelah U3 menghasilkan video setara.
 5. **Batch Remix:** Y2–Y5 lalu U5.
 
+## Keputusan yang sudah dijawab
+
+- **Hak pakai footage batch `2026-11-13_video-winning` (IN1–IN23):** "Semua boleh" (owner, 13 Nov 2026, di sesi yuki). Batch berikutnya tetap diputuskan per batch.
+
 ## Keputusan terbuka
 
 - **Bahan uji gerbang 1:** 5–10 rekaman mentah asli brand sendiri.
