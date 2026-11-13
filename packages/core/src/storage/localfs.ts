@@ -51,7 +51,8 @@ async function renameNoReplace(fromAbs: string, toAbs: string, rel: string): Pro
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'EEXIST') throw CONFLICT(rel);
-    if (code !== 'EPERM' && code !== 'ENOTSUP' && code !== 'ENOSYS') throw e;
+    // exFAT on Windows answers link() with EISDIR (seen on the owner's D: workspace, 13 Nov 2026).
+    if (code !== 'EPERM' && code !== 'ENOTSUP' && code !== 'ENOSYS' && code !== 'EISDIR') throw e;
     if (await fsp.lstat(toAbs).then(() => true, () => false)) throw CONFLICT(rel);
     await withFsRetry(() => fsp.rename(fromAbs, toAbs));
     return;
