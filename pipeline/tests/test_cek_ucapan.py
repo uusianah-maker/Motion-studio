@@ -41,6 +41,16 @@ class CekUcapan(unittest.TestCase):
         t = "Ini celana korset, bahannya super stretch, adem, dan nyaman banget buat dipakai sehari-hari, worth it"
         self.assertEqual(cek_ucapan(tr(t, 6))["status"], "ok")
 
+    def test_hitungan_angka_ditolak(self):
+        t = "1번, 2, 2, 3, 3, 4, 05, 05, 05, 05, 06, 05, 05, 06, terus mundur dari sini"
+        self.assertEqual(cek_ucapan(tr(t, 12))["status"], "ditolak")
+
+    def test_banyak_kata_ragu_ditolak(self):
+        d = tr("jadug anda kell prosh ding untuk mingnya pondera meosto masukin kita disi posen aja", 8)
+        for w in d["words"][:7]:
+            w["prob"] = 0.05
+        self.assertEqual(cek_ucapan(d)["status"], "ditolak")
+
     def test_ucapan_dengan_terima_kasih_di_akhir_ok(self):
         t = "Bahannya adem banget nggak nerawang ukurannya lengkap cek keranjang kuning ya terima kasih"
         self.assertEqual(cek_ucapan(tr(t, 6))["status"], "ok")

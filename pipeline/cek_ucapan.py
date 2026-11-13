@@ -37,6 +37,9 @@ INGGRIS = {
     "don't", "can", "so", "out", "up", "what", "all", "keep", "wanna", "gonna", "here", "night",
 }
 MAKS_RASIO_INGGRIS = 0.35
+PROB_RENDAH = 0.3
+MAKS_RASIO_RAGU = 0.30
+MAKS_RASIO_ANGKA = 0.30
 
 
 def _norm(t: str) -> str:
@@ -74,6 +77,19 @@ def cek_ucapan(tr: dict) -> dict:
             status="ditolak",
             alasan=f"tidak ada ucapan terdeteksi ({len(asli)} kata asli dalam {durasi:.0f} dtk; "
             f"teks Whisper: \"{contoh}\"). Kemungkinan video hanya musik.",
+        )
+        return hasil
+    # Transkrip "sampah": banyak kata yang Whisper sendiri tidak yakin, atau isinya angka/hitungan.
+    # Data 13 Nov 2026: ucapan asli <= 16% kata ragu; rekaman try-on dengan arahan dari belakang
+    # kamera (DJI 0017) 40% ragu + 64% token angka ("1번, 2, 05, 05 ...").
+    rendah = sum(1 for w in asli if w.get("prob", 1) < PROB_RENDAH) / len(asli)
+    angka = sum(1 for w in asli if any(ch.isdigit() for ch in w["text"])) / len(asli)
+    hasil.update(rasio_ragu=round(rendah, 2), rasio_angka=round(angka, 2))
+    if rendah > MAKS_RASIO_RAGU or angka > MAKS_RASIO_ANGKA:
+        hasil.update(
+            status="ditolak",
+            alasan=f"transkrip tidak meyakinkan ({rendah:.0%} kata ragu, {angka:.0%} angka). Kemungkinan bukan orang "
+            "bicara ke kamera (mis. musik, hitungan, atau arahan pengambilan gambar). Cocok untuk jalur VO/Batch Remix.",
         )
         return hasil
     inggris = sum(1 for w in asli if _norm(w["text"]) in INGGRIS)
