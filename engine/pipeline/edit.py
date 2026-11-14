@@ -23,6 +23,7 @@ from cek_ucapan import cek_ucapan
 from brandkit import muat as muat_brand_kit
 from posisi_caption import posisi_otomatis
 from ops import susun as susun_ops, tulis as tulis_ops
+from jaga_ops import buang_teks_kosong, cek_durasi, jaga_durasi, rapikan_kata, validasi_motion_studio
 
 MAX_WORDS_PER_PAGE = 3
 PAGE_GAP_MS = 250  # jeda antar kata yang memaksa halaman caption baru
@@ -561,7 +562,23 @@ def main() -> None:
     preset = bk.get("preset", {}).get(args.preset, {}) if args.preset else {}
     rencana, ops_doc, qc = susun_ops(props, report, bk, placement=args.placement, root=Path.cwd(),
                                      mode=args.mode_ops, preset=preset, batas_durasi=args.batas_durasi)
+    # Pengaman (venus, 14 Nov): tiap klip <= panjang ASLI file sumbernya (lihat jaga_ops.py).
+    lokal = {a["kunci"]: a["path"] for a in ops_doc.get("aset_lokal", [])}
+    lokal["$sumber"] = str((Path.cwd() / "public" / args.video).resolve())
+    aset_brand = {a["kunci"]: a.get("path") for a in bk.get("aset", []) if a.get("kunci")}
+    path_of = lambda k: lokal.get(k) or aset_brand.get(k)  # noqa: E731
+    catatan_durasi = jaga_durasi(ops_doc["ops"], path_of) + buang_teks_kosong(ops_doc["ops"]) + rapikan_kata(ops_doc["ops"])
+    masih_lebih = cek_durasi(ops_doc["ops"], path_of)
+    if catatan_durasi:
+        rencana.setdefault("peringatan", []).extend({"level": "info", "jenis": "durasi_sumber", "teks": c} for c in catatan_durasi)
+    if masih_lebih:
+        raise SystemExit("ops tidak valid, klip melebihi sumber: " + "; ".join(masih_lebih))
     tulis_ops(out_dir, rencana, ops_doc, qc)
+    # Gerbang akhir: validator ASLI Motion Studio. Gagal di sini = gagal teknis (kode 1) dengan alasan jelas,
+    # bukan draf yang nanti ditolak saat diterapkan di aplikasi.
+    tolak_ms = validasi_motion_studio(out_dir / "ops.json", Path(args.brandkit))
+    if tolak_ms:
+        raise SystemExit("ops ditolak validator Motion Studio: " + tolak_ms)
 
     print(f"Durasi: {report['originalSec']}s -> {report['editedVideoSec']}s (+outro = {total:.2f}s)")
     if report["overMax"]:
