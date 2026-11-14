@@ -292,3 +292,15 @@ Mesin menjaga sendiri supaya Motion Studio tidak pernah menerima ops yang tidak 
   - **Generate:** ditolak berarti kode 1 dengan alasan yang jelas.
 - Setiap perubahan oleh pengaman dicatat sebagai peringatan `info` `durasi_sumber` di `rencana.json`.
 
+
+## 11. Anti konten-tidak-orisinal di Batch Remix (v0.3.4, 14 Nov 2026, keputusan owner)
+
+Aditif. Tidak ada field output yang dihapus; app tidak perlu berubah.
+
+| Aturan | Nilai |
+|---|---|
+| Pembuka (potongan pertama) | selalu b-roll footage lain, bukan detik pertama video asli; judul hook tetap tampil sebagai teks |
+| Gambar dari footage asli VO (sinkron) | maks 35% durasi (`matcher.MAKS_SINKRON`); varian > 45% dibuang |
+| Varian dengan VO sama dianggap mirip bila | Jaccard semua shot (b-roll + sinkron) > 0,4, ATAU shot pembuka sama, ATAU > 50% kalimat bergambar identik |
+| Audio | susunan kalimat tidak boleh identik antar varian VO sama: 1-2 kalimat tengah dibuang dan/atau dua kalimat tengah yang berdiri sendiri ditukar; hook & CTA tetap. Kalimat yang dibuang tercatat di `dibuang` dengan `jenis: "variasi"` |
+| Varian per VO | maks 3 (job opsional `maks_per_vo: int`). Kurang dari `jumlah` -> `alasan_kurang` menjelaskan dan meminta VO baru |

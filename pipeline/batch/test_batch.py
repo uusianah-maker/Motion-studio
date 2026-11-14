@@ -100,10 +100,17 @@ class Matcher(unittest.TestCase):
             vk = max((v for v in self.hasil["vo_klip"] if v["start"] <= p["start"] + 1e-6), key=lambda v: v["start"])
             self.assertAlmostEqual(p["in"] - vk["in"], p["start"] - vk["start"], places=2)
 
-    def test_hook_dan_cta_sinkron(self):
-        ps = self.hasil["potongan"]
-        self.assertEqual(ps[0]["jenis"], "sinkron")
-        self.assertEqual(ps[-1]["jenis"], "sinkron")
+    def test_pembuka_bukan_video_asli(self):
+        # Owner 14 Nov: detik pertama tidak boleh sama dengan video asli -> pembuka selalu b-roll.
+        for seed in range(8):
+            h = matcher.susun_shot(self.rv, lib_sintetis(), {"A", "B", "C"}, random.Random(seed))
+            self.assertEqual(h["potongan"][0]["jenis"], "broll")
+            self.assertNotEqual(h["potongan"][0]["footage"], "A")
+
+    def test_porsi_footage_asli_dibatasi(self):
+        for seed in range(8):
+            h = matcher.susun_shot(self.rv, lib_sintetis(), {"A", "B", "C"}, random.Random(seed))
+            self.assertLessEqual(h["rasio_sinkron"], matcher.MAKS_SINKRON + 0.01)
 
     def test_blur_watermark_pindah(self):
         b = matcher._blur_watermark(lib_sintetis()["footage"]["A"], 4.0, 7.0)
@@ -352,3 +359,61 @@ class ShotBeku(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def vo_panjang():
+    teks = ["Bahannya adem banget.", "Modelnya high waist.", "Warnanya ada lima.", "Jahitannya rapi sekali.",
+            "Tapi ukurannya lengkap.", "Cocok buat kerja.", "Cek keranjang kuning ya."]
+    ks, t = [], 0.0
+    for t_ in teks:
+        ks += kalimat(kata(t_, mulai=t))
+        t += len(t_.split()) * 0.4 + 0.3
+    for i, k in enumerate(ks):
+        k["id"], k["saran_buang"], k["teknis"], k["brand_lain"] = i, None, None, None
+    return {"id": "A", "kalimat": ks, "durasi": 30.0}
+
+
+class RagamVO(unittest.TestCase):
+    """Owner 14 Nov: varian dengan VO sama tidak boleh punya audio identik."""
+
+    def test_susunan_beda_hook_cta_tetap(self):
+        v, rng, sudah = vo_panjang(), random.Random(2), set()
+        self.assertIn("cta", v["kalimat"][-1]["topik"])
+        for _ in range(4):
+            rv = vo.ragamkan(vo.susun(v, rng), v, rng, sudah)
+            self.assertIsNotNone(rv)
+            u = tuple(rv["urutan"])
+            self.assertNotIn(u, sudah)
+            sudah.add(u)
+            self.assertEqual(u[0], 0)
+            self.assertEqual(u[-1], len(v["kalimat"]) - 1)
+
+    def test_varian_pertama_utuh(self):
+        v = vo_panjang()
+        rv = vo.ragamkan(vo.susun(v, random.Random(0)), v, random.Random(0), set())
+        self.assertEqual(rv["urutan"], list(range(len(v["kalimat"]))))
+
+    def test_kalimat_penyambung_tidak_dipindah(self):
+        v, rng, sudah = vo_panjang(), random.Random(5), set()
+        tapi = next(k["id"] for k in v["kalimat"] if k["teks"].startswith("Tapi"))
+        for _ in range(4):
+            rv = vo.ragamkan(vo.susun(v, rng), v, rng, sudah)
+            if rv is None:
+                break
+            sudah.add(tuple(rv["urutan"]))
+            u = rv["urutan"]
+            if tapi in u:  # "Tapi ..." tetap tepat sesudah kalimat aslinya
+                self.assertEqual(u[u.index(tapi) - 1], tapi - 1)
+
+    def test_habis_kalau_kalimat_sedikit(self):
+        v = vo_sintetis()
+        v["kalimat"] = v["kalimat"][:2]
+        rv0 = vo.susun(v, random.Random(0))
+        self.assertIsNone(vo.ragamkan(rv0, v, random.Random(0), {tuple(rv0["urutan"])}))
+
+
+class MiripPosisi(unittest.TestCase):
+    def test_sama_posisi(self):
+        import perencana
+        self.assertEqual(perencana.sama_posisi({0: ("a",), 1: ("b",)}, {0: ("a",), 1: ("c",)}), 0.5)
+        self.assertEqual(perencana.sama_posisi({0: ("a",)}, {1: ("a",)}), 0)

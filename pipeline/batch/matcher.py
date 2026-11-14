@@ -4,7 +4,9 @@ Aturan:
 - Shot dari footage VO sendiri dipakai di detik yang SAMA dengan ucapannya (bibir sinkron) = "sinkron".
 - Shot dari footage lain ("broll") hanya yang tidak menampilkan wajah bicara, tanpa teks bawaan, tidak buram.
   Diutamakan yang topiknya sama dengan kalimat (mis. "anti kusut" -> shot demo kucek).
-- Hook (potongan pertama) dan CTA (potongan terakhir) diutamakan sinkron.
+- Pembuka (potongan pertama) SELALU b-roll kalau ada (owner 14 Nov): detik pertama tidak boleh sama dengan
+  video asli. Judul hook tetap tampil sebagai teks di atas b-roll. CTA (potongan terakhir) diutamakan sinkron.
+- Porsi gambar sinkron (footage asli VO) dibatasi MAKS_SINKRON dari durasi supaya varian tidak mirip video asli.
 - Ganti framing tiap 2-3 dtk; titik potong di dalam kalimat ditarik ke ketukan musik terdekat (±0,35 dtk).
 """
 
@@ -12,6 +14,7 @@ import random
 from collections import Counter
 
 MIN_POTONG = 1.2
+MAKS_SINKRON = 0.35  # porsi maksimal durasi yang memakai footage asli VO (owner 14 Nov)
 JEDA = 0.12  # sama dengan vo.JEDA
 FRAMING_BONUS = {"closeup_produk": 1.0, "full_body": 0.6, "medium": 0.0, "wajah_dekat": -0.5}
 
@@ -75,6 +78,9 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
     potongan, vo_klip = [], []
     t_out = 0.0
     ks = rencana_vo["kalimat"]
+    total_rencana = sum(k["sampai"] - k["dari"] for k in ks) + JEDA * max(0, len(ks) - 1) + 1.5
+    jatah_sinkron = MAKS_SINKRON * total_rencana
+    n_sinkron = 0.0
     for ki, k in enumerate(ks):
         dur_k = k["sampai"] - k["dari"]
         vo_klip.append({"start": t_out, "in": k["dari"], "dur": dur_k, "kalimat": k["id"]})
@@ -97,8 +103,8 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
             src_a = k["dari"] + a
             pertama = ki == 0 and pi == 0
             terakhir = ki == len(ks) - 1 and pi == len(cuts) - 2
-            sinkron_ok = any(s["dari"] <= src_a < s["sampai"] for s in own)
-            ingin_sinkron = pertama or terakhir or rng.random() < 0.4
+            sinkron_ok = any(s["dari"] <= src_a < s["sampai"] for s in own) and n_sinkron + (b - a) <= jatah_sinkron
+            ingin_sinkron = not pertama and (terakhir or rng.random() < 0.4)
             pilihan = None
             if not (ingin_sinkron and sinkron_ok):
                 skor = []
@@ -112,7 +118,7 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
                     skor.append((sk, s))
                 if skor:
                     pilihan = max(skor, key=lambda x: x[0])[1]
-                elif not sinkron_ok and broll_pool:
+                elif (not sinkron_ok or pertama) and broll_pool:
                     # Jalur VO tanpa gambar kreator: pakai ulang shot / sambung ke shot berikutnya di file yang sama.
                     pilihan = max(broll_pool, key=lambda x: (x["sampai"] - x["dari"] >= (b - a)) * 2
                                   - dipakai[x["id"]] + rng.random())
@@ -134,6 +140,7 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
                 shot = next((s for s in own if s["dari"] <= src_a < s["sampai"]), None)
                 p = {"jenis": "sinkron", "footage": fid, "shot": shot["id"] if shot else None,
                      "alasan": "kreator VO, bibir sinkron"}
+                n_sinkron += dur
             p.update({"start": round(t_out + a, 3), "dur": round(dur, 3), "in": round(in_s, 3)})
             p["blur"] = _blur_watermark(lib["footage"][p["footage"]], in_s, in_s + dur)
             potongan.append(p)
