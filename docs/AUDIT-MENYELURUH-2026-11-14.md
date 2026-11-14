@@ -8,7 +8,10 @@
   - Iklan Batch Remix bisa lolos QC walaupun suaranya menyebut toko lain.
   - Subtitle berkotak hasil render berbeda dengan pratinjau.
   - Ketikan di Inspector bisa tersimpan ke klip lain.
-- Belum teruji di situs online: alur **Generate Otomatis → rencana → render uji → unduh**, karena menunggu owner memilih file klip uji.
+- Alur **Generate Otomatis → rencana → render uji → unduh** sudah teruji di situs online dan lancar.
+- Dua hal penting belum beres:
+  - **Situs online sempat mati dua kali** (18.41 dan 19.49). Penyebabnya belum terbukti.
+  - **Generate menerima video yang audionya lagu** (bukan orang bicara), sehingga lirik jadi hook dan subtitle, dan QC tetap ✓. Ini ada di wilayah mesin venus.
 - Ada beberapa hal yang butuh keputusan owner (bagian 5).
 
 Pembagian kerja:
@@ -44,7 +47,7 @@ Status temuan:
 | Tes mesin Batch Remix | 35/35 lulus |
 | Uji nyata situs online (desktop 1400 px dan HP 375 px, owner login) | semua menu ditelusuri; Batch Remix sampai rencana 3 varian (sekitar 1 menit) |
 | Uji nyata mesin Batch Remix dari baris perintah (tanpa render) | sesuai kontrak: `daftar_batch`, `batch`, `pisah`, dan batch yang tidak ada (ditolak, kode 2) |
-| Generate Otomatis → rencana → render uji → unduh di situs online | **belum**: menunggu owner memilih file klip uji di browser QA |
+| Generate Otomatis → rencana → render uji → unduh di situs online (klip uji 24 dtk pilihan owner, proyek "UJI QA 14 Nov (hapus saja)") | ✅ upload 9 dtk; rencana siap 36 dtk; terapkan 33 klip; render 720p kurang dari 9 dtk; unduhan identik (sha256) dan metadata bersih. Temuan G1–G6 di bagian 2 |
 | Tombol Keluar di situs online | **belum**: sengaja tidak diklik, karena login ulang butuh owner |
 
 Catatan:
@@ -65,9 +68,31 @@ Catatan:
     - log lebih dari 7 hari dihapus;
     - sudah diuji: Node dimatikan, kejadiannya tercatat, lalu hidup lagi dalam 10 detik.
   - Watchdog dan log Task Scheduler menunggu izin owner (bagian 6).
+- **[Berat] Situs mati lagi sekitar 19.49–19.50.** ⏳ Sukma menyalakannya lagi, dan situs kembali normal pukul 19.51.
+  - Log penjaga yang baru (perbaikan venus) menunjukkan:
+    - restart venus jam 19.13 dan 19.32 tercatat normal ("berhenti … mulai ulang");
+    - setelah itu penjaga server dan penjaga terowongan hilang **bersamaan, tanpa catatan apa pun**.
+  - Kalau Node crash, kejadiannya pasti tercatat. Jadi polanya adalah task yang dihentikan atau didaftarkan ulang dari luar, atau sesi Windows berakhir (task hanya berjalan saat user login).
+  - Riwayat sesi tim tidak menunjukkan ada yang menghentikan task, dan tim audit tidak menjalankan proses apa pun pada jam itu.
+  - Langkah berikut (venus):
+    - cek Event Viewer (System/Security) untuk logoff atau putus RDP pada 18.41 dan 19.49;
+    - pasang watchdog dan log Task Scheduler (bagian 6).
 - Restart server oleh venus (tanpa job yang jalan): 19.13 dan 19.32. Dua-duanya memuat perbaikan audit.
 
 ### Generate Otomatis
+Temuan uji nyata (wilayah mesin Generate milik venus, belum dikerjakan):
+- **G1 [Berat] Video tanpa ucapan diterima dan QC ✓.** ⏳
+  - Klip uji audionya lagu berlirik Inggris. Hook jadi lirik ("Will ask you to be mine"), dan subtitle berisi lirik atau salah dengar.
+  - Hanya 6 dari 57 kata yang ragu, jadi cek "kata ragu > 30 %" lolos.
+  - Diharapkan: ditolak dengan pesan "tidak terdeteksi ucapan / audio musik", atau tombol Setujui diblok.
+  - Saran: cek bahasa (porsi kata bukan Indonesia) dan/atau rasio vokal dibanding musik.
+- G2 [Sedang] Hook menumpuk di atas teks bawaan video sumber (0–3 dtk). Generate belum punya cek teks bawaan, padahal Batch Remix punya. ⏳
+- G3 [Sedang] Generate memakai 0 SFX, padahal Asset Library brand punya 100 SFX berlisensi dan bertag. Perlu dicek apakah mesin membaca SFX dari Brand Kit. ⏳
+- G4 [Ringan] ID job ("AYS-20261114-001") hanya unik per proyek, sehingga sama dengan job Batch di proyek lain. Ini membingungkan di riwayat dan log. ⏳
+- G5 [Keputusan owner] Footage memperlihatkan logo atau teks brand lain. Brand guard visual masih kosong.
+- G6 [Ringan] Rencana menyebut "CTA ditampilkan di 2,5 dtk terakhir", tapi CTA Brand Kit kosong, sehingga tidak ada CTA dan tidak ada peringatan. ⏳ Terkait keputusan impor Brand Kit.
+
+Diperbaiki:
 - **[Berat] Progres job berhenti selamanya setelah satu kali cek status gagal**, misalnya saat terowongan tersendat. ✅
   - Lokasi: `apps/web/src/views/GenerateView.tsx` (useEngineJob, juga dipakai Batch dan Pisah Audio).
   - Perbaikan: terus mencoba dengan jeda bertambah. Tes A14-12.
@@ -287,6 +312,12 @@ Rekomendasi Jenius ditulis setelah tanda →.
     → Tentukan lokasi backup (disk kedua / NAS / cloud) secepatnya. Saat ini media hanya ada satu salinan.
 21. **Perbaikan visuals (paket1, thumbnail FFmpeg 9) belum di-commit tapi sudah aktif di server online.** Commit kalau disetujui, atau kembalikan.
 22. **Push semua commit lokal** (aplikasi dan mesin) beserta sync subtree `engine/`.
+
+**Mesin Generate (temuan uji nyata)**
+23. **Prioritas perbaikan G1**: Generate menolak video tanpa ucapan (lagu).
+    → Kerjakan paling dulu. Saat ini editor bisa menyetujui video berisi lirik lagu sebagai iklan.
+24. Footage dengan logo atau teks brand lain (G5): perlu dicegah otomatis, cukup diberi peringatan, atau jadi tanggung jawab editor?
+25. Hapus proyek uji "UJI QA 14 Nov (hapus saja)" setelah dilihat owner.
 
 ---
 
