@@ -44,6 +44,18 @@ MAKS_OPS = 1000
 MAKS_MIRIP = 0.6  # Jaccard shot broll antar varian dengan VO sama
 
 
+class Ditolak(Exception):
+    """Input tidak layak (bukan gagal teknis): kode keluar 2, alasan di out/rencana.json (kontrak §5.1)."""
+
+
+def tolak(out_dir: Path, alasan: str) -> int:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "rencana.json").write_text(json.dumps({"schema": "engine-rencana/1", "status": "ditolak", "alasan": alasan},
+                                                     ensure_ascii=False, indent=1), encoding="utf-8")
+    progres("ditolak", 100, alasan)
+    return 2
+
+
 def progres(tahap: str, persen: int, pesan: str = "") -> None:
     print(json.dumps({"tahap": tahap, "persen": persen, "pesan": pesan}, ensure_ascii=False), flush=True)
 
@@ -259,7 +271,7 @@ def jaccard(a: set, b: set) -> float:
 def jalankan(job_dir: Path) -> int:
     job = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
     if job.get("mode") != "batch":
-        raise SystemExit("job.json bukan mode batch")
+        raise Ditolak("job.json bukan mode batch")
     batch = job["batch"]
     batch_dir = KONTEN / "2-dipisah" / batch
     out_dir = job_dir / "out"
@@ -284,7 +296,7 @@ def jalankan(job_dir: Path) -> int:
     brand_raw = json.loads(bk_path.read_text(encoding="utf-8"))
     terlarang = list(dict.fromkeys(brand.get("superlatif_dilarang", [])))
     if not (batch_dir / "video-bisu").is_dir():
-        raise SystemExit(f"Batch belum dipisah: jalankan pipeline/pisah.py {batch}")
+        raise Ditolak(f"batch {batch} belum dipisah (tidak ada video bisu); jalankan Pisah Audio dulu")
 
     lib_path = batch_dir / "shots.json"
     if not lib_path.exists():
@@ -298,6 +310,8 @@ def jalankan(job_dir: Path) -> int:
     vo_dir = KONTEN / "2-dipisah" / vo_batch
     vo_lib = lib
     if vo_batch != batch:
+        if not (vo_dir / "shots.json").exists():
+            raise Ditolak(f"batch VO {vo_batch} belum dipisah / belum punya Shot Library")
         vo_lib = json.loads((vo_dir / "shots.json").read_text(encoding="utf-8"))
         lib = {"footage": {**vo_lib["footage"], **lib["footage"]}, "shots": lib["shots"]}
 
@@ -489,8 +503,11 @@ def jalankan(job_dir: Path) -> int:
         "akun_watermark": akun_footage, "footage_milik_lain": sorted(milik_lain), "varian": tabel,
     }
     (out_dir / "batch.json").write_text(json.dumps(batch_json, ensure_ascii=False, indent=1), encoding="utf-8")
+    if not tabel:
+        return tolak(out_dir, "tidak ada varian: " + (alasan_kurang or "tidak ada VO layak")
+                     + (f" ({len(vo_tolak)} VO ditolak, lihat batch.json)" if vo_tolak else ""))
     progres("selesai", 100, f"{len(tabel)} varian" + (f" ({alasan_kurang})" if alasan_kurang else ""))
-    return 0 if tabel else 2
+    return 0
 
 
 def main() -> None:
@@ -498,6 +515,8 @@ def main() -> None:
         raise SystemExit(__doc__)
     try:
         sys.exit(jalankan(Path(sys.argv[1])))
+    except Ditolak as e:
+        sys.exit(tolak(Path(sys.argv[1]) / "out", str(e)))
     except SystemExit:
         raise
     except Exception:

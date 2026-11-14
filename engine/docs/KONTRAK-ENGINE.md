@@ -261,6 +261,18 @@ Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "bran
 | `out/batch.json` per varian | `kalimat: [{ teks, dari, sampai, shot: [id] }]` | detik di timeline varian |
 | `shots.json` per shot | `thumb` | path absolut JPG (lebar 270) di `konten/2-dipisah/<batch>/thumb/<footage>__NN.jpg`; batch lama dilengkapi dengan `shotlib.py <batch> --thumb-saja` |
 
+**Status di `out/pisah.json` (v0.3.2a):**
+- Status bisa `selesai`, `ditolak`, atau `gagal`, masing-masing dengan `alasan`. Status `gagal` juga ditulis sebelum kode keluar 1.
+- Kalau selesai, ada `file_ditolak: [{ file, alasan }]`, yaitu unggahan rusak atau bukan video. File itu dilewati, tidak menggagalkan job. Kalau semua unggahan rusak dan batch belum ada, job ditolak dengan kode 2.
+- Duplikat unggahan dikenali dari sidik isi file.
+- Tanpa GPU, Demucs otomatis memakai CPU.
+
+**`engine batch` ditolak (v0.3.2a):** penolakan memakai kode 2, dengan `out/rencana.json` `{ schema: "engine-rencana/1", status: "ditolak", alasan }` dan progres `ditolak`. Penolakan terjadi kalau:
+- batch tidak ada atau belum dipisah;
+- batch VO tidak ada;
+- mode salah;
+- 0 varian. Untuk kasus ini `batch.json` tetap ditulis.
+
 **Pengecualian aturan bagian 2:** `engine pisah` adalah satu-satunya perintah yang menulis di luar `<job_dir>`. Ia menulis ke `konten/` (folder data Batch Remix di root mesin). Motion Studio tetap tidak menulis ke folder mesin. Ia hanya meletakkan unggahan di `<job_dir>/masuk/`.
 
 **Progres `engine batch` sejak v0.3.2:** progres JSON-lines dari `perencana.py` sekarang benar-benar sampai di stdout. Sebelumnya ikut terbelokkan ke stderr. Runner sebaiknya mengabaikan baris stdout yang bukan JSON.
