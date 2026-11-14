@@ -146,6 +146,28 @@ try {
   check('U8-11 Batch lama tanpa kalimat dari mesin: rincian dari caption rencana, diberi keterangan', await until(async () => (await d2.innerText()).includes('Dari caption rencana') && (await d2.innerText()).includes('Hook 2')));
   await page.screenshot({ path: path.join(EVID, 'batch-rincian.png') });
 
+  // ---- Owner 15 Nov: one broken variant never stops the save; it is marked with the reason.
+  {
+    await bform.getByLabel('Akun sendiri').fill('@rusakuji'); // fake engine: varian-002's clip overruns its source
+    await bform.getByLabel('Jumlah varian').fill('3');
+    await bform.getByRole('button', { name: /Susun 3 varian/ }).click();
+    await until(async () => (await page.getByLabel('Pilihan yang dikirim').innerText().catch(() => '')).includes('@rusakuji'), 30000);
+    await until(() => table.getByRole('group', { name: 'Keputusan varian-002' }).isVisible(), 30000);
+    await table.getByRole('button', { name: 'Setujui semua' }).click();
+    await table.getByRole('button', { name: /Simpan keputusan \(3\)/ }).click();
+    const note = table.getByRole('status', { name: 'Hasil simpan keputusan' });
+    const saved = await until(() => note.isVisible(), 30000);
+    const text = saved ? await note.innerText() : '';
+    const approveBroken = table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Setujui/ });
+    check(
+      'U8-14 Satu varian rusak: yang lain tetap tersimpan, varian rusak ditandai + alasan, tombol Setujui-nya mati',
+      text.includes('2 keputusan disimpan') && text.includes('varian-002') && /melebihi panjang video sumber/.test(text) && (await table.getByLabel('Varian rusak varian-002').isVisible()) && (await approveBroken.isDisabled()),
+      text.replace(/\n/g, ' | '),
+    );
+    check('U8-15 "Render N varian disetujui" menghitung 2 varian yang berhasil', await until(() => table.getByRole('button', { name: /Render 2 varian disetujui/ }).isVisible()));
+    await page.screenshot({ path: path.join(EVID, 'batch-rusak.png') });
+  }
+
   // Phone width: Shot Library fits.
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   phone.on('pageerror', (e) => errors.push(String(e)));

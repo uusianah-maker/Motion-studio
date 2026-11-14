@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import type { Api, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
+import type { Api, BatchDecision, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
 import { LineBreakdown, PisahPanel, batchLabel, useEngineBatches } from './BatchLibrary';
@@ -42,7 +42,10 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const [error, setError] = useState<unknown>(null);
   const [current, setCurrent] = useSessionState<{ project_id: string; job_id: string } | null>('batch.job', null);
   const [table, setTable] = useState<BatchTable | null>(null);
-  const [saved, setSaved] = useState<Record<string, { status: BatchRowStatus; project_id: string | null }>>({});
+  const [saved, setSaved] = useState<Record<string, BatchDecision>>({});
+  /** What the last save did, shown next to its button (owner, 15 Nov: "Render 0" without a reason). */
+  const [saveNote, setSaveNote] = useState<{ ok: number; rusak: { id: string; why: string }[] } | null>(null);
+  const [saveError, setSaveError] = useState<unknown>(null);
   const [draft, setDraft] = useState<Record<string, BatchRowStatus>>({});
   const [rendered, setRendered] = useState<{ jobs: RenderJob[]; skipped: { project_id: string; reason: string }[] } | null>(null);
   const [jobs, setJobs] = useState<EngineJob[]>([]);
@@ -205,11 +208,21 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     if (!current || !changed.length) return;
     setBusy(true);
     setError(null); // audit 14 Nov: an old error never stays next to a new success
+    setSaveNote(null);
+    setSaveError(null);
     try {
-      setSaved(await api.engineDecide(current.project_id, current.job_id, changed.map((v) => ({ varian: v.id, status: draft[v.id]! }))));
+      const asked = changed.map((v) => ({ varian: v.id, status: draft[v.id]! }));
+      const res = await api.engineDecide(current.project_id, current.job_id, asked);
+      setSaved(res);
+      // The table shows what was really saved (a broken row stays unapproved).
+      setDraft((d) => ({ ...d, ...Object.fromEntries(asked.map((a) => [a.varian, res[a.varian]?.status ?? d[a.varian]!])) }));
+      setSaveNote({
+        ok: asked.filter((a) => !res[a.varian]?.rusak).length,
+        rusak: asked.filter((a) => res[a.varian]?.rusak).map((a) => ({ id: a.varian, why: res[a.varian]!.rusak! })),
+      });
       onProjectsChanged();
     } catch (e) {
-      setError(e);
+      setSaveError(e); // shown next to the button that failed
     } finally {
       setBusy(false);
     }
@@ -227,7 +240,8 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     }
   };
   const approvedCount = Object.values(saved).filter((d) => d.status === 'disetujui').length;
-  const setAll = (s: BatchRowStatus) => setDraft((d) => Object.fromEntries(Object.keys(d).map((k) => [k, s])));
+  // "Setujui semua" never approves a row the engine's plan cannot make (it stays as it is).
+  const setAll = (s: BatchRowStatus) => setDraft((d) => Object.fromEntries(Object.keys(d).map((k) => [k, s === 'disetujui' && saved[k]?.rusak ? d[k]! : s])));
 
   return (
     <>
@@ -418,11 +432,23 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                       <td>
                         <div className="seg" role="group" aria-label={`Keputusan ${v.id}`}>
                           {(['disetujui', 'dicoret'] as const).map((s) => (
-                            <button key={s} className={`btn small${draft[v.id] === s ? ' sel' : ''}`} aria-pressed={draft[v.id] === s} onClick={() => setDraft((d) => ({ ...d, [v.id]: d[v.id] === s ? 'usul' : s }))}>
+                            <button
+                              key={s}
+                              className={`btn small${draft[v.id] === s ? ' sel' : ''}`}
+                              aria-pressed={draft[v.id] === s}
+                              disabled={s === 'disetujui' && !!saved[v.id]?.rusak}
+                              title={s === 'disetujui' && saved[v.id]?.rusak ? `Tidak bisa disetujui: ${saved[v.id]!.rusak}` : undefined}
+                              onClick={() => setDraft((d) => ({ ...d, [v.id]: d[v.id] === s ? 'usul' : s }))}
+                            >
                               {s === 'disetujui' ? '✓ Setujui' : '✕ Coret'}
                             </button>
                           ))}
                         </div>
+                        {saved[v.id]?.rusak && (
+                          <div className="small" style={{ color: 'var(--bad, #ff8a80)' }} aria-label={`Varian rusak ${v.id}`}>
+                            Rusak — tidak bisa dibuat: {saved[v.id]!.rusak}
+                          </div>
+                        )}
                         {saved[v.id]?.project_id && (
                           <button className="linkBtn small" onClick={() => onOpenProject(saved[v.id]!.project_id!)}>
                             buka varian
@@ -446,6 +472,29 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
               <button className="btn primary" disabled={busy || !changed.length || role === 'editor'} title={role === 'editor' ? 'Persetujuan oleh Owner / Reviewer' : undefined} onClick={() => void save()}>
                 Simpan keputusan ({changed.length})
               </button>
+              {!!saveError && (
+                <div style={{ flexBasis: '100%' }} aria-label="Simpan keputusan gagal">
+                  <ErrorNotice error={saveError} />
+                </div>
+              )}
+              {saveNote && (
+                <div className={`notice small ${saveNote.rusak.length ? 'warn' : 'ok'}`} role="status" aria-label="Hasil simpan keputusan" style={{ flexBasis: '100%' }}>
+                  {saveNote.ok} keputusan disimpan.
+                  {saveNote.rusak.length > 0 && (
+                    <>
+                      {' '}
+                      {saveNote.rusak.length} varian tidak bisa dibuat dan tetap belum disetujui:
+                      <ul style={{ margin: '4px 0 0' }}>
+                        {saveNote.rusak.map((r) => (
+                          <li key={r.id}>
+                            <b>{r.id}</b> — {r.why}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
               <button className="btn" disabled={busy || !approvedCount || changed.length > 0 || role === 'reviewer'} onClick={() => void renderApproved()}>
                 ▶ Render {approvedCount} varian disetujui
               </button>

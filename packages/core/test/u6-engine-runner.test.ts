@@ -226,4 +226,32 @@ describe('U6 engine runner', () => {
     expect(await code(() => decideBatch(ws, cfg, { project_id: 'b', job_id: s.job_id, rows: [{ varian: 'varian-009', status: 'disetujui' }], actor: 'user', newId: ids }))).toBe('EDIT_INVALID');
     expect(await code(() => decideBatch(ws, cfg, { project_id: 'b', job_id: s.job_id, rows: [{ varian: 'varian-001', status: 'lulus' }], actor: 'user', newId: ids }))).toBe('EDIT_INVALID');
   }, 90_000);
+
+  it.skipIf(!hasFfmpeg)('Batch Remix: one broken variant is marked "rusak" with the reason; the other approved rows are still saved (owner, 15 Nov)', async () => {
+    const { ws, cfg } = await setup();
+    await createProject(ws, { project_id: 'k', name: 'Batch KORSET' });
+    const s = await prepareEngineJob(ws, validateEngineJob({ project_id: 'k', mode: 'batch', sources: [], preset: 'p', brief: brief(), ai: false, mode_ops: 'u3', batch: { batch: 'satu-rusak', jumlah: 3, tujuan: 'konversi' } }));
+    expect((await runEngineJob(ws, cfg, 'k', s.job_id)).state).toBe('siap');
+    const svc = new StorageService(ws);
+    const rows = ['varian-001', 'varian-002', 'varian-003'].map((varian) => ({ varian, status: 'disetujui' }));
+    const r = await svc.decideBatch({ project_id: 'k', job_id: s.job_id, rows, config: cfg, actor: 'user' });
+    const d = r.result;
+    expect(d['varian-002']).toMatchObject({ status: 'usul', project_id: null });
+    expect(d['varian-002']!.rusak).toMatch(/melebihi panjang video sumber/);
+    expect(d['varian-001']).toMatchObject({ status: 'disetujui' });
+    expect(d['varian-003']).toMatchObject({ status: 'disetujui' });
+    const vs = await listVariants(ws, 'k');
+    expect(vs.map((p) => [p.variant!.label.split(' · ')[0], variantState(p)])).toEqual([
+      ['varian-001', 'approved'],
+      ['UJI', 'approved'],
+    ]);
+    expect((await readBatchDecisions(ws, 'k', s.job_id))['varian-002']!.rusak).toMatch(/melebihi/);
+    // Asking again for the broken row alone: still refused per row, never a failed save.
+    const again = await svc.decideBatch({ project_id: 'k', job_id: s.job_id, rows: [{ varian: 'varian-002', status: 'disetujui' }], config: cfg, actor: 'user' });
+    expect(again.result['varian-002']).toMatchObject({ status: 'usul', project_id: null, rusak: expect.stringMatching(/melebihi/) });
+    expect(await listVariants(ws, 'k')).toHaveLength(2);
+    // Striking it clears nothing it should not: still no project, reason gone with the decision.
+    const struck = await svc.decideBatch({ project_id: 'k', job_id: s.job_id, rows: [{ varian: 'varian-002', status: 'dicoret' }], config: cfg, actor: 'user' });
+    expect(struck.result['varian-002']).toEqual({ status: 'dicoret', project_id: null });
+  }, 90_000);
 });

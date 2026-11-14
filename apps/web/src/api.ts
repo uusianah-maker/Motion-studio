@@ -612,6 +612,12 @@ export interface BatchRow {
   kalimat_sumber?: 'mesin' | 'ops' | null;
 }
 export type BatchRowStatus = 'usul' | 'disetujui' | 'dicoret';
+/** A row's saved decision; `rusak` = the engine's plan cannot become a timeline (row stays unapproved). */
+export interface BatchDecision {
+  status: BatchRowStatus;
+  project_id: string | null;
+  rusak?: string;
+}
 export interface BatchTable {
   batch?: string;
   jumlah_diminta?: number;
@@ -793,9 +799,9 @@ export function createApi(token: string | null, base = '') {
     enginePlan: (id: string, jobId: string, variant?: string) =>
       call<PlanReply & { rencana: EngineRencana; qc: EngineQc | null }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/plan`, { json: variant ? { variant } : {} }),
     engineBatch: (id: string, jobId: string) =>
-      call<{ batch: BatchTable; decisions: Record<string, { status: BatchRowStatus; project_id: string | null }> }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch`),
+      call<{ batch: BatchTable; decisions: Record<string, BatchDecision> }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch`),
     engineDecide: (id: string, jobId: string, rows: { varian: string; status: BatchRowStatus }[]) =>
-      call<{ decisions: Record<string, { status: BatchRowStatus; project_id: string | null }> }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch/decide`, { json: { rows } }).then((r) => r.decisions),
+      call<{ decisions: Record<string, BatchDecision> }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch/decide`, { json: { rows } }).then((r) => r.decisions),
     // Batch Remix library (Pisah Audio, batch list, Shot Library)
     enginePisah: (id: string, body: EnginePisahStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
     enginePisahResult: (id: string, jobId: string) => call<{ pisah: PisahResult }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/pisah`).then((r) => r.pisah),

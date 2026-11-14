@@ -727,6 +727,11 @@ export interface BatchDecision {
   status: BatchRowStatus;
   /** Variant project made when the row was approved (kept if the row is struck later). */
   project_id: string | null;
+  /**
+   * The engine's plan for this row cannot become a timeline (e.g. "Klip melebihi panjang video
+   * sumber"): the row stays unapproved with this reason; the other rows are saved as asked.
+   */
+  rusak?: string;
 }
 
 const decisionsFile = (ws: Workspace, projectId: string, jobId: string) => path.join(jobAbs(ws, projectId, jobId), 'keputusan.json');
@@ -765,18 +770,23 @@ export async function decideBatch(
   const master = await readProject(ws, input.project_id);
   if (master.variant) bad('Proyek batch tidak boleh varian');
   const decisions = await readBatchDecisions(ws, input.project_id, input.job_id);
-  // Dry run: every newly approved row must be a valid timeline before any project is made.
+  // Dry run: every newly approved row must be a valid timeline before its project is made. A row
+  // that cannot (one broken engine plan) no longer stops the others: it is marked `rusak` with
+  // the reason and stays unapproved (owner, 15 Nov: KORSET varian-003 blocked the whole save).
   const reg = await loadRegistry(ws);
   const dur = (ref: MediaRef) => reg.versions[ref.version_id]?.probe?.duration_ms;
   const toCreate: { varian: string; timeline: Timeline; label: string; hook: string | null; test: boolean }[] = [];
+  const broken = new Map<string, string>();
   for (const w of wanted) {
     if (w.status !== 'disetujui' || decisions[w.varian]?.project_id) continue;
-    const p = input.plans?.get(w.varian) ?? (await loadEnginePlan(ws, cfg, input.project_id, input.job_id, w.varian));
     let timeline: Timeline;
     try {
+      const p = input.plans?.get(w.varian) ?? (await loadEnginePlan(ws, cfg, input.project_id, input.job_id, w.varian));
       timeline = applyOps({ tracks: [] }, validateOps(p.ops, MAX_SERVER_OPS), () => newId('c'), dur);
     } catch (e) {
-      throw new StorageError('EDIT_INVALID', `${w.varian}: ${e instanceof Error ? e.message : String(e)}`);
+      if (!(e instanceof StorageError) || (e.code !== 'EDIT_INVALID' && e.code !== 'PRECONDITION' && e.code !== 'NOT_FOUND')) throw e;
+      broken.set(w.varian, scrubPaths(e.message).slice(0, 300));
+      continue;
     }
     const row = byId.get(w.varian)!;
     const hook = typeof row.hook === 'string' && row.hook.trim() ? row.hook.trim().slice(0, 200) : null;
@@ -793,7 +803,13 @@ export async function decideBatch(
     await writeJsonAtomic(decisionsFile(ws, input.project_id, input.job_id), { schema: 'batch-keputusan/1', rows: decisions });
   }
   for (const w of wanted) {
-    const d = decisions[w.varian] ?? { status: 'usul', project_id: null };
+    const why = broken.get(w.varian);
+    if (why) {
+      decisions[w.varian] = { status: 'usul', project_id: null, rusak: why };
+      continue;
+    }
+    const { rusak: _old, ...d } = decisions[w.varian] ?? { status: 'usul' as const, project_id: null };
+    void _old;
     if (w.status === 'disetujui' && d.project_id) {
       // Re-approving a struck row: approve the variant again at its current content.
       const p = await readProject(ws, d.project_id).catch(() => null);
@@ -806,7 +822,7 @@ export async function decideBatch(
     decisions[w.varian] = { ...d, status: w.status };
   }
   await writeJsonAtomic(decisionsFile(ws, input.project_id, input.job_id), { schema: 'batch-keputusan/1', rows: decisions });
-  await audit(ws, { op: 'engine.batch_decide', actor: input.actor, outcome: 'ok', project_id: input.project_id, job_id: input.job_id, approved: wanted.filter((w) => w.status === 'disetujui').length, struck: wanted.filter((w) => w.status === 'dicoret').length, created: toCreate.length });
+  await audit(ws, { op: 'engine.batch_decide', actor: input.actor, outcome: 'ok', project_id: input.project_id, job_id: input.job_id, approved: wanted.filter((w) => w.status === 'disetujui' && !broken.has(w.varian)).length, struck: wanted.filter((w) => w.status === 'dicoret').length, created: toCreate.length, broken: broken.size });
   return decisions;
 }
 
@@ -821,7 +837,9 @@ export async function loadBatchPlans(ws: Workspace, cfg: EngineConfig | null, pr
   for (const r of rows as Record<string, unknown>[]) {
     const v = r?.varian;
     if (r?.status !== 'disetujui' || typeof v !== 'string' || !/^varian-\d{3}$/.test(v) || out.has(v) || decisions[v]?.project_id) continue;
-    out.set(v, await loadEnginePlan(ws, cfg, projectId, jobId, v));
+    // One unreadable plan never stops the others: decideBatch retries it and marks the row `rusak`.
+    const plan = await loadEnginePlan(ws, cfg, projectId, jobId, v).catch(() => null);
+    if (plan) out.set(v, plan);
   }
   return out;
 }

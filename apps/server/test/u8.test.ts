@@ -131,6 +131,21 @@ describe('U8 Batch Remix library API', () => {
     expect(table.json.batch.varian[1]).toMatchObject({ kalimat_sumber: 'ops', kalimat: [{ teks: 'Hook 2', shot: [] }] });
   }, 90_000);
 
+  it.skipIf(!hasFfmpeg)('owner 15 Nov: saving a batch with one broken variant saves the others (200), the broken row says why', async () => {
+    const s = await setup();
+    const b = await s.call('/api/projects/b/engine/jobs', { mode: 'batch', sources: [], preset: 'p', brief, ai: false, mode_ops: 'u3', batch: { batch: 'satu-rusak', jumlah: 3 } });
+    const id = b.json.job.job_id as string;
+    expect((await s.until(`/api/projects/b/engine/jobs/${id}`)).job.state).toBe('siap');
+    const r = await s.call(`/api/projects/b/engine/jobs/${id}/batch/decide`, { rows: ['varian-001', 'varian-002', 'varian-003'].map((varian) => ({ varian, status: 'disetujui' })) });
+    expect(r.status).toBe(200);
+    expect(r.json.decisions['varian-001']).toMatchObject({ status: 'disetujui' });
+    expect(r.json.decisions['varian-003']).toMatchObject({ status: 'disetujui' });
+    expect(r.json.decisions['varian-002']).toMatchObject({ status: 'usul', project_id: null, rusak: expect.stringMatching(/melebihi panjang video sumber/) });
+    expect(JSON.stringify(r.json)).not.toMatch(/[A-Za-z]:[\\/]/);
+    // The table read later carries the same mark.
+    expect((await s.call(`/api/projects/b/engine/jobs/${id}/batch`)).json.decisions['varian-002'].rusak).toMatch(/melebihi/);
+  }, 90_000);
+
   it.skipIf(!hasFfmpeg)('an engine without daftar_batch: the dropdown says so, nothing breaks', async () => {
     const s = await setup({ daftar: false });
     const r = await s.call('/api/engine/batches');

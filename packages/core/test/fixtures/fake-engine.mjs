@@ -96,7 +96,7 @@ if (mode === 'batch') {
     fs.mkdirSync(path.join(out, id), { recursive: true });
     const ops = [
       { op: 'set_canvas', ratio: '9:16' },
-      { op: 'add_clip', track_kind: 'video', media: '$sumber:F1', start_ms: 0, duration_ms: 1000 + i * 100, in_ms: i * 100, volume: 0, crop: { x: 0, y: 0.1, w: 1, h: 0.8 }, blur: [{ x: 0.7, y: 0.85, w: 0.25, h: 0.1, dari_ms: 0, sampai_ms: 3000, radius: 20 }] },
+      { op: 'add_clip', track_kind: 'video', media: '$sumber:F1', start_ms: 0, duration_ms: 1000 + i * 100, in_ms: (job.batch === 'satu-rusak' || (job.akun_sendiri ?? []).includes('@rusakuji')) && i === 2 ? 60_000 : i * 100, volume: 0, crop: { x: 0, y: 0.1, w: 1, h: 0.8 }, blur: [{ x: 0.7, y: 0.85, w: 0.25, h: 0.1, dari_ms: 0, sampai_ms: 3000, radius: 20 }] },
       { op: 'add_clip', track_kind: 'audio', media: '$vokal:F1', start_ms: 0, duration_ms: 1000 + i * 100 },
       { op: 'add_clip', track_kind: 'subtitle', text: `Hook ${i}`, start_ms: 0, duration_ms: 800 },
     ];
