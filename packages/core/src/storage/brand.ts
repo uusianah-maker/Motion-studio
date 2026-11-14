@@ -1,4 +1,5 @@
 import { promises as fsp } from 'node:fs';
+import { LOOK_IDS, type LookId } from './clipLook.js';
 import path from 'node:path';
 import { audit } from './audit.js';
 import { type BrandGuard, EMPTY_GUARD, validateGuard } from './brandGuard.js';
@@ -134,6 +135,8 @@ export interface BrandKit {
   outro: { ref: MediaRef | null; detik: number };
   gaya: string;
   grading: string;
+  /** Malam 15 Nov: colour look every video/b-roll clip gets unless it picks its own (null = none). */
+  filter_bawaan: LookId | null;
   // C. Text & language
   cta: Partial<Record<Platform, string>>;
   cta_wajib: string;
@@ -178,6 +181,7 @@ const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
   outro: { ref: null, detik: 2 },
   gaya: '',
   grading: '',
+  filter_bawaan: null,
   cta: {},
   cta_wajib: '',
   disclaimer: null,
@@ -404,6 +408,7 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     outro: { ref: ref(out.ref, 'penutup'), detik: num(out.detik, 'durasi penutup', 0.5, 10, 2) },
     gaya: text(o.gaya, 'gaya keseluruhan', 120),
     grading: text(o.grading, 'color grading', 120),
+    filter_bawaan: o.filter_bawaan === undefined || o.filter_bawaan === null || o.filter_bawaan === '' ? null : LOOK_IDS.includes(o.filter_bawaan as LookId) ? (o.filter_bawaan as LookId) : bad(`filter bawaan harus salah satu dari ${LOOK_IDS.join(', ')}`),
     cta: perPlatform(o.cta, 'CTA', 120),
     cta_wajib: text(o.cta_wajib, 'CTA wajib', 200),
     disclaimer,

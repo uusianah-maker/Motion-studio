@@ -287,6 +287,9 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_loudness: 'Loudness',
   split_at: 'Potong di adegan',
   set_track_mute: 'Bisukan/nyalakan track',
+  set_audio: 'Fade / reduksi noise',
+  set_picture: 'Tampilan gambar',
+  set_ducking: 'Ducking musik',
 };
 
 /** Short human label for the undo history ("Geser klip", "3 perubahan"). */

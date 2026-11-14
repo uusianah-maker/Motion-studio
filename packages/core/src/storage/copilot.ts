@@ -126,7 +126,12 @@ export function describeOp(op: EditOp, t: Timeline): string {
     case 'set_framing':
       return [op.crop === null ? `Tampilkan bingkai penuh ${ref(op.clip_id)}` : op.crop ? `Crop ${ref(op.clip_id)} ke ${Math.round(op.crop.w * 100)}%×${Math.round(op.crop.h * 100)}%` : '', op.blur ? (op.blur.length ? `${op.blur.length} area blur di ${ref(op.clip_id)}` : `Hapus blur ${ref(op.clip_id)}`) : ''].filter(Boolean).join(' · ');
     case 'set_track_mute':
-      return `${op.muted ? 'Bisukan' : 'Nyalakan suara'} track ${TRACK_NAME[op.track_kind]}`;
+      return `${op.muted ? 'Bisukan' : 'Nyalakan suara'} track ${TRACK_NAME[op.track_kind]}`;    case 'set_audio':
+      return [op.fade_in_ms !== undefined ? `fade masuk ${(op.fade_in_ms / 1000).toFixed(1).replace('.', ',')} dtk` : '', op.fade_out_ms !== undefined ? `fade keluar ${(op.fade_out_ms / 1000).toFixed(1).replace('.', ',')} dtk` : '', op.denoise !== undefined ? `reduksi noise ${op.denoise === 'off' ? 'mati' : op.denoise}` : ''].filter(Boolean).join(', ').replace(/^/, `Suara ${ref(op.clip_id)}: `);
+    case 'set_picture':
+      return `Ubah tampilan gambar ${ref(op.clip_id)}`;
+    case 'set_ducking':
+      return op.on ? `Ducking musik aktif (musik turun ke ${Math.round((op.level ?? 0.3) * 100)}% saat ada suara bicara)` : 'Ducking musik mati';
   }
 }
 

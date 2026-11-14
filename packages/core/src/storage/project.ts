@@ -4,6 +4,7 @@ import { type ClipEffect, validateEffect } from './effects.js';
 import { type Word, validateWords } from './words.js';
 import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
+import { type ClipExtras, readExtras, validateDuck } from './clipLook.js';
 
 export const PROJECT_SCHEMA_VERSION = 1;
 
@@ -21,7 +22,8 @@ export interface MediaRef {
 export type TrackKind = 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';
 const TRACK_KINDS: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'music', 'sfx', 'effects'];
 
-export interface Clip {
+/** Malam 15 Nov: + optional sound/picture fields of `ClipExtras` (fades, denoise, fit, adjust, look, transition). */
+export interface Clip extends ClipExtras {
   clip_id: string;
   start_ms: number;
   end_ms: number;
@@ -65,6 +67,8 @@ export interface Track {
   clips: Clip[];
   /** Media tracks only (X04): the whole track is silent in preview and render. */
   muted?: boolean;
+  /** Music track only (malam 15 Nov): ducking — music level (0.1–0.8) while someone speaks. */
+  duck?: number;
 }
 
 /** Retained history entry. `retained:true` snapshots/undo records hold their media (PRD v0.8 §B). */
@@ -282,6 +286,11 @@ function validateTracks(timeline: Obj, where: string): Track[] {
           fail(`${cw}.words`, e instanceof Error ? e.message : 'tidak valid');
         }
       }
+      try {
+        Object.assign(clip, readExtras(co, cw, kind, !!clip.media));
+      } catch (e) {
+        fail(cw, e instanceof Error ? e.message : 'tidak valid');
+      }
       if (co.style !== undefined) {
         if (kind !== 'text' && kind !== 'subtitle') fail(`${cw}.style`, 'gaya hanya untuk klip teks/subtitle');
         try {
@@ -297,6 +306,14 @@ function validateTracks(timeline: Obj, where: string): Track[] {
       if (typeof to.muted !== 'boolean') fail(`${w}.muted`, 'harus true/false');
       if (!['video', 'broll', 'audio', 'music', 'sfx'].includes(kind)) fail(`${w}.muted`, 'mute hanya untuk track media');
       track.muted = to.muted as boolean;
+    }
+    if (to.duck !== undefined) {
+      if (kind !== 'music') fail(`${w}.duck`, 'ducking hanya untuk track musik');
+      try {
+        track.duck = validateDuck(to.duck, `${w}.duck`);
+      } catch (e) {
+        fail(`${w}.duck`, e instanceof Error ? e.message : 'tidak valid');
+      }
     }
     return track;
   });

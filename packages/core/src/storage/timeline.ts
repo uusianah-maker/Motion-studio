@@ -4,6 +4,7 @@ import { type BlurRegion, type Crop, validateBlur, validateCrop } from './framin
 import { type Word, cutWords, sliceWords, validateWords } from './words.js';
 import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
+import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateTransition } from './clipLook.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
 
 /**
@@ -26,7 +27,7 @@ const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle',
 export const SOUND_TRACKS: readonly TrackKind[] = ['audio', 'music', 'sfx'];
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[] }
+  | ({ op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[] } & ClipExtras)
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -44,7 +45,13 @@ export type EditOp =
   | { op: 'set_framing'; clip_id: string; crop?: Crop | null; blur?: BlurRegion[] }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'music' | 'sfx'; muted: boolean }
   /** U3: final loudness (LUFS) or null = leave the mix as is. */
-  | { op: 'set_loudness'; lufs: number | null };
+  | { op: 'set_loudness'; lufs: number | null }
+  /** Malam 15 Nov: sound of a media clip — fades (0 = none) and noise reduction. */
+  | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off' }
+  /** Malam 15 Nov: picture of a video/b-roll clip; null clears a field. */
+  | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
+  /** Malam 15 Nov: music ducking under speech; `level` = music gain while someone speaks. */
+  | { op: 'set_ducking'; on: boolean; level?: number };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -74,7 +81,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
     };
     switch (o.op) {
       case 'add_clip': {
-        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words', 'effect', 'crop', 'blur']);
+        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words', 'effect', 'crop', 'blur', ...EXTRA_FIELDS]);
         if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
         let media: MediaRef | undefined;
         if (o.media !== undefined) {
@@ -82,8 +89,11 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           if (!m || !isSafeId(m.media_id) || !isSafeId(m.version_id) || Object.keys(m).length !== 2) bad(`ops[${i}]: media tidak valid`);
           media = { media_id: m.media_id as string, version_id: m.version_id as string };
         }
+        // Malam 15 Nov: fades / denoise / fit / adjust / look / transition set at creation.
+        const extras = readExtras(o, `ops[${i}]`, o.track_kind as string, media !== undefined);
         return {
           op: 'add_clip',
+          ...extras,
           track_kind: o.track_kind as TrackKind,
           ...(media ? { media } : {}),
           ...(o.text !== undefined ? { text: textOf(o.text) } : {}),
@@ -168,6 +178,36 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         if (!Object.keys(style).length) bad(`ops[${i}]: style kosong`);
         return { op: 'set_style', clip_id: clipId(o.clip_id), style };
       }
+      case 'set_audio': {
+        keys(['op', 'clip_id', 'fade_in_ms', 'fade_out_ms', 'denoise']);
+        if (o.fade_in_ms === undefined && o.fade_out_ms === undefined && o.denoise === undefined) bad(`ops[${i}]: isi fade_in_ms, fade_out_ms dan/atau denoise`);
+        return {
+          op: 'set_audio',
+          clip_id: clipId(o.clip_id),
+          ...(o.fade_in_ms !== undefined ? { fade_in_ms: validateFadeMs(o.fade_in_ms, `ops[${i}].fade_in_ms`) } : {}),
+          ...(o.fade_out_ms !== undefined ? { fade_out_ms: validateFadeMs(o.fade_out_ms, `ops[${i}].fade_out_ms`) } : {}),
+          ...(o.denoise !== undefined ? { denoise: validateDenoise(o.denoise, `ops[${i}].denoise`) } : {}),
+        };
+      }
+      case 'set_picture': {
+        const fields = ['fit', 'fit_color', 'adjust', 'look', 'transition'] as const;
+        keys(['op', 'clip_id', ...fields]);
+        if (fields.every((k) => o[k] === undefined)) bad(`ops[${i}]: isi minimal satu dari ${fields.join(', ')}`);
+        const opt = (k: string, fn: (v: unknown, w: string) => unknown) => (o[k] === undefined ? {} : { [k]: o[k] === null ? null : fn(o[k], `ops[${i}].${k}`) });
+        return {
+          op: 'set_picture',
+          clip_id: clipId(o.clip_id),
+          ...opt('fit', validateFit),
+          ...opt('fit_color', validateColor),
+          ...opt('adjust', validateAdjust),
+          ...opt('look', validateLook),
+          ...opt('transition', validateTransition),
+        } as EditOp;
+      }
+      case 'set_ducking':
+        keys(['op', 'on', 'level']);
+        if (typeof o.on !== 'boolean') bad(`ops[${i}]: on harus true/false`);
+        return { op: 'set_ducking', on: o.on as boolean, ...(o.level !== undefined ? { level: validateDuck(o.level, `ops[${i}].level`) } : {}) };
       default:
         return bad(`ops[${i}]: operasi tidak dikenal`);
     }
@@ -184,6 +224,12 @@ function splitInto(track: Track, index: number, at: number, newClipId: () => str
   if (clip.effect) right.effect = { ...clip.effect };
   if (clip.crop) right.crop = { ...clip.crop };
   if (clip.blur) right.blur = clip.blur.map((b) => ({ ...b }));
+  // Malam 15 Nov: the look/sound carry over; a fade-in and the incoming transition stay on the left
+  // half (the clip's start), a fade-out moves to the right half (the clip's end).
+  Object.assign(right, copyExtras(clip));
+  delete right.fade_in_ms;
+  delete right.transition;
+  delete clip.fade_out_ms;
   if (clip.media) {
     right.media = { ...clip.media };
     right.in_ms = (clip.in_ms ?? 0) + (at - clip.start_ms);
@@ -227,6 +273,8 @@ const clone = (t: Timeline): Timeline => ({
       ...(c.effect ? { effect: { ...c.effect } } : {}),
       ...(c.crop ? { crop: { ...c.crop } } : {}),
       ...(c.blur ? { blur: c.blur.map((b) => ({ ...b })) } : {}),
+      ...(c.adjust ? { adjust: { ...c.adjust } } : {}),
+      ...(c.transition ? { transition: { ...c.transition } } : {}),
     })),
   })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
@@ -313,6 +361,7 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
           if (op.crop) clip.crop = { ...op.crop };
           if (op.blur?.length) clip.blur = op.blur.map((b) => ({ ...b }));
         }
+        Object.assign(clip, copyExtras(op));
         if (op.track_kind === 'effects' && !op.effect) bad('Klip di track efek wajib punya efek (zoom / zoom_through)');
         if (op.words) {
           if (!TEXT_TRACKS.includes(op.track_kind)) bad('Kata per kata hanya untuk klip teks/subtitle');
@@ -380,7 +429,12 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
                 right.media = { ...c.media };
                 if (c.crop) right.crop = { ...c.crop };
                 if (c.blur) right.blur = c.blur.map((b) => ({ ...b }));
-                out.push({ ...c, end_ms: from }, right);
+                if (c.adjust) right.adjust = { ...c.adjust };
+                if (c.transition) delete right.transition;
+                delete right.fade_in_ms;
+                const left: Clip = { ...c, end_ms: from };
+                delete left.fade_out_ms;
+                out.push(left, right);
               } else out.push(withWords({ ...c, end_ms: c.end_ms - len }, c.words ? cutWords(c.words, from - c.start_ms, to - c.start_ms) : undefined));
             } else if (c.start_ms < from) out.push(withWords({ ...c, end_ms: from }, c.words ? sliceWords(c.words, 0, from - c.start_ms) : undefined));
             else out.push(withWords({ ...c, start_ms: from, end_ms: c.end_ms - len, ...(c.media ? { in_ms: (c.in_ms ?? 0) + (to - c.start_ms) } : {}) }, c.words ? sliceWords(c.words, to - c.start_ms, c.end_ms - c.start_ms) : undefined));
@@ -434,6 +488,44 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         const track = trackFor(t, op.track_kind);
         if (op.muted) track.muted = true;
         else delete track.muted;
+        break;
+      }
+      case 'set_audio': {
+        const { clip } = locate(t, op.clip_id);
+        if (!clip.media) bad('Fade/reduksi noise hanya untuk klip video/audio', { clip_id: op.clip_id });
+        if (op.fade_in_ms !== undefined) {
+          if (op.fade_in_ms) clip.fade_in_ms = op.fade_in_ms;
+          else delete clip.fade_in_ms;
+        }
+        if (op.fade_out_ms !== undefined) {
+          if (op.fade_out_ms) clip.fade_out_ms = op.fade_out_ms;
+          else delete clip.fade_out_ms;
+        }
+        if (op.denoise !== undefined) {
+          if (op.denoise === 'off') delete clip.denoise;
+          else clip.denoise = op.denoise;
+        }
+        break;
+      }
+      case 'set_picture': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (!clip.media || (track.kind !== 'video' && track.kind !== 'broll')) bad('Tampilan gambar hanya untuk klip video/b-roll', { clip_id: op.clip_id });
+        if (op.fit === null) delete clip.fit;
+        else if (op.fit) clip.fit = op.fit;
+        if (op.fit_color === null) delete clip.fit_color;
+        else if (op.fit_color) clip.fit_color = op.fit_color;
+        if (op.look === null) delete clip.look;
+        else if (op.look) clip.look = op.look;
+        if (op.transition === null) delete clip.transition;
+        else if (op.transition) clip.transition = { ...op.transition };
+        if (op.adjust === null || (op.adjust && isNeutral(op.adjust))) delete clip.adjust;
+        else if (op.adjust) clip.adjust = { ...op.adjust };
+        break;
+      }
+      case 'set_ducking': {
+        const track = trackFor(t, 'music');
+        if (op.on) track.duck = op.level ?? track.duck ?? 0.3;
+        else delete track.duck;
         break;
       }
       case 'set_style': {

@@ -74,11 +74,12 @@ export const blurAt = (regions: readonly BlurRegion[] | undefined, srcMs: number
  * Where a source area lands on the canvas: the (cropped) source is fitted with contain + centred,
  * exactly like the render's scale/pad. Returns pixels of the canvas.
  */
-export function placeOnCanvas(src: { w: number; h: number }, crop: Crop | undefined, canvas: { w: number; h: number }, area: Crop): { left: number; top: number; width: number; height: number } {
+export function placeOnCanvas(src: { w: number; h: number }, crop: Crop | undefined, canvas: { w: number; h: number }, area: Crop, cover = false): { left: number; top: number; width: number; height: number } {
   const c = crop ?? { x: 0, y: 0, w: 1, h: 1 };
   const cw = src.w * c.w;
   const ch = src.h * c.h;
-  const k = Math.min(canvas.w / cw, canvas.h / ch);
+  // Malam 15 Nov: `cover` = clip fit 'isi' (fills the canvas, overflow cut off).
+  const k = cover ? Math.max(canvas.w / cw, canvas.h / ch) : Math.min(canvas.w / cw, canvas.h / ch);
   const ox = (canvas.w - cw * k) / 2;
   const oy = (canvas.h - ch * k) / 2;
   // Area in source px, clipped to the crop.

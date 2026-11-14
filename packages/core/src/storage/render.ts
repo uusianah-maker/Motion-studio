@@ -1,6 +1,8 @@
 import { promises as fsp } from 'node:fs';
 import { framingFilters } from './framing.js';
 import { zoomExpr } from './effects.js';
+import { DEFAULT_DUCK, type LookId, XFADE, denoiseFilter, duckFilter, effectiveLook, fadeFilter, fitFilters, lookFilters, speechRanges } from './clipLook.js';
+export { speechRanges } from './clipLook.js';
 import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
 import { readFontInfo } from './fontInfo.js';
 import { type LogoCorner, brandRenderRefs, readBrandFor } from './brand.js';
@@ -198,6 +200,27 @@ export interface RenderBrand {
   logo: { path: string; corner: LogoCorner; size: number; opacity: number } | null;
   /** U3b: font families/metrics for libass captions (defaults: Arial metrics). */
   fonts?: Partial<AssFonts>;
+  /** Malam 15 Nov: Brand Kit default colour look for video/b-roll clips without their own `look`. */
+  look?: LookId | null;
+}
+
+/** Frames of the incoming transition's half (h) per visual segment; 0 = hard cut. Total xfade = 2h. */
+export function transitionHalves(segments: readonly VisualSegment[], fps: number, hasVideo: (c: Clip) => boolean): number[] {
+  const half = segments.map(() => 0);
+  for (let k = 1; k < segments.length; k++) {
+    const seg = segments[k]!;
+    const prev = segments[k - 1]!;
+    const c = seg.clip;
+    if (!c?.transition || !prev.clip || prev.clip === c || prev.to_frame !== seg.from_frame) continue;
+    if (seg.from_frame !== Math.round((c.start_ms * fps) / 1000)) continue; // only at the clip's own start
+    if (!hasVideo(c) || !hasVideo(prev.clip)) continue;
+    const want = Math.round((c.transition.ms * fps) / 1000 / 2);
+    const framesA = prev.to_frame - prev.from_frame - half[k - 1]!;
+    const framesB = seg.to_frame - seg.from_frame;
+    const h = Math.min(want, framesA, framesB);
+    if (h >= 1) half[k] = h;
+  }
+  return half;
 }
 
 export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInput>, settings: RenderSettings, font: string | null, regularFont: string | null = font, brand: RenderBrand = { font: null, logo: null }): RenderPlan {
@@ -235,6 +258,12 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   const gainOf = (c: Clip) => (trackOf.get(c.clip_id)?.muted ? 0 : (c.volume ?? 1));
   const gainFilter = (g: number) => (g === 1 ? '' : `,volume=${g.toFixed(2)}`);
 
+  // Malam 15 Nov: transitions at cuts. The outgoing segment runs h frames longer and the incoming one
+  // starts h frames earlier (more source, or its first frame held), so a 2h-frame xfade keeps the
+  // total length — and the sound stays a plain cut, in sync.
+  const half = transitionHalves(segments, fps, (c) => !!media(c)?.probe.video_codec);
+  const extEnd = segments.map((_, k) => half[k + 1] ?? 0);
+  const totals: number[] = [];
   segments.forEach((seg, k) => {
     const frames = seg.to_frame - seg.from_frame;
     const durMs = (frames * 1000) / fps;
@@ -242,34 +271,84 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     const src = media(seg.clip);
     const hasV = !!src?.probe.video_codec;
     const hasA = !!src?.probe.audio_codec;
-    let idx = -1;
-    if (src && seg.clip && (hasV || hasA)) {
-      const startMs = (seg.from_frame * 1000) / fps;
-      idx = input(src, (seg.clip.in_ms ?? 0) + (startMs - seg.clip.start_ms), durMs);
-    }
-    // U3d: blur areas + crop of the source before it is fitted onto the canvas.
     const startMs = (seg.from_frame * 1000) / fps;
+    const pre = hasV ? half[k]! : 0;
+    const post = hasV ? extEnd[k]! : 0;
+    const total = frames + pre + post;
+    totals.push(total);
+    // Source position of the piece (with the pre-roll); before the source start = hold the first frame.
+    let srcFrom = seg.clip ? (seg.clip.in_ms ?? 0) + (startMs - seg.clip.start_ms) - (pre * 1000) / fps : 0;
+    let holdStart = 0;
+    if (srcFrom < 0) {
+      holdStart = Math.min(pre, Math.ceil((-srcFrom * fps) / 1000 - 1e-6));
+      srcFrom = Math.max(0, srcFrom + (holdStart * 1000) / fps);
+    }
+    let idx = -1;
+    if (src && seg.clip && (hasV || hasA)) idx = input(src, srcFrom, ((total - holdStart) * 1000) / fps);
+    // U3d: blur areas + crop of the source before it is fitted onto the canvas.
     const framing =
       hasV && seg.clip
-        ? framingFilters({ crop: seg.clip.crop, blur: seg.clip.blur, srcStartMs: (seg.clip.in_ms ?? 0) + (startMs - seg.clip.start_ms), durMs, shortSide: Math.min(src!.probe.width ?? 1080, src!.probe.height ?? 1080), inLabel: `fi${k}`, outLabel: `fo${k}`, id: `s${k}` })
+        ? framingFilters({ crop: seg.clip.crop, blur: seg.clip.blur, srcStartMs: srcFrom, durMs: ((total - holdStart) * 1000) / fps, shortSide: Math.min(src!.probe.width ?? 1080, src!.probe.height ?? 1080), inLabel: `fi${k}`, outLabel: `fo${k}`, id: `s${k}` })
         : null;
     if (framing) graph.push(`[${idx}:v:0]setpts=PTS-STARTPTS[fi${k}]`, ...framing);
-    graph.push(
-      hasV
-        ? `${framing ? `[fo${k}]` : `[${idx}:v:0]setpts=PTS-STARTPTS,`}fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p,tpad=stop_mode=clone:stop=${frames},trim=end_frame=${frames},setpts=PTS-STARTPTS[v${k}]`
-        : `color=c=black:s=${W}x${H}:r=${fps}:d=${s6(durMs / 1000)},format=yuv420p,setsar=1,trim=end_frame=${frames}[v${k}]`,
-    );
-    graph.push(
-      hasA
-        ? `[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(seg.clip!))},apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${k}]`
-        : `anullsrc=r=${AUDIO_RATE}:cl=stereo,${AFMT},atrim=end_sample=${samples}[a${k}]`,
-    );
+    if (hasV) {
+      const c = seg.clip!;
+      // Malam 15 Nov: colour look (+ the brand's default look) on the source picture, then the fit.
+      const lk = effectiveLook(c, brand.look ?? null);
+      const look = lookFilters(lk.adjust, lk.mono);
+      const head = `${framing ? `[fo${k}]` : `[${idx}:v:0]setpts=PTS-STARTPTS,`}fps=${fps}${look ? `,${look}` : ''}`;
+      const tail = `setsar=1,format=yuv420p${holdStart ? `,tpad=start_mode=clone:start=${holdStart}` : ''},tpad=stop_mode=clone:stop=${total},trim=end_frame=${total},setpts=PTS-STARTPTS[v${k}]`;
+      if (c.fit === 'isi' || c.fit === 'blur') {
+        graph.push(`${head}[fp${k}]`, ...fitFilters(c.fit, c.fit_color, W, H, `s${k}`, `fp${k}`, `ff${k}`), `[ff${k}]${tail}`);
+      } else {
+        const bars = c.fit === 'warna' && c.fit_color ? `0x${c.fit_color.slice(1)}` : 'black';
+        graph.push(`${head},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=${bars},${tail}`);
+      }
+    } else graph.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${s6(durMs / 1000)},format=yuv420p,setsar=1,trim=end_frame=${frames}[v${k}]`);
+    if (hasA) {
+      const c = seg.clip!;
+      const skip = (pre - holdStart) * samplesPerFrame;
+      const fx = [denoiseFilter(c.denoise), fadeFilter(c, c.end_ms - c.start_ms, startMs - c.start_ms)].filter(Boolean).map((f) => `,${f}`).join('');
+      graph.push(`[${idx}:a:0]${skip ? `atrim=start_sample=${skip},` : ''}asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(c))}${fx},apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${k}]`);
+    } else graph.push(`anullsrc=r=${AUDIO_RATE}:cl=stereo,${AFMT},atrim=end_sample=${samples}[a${k}]`);
   });
-  graph.push(`${segments.map((_, k) => `[v${k}][a${k}]`).join('')}concat=n=${segments.length}:v=1:a=1[vraw][acat]`);
+  graph.push(`${segments.map((_, k) => `[a${k}]`).join('')}concat=n=${segments.length}:v=0:a=1[acat]`);
+  // Hard cuts are concatenated; each transition joins two runs with one xfade.
+  const groups: { labels: string[]; frames: number; into: number }[] = [];
+  segments.forEach((_, k) => {
+    if (k === 0 || half[k]! > 0) groups.push({ labels: [], frames: 0, into: k });
+    const g = groups[groups.length - 1]!;
+    g.labels.push(`[v${k}]`);
+    g.frames += totals[k]!;
+  });
+  if (groups.length === 1) graph.push(`${groups[0]!.labels.join('')}concat=n=${segments.length}:v=1:a=0[vraw]`);
+  else {
+    let acc = '';
+    let accFrames = 0;
+    groups.forEach((g, i) => {
+      const label = g.labels.length > 1 ? `vg${i}` : g.labels[0]!.slice(1, -1);
+      if (g.labels.length > 1) graph.push(`${g.labels.join('')}concat=n=${g.labels.length}:v=1:a=0[${label}]`);
+      if (i === 0) {
+        acc = label;
+        accFrames = g.frames;
+        return;
+      }
+      const h = half[g.into]!;
+      const tr = segments[g.into]!.clip!.transition!;
+      const out = i === groups.length - 1 ? 'vraw' : `vx${i}`;
+      graph.push(`[${acc}][${label}]xfade=transition=${XFADE[tr.type]}:duration=${s6((2 * h) / fps)}:offset=${s6((accFrames - 2 * h) / fps)}[${out}]`);
+      acc = out;
+      accFrames += g.frames - 2 * h;
+    });
+  }
   graph.push(...pictureEffects(t, { W, H, fps, total_ms, ratio }));
 
   // Audio track: mixed over the visual sound at its timeline position, like the preview.
   const mixes: string[] = [];
+  // Malam 15 Nov: music ducking under speech (track.duck = music level while someone speaks).
+  const musicTrack = t.tracks.find((x) => x.kind === 'music');
+  const duckRanges = musicTrack?.duck !== undefined ? speechRanges(t, (c) => !!media(c)?.probe.audio_codec) : [];
+  const duckLevel = musicTrack?.duck ?? DEFAULT_DUCK;
   for (const c of [...clipsOf(t, 'audio'), ...clipsOf(t, 'music'), ...clipsOf(t, 'sfx')]) {
     const src = media(c);
     const startFrame = Math.round((c.start_ms * fps) / 1000);
@@ -278,7 +357,9 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     const durMs = ((endFrame - startFrame) * 1000) / fps;
     const idx = input(src, c.in_ms ?? 0, durMs);
     const delay = Math.round((startFrame * 1000) / fps);
-    graph.push(`[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(c))},apad,atrim=end_sample=${(endFrame - startFrame) * samplesPerFrame},adelay=delays=${delay}:all=1[m${mixes.length}]`);
+    const isMusic = trackOf.get(c.clip_id)?.kind === 'music';
+    const fx = [denoiseFilter(c.denoise), fadeFilter(c, c.end_ms - c.start_ms), isMusic ? duckFilter(duckRanges, duckLevel, delay) : ''].filter(Boolean).map((f) => `,${f}`).join('');
+    graph.push(`[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(c))}${fx},apad,atrim=end_sample=${(endFrame - startFrame) * samplesPerFrame},adelay=delays=${delay}:all=1[m${mixes.length}]`);
     mixes.push(`[m${mixes.length}]`);
   }
   // U3: the final loudness (timeline.loudness_lufs) is applied after encoding, in two passes
@@ -473,7 +554,8 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
 
     const reg = await loadRegistry(ws);
     // X06: the brand pieces this revision needs must be exactly the ones preflight checked + leased.
-    const brandRefs = brandRenderRefs(project.timeline, await readBrandFor(ws, project.brand_id));
+    const kit = await readBrandFor(ws, project.brand_id);
+    const brandRefs = brandRenderRefs(project.timeline, kit);
     const leased = new Set(lease.media.map((m) => m.version_id));
     for (const r of [brandRefs.font, brandRefs.font_caption, brandRefs.logo?.ref]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
     const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.font_caption?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
@@ -513,7 +595,7 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       if (fr) fonts.regular = fr;
       if (fk) fonts.brand = fk;
       if (fc) fonts.caption = fc;
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts });
+      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));
