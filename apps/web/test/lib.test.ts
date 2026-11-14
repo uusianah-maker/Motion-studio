@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TIMELINE_ZOOM, aspectCss, errorText, mediaKind, shotWord, readyJobShown, nextPresetId, parseDecimal, pollDelay, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
+import { TIMELINE_ZOOM, aspectCss, errorText, keepSelection, mediaKind, shotWord, readyJobShown, nextPresetId, parseDecimal, pollDelay, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
 
 const TOKEN = 'a'.repeat(64);
 
@@ -143,5 +143,13 @@ describe('W09 auth error fragment', () => {
     expect(shotWord('closeup_produk')).toBe('close-up produk');
     expect(shotWord('wajah_bicara')).toBe('wajah bicara');
     expect(shotWord('label_baru_mesin')).toBe('label baru mesin'); // unknown: readable, never snake_case
+  });
+
+  it('audit 14 Nov: the selection follows a clip an edit replaced (zoom), not a deleted one', () => {
+    const tl = (fx: { clip_id: string; start_ms: number }[]) => ({ timeline: { tracks: [{ track_id: 'v', clips: [{ clip_id: 'a', start_ms: 0 }] }, { track_id: 'fx', clips: fx }] } });
+    expect(keepSelection(tl([{ clip_id: 'z1', start_ms: 1000 }]), tl([{ clip_id: 'z2', start_ms: 1000 }]), 'z1')).toBe('z2');
+    expect(keepSelection(tl([{ clip_id: 'z1', start_ms: 1000 }]), tl([]), 'z1')).toBeNull(); // really deleted
+    expect(keepSelection(tl([{ clip_id: 'z1', start_ms: 1000 }]), tl([{ clip_id: 'z1', start_ms: 1500 }]), 'z1')).toBe('z1');
+    expect(keepSelection(tl([]), tl([]), null)).toBeNull();
   });
 });

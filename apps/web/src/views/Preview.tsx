@@ -91,6 +91,8 @@ export function Preview({
   const subs = clipsOf('subtitle').filter((c) => t >= c.start_ms && t < c.end_ms);
   const versionOf = (c: Clip | null) => (c?.media ? media.flatMap((m) => m.versions).find((v) => v.version_id === c.media!.version_id) : undefined);
 
+  /** Bumped when a layer's stream link failed (expired): re-sync with a fresh link. */
+  const [retry, setRetry] = useState(0);
   const urlFor = useCallback(
     async (versionId: string) => {
       const hit = urls.current.get(versionId);
@@ -144,11 +146,12 @@ export function Preview({
     void sync(audioRef.current, audio, t, playing, 'audio');
     void sync(sfxRef.current, sfx, t, playing, 'audio');
     void sync(musicRef.current, music, t, playing, 'audio');
-  }, [visual, audio, sfx, music, t, playing, sync]);
+  }, [visual, audio, sfx, music, t, playing, sync, retry]);
 
   useEffect(() => {
     if (!playing) {
       clock.current = null;
+      lastTick.current = null;
       return;
     }
     clock.current = { wall: performance.now(), base: playhead >= end ? 0 : playhead };
@@ -162,16 +165,45 @@ export function Preview({
         setPlaying(false);
         return;
       }
-      setPlayhead(Math.round(now));
+      lastTick.current = Math.round(now);
+      setPlayhead(lastTick.current);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing]);
+  // Audit 14 Nov: a seek while playing (⏮, a comment's timecode, "Deteksi jeda" ▶) moves the clock
+  // too — it used to be overwritten by the next frame.
+  const lastTick = useRef<number | null>(null);
+  useEffect(() => {
+    const c = clock.current;
+    if (!playing || !c || lastTick.current === null) return;
+    if (Math.abs(playhead - lastTick.current) > 80) {
+      clock.current = { wall: performance.now(), base: playhead };
+      lastTick.current = playhead;
+    }
+  }, [playhead, playing]);
 
   useEffect(() => {
     for (const el of [videoRef.current, audioRef.current, sfxRef.current, musicRef.current]) if (el) el.muted = muted;
   }, [muted]);
+  // Audit 14 Nov: a stream link expires after 10 min; seeking into an unbuffered part then fails
+  // silently. On a media error the layer forgets its link, so the next sync fetches a fresh one.
+  useEffect(() => {
+    const els = [videoRef.current, audioRef.current, sfxRef.current, musicRef.current].filter((e): e is HTMLMediaElement => !!e);
+    const onError = (e: Event) => {
+      const el = e.currentTarget as HTMLMediaElement;
+      const vid = el.dataset.vid;
+      if (!vid) return;
+      urls.current.delete(vid);
+      el.dataset.vid = '';
+      setRetry((n) => n + 1);
+    };
+    for (const el of els) el.addEventListener('error', onError);
+    return () => {
+      for (const el of els) el.removeEventListener('error', onError);
+    };
+  }, []);
   // X04: each layer plays at its clip's volume; a muted track is silent (same rule as render).
   const gainOf = (c: Clip | null) => (!c ? 1 : tracks.find((tr) => tr.clips.some((x) => x.clip_id === c.clip_id))?.muted ? 0 : (c.volume ?? 1));
   const visualGain = gainOf(visual);

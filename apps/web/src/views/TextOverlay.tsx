@@ -1,4 +1,4 @@
-import { type CSSProperties, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { type TextStyle, contrastText, effectiveStyle, layoutText } from '../../../../packages/core/dist/storage/textStyle.js';
 import { spokenCount, wordKey } from '../../../../packages/core/dist/storage/words.js';
 import type { Clip } from '../api';
@@ -89,6 +89,15 @@ export function TextOverlay({
 }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const start = useRef<{ px: number; py: number; x: number; y: number; id: number } | null>(null);
+  // Audit 14 Nov: after a drag the text stays where it was dropped until the saved position
+  // arrives (it used to jump back meanwhile); a save that never lands lets go after 4 s.
+  const savedX = clip.style?.x;
+  const savedY = clip.style?.y;
+  useEffect(() => setPos(null), [clip.clip_id, savedX, savedY]);
+  const release = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (release.current) clearTimeout(release.current);
+  }, []);
   const s: TextStyle = { ...effectiveStyle(kind, clip.style), ...(draft ?? {}), ...(pos ?? {}) };
   const px = (Math.min(canvas.w, canvas.h) * s.size) / 100;
   const style: CSSProperties = {
@@ -141,8 +150,11 @@ export function TextOverlay({
               start.current = null;
               if (!st || st.id !== e.pointerId) return;
               onSelect?.();
-              if (pos && onMove) onMove(Math.round(pos.x * 1000) / 1000, Math.round(pos.y * 1000) / 1000);
-              setPos(null);
+              if (pos && onMove) {
+                onMove(Math.round(pos.x * 1000) / 1000, Math.round(pos.y * 1000) / 1000);
+                if (release.current) clearTimeout(release.current);
+                release.current = setTimeout(() => setPos(null), 4000);
+              } else setPos(null);
             },
           }
         : {})}

@@ -2,7 +2,7 @@ import { CopilotPanel } from './CopilotPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Role, type Track } from '../api';
-import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, TIMELINE_ZOOM, clampScroll, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration, zoomAround } from '../lib';
+import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, TIMELINE_ZOOM, clampScroll, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration, zoomAround, keepSelection } from '../lib';
 import { ClipThumbs, ClipWave, useMediaVisuals } from './TimelineVisuals';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
@@ -107,9 +107,13 @@ export function EditorView({
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
 
+  // Audit 14 Nov: an answer for a project left meanwhile (slow tunnel) never lands on the one open now.
+  const openId = useRef(projectId);
+  openId.current = projectId;
   const load = useCallback(async () => {
     if (!projectId) return;
     const [p, m] = await Promise.all([api.project(projectId), api.media({ scope: 'all' })]);
+    if (openId.current !== projectId) return;
     setProject(p);
     setMedia(m);
     onSavedRef.current?.(p);
@@ -136,9 +140,10 @@ export function EditorView({
       setNotice(null);
       try {
         const next = await fn(project);
-        setProject(next);
         onSavedRef.current?.(next);
-        setSelected((sel) => (sel && next.timeline.tracks.some((t) => t.clips.some((c) => c.clip_id === sel)) ? sel : null));
+        if (openId.current !== next.project_id) return; // saved, but another project is open now
+        setProject(next);
+        setSelected((sel) => keepSelection(project, next, sel));
       } catch (e) {
         if (e instanceof ApiError && e.code === 'CONFLICT') {
           setNotice('Proyek berubah di tempat lain. Data terbaru sudah dimuat ulang; ulangi perubahan lo.');

@@ -141,6 +141,48 @@ try {
   await page.getByRole('button', { name: '＋ Teks' }).click();
   const added = await until(async () => (await textCount()) === n0 + 2);
   check('A14-04 "+ Teks" dua kali di posisi yang sudah terisi: dua klip baru, tanpa error tumpang tindih', added && (await page.getByRole('alert').count()) === 0, `${await textCount()} klip teks`);
+  // ⏮ while playing really goes back to the start (the play clock used to overwrite it).
+  await page.getByRole('button', { name: 'Putar' }).click();
+  await page.waitForTimeout(2200);
+  await page.getByRole('button', { name: 'Ke awal' }).click();
+  await page.waitForTimeout(300);
+  const tAfter = await page.locator('.time').innerText();
+  await page.getByRole('button', { name: 'Jeda' }).click();
+  check('A14-22 ⏮ saat diputar: kembali ke awal (00:00), tidak ditimpa jam pemutaran', /^00:00 \//.test(tAfter.trim()), tAfter);
+
+  // A dragged text stays where it was dropped while the save is on its way.
+  {
+    await page.route('**/api/projects/ed/edit', async (r) => {
+      await new Promise((res) => setTimeout(res, 1500));
+      await r.continue();
+    });
+    const el = page.locator('.overlayText.styled[data-kind="text"]', { hasText: 'Klip A' });
+    const b0 = await el.boundingBox();
+    await page.mouse.move(b0.x + b0.width / 2, b0.y + b0.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b0.x + b0.width / 2 + 30, b0.y + b0.height / 2 + 60, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(400); // the save is still waiting (1,5 s)
+    const b1 = await el.boundingBox();
+    check('A14-23 Teks yang di-drag tetap di posisi baru selama penyimpanan berjalan (tidak melompat balik)', b1 && b1.y - b0.y > 40, `Δy=${b1 ? Math.round(b1.y - b0.y) : '?'}`);
+    await page.waitForTimeout(1600);
+    await page.unroute('**/api/projects/ed/edit');
+  }
+
+  // Switching project fast: a slow answer for the previous project never shows on the new one.
+  {
+    await page.route('**/api/projects/cp', async (r) => {
+      await new Promise((res) => setTimeout(res, 1500));
+      await r.continue();
+    });
+    await page.getByText('Uji Copilot Kosong').first().click();
+    await page.getByText('Uji Audit Editor').first().click();
+    await page.waitForTimeout(2200);
+    const head = await page.locator('h1').first().innerText();
+    check('A14-24 Pindah proyek cepat: jawaban lambat proyek sebelumnya tidak menimpa proyek yang terbuka', head.includes('Uji Audit Editor'), head);
+    await page.unroute('**/api/projects/cp');
+  }
+
   // A style change still waiting its 0,45 s when the clip is let go is saved, not dropped.
   await page.locator('.track .clip', { hasText: 'Klip A' }).click();
   await insp.getByLabel('Ukuran teks').waitFor();
@@ -242,6 +284,19 @@ try {
   const merged = await until(async () => (await page.getByLabel('Saring jenis aset').locator('option').first().innerText()).includes('(1)'));
   check('A14-08b Brand: upload aset selesai belakangan → nama yang diubah selama upload tetap, aset ikut masuk', merged && (await page.getByLabel('Nama brand').inputValue()) === 'Aysilla Baru');
   await page.unroute('**/api/media/import**');
+
+  // Brand: picking another brand with unsaved edits asks first; "no" keeps the edits.
+  {
+    let asked = '';
+    page.once('dialog', (d) => {
+      asked = d.message();
+      void d.dismiss();
+    });
+    await page.getByLabel('Nama brand').fill('Aysilla Belum Disimpan');
+    await page.getByRole('button', { name: /Brand baru/ }).click();
+    await page.waitForTimeout(300);
+    check('A14-21 Brand: pindah brand dengan editan belum disimpan → ditanya dulu; "batal" = editan tetap', /belum disimpan/.test(asked) && (await page.getByLabel('Nama brand').inputValue()) === 'Aysilla Belum Disimpan', asked);
+  }
 
   // ---- AI: a refused connection keeps what was typed; decimal comma in the budget.
   await nav.getByRole('button', { name: /AI/ }).click();

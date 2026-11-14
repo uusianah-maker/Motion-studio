@@ -193,6 +193,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const save = async () => {
     if (!current || !changed.length) return;
     setBusy(true);
+    setError(null); // audit 14 Nov: an old error never stays next to a new success
     try {
       setSaved(await api.engineDecide(current.project_id, current.job_id, changed.map((v) => ({ varian: v.id, status: draft[v.id]! }))));
       onProjectsChanged();
@@ -205,6 +206,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const renderApproved = async () => {
     if (!current) return;
     setBusy(true);
+    setError(null);
     try {
       setRendered(await api.renderVariants(current.project_id, { short_side: 1080 }));
     } catch (e) {

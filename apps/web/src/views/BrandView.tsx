@@ -150,6 +150,9 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
 
   if (!brands) return <div className="body">{error ? <ErrorNotice error={error} /> : <div className="sectionNote">Memuat Brand Kit…</div>}</div>;
 
+  // Audit 14 Nov: switching brand never throws unsaved edits away without asking.
+  const dirty = JSON.stringify(draft) !== JSON.stringify(kit ? toInput(kit) : emptyKit());
+  const leaveOk = () => !dirty || window.confirm('Ada perubahan Brand Kit yang belum disimpan. Buang perubahan itu?');
   const set = (patch: Partial<BrandKitInput>) => {
     setDraft({ ...draft, ...patch });
     setSaved(false);
@@ -247,13 +250,13 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
         {error ? <ErrorNotice error={error} /> : null}
         <nav className="brandList" aria-label="Daftar brand">
           {brands.map((b) => (
-            <button key={b.brand_id} className={`chip${selected === b.brand_id ? ' on' : ''}`} aria-pressed={selected === b.brand_id} onClick={() => void load(b.brand_id)}>
+            <button key={b.brand_id} className={`chip${selected === b.brand_id ? ' on' : ''}`} aria-pressed={selected === b.brand_id} onClick={() => leaveOk() && void load(b.brand_id)}>
               <span className="swatch" style={{ background: b.colors[0] ?? '#2a2f42' }} aria-hidden="true" /> {b.kode} · {b.name}
               {b.brand_id === defaultId ? ' ★' : ''}
             </button>
           ))}
           {!readOnly && (
-            <button className={`chip${selected === 'new' ? ' on' : ''}`} onClick={() => void load('new')}>
+            <button className={`chip${selected === 'new' ? ' on' : ''}`} onClick={() => leaveOk() && void load('new')}>
               ＋ Brand baru
             </button>
           )}
@@ -710,7 +713,7 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                 </span>
               )}
               {kit && kit.brand_id !== defaultId && (
-                <button className="btn small" disabled={!!busy} onClick={() => void act('default', async () => (await api.setDefaultBrand(kit.brand_id), await load(kit.brand_id)))}>
+                <button className="btn small" disabled={!!busy} onClick={() => void act('default', async () => (await api.setDefaultBrand(kit.brand_id), setDefaultId(kit.brand_id)))}>
                   ★ Jadikan bawaan
                 </button>
               )}

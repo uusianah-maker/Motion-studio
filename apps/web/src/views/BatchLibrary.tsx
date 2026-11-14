@@ -76,6 +76,7 @@ export function useEngineBatches(api: Api, enabled: boolean) {
     if (!enabled) return;
     try {
       setState(await api.engineBatches());
+      setError(null);
     } catch (e) {
       setError(e);
     }
@@ -326,6 +327,10 @@ export function ShotLibraryView({ api, role = 'owner' }: { api: Api; role?: Role
     [lib, footage, label, show, draft],
   );
   const pages = Math.max(1, Math.ceil(shown.length / PAGE));
+  // Audit 14 Nov: fewer shots after a filter / exclusion never leaves an empty "Halaman 3/2".
+  useEffect(() => {
+    if (page > pages - 1) setPage(pages - 1);
+  }, [page, pages]);
   const pageShots = shown.slice(page * PAGE, page * PAGE + PAGE);
   const thumbs = useShotThumbs(api, batch || null, useMemo(() => pageShots.filter((s) => s.thumb).map((s) => s.id), [pageShots]));
   const changed = useMemo(() => {

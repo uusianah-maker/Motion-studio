@@ -254,3 +254,20 @@ const SHOT_WORDS: Record<string, string> = {
 export function shotWord(key: string): string {
   return SHOT_WORDS[key] ?? key.replace(/_/g, ' ');
 }
+
+type TL = { timeline: { tracks: { track_id: string; clips: { clip_id: string; start_ms: number }[] }[] } };
+/**
+ * Selection after an edit. Some edits replace a clip (zoom: delete + add → new id); the selection
+ * follows to the one new clip on the same track at the same start (audit 14 Nov). A clip that is
+ * really gone leaves nothing selected.
+ */
+export function keepSelection(before: TL, after: TL, sel: string | null): string | null {
+  if (!sel) return null;
+  if (after.timeline.tracks.some((t) => t.clips.some((c) => c.clip_id === sel))) return sel;
+  const track = before.timeline.tracks.find((t) => t.clips.some((c) => c.clip_id === sel));
+  const old = track?.clips.find((c) => c.clip_id === sel);
+  if (!track || !old) return null;
+  const known = new Set(track.clips.map((c) => c.clip_id));
+  const fresh = after.timeline.tracks.find((t) => t.track_id === track.track_id)?.clips.filter((c) => !known.has(c.clip_id) && c.start_ms === old.start_ms) ?? [];
+  return fresh.length === 1 ? fresh[0]!.clip_id : null;
+}

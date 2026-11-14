@@ -259,6 +259,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
   const approve = async () => {
     if (!plan || !current) return;
     setBusy(true);
+    setError(null);
     try {
       const p = await api.project(current.project_id);
       await api.copilotApply(current.project_id, plan.plan.plan_id, p.revision);
