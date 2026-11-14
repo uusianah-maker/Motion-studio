@@ -45,3 +45,25 @@ def nama_aman(stem: str, maks: int = 40) -> str:
     """Nama footage yang diterima Motion Studio (^[A-Za-z0-9_.-]{1,40}$): karakter lain jadi '_'."""
     s = re.sub(r"[^A-Za-z0-9_.-]+", "_", stem).strip("._") or "video"
     return s[:maks].rstrip("._") or "video"
+
+
+def dengan_akhiran(base: str, n: int, maks: int = 40) -> str:
+    """base + '-n' tetap <= maks karakter (base dipotong dulu, akhiran tidak pernah terpotong)."""
+    suf = f"-{n}"
+    return (base[: maks - len(suf)].rstrip("._") or "video") + suf
+
+
+def nama_unik(stems: list[str], maks: int = 40) -> dict[str, str]:
+    """Nama footage aman DAN unik per file. Nama yang sudah aman tetap (hasil pisah lama tidak berubah);
+    nama lain yang bertabrakan sesudah dibersihkan/dipotong diberi akhiran -2, -3, ... (urut abjad, stabil)."""
+    hasil = {s: s for s in stems if nama_aman(s, maks) == s}
+    dipakai = {x.lower() for x in hasil.values()}  # Windows: nama file tidak peka huruf besar/kecil
+    for s in sorted(x for x in stems if x not in hasil):
+        base = nama = nama_aman(s, maks)
+        n = 1
+        while nama.lower() in dipakai:
+            n += 1
+            nama = dengan_akhiran(base, n, maks)
+        hasil[s] = nama
+        dipakai.add(nama.lower())
+    return hasil

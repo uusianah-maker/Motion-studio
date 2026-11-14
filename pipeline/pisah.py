@@ -32,7 +32,7 @@ import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "batch"))
-from jalur import BATCH_PY as DEMUCS_PY, KONTEN, ROOT, nama_aman  # noqa: E402  (Demucs + OpenCV; Windows/Linux)
+from jalur import BATCH_PY as DEMUCS_PY, KONTEN, ROOT, dengan_akhiran, nama_aman, nama_unik  # noqa: E402  (Demucs + OpenCV; Windows/Linux)
 MODEL = "htdemucs_ft"
 EXT = {".mp4", ".mov"}
 NAMA_BATCH = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
@@ -97,9 +97,12 @@ def pisah_batch(batch: str, video_saja=False, cpu=False, progres=None, job=False
     sink = sys.stderr if job else None
 
     videos = sorted(p for p in src_dir.iterdir() if p.suffix.lower() in EXT)
+    # Unggahan lewat CLI bisa berisi spasi / nama panjang; Motion Studio hanya menerima [A-Za-z0-9_.-]{1,40}.
+    # nama_unik: dua file berbeda tidak pernah jadi satu nama footage (tidak saling menimpa).
+    nama = nama_unik([v.stem for v in videos])
     todo_stem = []
     for i, v in enumerate(videos):
-        name = nama_aman(v.stem)  # unggahan lewat CLI bisa berisi spasi; Motion Studio hanya menerima [A-Za-z0-9_.-]
+        name = nama[v.stem]
         progres("pisah_video", 10 + int(30 * i / max(1, len(videos))), v.name)
         bisu = dirs["video-bisu"] / f"{name}.mp4"
         asli = dirs["audio-asli"] / f"{name}.wav"
@@ -145,8 +148,8 @@ def pisah_batch(batch: str, video_saja=False, cpu=False, progres=None, job=False
     def ada(p: Path):
         return str(p.resolve()).replace("\\", "/") if p.exists() else None
 
-    return [{"file": v.name, "video": ada(dirs["video-bisu"] / f"{nama_aman(v.stem)}.mp4"),
-             "vokal": ada(dirs["vokal"] / f"{nama_aman(v.stem)}.wav"), "musik": ada(dirs["musik"] / f"{nama_aman(v.stem)}.wav")}
+    return [{"file": v.name, "video": ada(dirs["video-bisu"] / f"{nama[v.stem]}.mp4"),
+             "vokal": ada(dirs["vokal"] / f"{nama[v.stem]}.wav"), "musik": ada(dirs["musik"] / f"{nama[v.stem]}.wav")}
             for v in videos]
 
 
@@ -192,7 +195,7 @@ def jalankan_job(job_dir: Path) -> int:
         n = 2
         sf = sidik(f)
         while tujuan.exists() and sidik(tujuan) != sf:
-            tujuan = upload / f"{aman}-{n}{f.suffix.lower()}"
+            tujuan = upload / f"{dengan_akhiran(aman, n)}{f.suffix.lower()}"
             n += 1
         if not tujuan.exists():
             shutil.copy2(f, tujuan)

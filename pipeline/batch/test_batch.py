@@ -194,6 +194,28 @@ class JalurPortabel(unittest.TestCase):
         self.assertEqual(jalur.nama_aman("dji_0017"), "dji_0017")
         self.assertEqual(jalur.nama_aman("uji klip"), "uji_klip")
 
+    def test_nama_unik_tidak_saling_menimpa(self):
+        import re
+        import jalur
+        pola = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
+        panjang = "x" * 45
+        stems = [panjang, panjang + "-2", "uji klip", "uji_klip", "Uji Klip", "dji_0017", "a" * 40, "a" * 40 + " b"]
+        m = jalur.nama_unik(stems)
+        self.assertEqual(len(set(v.lower() for v in m.values())), len(stems))
+        for v in m.values():
+            self.assertRegex(v, pola)
+        self.assertEqual(m["dji_0017"], "dji_0017")  # nama yang sudah aman tidak berubah
+        self.assertEqual(m["uji_klip"], "uji_klip")
+        self.assertEqual(m["a" * 40], "a" * 40)
+
+    def test_akhiran_tidak_terpotong(self):
+        import jalur
+        base = jalur.nama_aman("x" * 45)
+        self.assertEqual(len(jalur.dengan_akhiran(base, 2)), 40)
+        self.assertTrue(jalur.dengan_akhiran(base, 12).endswith("-12"))
+        # Kasus temuan Jenius: hasil salinan kedua di jalankan_job tetap beda sesudah nama_aman.
+        self.assertNotEqual(jalur.nama_aman(jalur.dengan_akhiran(base, 2)), base)
+
 
 def vo_dengan_saran():
     v = vo_sintetis()
