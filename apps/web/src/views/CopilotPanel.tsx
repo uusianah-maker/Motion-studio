@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { errorText } from '../lib';
 import { type Api, ApiError, type DiffItem, type EditPlan, type Project } from '../api';
 import { ErrorNotice } from '../ui';
 
@@ -35,6 +36,10 @@ export function CopilotPanel({
   const [error, setError] = useState<unknown>(null);
   const [working, setWorking] = useState(false);
   const [mode, setMode] = useState<'local' | 'auto' | 'ai'>('local');
+  /** Audit 14 Nov: why the ticked subset cannot be applied (the diff then shows nothing to apply). */
+  const [subsetProblem, setSubsetProblem] = useState<string | null>(null);
+  const projectRef = useRef(project.project_id);
+  projectRef.current = project.project_id;
 
   useEffect(() => {
     api.aiProviders().then((r) => setMode(r.settings.mode), () => undefined);
@@ -56,6 +61,7 @@ export function CopilotPanel({
   useEffect(() => {
     if (!plan || stale) return;
     const sel = checked.flatMap((c, i) => (c ? [i] : []));
+    setSubsetProblem(null);
     if (!sel.length) {
       setDiff([]);
       return;
@@ -63,7 +69,13 @@ export function CopilotPanel({
     let live = true;
     api.copilotPreview(project.project_id, plan.plan_id, sel).then(
       (d) => live && setDiff(d),
-      () => undefined,
+      // Not applicable as ticked (e.g. "add text where X was" without "delete X"): say so, show no
+      // diff, and keep "Terapkan" off — it used to show the full plan and then fail on apply.
+      (e) => {
+        if (!live) return;
+        setDiff([]);
+        setSubsetProblem(errorText(e));
+      },
     );
     return () => {
       live = false;
@@ -78,7 +90,9 @@ export function CopilotPanel({
     setDone(null);
     setPlan(null);
     try {
-      const r = await api.copilotPlan(project.project_id, { prompt, ...(selectedClipId ? { selected_clip_ids: [selectedClipId] } : {}), playhead_ms: Math.round(playheadMs) });
+      const pid = project.project_id;
+      const r = await api.copilotPlan(pid, { prompt, ...(selectedClipId ? { selected_clip_ids: [selectedClipId] } : {}), playhead_ms: Math.round(playheadMs) });
+      if (projectRef.current !== pid) return; // another project opened meanwhile: not its plan
       if (r.plan) {
         setPlan(r.plan);
         setDiff(r.diff);
@@ -204,7 +218,12 @@ export function CopilotPanel({
           </div>
           {stale && <div className="notice warn small">Proyek berubah sejak rencana ini dibuat. Buat rencana baru.</div>}
           <div className="row" style={{ marginTop: 8 }}>
-            <button className="btn primary" onClick={() => void apply()} disabled={working || busy || stale || !accepted.length}>
+            {subsetProblem && (
+              <div className="notice warn small" role="alert" aria-label="Langkah terpilih tidak bisa diterapkan">
+                Kombinasi langkah yang dicentang tidak bisa diterapkan: {subsetProblem}
+              </div>
+            )}
+            <button className="btn primary" onClick={() => void apply()} disabled={working || busy || stale || !accepted.length || !!subsetProblem}>
               Terapkan ({accepted.length})
             </button>
             <button className="btn" onClick={() => void reject()} disabled={working}>

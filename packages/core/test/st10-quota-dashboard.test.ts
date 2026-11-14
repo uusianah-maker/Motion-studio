@@ -93,7 +93,9 @@ describe('ST-10 storage dashboard + CLI', () => {
     const d = await getDashboard(ws);
     expect(d.gc.ok).toBe(true);
     expect(d.gc.candidates).toBe(0);
-    expect(d.gc.next_eligible).toEqual([{ version_id: waiting.version_id, eligible_at: clock.now() + 30 * DAY_MS }]);
+    expect(d.gc.next_eligible).toEqual([{ version_id: waiting.version_id, eligible_at: clock.now() + 30 * DAY_MS, filename: expect.any(String) }]);
+    expect(d.gc.next_eligible[0]!.filename).not.toBe(waiting.version_id); // audit 14 Nov: a name, not the id
+    expect((await getDashboard(ws, { audit_limit: 0 })).recent_audit).toEqual([]);
     expect(d.trash[0]).toMatchObject({ backup: 'unverified' });
     expect(d.pending_operations).toBe(0);
     expect(d.recent_audit.length).toBeGreaterThan(0);

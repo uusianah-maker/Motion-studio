@@ -175,7 +175,7 @@ export async function cleanupCache(ws: Workspace, input: { actor: Actor; target_
 
 export interface Dashboard {
   stats: StorageStats;
-  gc: Pick<ScanReport, 'ok' | 'errors' | 'summary'> & { candidates: number; next_eligible: { version_id: string; eligible_at: number }[] };
+  gc: Pick<ScanReport, 'ok' | 'errors' | 'summary'> & { candidates: number; next_eligible: { version_id: string; eligible_at: number; filename: string }[] };
   trash: { version_id: string; media_id: string; filename: string; size: number; trashed_at: number; original_rel_path: string; backup: string }[];
   pending_operations: number;
   corrupt_journal: number;
@@ -205,7 +205,8 @@ export async function getDashboard(ws: Workspace, opts: { disk?: { free_bytes: n
   const journal = await listJournal(ws);
   const next_eligible = scan.evaluations
     .filter((e) => e.state === 'UNREFERENCED_WAIT_30D' && e.eligible_at !== null)
-    .map((e) => ({ version_id: e.version_id, eligible_at: e.eligible_at! }))
+    // Audit 14 Nov: with the file's name — a bare version id told the team nothing.
+    .map((e) => ({ version_id: e.version_id, eligible_at: e.eligible_at!, filename: reg.media[reg.versions[e.version_id]?.media_id ?? '']?.display_name ?? reg.versions[e.version_id]?.original_name ?? e.version_id }))
     .sort((a, b) => a.eligible_at - b.eligible_at)
     .slice(0, 10);
   const all = await readAudit(ws);
@@ -216,6 +217,7 @@ export async function getDashboard(ws: Workspace, opts: { disk?: { free_bytes: n
     pending_operations: journal.filter((j) => j.entry).length,
     corrupt_journal: journal.filter((j) => !j.entry).length,
     backup: { verified, active_versions: active },
-    recent_audit: all.slice(-(opts.audit_limit ?? 20)),
+    // audit_limit 0 = none (slice(-0) used to return the whole log).
+    recent_audit: (opts.audit_limit ?? 20) > 0 ? all.slice(-(opts.audit_limit ?? 20)) : [],
   };
 }

@@ -159,6 +159,8 @@ export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }:
 export function GenerateView({ api, role = 'owner', projects, onOpenProject }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void }) {
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [brands, setBrands] = useState<BrandKit[]>([]);
+  /** Audit 14 Nov (sukma): "not loaded yet" is not "no brand". */
+  const [brandsLoaded, setBrandsLoaded] = useState(false);
   const [brandId, setBrandId] = useState('');
   const [target, setTarget] = useState('new');
   const [name, setName] = useState('');
@@ -180,6 +182,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
     void api.engineInfo().then((r) => setInstalled(r.installed), setError);
     void api.brands().then((r) => {
       setBrands(r.brands);
+      setBrandsLoaded(true);
       setBrandId((cur) => cur || r.default_id || r.brands[0]?.brand_id || '');
     }, setError);
   }, [api]);
@@ -390,7 +393,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
               ⚡ Susun draf otomatis
             </button>
             {upload !== null && <span className="muted small">Mengunggah {Math.round(upload * 100)}%…</span>}
-            {!brand && <span className="muted small">Buat brand dulu di menu Brand.</span>}
+            {!brand && <span className="muted small">{brandsLoaded ? 'Buat brand dulu di menu Brand.' : 'Memuat brand…'}</span>}
           </div>
         </section>
 

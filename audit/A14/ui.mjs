@@ -47,6 +47,7 @@ const variant = async (tag) => {
 };
 // Editor project: a video, two text clips (one with word timings + pop → word spans in the preview).
 const imp = await svc.importMedia({ sourcePath: await variant('lucy'), scope: { kind: 'shared' }, display_name: 'Lucy-8s.mp4', actor: 'user' });
+await core.createProject(ws, { project_id: 'cp', name: 'Uji Copilot Kosong' });
 await core.createProject(ws, { project_id: 'ed', name: 'Uji Audit Editor' });
 await svc.editTimeline({
   project_id: 'ed',
@@ -97,6 +98,8 @@ try {
   page.on('console', (m) => m.type() === 'error' && !/status of (4|5)\d\d|ERR_FAILED|ERR_CONNECTION/.test(m.text()) && errors.push(m.text()));
   await page.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
   const nav = page.getByRole('navigation', { name: 'Navigasi utama' });
+  await page.getByText('Uji Audit Editor').first().waitFor();
+  await page.getByText('Uji Audit Editor').first().click();
   await page.getByRole('heading', { name: 'Uji Audit Editor' }).waitFor();
 
   // ---- Editor
@@ -137,7 +140,48 @@ try {
   await page.getByRole('button', { name: '＋ Teks' }).click();
   const added = await until(async () => (await textCount()) === n0 + 2);
   check('A14-04 "+ Teks" dua kali di posisi yang sudah terisi: dua klip baru, tanpa error tumpang tindih', added && (await page.getByRole('alert').count()) === 0, `${await textCount()} klip teks`);
+  // A style change still waiting its 0,45 s when the clip is let go is saved, not dropped.
+  await page.locator('.track .clip', { hasText: 'Klip A' }).click();
+  await insp.getByLabel('Ukuran teks').waitFor();
+  const sizeBefore = clipOf(await proj(), 'Klip A').style?.size ?? null;
+  await insp.getByLabel('Ukuran teks').fill('12');
+  await page.locator('.track .clip', { hasText: 'Klip B' }).click(); // within 0,45 s
+  const kept = await until(async () => clipOf(await proj(), 'Klip A').style?.size === 12);
+  check('A14-14 Ubah ukuran lalu langsung pilih klip lain (<0,45 dtk): perubahan tetap tersimpan', kept, `${sizeBefore} → ${clipOf(await proj(), 'Klip A').style?.size}`);
+
+  // Copilot (in an empty project): a ticked subset that cannot be applied says so, "Terapkan" off.
+  await page.getByText('Uji Copilot Kosong').first().click();
+  await page.getByRole('heading', { name: 'Uji Copilot Kosong' }).waitFor();
+  await page.getByLabel('Perintah Copilot').fill('hook "Diskon 50%" 2 detik; subtitle "Cek keranjang" detik 2-5');
+  await page.getByRole('button', { name: 'Buat rencana' }).click();
+  const boxes = page.getByRole('checkbox', { name: /^Setujui: / });
+  if (await until(async () => (await boxes.count()) >= 2)) {
+    await page.route('**/copilot/plans/*/preview', (r) => r.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: { code: 'EDIT_INVALID', message: 'Klip saling tumpang tindih di track yang sama' } }) }), { times: 1 });
+    await boxes.first().uncheck();
+    const warned = await until(() => page.getByRole('alert', { name: 'Langkah terpilih tidak bisa diterapkan' }).isVisible());
+    check('A14-15 Copilot: centang sebagian yang tidak bisa diterapkan → diberi tahu, "Terapkan" mati', warned && (await page.getByRole('button', { name: /^Terapkan/ }).isDisabled()));
+    await page.getByRole('button', { name: /Tolak/ }).first().click().catch(() => undefined);
+  } else check('A14-15 Copilot membuat rencana 2 langkah', false, `${await boxes.count()} langkah`);
+  await page.getByText('Uji Audit Editor').first().click();
+  await page.getByRole('heading', { name: 'Uji Audit Editor' }).waitFor();
   await page.screenshot({ path: path.join(EVID, 'editor.png') });
+
+  // ---- Media: the upload queue survives leaving the page (and new files join the same queue).
+  await nav.getByRole('button', { name: /Media/ }).click();
+  await page.getByRole('heading', { name: 'Media' }).waitFor();
+  await page.route('**/api/media/import**', async (r) => {
+    await new Promise((res) => setTimeout(res, 1200));
+    await r.continue();
+  });
+  await page.getByLabel('Pilih file media').setInputFiles([await variant('antri-1'), await variant('antri-2')]);
+  await nav.getByRole('button', { name: /Editor/ }).click();
+  await page.getByRole('heading', { name: 'Uji Audit Editor' }).waitFor();
+  await nav.getByRole('button', { name: /Media/ }).click();
+  const rows = page.locator('.uploads .uploadRow');
+  const still = await until(async () => (await rows.count()) === 2);
+  const finished = await until(async () => (await rows.filter({ hasText: 'Selesai' }).count()) === 2, 30000);
+  check('A14-16 Media: antrean upload tetap terlihat setelah pindah halaman dan selesai semua (tanpa BUSY)', still && finished && (await page.getByText(/sedang berjalan/).count()) === 0, `${await rows.count()} baris`);
+  await page.unroute('**/api/media/import**');
 
   // ---- Trash: type the phrase key by key; a spent request offers a fresh one.
   await nav.getByRole('button', { name: /Trash/ }).click();
@@ -197,6 +241,8 @@ try {
     return (await r.json()).settings.budget.daily_usd === 0.5;
   });
   check('A14-10 AI: batas "0,5" (koma) tersimpan sebagai 0,5 USD', saved);
+  // The page reloads the saved settings into the form; wait for that before clearing the field.
+  await until(async () => (await page.getByLabel('Batas harian').inputValue()) === '0.5' && (await page.getByRole('button', { name: 'Simpan batas' }).isEnabled()));
   await page.getByLabel('Batas harian').fill('');
   check('A14-11 AI: batas kosong tidak bisa disimpan (bukan jadi 0 yang memblokir AI)', await page.getByRole('button', { name: 'Simpan batas' }).isDisabled());
 
@@ -240,6 +286,22 @@ try {
   const recovered = await until(() => page.getByRole('region', { name: 'Rencana edit' }).isVisible(), 30000);
   check('A14-12 Progres mesin: satu cek status gagal (koneksi putus) → tetap lanjut sampai rencana siap', failed === 1 && recovered, `gagal=${failed}`);
 
+  // Generate: while the brand list loads, "Memuat brand…" — not "Buat brand dulu".
+  {
+    const slow = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    await slow.route('**/api/brands', async (r) => {
+      await new Promise((res) => setTimeout(res, 1500));
+      await r.continue();
+    });
+    await slow.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
+    await slow.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Generate/ }).click();
+    await slow.getByRole('heading', { name: 'Generate Otomatis' }).waitFor();
+    const loading = await slow.getByText('Memuat brand…').isVisible();
+    const wrong = await slow.getByText('Buat brand dulu di menu Brand.').count();
+    check('A14-17 Generate: saat brand dimuat tampil "Memuat brand…", bukan "Buat brand dulu"', loading && wrong === 0);
+    await slow.close();
+  }
+
   // Phone width: the purge dialog fits.
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   phone.on('pageerror', (e) => errors.push(String(e)));
@@ -250,6 +312,14 @@ try {
   await phone.getByLabel('Frasa konfirmasi').click();
   await phone.keyboard.type('HAPUS', { delay: 30 });
   check('A14-13 HP: frasa diketik per huruf tetap di kotak', (await phone.getByLabel('Frasa konfirmasi').inputValue()) === 'HAPUS');
+  await phone.keyboard.press('Escape');
+  await phone.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Editor/ }).click();
+  await phone.getByRole('button', { name: /^Transkrip / }).first().waitFor();
+  const cc = phone.getByRole('button', { name: /^Transkrip / }).first();
+  await cc.scrollIntoViewIfNeeded();
+  const box = await cc.boundingBox();
+  const vw = await phone.evaluate(() => innerWidth);
+  check('A14-18 HP Editor: tombol CC media tidak terpotong layar', !!box && box.x >= 0 && box.x + box.width <= vw + 1, box ? `${Math.round(box.x + box.width)} / ${vw}` : 'tidak ada');
   await phone.screenshot({ path: path.join(EVID, 'trash-phone.png') });
   check('A14-99 0 error JS', errors.length === 0, errors.join(' | '));
 } catch (e) {

@@ -270,7 +270,7 @@ export interface Dashboard {
     disk: { free_bytes: number; total_bytes: number } | null;
     warnings: { code: string; advice: string }[];
   };
-  gc: { ok: boolean; errors: string[]; summary: Record<string, number>; candidates: number; next_eligible: { version_id: string; eligible_at: number }[] };
+  gc: { ok: boolean; errors: string[]; summary: Record<string, number>; candidates: number; next_eligible: { version_id: string; eligible_at: number; filename?: string }[] };
   trash: { version_id: string; filename: string; size: number; trashed_at: number }[];
   pending_operations: number;
   corrupt_journal: number;

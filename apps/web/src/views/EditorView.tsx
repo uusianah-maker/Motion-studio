@@ -504,7 +504,7 @@ export function EditorView({
             usable.map((m) => {
               const cur = m.versions.find((v) => v.version_id === m.current_version_id);
               return (
-                <div className="assetRow" key={m.media_id}>
+                <div className="mediaRow" key={m.media_id}>
                   <span title={m.display_name}>
                     {m.display_name}
                     <small className="muted" style={{ display: 'block' }}>
@@ -512,7 +512,7 @@ export function EditorView({
                       {cur?.probe ? ` · ${formatDuration(cur.probe.duration_ms)}` : cur?.probe === null ? ' · bukan video/audio' : ''}
                     </small>
                   </span>
-                  <span style={{ display: 'flex', gap: 4 }}>
+                  <span className="mediaAdd">
                     <button className="btn small" disabled={locked || !project || cur?.probe === null} onClick={() => addToTimeline(m, 'video')} aria-label={`Tambah ${m.display_name} ke linimasa`}>
                       ＋ Video
                     </button>

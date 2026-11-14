@@ -208,8 +208,10 @@ table.list tr:hover td { background: #191d29; }
 .sidePanel { grid-column: 2; grid-row: 2 / 4; border-left: 1px solid var(--line); background: #161923; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
 .panelHead { padding: 15px 17px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
 .panelBody { padding: 14px 17px; display: flex; flex-direction: column; gap: 12px; }
-.assetRow { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid #222736; color: #c3cbdc; font-size: 12px; }
-.assetRow span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mediaRow { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid #222736; color: #c3cbdc; font-size: 12px; flex-wrap: wrap; }
+.mediaRow > span:first-child { min-width: 0; flex: 1 1 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Audit 14 Nov: on a phone the five add buttons wrap instead of pushing "CC" off the screen. */
+.mediaAdd { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
 .timeline { grid-column: 1; grid-row: 3; background: #171b26; border-top: 1px solid #303545; overflow: auto; min-width: 0; }
 .timelineTop { height: 47px; display: flex; align-items: center; gap: 12px; padding: 0 17px; border-bottom: 1px solid #303545; }
 .tracks { padding: 6px 14px 13px; }

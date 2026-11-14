@@ -81,16 +81,25 @@ export const AREA_LABEL: Record<string, string> = {
 };
 
 /** Purge blocker codes from the server → plain explanation. */
+const PROTECTED_BY: Record<string, string> = { CURRENT: 'versi yang sedang dipakai', KEEP: 'ditandai Simpan', PIN: 'disematkan', LEGAL_HOLD: 'ditahan (legal hold)' };
 export function blockerText(code: string): string {
   if (code.startsWith('NOT_IN_TRASH')) return 'Tidak ada di Trash';
-  if (code === 'REFERENCED') return 'Masih dipakai proyek';
-  if (code.startsWith('PROTECTED')) return `Dilindungi ${code.slice('PROTECTED'.length).trim()}`;
+  // Audit 14 Nov: no raw codes for the team.
+  if (code === 'REFERENCED') return 'Masih dipakai (proyek, Brand Kit, atau job)';
+  if (code.startsWith('PROTECTED')) {
+    const why = code.slice('PROTECTED'.length).replace(/[()]/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+    return `Dilindungi: ${why.map((w) => PROTECTED_BY[w] ?? w).join(', ') || 'aturan penyimpanan'}`;
+  }
+  if (code === 'MANIFEST_MISMATCH') return 'Catatan file tidak cocok dengan isinya — dihentikan demi aman';
+  if (code === 'NOT_A_FILE') return 'Bukan file biasa di disk';
+  if (code.startsWith('UNVERIFIABLE')) return 'File tidak bisa diperiksa di disk';
+  if (code === 'NOT_FOUND') return 'Tidak dikenal (mungkin sudah dihapus)';
   if (code === 'BUSY') return 'Sedang dipakai proses lain';
   if (code === 'INDEX_INVALID') return 'Data dependensi rusak — dihentikan demi aman';
   if (code === 'JOURNAL_CORRUPT') return 'Ada operasi tertunda yang tidak terbaca';
   if (code === 'HASH_MISMATCH') return 'Isi file berubah';
   if (code === 'HARD_LINKED') return 'File punya salinan link lain';
-  return code;
+  return `Tidak bisa dihapus (${code})`;
 }
 
 export function ellipsize(s: string, max: number): string {

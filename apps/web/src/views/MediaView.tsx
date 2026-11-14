@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Api, ApiError, type Media, type ProjectSummary, type Role } from '../api';
-import { formatBytes, formatDate } from '../lib';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { Api, Media, ProjectSummary, Role } from '../api';
+import { errorText, formatBytes, formatDate } from '../lib';
 import { ErrorNotice, StatusBadges } from '../ui';
 
 interface UploadItem {
@@ -14,15 +14,37 @@ interface UploadItem {
 
 let seq = 0;
 
+/**
+ * Audit 14 Nov: the upload queue lives outside the page. Leaving Media and coming back shows the
+ * uploads still running (they used to vanish from view and keep going), and new files join the
+ * SAME one-at-a-time queue instead of starting a second one that the server refuses (BUSY).
+ */
+const uploadStore = {
+  items: [] as UploadItem[],
+  /** Uploads finished so far: the page reloads its list when this changes. */
+  finished: 0,
+  queue: Promise.resolve() as Promise<void>,
+  listeners: new Set<() => void>(),
+};
+const emitUploads = () => uploadStore.listeners.forEach((l) => l());
+const setUploadItems = (fn: (list: UploadItem[]) => UploadItem[]) => {
+  uploadStore.items = fn(uploadStore.items);
+  emitUploads();
+};
+const subscribeUploads = (l: () => void) => {
+  uploadStore.listeners.add(l);
+  return () => uploadStore.listeners.delete(l);
+};
+
 export function MediaView({ api, projects, selectedProject, role = 'owner' }: { api: Api; projects: ProjectSummary[]; selectedProject: string | null; role?: Role }) {
   const [media, setMedia] = useState<Media[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [target, setTarget] = useState<string>('shared');
-  const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const uploads = useSyncExternalStore(subscribeUploads, () => uploadStore.items);
+  const finished = useSyncExternalStore(subscribeUploads, () => uploadStore.finished);
   const [over, setOver] = useState(false);
   const [filter, setFilter] = useState<'all' | 'shared' | string>('all');
   const input = useRef<HTMLInputElement>(null);
-  const queue = useRef<Promise<void>>(Promise.resolve());
   const usable = projects.filter((p) => !p.error);
 
   const load = useCallback(async () => {
@@ -36,29 +58,30 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, finished]);
 
   useEffect(() => {
     if (selectedProject && projects.some((p) => !p.error && p.project_id === selectedProject)) setTarget(`project:${selectedProject}`);
   }, [selectedProject, projects]);
 
-  const patch = (id: number, p: Partial<UploadItem>) => setUploads((list) => list.map((u) => (u.id === id ? { ...u, ...p } : u)));
+  const patch = (id: number, p: Partial<UploadItem>) => setUploadItems((list) => list.map((u) => (u.id === id ? { ...u, ...p } : u)));
 
   /** Files upload one after another (large videos would otherwise compete for disk and bandwidth). */
   const addFiles = (files: FileList | File[]) => {
     const scope = target === 'shared' ? ({ kind: 'shared' } as const) : ({ kind: 'project', project_id: target.slice('project:'.length) } as const);
     for (const file of Array.from(files)) {
       const item: UploadItem = { id: ++seq, name: file.name, size: file.size, progress: 0, state: 'waiting' };
-      setUploads((list) => [item, ...list].slice(0, 30));
-      queue.current = queue.current.then(async () => {
+      setUploadItems((list) => [item, ...list].slice(0, 30));
+      uploadStore.queue = uploadStore.queue.then(async () => {
         patch(item.id, { state: 'uploading' });
         try {
           const r = await api.importFile(file, scope, (f) => patch(item.id, { progress: f }));
           patch(item.id, { state: r.duplicate ? 'duplicate' : 'done', progress: 1, message: r.duplicate ? 'Sudah ada — memakai versi yang sama' : undefined });
-          await load();
         } catch (e) {
-          patch(item.id, { state: 'error', message: e instanceof ApiError ? e.message : 'Upload gagal' });
+          patch(item.id, { state: 'error', message: errorText(e) });
         }
+        uploadStore.finished++;
+        emitUploads();
       });
     }
   };
@@ -136,6 +159,7 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
                       <div className="bar" aria-label={`Progres ${Math.round(u.progress * 100)}%`}>
                         <span style={{ width: `${Math.round(u.progress * 100)}%` }} />
                       </div>
+                      {u.state === 'uploading' && u.progress >= 1 && <small className="muted">Memproses di server…</small>}
                     </span>
                   ) : (
                     <span className={`badge ${u.state === 'error' ? 'bad' : u.state === 'duplicate' ? 'warn' : 'ok'}`} title={u.message}>

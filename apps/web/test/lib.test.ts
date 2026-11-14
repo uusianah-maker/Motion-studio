@@ -23,10 +23,13 @@ describe('web lib', () => {
     expect(relativeDays(now - 1, now)).toBe('sudah lewat');
   });
   it('explains purge blockers in plain words', () => {
-    expect(blockerText('REFERENCED')).toBe('Masih dipakai proyek');
+    expect(blockerText('REFERENCED')).toBe('Masih dipakai (proyek, Brand Kit, atau job)');
     expect(blockerText('NOT_IN_TRASH (active)')).toBe('Tidak ada di Trash');
-    expect(blockerText('PROTECTED (CURRENT, KEEP)')).toBe('Dilindungi (CURRENT, KEEP)');
-    expect(blockerText('SOMETHING_NEW')).toBe('SOMETHING_NEW');
+    // Audit 14 Nov: plain words instead of raw codes.
+    expect(blockerText('PROTECTED (CURRENT, KEEP)')).toBe('Dilindungi: versi yang sedang dipakai, ditandai Simpan');
+    expect(blockerText('MANIFEST_MISMATCH')).toBe('Catatan file tidak cocok dengan isinya — dihentikan demi aman');
+    expect(blockerText('UNVERIFIABLE: ENOENT')).toBe('File tidak bisa diperiksa di disk');
+    expect(blockerText('SOMETHING_NEW')).toBe('Tidak bisa dihapus (SOMETHING_NEW)');
   });
   it('ellipsizes long names', () => {
     expect(ellipsize('abcdef', 4)).toBe('abc…');

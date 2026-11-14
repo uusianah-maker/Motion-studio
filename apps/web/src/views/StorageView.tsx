@@ -105,7 +105,10 @@ export function StorageView({ api }: { api: Api }) {
                   <tbody>
                     {d.gc.next_eligible.map((n) => (
                       <tr key={n.version_id}>
-                        <td className="mono">{n.version_id}</td>
+                        <td>
+                          {n.filename ?? n.version_id}
+                          {n.filename && <small className="mono muted" style={{ display: 'block' }}>{n.version_id}</small>}
+                        </td>
                         <td>{formatDate(n.eligible_at)}</td>
                         <td className="muted">{relativeDays(n.eligible_at, now)}</td>
                       </tr>

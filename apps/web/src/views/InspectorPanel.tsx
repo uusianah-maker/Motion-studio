@@ -82,22 +82,39 @@ export function InspectorPanel({
     onDraft(null);
   }, [clip.clip_id, JSON.stringify(clip.style ?? {})]);
   useEffect(() => setVol(Math.round((clip.volume ?? 1) * 100)), [clip.clip_id, clip.volume]);
+  // Audit 14 Nov: a change still waiting its 0,45 s when the clip is let go is SAVED, not dropped
+  // (the preview kept showing it while the render used the old value).
+  const pendingStyle = useRef<Partial<TextStyle> | null>(null);
+  const pendingVol = useRef<number | null>(null);
+  const onDraftRef = useRef(onDraft);
+  onDraftRef.current = onDraft;
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
       if (volTimer.current) clearTimeout(volTimer.current);
+      const ops: EditOp[] = [];
+      if (pendingStyle.current) ops.push({ op: 'set_style', clip_id: clip.clip_id, style: pendingStyle.current });
+      if (pendingVol.current !== null) ops.push({ op: 'set_volume', clip_id: clip.clip_id, volume: pendingVol.current });
+      if (ops.length) {
+        const go = () => (busyRef.current ? void setTimeout(go, 150) : void onEditRef.current(ops));
+        go();
+      }
+      onDraftRef.current(null);
     },
-    [],
+    // Runs once, on unmount (the panel is keyed by clip id).
+    [clip.clip_id],
   );
   /** Volume slider: one `set_volume` edit after the hand stops (one undo step). */
   const changeVolume = (pct: number) => {
     setVol(pct);
     if (volTimer.current) clearTimeout(volTimer.current);
+    pendingVol.current = pct / 100;
     const fire = () => {
       if (busyRef.current) {
         volTimer.current = setTimeout(fire, 250);
         return;
       }
+      pendingVol.current = null;
       void onEditRef.current([{ op: 'set_volume', clip_id: clip.clip_id, volume: pct / 100 }]);
     };
     volTimer.current = setTimeout(fire, 450);
@@ -116,11 +133,13 @@ export function InspectorPanel({
 
   const commitStyle = (next: Partial<TextStyle>) => {
     if (timer.current) clearTimeout(timer.current);
+    pendingStyle.current = next;
     const fire = () => {
       if (busyRef.current) {
         timer.current = setTimeout(fire, 250);
         return;
       }
+      pendingStyle.current = null;
       void onEditRef.current([{ op: 'set_style', clip_id: clip.clip_id, style: next }]);
     };
     timer.current = setTimeout(fire, 450);
