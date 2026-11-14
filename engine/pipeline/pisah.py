@@ -15,10 +15,12 @@ Mode job (--job): job.json {"mode": "pisah", "batch", "video_saja"?, "shot_tikto
   Sumber = file video di <job_dir>/masuk/ (diunggah app). Mesin menyalinnya ke konten/1-upload/<batch>,
   memisah, lalu membuat / melengkapi Shot Library (shots.json + thumbnail) untuk footage baru.
   Progres: satu JSON per baris di stdout {tahap, persen, pesan}. Hasil: <job_dir>/out/pisah.json.
-  Kode keluar: 0 selesai, 2 ditolak (alasan di out/pisah.json), 1 gagal teknis.
+  Kode keluar: 0 selesai, 2 ditolak, 1 gagal teknis (status + alasan di out/pisah.json, progres "ditolak"/"gagal").
+  Duplikat unggahan dikenali dari sidik isi (bukan nama/ukuran). Tanpa GPU, Demucs otomatis memakai CPU.
 """
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -26,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -36,12 +39,45 @@ EXT = {".mp4", ".mov"}
 NAMA_BATCH = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
 
 
+def video_valid(path: Path) -> bool:
+    res = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    )
+    return res.returncode == 0 and bool(res.stdout.strip())
+
+
 def has_audio(path: Path) -> bool:
     res = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
         capture_output=True, text=True,
     )
     return bool(res.stdout.strip())
+
+
+def sidik(p: Path) -> str:
+    """Sidik cepat isi file: ukuran + SHA-256 dari 4 MB awal dan 4 MB akhir (video besar tetap cepat)."""
+    n = p.stat().st_size
+    h = hashlib.sha256(str(n).encode())
+    with p.open("rb") as f:
+        h.update(f.read(4 << 20))
+        if n > 8 << 20:
+            f.seek(-(4 << 20), 2)
+            h.update(f.read())
+    return h.hexdigest()
+
+
+_CUDA = None
+
+
+def ada_cuda() -> bool:
+    """GPU untuk Demucs tersedia? Dicek sekali lewat Python Demucs; tanpa GPU otomatis pakai CPU."""
+    global _CUDA
+    if _CUDA is None:
+        r = subprocess.run([str(DEMUCS_PY), "-c", "import torch;print(torch.cuda.is_available())"],
+                           capture_output=True, text=True)
+        _CUDA = r.stdout.strip() == "True"
+    return _CUDA
 
 
 def _log(msg: str, job: bool) -> None:
@@ -83,7 +119,10 @@ def pisah_batch(batch: str, video_saja=False, cpu=False, progres=None, job=False
 
     _log(f"{len(videos)} video, {len(todo_stem)} perlu dipisah vokal/musik", job)
     if todo_stem:
-        progres("stem_splitter", 45, f"Demucs: {len(todo_stem)} audio")
+        if not cpu and not ada_cuda():
+            cpu = True
+            _log("  ! GPU tidak tersedia: Demucs memakai CPU (lebih lambat)", job)
+        progres("stem_splitter", 45, f"Demucs: {len(todo_stem)} audio ({'CPU' if cpu else 'GPU'})")
         tmp = tempfile.mkdtemp(dir=out, prefix="_demucs-")
         try:
             subprocess.run(
@@ -134,6 +173,12 @@ def jalankan_job(job_dir: Path) -> int:
     progres("cek_input", 2, batch)
     masuk = job_dir / "masuk"
     files = sorted(p for p in masuk.iterdir() if p.is_file() and p.suffix.lower() in EXT) if masuk.is_dir() else []
+    # File rusak / bukan video tidak ikut disalin: dilaporkan per file, bukan menggagalkan job.
+    file_ditolak = [{"file": f.name, "alasan": "bukan video yang bisa dibaca (rusak / format tidak dikenal)"}
+                    for f in files if not video_valid(f)]
+    files = [f for f in files if f.name not in {x["file"] for x in file_ditolak}]
+    if file_ditolak and not files and not (KONTEN / "1-upload" / batch).is_dir():
+        return tolak("semua unggahan rusak / bukan video: " + ", ".join(x["file"] for x in file_ditolak))
     upload = KONTEN / "1-upload" / batch
     if not files and not upload.is_dir():
         return tolak("tidak ada video (.mp4/.mov) di masuk/ dan batch belum ada")
@@ -145,7 +190,8 @@ def jalankan_job(job_dir: Path) -> int:
         progres("salin", 2 + int(8 * i / max(1, len(files))), f.name)
         tujuan = upload / f.name
         n = 2
-        while tujuan.exists() and tujuan.stat().st_size != f.stat().st_size:
+        sf = sidik(f)
+        while tujuan.exists() and sidik(tujuan) != sf:
             tujuan = upload / f"{f.stem}-{n}{f.suffix.lower()}"
             n += 1
         if not tujuan.exists():
@@ -172,7 +218,7 @@ def jalankan_job(job_dir: Path) -> int:
 
     lib = json.loads(lib_path.read_text(encoding="utf-8")) if lib_path.exists() else {"shots": []}
     doc = {"schema": "pisah/1", "status": "selesai", "batch": batch, "dipisah_pada": int(time.time() * 1000),
-           "video_saja": bool(job.get("video_saja")), "hasil": hasil,
+           "video_saja": bool(job.get("video_saja")), "hasil": hasil, "file_ditolak": file_ditolak,
            "shot_library": str(lib_path.resolve()).replace("\\", "/") if lib_path.exists() else None,
            "jumlah_shot": len(lib["shots"])}
     (out_dir / "pisah.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -194,7 +240,15 @@ def main() -> None:
         except SystemExit:
             raise
         except Exception as e:  # gagal teknis: kode 1, runner boleh mencoba ulang
-            print(f"gagal: {e!r}", file=sys.stderr)
+            traceback.print_exc()
+            alasan = f"{type(e).__name__}: {e}"[:300]
+            try:
+                out = Path(args.job) / "out"
+                out.mkdir(parents=True, exist_ok=True)
+                (out / "pisah.json").write_text(json.dumps({"schema": "pisah/1", "status": "gagal", "alasan": alasan},
+                                                           ensure_ascii=False, indent=1), encoding="utf-8")
+            finally:
+                print(json.dumps({"tahap": "gagal", "persen": 100, "pesan": alasan}, ensure_ascii=False), flush=True)
             sys.exit(1)
     if not args.batch:
         ap.error("butuh nama batch atau --job")
