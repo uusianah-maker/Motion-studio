@@ -39,6 +39,8 @@ def _durasi_file_ms(path: Path) -> int | None:
 
 
 # SFX bawaan mesin -> tag kejadian di library aset brand (urutan = prioritas).
+from efek_otomatis import STEM_KE_JENIS, pilih_sfx  # noqa: E402
+
 TAG_SFX = {"pop": ["kata-kunci", "teks-muncul"], "whoosh": ["transisi", "teks-muncul"]}
 
 
@@ -250,8 +252,11 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     # 5. SFX di track `sfx` (U3a) dengan volume; dari library brand, kalau tidak ada: SFX bawaan mesin.
     aset_lokal = {}
     sfx = sorted(props.get("sfx", []), key=lambda s: s["atMs"])
+    seed = str((props.get("hook") or {}).get("text", "")) if isinstance(props.get("hook"), dict) else str(props.get("hook") or "")
     for i, s in enumerate(sfx):
-        brand = pilih_sfx_brand(bk, Path(s["src"]).stem)
+        stem = Path(s["src"]).stem
+        # SFX Library brand dengan durasi pas + bervariasi (efek_otomatis); dulu aset pertama = klik 12 ms -> dibuang.
+        brand = pilih_sfx(bk.get("aset", []), STEM_KE_JENIS.get(stem, "pop"), i, seed, bk.get("sfx_dilarang", []))
         if brand:
             kunci, dur = brand["kunci"], brand.get("durasi_ms") or 300
         else:
