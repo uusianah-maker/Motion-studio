@@ -11,7 +11,8 @@ Progres: satu JSON per baris di stdout. Kode keluar: 0 berhasil, 2 ditolak (tida
 job.json (mode batch) yang dibaca:
   batch, jumlah, tujuan, seed, izinkan_musik_tanpa_lisensi, brief.produk, brief.placement, brand_kit,
   opsional: mode_ops (kompat|u3), hak_pakai_jelas (default false), akun_sendiri, shot_tiktok,
-  buang_otomatis (default [] = tidak ada kalimat VO dibuang), batas_durasi (default null = tanpa batas).
+  buang_otomatis (default [] = tidak ada kalimat VO dibuang), batas_durasi (default null = tanpa batas),
+  vo_batch (VO dari batch lain), kecualikan_shot ([id shot] yang tidak boleh dipakai; disimpan di sisi app).
 """
 
 import json
@@ -240,6 +241,17 @@ def path_media(path: str) -> str:
     return str(real).replace("\\", "/")
 
 
+def kalimat_varian(kalimat_list, sus) -> list:
+    """[{teks, dari, sampai, shot:[id]}], detik di timeline varian. Potongan tanpa id shot ditulis 'footage@in'."""
+    res = []
+    for k, vk in zip(kalimat_list, sus["vo_klip"]):
+        a, b = vk["start"], vk["start"] + vk["dur"]
+        ids = [p["shot"] or f"{p['footage']}@{p['in']:.1f}" for p in sus["potongan"]
+               if p["start"] < b - 1e-3 and p["start"] + p["dur"] > a + 1e-3]
+        res.append({"teks": k["teks"], "dari": round(a, 3), "sampai": round(b, 3), "shot": list(dict.fromkeys(ids))})
+    return res
+
+
 def jaccard(a: set, b: set) -> float:
     return len(a & b) / max(1, len(a | b))
 
@@ -262,6 +274,7 @@ def jalankan(job_dir: Path) -> int:
     izin_tanpa = bool(job.get("izinkan_musik_tanpa_lisensi", False))
     hak_jelas = bool(job.get("hak_pakai_jelas", False))
     mode_ops = job.get("mode_ops", "kompat")
+    kecuali = frozenset(job.get("kecualikan_shot", []))
 
     progres("cek_input", 2, batch)
     bk_path = job_dir / job.get("brand_kit", "brand_kit.json")
@@ -325,7 +338,7 @@ def jalankan(job_dir: Path) -> int:
             continue
         m = musik_mod.pilih(mlib, tujuan, rv["durasi_ucapan"] + TAHAN, rng, m_pakai)
         sus = matcher.susun_shot(rv, lib, footage_boleh, rng, m["ketukan"] if m else None, Counter(g_pakai),
-                                 boleh_teks=hak_jelas)
+                                 boleh_teks=hak_jelas, kecuali=kecuali)
         # Shot tidak boleh melewati ujung file sumber.
         for p in sus["potongan"]:
             dmax = lib["footage"][p["footage"]]["durasi"]
@@ -403,6 +416,14 @@ def jalankan(job_dir: Path) -> int:
             peringatan.append({"level": "block" if sb["jenis"].startswith("kata terlarang") else "warn",
                                "jenis": "saran_buang", "detik": round(sb["dari"] + geser, 2),
                                "teks": sb["teks"], "alasan": sb["jenis"]})
+        # Potongan sinkron tanpa shot (cadangan) bisa jatuh di rentang shot yang dikecualikan: laporkan.
+        rentang_x = [s for s in lib["shots"] if s["id"] in kecuali]
+        for p in sus["potongan"]:
+            kena = [s["id"] for s in rentang_x if s["footage"] == p["footage"]
+                    and p["in"] < s["sampai"] and p["in"] + p["dur"] > s["dari"]]
+            if kena:
+                peringatan.append({"level": "block", "jenis": "shot_dikecualikan", "detik": p["start"],
+                                   "teks": "memakai bagian shot yang dikecualikan: " + ", ".join(kena)})
         if bukan_iklan:
             peringatan.append({"level": "block", "jenis": "musik_tanpa_lisensi",
                                "teks": "musik dari stem video lain (uji saja), bukan untuk iklan"})
@@ -457,6 +478,8 @@ def jalankan(job_dir: Path) -> int:
             "footage": sorted({p["footage"] for p in sus["potongan"]}),
             "musik": m["kunci"] if m else None, "durasi": v["durasi"], "cta": v["cta"],
             "status": "usul", "bukan_iklan": bukan_iklan, "qc_lulus": q["lulus"],
+            # Untuk pratinjau di app: kalimat VO di timeline varian + shot yang tampil selama kalimat itu.
+            "kalimat": kalimat_varian(rv["kalimat"], sus),
             "folder": f"out/{v['id']}",
         })
     batch_json = {

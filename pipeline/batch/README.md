@@ -84,3 +84,15 @@ Cek dengan validator asli Motion Studio: `node pipeline/validasi_ops.mjs <job_di
 | `watermark` per footage | Posisi awal/akhir + detik pindah, footer, dan `akun` (@handle dari OCR) sebagai petunjuk hak pakai |
 | `tag` | Topik dari ucapan kreator di detik itu (anti_kusut, bahan, high_waist, warna, styling, cta, ...) |
 | `koreksi` | Tim boleh menulis `"koreksi": {"wajah_bicara": false}` di satu shot; dipertahankan saat Shot Library dijalankan ulang |
+
+## Antarmuka untuk Motion Studio (app tidak menulis ke folder mesin)
+
+| Perintah | Isi | Keluaran |
+|---|---|---|
+| `pipeline/batch/daftar.py` (read-only) | Daftar batch untuk dropdown | stdout `{"schema":"daftar-batch/1","batch":[{batch, upload, footage, vo, musik, dipisah, dipisah_pada, shot_library, jumlah_shot, thumb, siap_batch}]}` |
+| `pipeline/pisah.py --job <job_dir>` | job.json `{"mode":"pisah","batch","video_saja"?,"shot_tiktok"?}`, video unggahan di `<job_dir>/masuk/` | Disalin ke `konten/1-upload/<batch>` (nama sama + isi beda → `-2`), dipisah, Shot Library + thumbnail dibuat untuk footage baru. Progres JSON-lines. `out/pisah.json` `{schema:"pisah/1", status, batch, dipisah_pada, video_saja, hasil:[{file, video, vokal, musik}], shot_library, jumlah_shot}`. Kode 0 / 2 ditolak / 1 gagal |
+| `pipeline/batch/perencana.py <job_dir>` | job.json batch + `kecualikan_shot: [id]` (pilihan tim, disimpan di app) | Shot itu tidak dipakai (b-roll maupun sinkron). Per varian di `batch.json`: `kalimat: [{teks, dari, sampai, shot:[id]}]` (detik di timeline varian) |
+
+`shots.json` per shot kini punya `thumb`: path absolut JPG (lebar 270) di `konten/2-dipisah/<batch>/thumb/<footage>__NN.jpg`.
+Batch lama dilengkapi dengan `shotlib.py <batch> --thumb-saja` (tanpa analisis ulang).
+Koreksi label dari app (nanti): lewat job.json `koreksi_shot`, bukan menulis `shots.json`.

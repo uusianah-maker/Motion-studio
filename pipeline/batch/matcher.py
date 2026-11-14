@@ -51,11 +51,12 @@ def _snap(t: float, beats: list[float], batas: tuple[float, float]) -> float:
 
 def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random.Random,
                beats: list[float] | None = None, global_pakai: Counter | None = None,
-               boleh_teks: bool = False) -> dict:
+               boleh_teks: bool = False, kecuali: set[str] | frozenset = frozenset()) -> dict:
     """Return {"potongan": [...], "durasi": detik timeline, "vo_klip": [...], "rasio_sinkron": x}.
 
     boleh_teks: shot ber-teks bawaan boleh jadi b-roll karena teksnya ikut di-blur (hak pakai jelas).
     Kalau footage VO tidak ada di Shot Library (jalur VO: gambar dari batch lain), semua potongan b-roll.
+    kecuali: id shot yang dikecualikan tim (job.kecualikan_shot): tidak dipakai sebagai b-roll maupun sinkron.
     """
     global_pakai = global_pakai if global_pakai is not None else Counter()
     fid = rencana_vo["vo"]
@@ -68,8 +69,8 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
     broll_pool = [s for s in shots if s["footage"] != fid and s["footage"] in footage_boleh
                   and not s["wajah_bicara"] and s["framing"] != "wajah_dekat"
                   and (boleh_teks or not s["teks_bawaan"]) and not s["buram"] and not s.get("kosong")
-                  and s["sampai"] - s["dari"] >= MIN_POTONG]
-    own = [s for s in shots if s["footage"] == fid and not s["buram"]]
+                  and s["sampai"] - s["dari"] >= MIN_POTONG and s["id"] not in kecuali]
+    own = [s for s in shots if s["footage"] == fid and not s["buram"] and s["id"] not in kecuali]
     dipakai = Counter()
     potongan, vo_klip = [], []
     t_out = 0.0

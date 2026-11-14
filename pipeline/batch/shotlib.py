@@ -4,7 +4,7 @@ Pakai (dari D:\\VIBECODING\\remotion, Python Batch Remix punya OpenCV):
   D:\\VIBECODING\\tools\\demucs-venv\\Scripts\\python pipeline\\batch\\shotlib.py 2026-11-13_video-winning
 
 Butuh hasil pipeline/pisah.py: konten/2-dipisah/<batch>/video-bisu/ dan vokal/.
-Menulis konten/2-dipisah/<batch>/shots.json. Label dibuat dengan aturan (tanpa AI) dan boleh
+Menulis konten/2-dipisah/<batch>/shots.json + thumb/<footage>__NN.jpg (1 frame tengah tiap shot, 270x480). Label dibuat dengan aturan (tanpa AI) dan boleh
 dikoreksi tim: shot yang punya "koreksi": {...} di shots.json lama dipertahankan saat dijalankan ulang.
 
 Label per shot:
@@ -36,6 +36,7 @@ MAX_SHOT = 3.0  # detik; shot panjang dipecah supaya label tetap lokal
 MIN_SHOT = 0.6
 WAJAH_KECIL = 0.07  # tinggi wajah < 7% frame: bibir tidak terbaca, aman dipakai lintas kreator
 AW, AH = 288, 512  # resolusi analisis
+THUMB_W = 270  # lebar thumbnail shot (tinggi ikut rasio sumber)
 
 # Kotak watermark TikTok & footer (pecahan lebar/tinggi), diukur dari batch 2026-11-13.
 WM_KIRI = (0.0, 0.425, 0.34, 0.55)
@@ -322,6 +323,31 @@ def label_shot(rows, words, a, b, teks_lain, cek_kosong=False):
     }
 
 
+def thumb_id(sid: str) -> str:
+    """Nama file thumbnail aman untuk URL: '#' di id shot diganti '__'."""
+    return sid.replace("#", "__")
+
+
+def tulis_thumbs(video: Path, shots: list, thumb_dir: Path) -> dict:
+    """Satu JPG per shot dari frame tengahnya. File yang sudah ada tidak dibuat ulang."""
+    thumb_dir.mkdir(exist_ok=True)
+    cap = cv2.VideoCapture(str(video))
+    hasil = {}
+    for sid, a, b in shots:
+        out = thumb_dir / f"{thumb_id(sid)}.jpg"
+        if not out.exists():
+            cap.set(cv2.CAP_PROP_POS_MSEC, (a + b) / 2 * 1000)
+            ok, fr = cap.read()
+            if not ok:
+                continue
+            h, w = fr.shape[:2]
+            fr = cv2.resize(fr, (THUMB_W, int(round(h * THUMB_W / w))), interpolation=cv2.INTER_AREA)
+            cv2.imwrite(str(out), fr, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        hasil[sid] = str(out.resolve()).replace("\\", "/")  # path absolut (kontrak §8)
+    cap.release()
+    return hasil
+
+
 def ensure_transcript(batch_dir: Path, name: str) -> Path:
     out = batch_dir / "transkrip" / f"{name}.json"
     if not out.exists():
@@ -338,9 +364,21 @@ def main() -> None:
     ap.add_argument("batch")
     ap.add_argument("--tiktok", action="store_true", help="semua footage unduhan TikTok: paksa blur watermark + footer")
     ap.add_argument("--hanya", nargs="*", help="proses footage tertentu saja (nama tanpa .mp4)")
+    ap.add_argument("--thumb-saja", action="store_true", help="lengkapi thumbnail shots.json yang sudah ada tanpa analisis ulang")
     args = ap.parse_args()
 
     batch_dir = KONTEN / "2-dipisah" / args.batch
+    if args.thumb_saja:
+        lib_path = batch_dir / "shots.json"
+        lib = json.loads(lib_path.read_text(encoding="utf-8"))
+        for name, meta in lib["footage"].items():
+            mine = [s for s in lib["shots"] if s["footage"] == name]
+            th = tulis_thumbs(Path(meta["video"]), [(s["id"], s["dari"], s["sampai"]) for s in mine], batch_dir / "thumb")
+            for s in mine:
+                s["thumb"] = th.get(s["id"])
+        lib_path.write_text(json.dumps(lib, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"-> {lib_path}: thumbnail {sum(1 for s in lib['shots'] if s.get('thumb'))}/{len(lib['shots'])} shot")
+        return
     vids = sorted((batch_dir / "video-bisu").glob("*.mp4"), key=lambda p: (len(p.stem), p.stem))
     if args.hanya:
         vids = [v for v in vids if v.stem in args.hanya]
@@ -399,9 +437,11 @@ def main() -> None:
         wmi["footer"] = wmi["footer"] or ada_footer
         # Akun di watermark = petunjuk pemilik footage (hak pakai). Bacaan OCR yang jarang = salah baca.
         wmi["akun"] = [a for a, c in akun.most_common() if c >= max(akun.values(), default=0) / 3][:2]
+        thumbs = tulis_thumbs(v, [(f"{name}#{k:02d}", a, b) for k, (a, b) in enumerate(shots)], batch_dir / "thumb")
         for k, (a, b) in enumerate(shots):
             sid = f"{name}#{k:02d}"
-            s = {"id": sid, "footage": name, "dari": a, "sampai": b, **label_shot(rows, words, a, b, ocr_per_shot[k], cek_kosong=satu_take)}
+            s = {"id": sid, "footage": name, "dari": a, "sampai": b, "thumb": thumbs.get(sid),
+                 **label_shot(rows, words, a, b, ocr_per_shot[k], cek_kosong=satu_take)}
             if sid in koreksi:
                 s["koreksi"] = koreksi[sid]
                 s.update(koreksi[sid])
