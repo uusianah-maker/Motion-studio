@@ -1,6 +1,6 @@
 # Kontrak mesin ↔ Motion Studio
 
-Versi: **v0.3 (dikunci)** · 13 November 2026 · disusun venus · catatan batch dari yuki dan reviu ucok sudah masuk. Bentuk final operasi baru di 5.3 masih difinalkan ucok saat U3; perubahan kontrak berikutnya harus disepakati venus, yuki, dan ucok.
+Versi: **v0.3.2** · 14 November 2026 (v0.3 dikunci 13 Nov; 0.3.1–0.3.2 aditif) · disusun venus · catatan batch dari yuki dan reviu ucok sudah masuk. Bentuk final operasi baru di 5.3 masih difinalkan ucok saat U3; perubahan kontrak berikutnya harus disepakati venus, yuki, dan ucok.
 
 Kontrak ini menghubungkan **mesin otomatis** (repo `D:\VIBECODING\remotion`: Generate Otomatis, Batch Remix) dengan **Motion Studio** (repo `D:\VIBECODING\Video motion`). Mesin tidak merender. Mesin menghasilkan rencana edit dalam bentuk operasi timeline Motion Studio, lalu Motion Studio yang menampilkan, menunggu persetujuan, dan merender dengan FFmpeg.
 
@@ -25,6 +25,8 @@ Motion Studio (runner U6)                    Mesin (CLI V5)
 engine generate <job_dir>            # Generate Otomatis, satu video
 engine batch    <job_dir>            # Batch Remix (yuki), N rencana
 engine ulang    <job_dir>            # susun ulang draf memakai <job_dir>/koreksi.json
+engine pisah    <job_dir>            # Batch Remix: unggahan -> pisah audio + Shot Library (v0.3.2)
+engine daftar_batch                  # daftar batch untuk dropdown, read-only (v0.3.2)
 engine cek                           # cek alat (ffmpeg, whisper, GPU) untuk halaman status
 ```
 
@@ -248,3 +250,18 @@ Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "bran
 1. **Impor media dari folder mesin** mengikuti *realpath* dan hanya menerima file media (mp4, mov, m4v, webm, mkv, wav, mp3, m4a, aac, ogg, opus, flac, png, jpg, webp). Path di luar root mesin ditolak. Berlaku untuk `aset_lokal` dan `batch.json` `media`.
 2. **Lingkungan proses mesin dibatasi** (allowlist: PATH, SYSTEMROOT, TEMP/TMP, USERPROFILE/APPDATA/LOCALAPPDATA, PYTHON*, VIRTUAL_ENV, HF_HOME, XDG_CACHE_HOME, CUDA_VISIBLE_DEVICES, …). Rahasia seperti `ANTHROPIC_API_KEY` dibaca mesin dari `.env` miliknya sendiri, bukan dari lingkungan Motion Studio. **Wajib ada:** `USERPROFILE` atau `HF_HOME` (Whisper mencari cache model di sana; tanpa keduanya transkrip gagal).
 3. **Status:** kode keluar 0 dengan `rencana.status: "ditolak"` diperlakukan sebagai ditolak; `perlu_keputusan` tetap siap, dengan pesan.
+
+## 9. Tambahan v0.3.2 (aditif, 14 Nov 2026 — Batch Remix untuk Motion Studio, permintaan ucok via yuki)
+
+| Bagian | Isi | Keterangan |
+| --- | --- | --- |
+| `engine pisah <job_dir>` | `job.json` `{ "mode": "pisah", "batch", "video_saja"?, "shot_tiktok"? }`, video unggahan di `<job_dir>/masuk/` | Menjalankan `pipeline/pisah.py --job`. Video disalin ke `konten/1-upload/<batch>` (nama sama tapi isi beda → akhiran `-2`), dipisah, lalu Shot Library + thumbnail dibuat untuk footage baru. Hasil: `out/pisah.json` `{ schema: "pisah/1", status, batch, dipisah_pada, video_saja, hasil: [{ file, video, vokal, musik }], shot_library, jumlah_shot }`; kalau ditolak `{ schema, status: "ditolak", alasan }`. Progres JSON-lines di stdout. Kode 0 / 2 ditolak / 1 gagal |
+| `engine daftar_batch` | tanpa `job_dir` | Read-only. Stdout satu JSON `{ "schema": "daftar-batch/1", "batch": [{ batch, upload, footage, vo, musik, dipisah, dipisah_pada, shot_library, jumlah_shot, thumb, siap_batch }] }`. Kode 0 |
+| `job.json` mode `batch` | `kecualikan_shot: string[]` (opsional) | id shot pilihan tim (disimpan di app) yang tidak dipakai, baik sebagai b-roll maupun sinkron |
+| `out/batch.json` per varian | `kalimat: [{ teks, dari, sampai, shot: [id] }]` | detik di timeline varian |
+| `shots.json` per shot | `thumb` | path absolut JPG (lebar 270) di `konten/2-dipisah/<batch>/thumb/<footage>__NN.jpg`; batch lama dilengkapi dengan `shotlib.py <batch> --thumb-saja` |
+
+**Pengecualian aturan bagian 2:** `engine pisah` adalah satu-satunya perintah yang menulis di luar `<job_dir>`. Ia menulis ke `konten/` (folder data Batch Remix di root mesin). Motion Studio tetap tidak menulis ke folder mesin. Ia hanya meletakkan unggahan di `<job_dir>/masuk/`.
+
+**Progres `engine batch` sejak v0.3.2:** progres JSON-lines dari `perencana.py` sekarang benar-benar sampai di stdout. Sebelumnya ikut terbelokkan ke stderr. Runner sebaiknya mengabaikan baris stdout yang bukan JSON.
+

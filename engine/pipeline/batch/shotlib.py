@@ -4,7 +4,7 @@ Pakai (dari D:\\VIBECODING\\remotion, Python Batch Remix punya OpenCV):
   D:\\VIBECODING\\tools\\demucs-venv\\Scripts\\python pipeline\\batch\\shotlib.py 2026-11-13_video-winning
 
 Butuh hasil pipeline/pisah.py: konten/2-dipisah/<batch>/video-bisu/ dan vokal/.
-Menulis konten/2-dipisah/<batch>/shots.json. Label dibuat dengan aturan (tanpa AI) dan boleh
+Menulis konten/2-dipisah/<batch>/shots.json + thumb/<footage>__NN.jpg (1 frame tengah tiap shot, 270x480). Label dibuat dengan aturan (tanpa AI) dan boleh
 dikoreksi tim: shot yang punya "koreksi": {...} di shots.json lama dipertahankan saat dijalankan ulang.
 
 Label per shot:
@@ -18,6 +18,7 @@ Per footage: watermark TikTok (kiri sebelum detik pindah, kanan bawah sesudahnya
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -35,6 +36,7 @@ MAX_SHOT = 3.0  # detik; shot panjang dipecah supaya label tetap lokal
 MIN_SHOT = 0.6
 WAJAH_KECIL = 0.07  # tinggi wajah < 7% frame: bibir tidak terbaca, aman dipakai lintas kreator
 AW, AH = 288, 512  # resolusi analisis
+THUMB_W = 270  # lebar thumbnail shot (tinggi ikut rasio sumber)
 
 # Kotak watermark TikTok & footer (pecahan lebar/tinggi), diukur dari batch 2026-11-13.
 WM_KIRI = (0.0, 0.425, 0.34, 0.55)
@@ -61,6 +63,8 @@ def analyse_video(path: Path):
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     step = max(1, round(fps / SAMPLE_FPS))
     cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    hog = cv2.HOGDescriptor()
+    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
     rows, prev_hist, prev_mouth = [], None, None
     for i in range(0, n, step):
         cap.set(cv2.CAP_PROP_POS_FRAMES, i)
@@ -100,6 +104,9 @@ def analyse_video(path: Path):
             "wm_kanan": bright_frac(full, WM_KANAN),
             "footer": bright_frac(full, FOOTER),
             "tajam": float(cv2.Laplacian(gray, cv2.CV_64F).var()),
+            # Ada orang (badan utuh HOG atau wajah): untuk footage satu take, bagian tanpa orang tidak dipakai.
+            "orang": bool(face is not None) or any(h > 0.3 * AH for (_, _, _, h) in
+                                                  hog.detectMultiScale(gray, winStride=(8, 8), scale=1.05)[0]),
         })
     cap.release()
     return rows, n / fps
@@ -136,8 +143,18 @@ def watermark_info(rows, paksa_tiktok=False):
     }
 
 
-def cut_shots(rows, dur):
+def ada_orang(rows):
+    """Kehadiran orang per sampel, dihaluskan (mayoritas 5 sampel) supaya tidak berkedip."""
+    raw = [r["orang"] for r in rows]
+    return [sum(raw[max(0, i - 2): i + 3]) * 2 > len(raw[max(0, i - 2): i + 3]) for i in range(len(raw))]
+
+
+def cut_shots(rows, dur, pakai_orang=False):
     cuts = [0.0] + [r["t"] for r in rows if r["diff"] > 0.35] + [dur]
+    if pakai_orang:  # potong juga saat orang masuk/keluar frame (kamera diam)
+        hadir = ada_orang(rows)
+        cuts += [rows[i]["t"] for i in range(1, len(rows)) if hadir[i] != hadir[i - 1]]
+        cuts = sorted(set(cuts))
     shots = []
     for a, b in zip(cuts, cuts[1:]):
         if b - a < MIN_SHOT and shots:
@@ -157,7 +174,9 @@ def ocr_frame(frame) -> list[dict]:
     global _OCR
     if _OCR is None:
         from rapidocr_onnxruntime import RapidOCR
-        _OCR = RapidOCR()
+        # Batas sisi deteksi dinaikkan: footage 4K (mis. DJI 1728x3072) diperkecil ke 736 px secara default,
+        # tulisan kecil di latar (VOGUE di rak) jadi terlewat.
+        _OCR = RapidOCR(det_limit_side_len=1600)
     h, w = frame.shape[:2]
     res, _ = _OCR(frame, use_det=True, use_cls=False, use_rec=True)
     out = []
@@ -184,13 +203,72 @@ def pilah_teks(items):
         if sum(ch.isalnum() for ch in t) < 2:
             continue  # sampah OCR
         k = it["kotak"]
-        if _di_kotak(k, WM_KIRI) or _di_kotak(k, WM_KANAN) or ("tik" in low and len(low) <= 8) or t.startswith("@"):
+        # Watermark TikTok = logo "TikTok" atau nama akun. Posisi saja tidak cukup: buku/poster di latar
+        # (mis. "OCULUS" di rak footage DJI) bisa kebetulan ada di area watermark.
+        mirip_akun = bool(re.fullmatch(r"@?[\w.]{4,}", t)) and ("_" in t or "." in t or t.startswith("@"))
+        di_area = _di_kotak(k, WM_KIRI) or _di_kotak(k, WM_KANAN)
+        if ("tik" in low and len(low) <= 8) or t.startswith("@") or (di_area and mirip_akun):
             wm.append(it)
         elif "unauthor" in low or "prohibit" in low or k[1] > 0.92:
             footer.append(it)
         else:
             lain.append(it)
     return wm, footer, lain
+
+
+def _iou(a, b):
+    ax0, ay0, aw, ah = a
+    bx0, by0, bw, bh = b
+    ix = max(0.0, min(ax0 + aw, bx0 + bw) - max(ax0, bx0))
+    iy = max(0.0, min(ay0 + ah, by0 + bh) - max(ay0, by0))
+    inter = ix * iy
+    return inter / max(aw * ah + bw * bh - inter, 1e-9)
+
+
+def _dekat(a, b, pad=0.012):
+    """Dua kotak bersentuhan/tumpang tindih (dengan sedikit kelonggaran)."""
+    return not (a[0] + a[2] + pad < b[0] or b[0] + b[2] + pad < a[0] or a[1] + a[3] + pad < b[1] or b[1] + b[3] + pad < a[1])
+
+
+def gabung_kotak(lst: list[dict]) -> list[dict]:
+    """Kotak teks yang bersentuhan digabung jadi satu (hemat jatah 8 area blur Motion Studio)."""
+    out = [dict(t) for t in lst]
+    berubah = True
+    while berubah:
+        berubah = False
+        for i in range(len(out)):
+            for j in range(i + 1, len(out)):
+                a, b = out[i]["kotak"], out[j]["kotak"]
+                if _dekat(a, b):
+                    x0, y0 = min(a[0], b[0]), min(a[1], b[1])
+                    x1, y1 = max(a[0] + a[2], b[0] + b[2]), max(a[1] + a[3], b[1] + b[3])
+                    out[i] = {**out[i], "teks": out[i]["teks"] + " " + out[j]["teks"],
+                              "kotak": [round(x0, 3), round(y0, 3), round(x1 - x0, 3), round(y1 - y0, 3)]}
+                    out.pop(j)
+                    berubah = True
+                    break
+            if berubah:
+                break
+    return out
+
+
+def teks_statis(per_shot: list[list[dict]], ambang: float = 0.2, min_shot: int | None = None) -> list[dict]:
+    """Kotak teks yang posisinya sama di >= ambang bagian shot (kamera diam, tulisan di latar)."""
+    kelompok = []  # [kotak wakil, jumlah shot]
+    for lst in per_shot:
+        sudah = set()
+        for t in lst:
+            for i, g in enumerate(kelompok):
+                if i not in sudah and _dekat(g[0]["kotak"], t["kotak"], 0.0):
+                    g[1] += 1
+                    sudah.add(i)
+                    break
+            else:
+                kelompok.append([t, 1])
+                sudah.add(len(kelompok) - 1)
+    n = max(len(per_shot), 1)
+    batas = min_shot if min_shot is not None else ambang * n
+    return [dict(g[0], statis=True) for g in kelompok if n >= 3 and g[1] >= batas]
 
 
 def ocr_shot(cap, a, b, fps):
@@ -207,7 +285,7 @@ def words_in(words, a, b):
     return [w for w in words if w["startMs"] / 1000 < b and w["endMs"] / 1000 > a]
 
 
-def label_shot(rows, words, a, b, teks_lain):
+def label_shot(rows, words, a, b, teks_lain, cek_kosong=False):
     rs = [r for r in rows if a <= r["t"] < b] or [min(rows, key=lambda r: abs(r["t"] - a))]
     fh = [r["face_h"] for r in rs]
     face_ratio = float(np.mean([h > 0 for h in fh]))
@@ -239,9 +317,35 @@ def label_shot(rows, words, a, b, teks_lain):
         "teks_bawaan": bool(teks_lain),
         "teks": [{"teks": t["teks"], "kotak": t["kotak"]} for t in teks_lain],
         "buram": bool(np.median([r["tajam"] for r in rs]) < 40),
+        "kosong": bool(cek_kosong and np.mean([r.get("hadir", True) for r in rs]) < 0.5),
         "tag": tags,
         "ucapan": text,
     }
+
+
+def thumb_id(sid: str) -> str:
+    """Nama file thumbnail aman untuk URL: '#' di id shot diganti '__'."""
+    return sid.replace("#", "__")
+
+
+def tulis_thumbs(video: Path, shots: list, thumb_dir: Path) -> dict:
+    """Satu JPG per shot dari frame tengahnya. File yang sudah ada tidak dibuat ulang."""
+    thumb_dir.mkdir(exist_ok=True)
+    cap = cv2.VideoCapture(str(video))
+    hasil = {}
+    for sid, a, b in shots:
+        out = thumb_dir / f"{thumb_id(sid)}.jpg"
+        if not out.exists():
+            cap.set(cv2.CAP_PROP_POS_MSEC, (a + b) / 2 * 1000)
+            ok, fr = cap.read()
+            if not ok:
+                continue
+            h, w = fr.shape[:2]
+            fr = cv2.resize(fr, (THUMB_W, int(round(h * THUMB_W / w))), interpolation=cv2.INTER_AREA)
+            cv2.imwrite(str(out), fr, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        hasil[sid] = str(out.resolve()).replace("\\", "/")  # path absolut (kontrak §8)
+    cap.release()
+    return hasil
 
 
 def ensure_transcript(batch_dir: Path, name: str) -> Path:
@@ -260,9 +364,21 @@ def main() -> None:
     ap.add_argument("batch")
     ap.add_argument("--tiktok", action="store_true", help="semua footage unduhan TikTok: paksa blur watermark + footer")
     ap.add_argument("--hanya", nargs="*", help="proses footage tertentu saja (nama tanpa .mp4)")
+    ap.add_argument("--thumb-saja", action="store_true", help="lengkapi thumbnail shots.json yang sudah ada tanpa analisis ulang")
     args = ap.parse_args()
 
     batch_dir = KONTEN / "2-dipisah" / args.batch
+    if args.thumb_saja:
+        lib_path = batch_dir / "shots.json"
+        lib = json.loads(lib_path.read_text(encoding="utf-8"))
+        for name, meta in lib["footage"].items():
+            mine = [s for s in lib["shots"] if s["footage"] == name]
+            th = tulis_thumbs(Path(meta["video"]), [(s["id"], s["dari"], s["sampai"]) for s in mine], batch_dir / "thumb")
+            for s in mine:
+                s["thumb"] = th.get(s["id"])
+        lib_path.write_text(json.dumps(lib, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"-> {lib_path}: thumbnail {sum(1 for s in lib['shots'] if s.get('thumb'))}/{len(lib['shots'])} shot")
+        return
     vids = sorted((batch_dir / "video-bisu").glob("*.mp4"), key=lambda p: (len(p.stem), p.stem))
     if args.hanya:
         vids = [v for v in vids if v.stem in args.hanya]
@@ -280,7 +396,10 @@ def main() -> None:
             tr = json.loads(ensure_transcript(batch_dir, name).read_text(encoding="utf-8"))
             words = tr["words"]
         rows, dur = analyse_video(v)
-        shots = cut_shots(rows, dur)
+        satu_take = not any(r["diff"] > 0.35 for r in rows)
+        for r, h in zip(rows, ada_orang(rows)):
+            r["hadir"] = h
+        shots = cut_shots(rows, dur, pakai_orang=satu_take)
         cap = cv2.VideoCapture(str(v))
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
         ocr_per_shot, akun, ada_logo, ada_footer = [], Counter(), False, False
@@ -296,6 +415,16 @@ def main() -> None:
                 uniq.setdefault(x["teks"].lower(), x)
             ocr_per_shot.append(list(uniq.values()))
         cap.release()
+        # Tulisan latar yang diam (rak, poster) muncul di banyak shot tapi kadang tertutup model di frame contoh.
+        # Kotak yang terbaca di >= 30% shot ditambahkan ke semua shot footage ini supaya blur-nya konsisten.
+        # Satu take tanpa potongan adegan (kamera diam, mis. DJI try-on): tulisan yang terbaca di >= 2 shot
+        # sudah pasti tulisan latar. Footage berpotongan (TikTok) pakai ambang 20% supaya caption tidak menyebar.
+        statis = teks_statis(ocr_per_shot, min_shot=2 if satu_take else None)
+        for k2, lst in enumerate(ocr_per_shot):
+            for t in statis:
+                if not any(_dekat(t["kotak"], x["kotak"], 0.0) for x in lst):
+                    lst.append(t)
+            ocr_per_shot[k2] = gabung_kotak(lst)
         lib["footage"][name] = {
             "video": str(v).replace("\\", "/"),
             "vokal": str(batch_dir / "vokal" / f"{name}.wav").replace("\\", "/") if has_vokal else None,
@@ -308,9 +437,11 @@ def main() -> None:
         wmi["footer"] = wmi["footer"] or ada_footer
         # Akun di watermark = petunjuk pemilik footage (hak pakai). Bacaan OCR yang jarang = salah baca.
         wmi["akun"] = [a for a, c in akun.most_common() if c >= max(akun.values(), default=0) / 3][:2]
+        thumbs = tulis_thumbs(v, [(f"{name}#{k:02d}", a, b) for k, (a, b) in enumerate(shots)], batch_dir / "thumb")
         for k, (a, b) in enumerate(shots):
             sid = f"{name}#{k:02d}"
-            s = {"id": sid, "footage": name, "dari": a, "sampai": b, **label_shot(rows, words, a, b, ocr_per_shot[k])}
+            s = {"id": sid, "footage": name, "dari": a, "sampai": b, "thumb": thumbs.get(sid),
+                 **label_shot(rows, words, a, b, ocr_per_shot[k], cek_kosong=satu_take)}
             if sid in koreksi:
                 s["koreksi"] = koreksi[sid]
                 s.update(koreksi[sid])
