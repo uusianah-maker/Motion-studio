@@ -76,6 +76,8 @@ describe('U6 engine runner', () => {
       { project_id: 'g', mode: 'batch', sources: S, preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 99 } },
       { project_id: '../g', mode: 'generate', sources: S, preset: 'p', brief: {} },
       { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, vo_batch: '../vo' } },
+      { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, vo_batch: '.vo' } },
+      { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: '.b', jumlah: 3 } },
       { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, buang_otomatis: 'urgensi' } },
       { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, buang_otomatis: [''] } },
       { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, batas_durasi: [30, 15] } },

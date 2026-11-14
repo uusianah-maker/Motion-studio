@@ -1,9 +1,31 @@
 // Fake engine CLI for U6 tests: same arguments, exit codes, JSON-lines progress and output files
 // as KONTRAK-ENGINE v0.3 (`engine <mode> <job_dir>`). Behaviour is picked by brief.catatan.
+import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const [mode, jobDir] = process.argv.slice(2);
+// 1x1 JPEG: an engine-made thumbnail stand-in.
+const JPEG = Buffer.from('/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==', 'base64');
+const konten = path.resolve('konten');
+
+if (mode === 'daftar_batch') {
+  // Read-only listing of konten/2-dipisah (pipeline/batch/daftar.py).
+  const count = (d, ext) => (fs.existsSync(d) ? fs.readdirSync(d).filter((f) => f.toLowerCase().endsWith(ext)).length : 0);
+  const root = path.join(konten, '2-dipisah');
+  const names = fs.existsSync(root) ? fs.readdirSync(root).filter((n) => fs.statSync(path.join(root, n)).isDirectory()) : [];
+  const batch = names.sort().reverse().map((n) => {
+    const d = path.join(root, n);
+    const footage = count(path.join(d, 'video-bisu'), '.mp4');
+    const lib = fs.existsSync(path.join(d, 'shots.json'));
+    const shots = lib ? JSON.parse(fs.readFileSync(path.join(d, 'shots.json'), 'utf8')).shots : [];
+    return { batch: n, upload: count(path.join(konten, '1-upload', n), '.mp4'), footage, vo: count(path.join(d, 'vokal'), '.wav'), musik: count(path.join(d, 'musik'), '.wav'), dipisah: footage > 0, dipisah_pada: 1763000000000, shot_library: lib, jumlah_shot: shots.length, thumb: shots.length, siap_batch: footage > 0 && lib };
+  });
+  process.stdout.write(`${JSON.stringify({ schema: 'daftar-batch/1', batch })}
+`);
+  process.exit(0);
+}
+
 const job = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8'));
 const brand = JSON.parse(fs.readFileSync(path.join(jobDir, job.brand_kit), 'utf8'));
 const out = path.join(jobDir, 'out');
@@ -15,6 +37,56 @@ const what = job.brief.catatan;
 for (const s of job.sumber) if (!fs.existsSync(s.path)) process.exit(1);
 
 say('cek_input', 5, 'ok');
+if (mode === 'pisah') {
+  // Pisah Audio + Shot Library: uploads in <job>/masuk/ → konten/1-upload + konten/2-dipisah/<batch>.
+  if (job.batch === 'gagal') {
+    // Technical failure (exit 1) with a reason in the result file (contract v0.3.2a).
+    process.stderr.write(`Traceback: demucs crash di ${path.join(jobDir, 'masuk')}\n`);
+    fs.writeFileSync(path.join(out, 'pisah.json'), JSON.stringify({ schema: 'pisah/1', status: 'gagal', alasan: `GPU kehabisan memori saat membuka ${path.join(jobDir, 'masuk')}` }));
+    process.exit(1);
+  }
+  if (job.batch === 'gagal-polos') {
+    process.stderr.write(`Traceback: File "D:\\VIBECODING\\remotion\\pipeline\\pisah.py", line 1\n`);
+    process.exit(1);
+  }
+  if (job.batch === 'tolak') {
+    fs.writeFileSync(path.join(out, 'pisah.json'), JSON.stringify({ schema: 'pisah/1', status: 'ditolak', alasan: 'tidak ada video yang bisa dibaca' }));
+    process.exit(2);
+  }
+  const up = path.join(konten, '1-upload', job.batch);
+  const dp = path.join(konten, '2-dipisah', job.batch);
+  for (const d of [up, ...['video-bisu', 'vokal', 'musik', 'audio-asli', 'thumb'].map((x) => path.join(dp, x))]) fs.mkdirSync(d, { recursive: true });
+  const hasil = [];
+  const footage = {};
+  const shots = [];
+  const fileDitolak = [];
+  for (const f of fs.readdirSync(path.join(jobDir, 'masuk'))) {
+    const name = path.parse(f).name;
+    // A "broken" upload is skipped, not fatal (contract v0.3.2a: file_ditolak).
+    if (name.startsWith('RUSAK')) {
+      fileDitolak.push({ file: path.join(jobDir, 'masuk', f).replace(/\\/g, '/'), alasan: `ffprobe gagal membaca ${path.join(jobDir, 'masuk', f)}` });
+      continue;
+    }
+    fs.copyFileSync(path.join(jobDir, 'masuk', f), path.join(up, f));
+    fs.copyFileSync(path.join(jobDir, 'masuk', f), path.join(dp, 'video-bisu', `${name}.mp4`));
+    if (!job.video_saja) for (const k of ['vokal', 'musik']) fs.writeFileSync(path.join(dp, k, `${name}.wav`), 'RIFF');
+    hasil.push({ file: path.join(up, f), video: path.join(dp, 'video-bisu', `${name}.mp4`), vokal: job.video_saja ? null : path.join(dp, 'vokal', `${name}.wav`), musik: job.video_saja ? null : path.join(dp, 'musik', `${name}.wav`) });
+    footage[name] = { video: `konten/2-dipisah/${job.batch}/video-bisu/${name}.mp4`, durasi: 3 };
+    for (let i = 0; i < 2; i++) {
+      const id = `${name}#0${i}`;
+      const thumb = path.join(dp, 'thumb', `${name}__0${i}.jpg`);
+      fs.writeFileSync(thumb, JPEG);
+      shots.push({ id, footage: name, dari: i * 1.5, sampai: i * 1.5 + 1.5, framing: i ? 'dekat' : 'medium', wajah_bicara: i === 0, teks_bawaan: i === 1, buram: false, tag: i ? ['produk'] : [], teks: i ? [{ teks: 'Loosepants', kotak: [0, 0, 1, 1] }] : [], ucapan: i ? null : 'celananya adem banget', thumb: thumb.replace(/\\/g, '/'), ...(i ? { koreksi: { buram: true } } : {}) });
+    }
+    say('pisah', 50, name);
+  }
+  // A thumbnail path that points outside the batch folder must never be served.
+  shots.push({ id: 'X#99', footage: 'X', dari: 0, sampai: 1, thumb: 'C:/Windows/win.ini' });
+  fs.writeFileSync(path.join(dp, 'shots.json'), JSON.stringify({ schema: 'shots/1', batch: job.batch, footage, shots }));
+  fs.writeFileSync(path.join(out, 'pisah.json'), JSON.stringify({ schema: 'pisah/1', status: 'siap', batch: job.batch, video_saja: !!job.video_saja, hasil, file_ditolak: fileDitolak, shot_library: true, jumlah_shot: shots.length }));
+  say('selesai', 100, `${hasil.length} file`);
+  process.exit(0);
+}
 if (mode === 'batch') {
   // Footage + vocals live in the engine's own folder (konten/), referenced through batch.json media.
   const media = { '$sumber:F1': 'konten/f1.mp4', '$vokal:F1': 'konten/f1-vokal.wav' };
@@ -30,9 +102,10 @@ if (mode === 'batch') {
     ];
     fs.writeFileSync(path.join(out, id, 'ops.json'), JSON.stringify({ schema: 'ms-ops/1', mode: 'u3', aset_lokal: [], ops }));
     fs.writeFileSync(path.join(out, id, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap', hook: { teks: `Hook ${i}` } }));
-    rows.push({ id, vo: 'F1', hook: `Hook ${i}`, shot: ['F1@0.1'], footage: ['F1'], musik: null, durasi: 1 + i / 10, cta: 'Cek keranjang', status: 'usul', bukan_iklan: i === 3, qc_lulus: true, folder: `out/${id}` });
+    const kalimat = i === 2 ? undefined : [{ teks: `Hook ${i}`, dari: 0, sampai: 0.8, shot: ['F1#00'] }, { teks: 'Cek keranjang', dari: 0.8, sampai: 1.1, shot: ['F1#01', 'F1#00', 'F1＠1.5'] }];
+    rows.push({ id, ...(kalimat ? { kalimat } : {}), vo: 'F1', hook: `Hook ${i}`, shot: ['F1@0.1'], footage: ['F1'], musik: null, durasi: 1 + i / 10, cta: 'Cek keranjang', status: 'usul', bukan_iklan: i === 3, qc_lulus: true, folder: `out/${id}` });
   }
-  fs.writeFileSync(path.join(out, 'batch.json'), JSON.stringify({ schema: 'batch-remix/1', job_id: job.job_id, batch: job.batch, tujuan: job.tujuan, jumlah_diminta: job.jumlah, jumlah_jadi: rows.length, media, varian: rows }));
+  fs.writeFileSync(path.join(out, 'batch.json'), JSON.stringify({ schema: 'batch-remix/1', job_id: job.job_id, batch: job.batch, tujuan: job.tujuan, jumlah_diminta: job.jumlah, jumlah_jadi: rows.length, media, varian: rows, kecualikan_diterima: job.kecualikan_shot ?? [], vo_batch: job.vo_batch ?? null }));
   say('selesai', 100, `${rows.length} varian`);
   process.exit(0);
 }

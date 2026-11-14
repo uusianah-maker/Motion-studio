@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Api, Project, ProjectSummary, Role, VariantTag } from './api';
 import { AiView } from './views/AiView';
 import { BatchView } from './views/BatchView';
+import { ShotLibraryView } from './views/BatchLibrary';
 import { BrandView } from './views/BrandView';
 import { EditorView } from './views/EditorView';
 import { GenerateView } from './views/GenerateView';
@@ -12,12 +13,13 @@ import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 import { Logo } from './Logo';
 
-export type View = 'generate' | 'batch' | 'editor' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
+export type View = 'generate' | 'batch' | 'shots' | 'editor' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
 
 // PC-16: one app — Generate Otomatis, Batch Remix, Editor (+ library / admin pages).
 const NAV: { id: View; sym: string; label: string }[] = [
   { id: 'generate', sym: '⚡', label: 'Generate' },
   { id: 'batch', sym: '▦', label: 'Batch' },
+  { id: 'shots', sym: '▣', label: 'Shot' },
   { id: 'editor', sym: '▤', label: 'Editor' },
   { id: 'media', sym: '◇', label: 'Media' },
   { id: 'brand', sym: '◆', label: 'Brand' },
@@ -131,6 +133,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {view === 'editor' && <EditorView api={api} role={role} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} />}
         {view === 'generate' && <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />}
         {view === 'batch' && <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />}
+        {view === 'shots' && <ShotLibraryView api={api} role={role} />}
         {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
         {view === 'brand' && <BrandView api={api} readOnly={role !== 'owner'} />}
         {view === 'trash' && <TrashView api={api} />}

@@ -755,6 +755,12 @@ export function createDemoApi(): Api {
     enginePlan: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
     engineBatch: async () => fail(404, 'NOT_FOUND', 'batch.json belum ada'),
     engineDecide: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
+    enginePisah: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
+    enginePisahResult: async () => fail(404, 'NOT_FOUND', 'pisah.json belum ada'),
+    engineBatches: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
+    engineShots: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
+    engineThumbs: async () => ({}),
+    engineSetExcluded: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
     outputUrl: async () => ({ url: sampleUrl('hook') ?? fail(404, 'NOT_FOUND', 'Video contoh tidak termuat'), expires_at: now() + 600_000 }),
   };
   return api;

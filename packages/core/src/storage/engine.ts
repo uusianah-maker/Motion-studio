@@ -60,7 +60,7 @@ export function engineConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Engin
   };
 }
 
-export type EngineMode = 'generate' | 'batch' | 'ulang';
+export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah';
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
 
 export interface EngineStatus {
@@ -92,7 +92,7 @@ export interface EngineBrief {
 
 export interface EngineJobInput {
   project_id: string;
-  mode: 'generate' | 'batch';
+  mode: 'generate' | 'batch' | 'pisah';
   /** `$sumber` (one video) or `$sumber:<id>` (several). */
   sources: { kunci: string; ref: MediaRef }[];
   preset: string;
@@ -100,8 +100,20 @@ export interface EngineJobInput {
   ai: boolean;
   mode_ops?: 'kompat' | 'u3';
   /** Batch Remix extras (contract §3 + v0.3.1), passed through after validation. */
-  batch?: { batch: string; jumlah: number; tujuan: string; seed?: number; izinkan_musik_tanpa_lisensi?: boolean; akun_sendiri?: string[]; hak_pakai_jelas?: boolean; shot_tiktok?: boolean; vo_batch?: string; buang_otomatis?: string[]; batas_durasi?: [number, number] | null };
+  batch?: { batch: string; jumlah: number; tujuan: string; seed?: number; izinkan_musik_tanpa_lisensi?: boolean; akun_sendiri?: string[]; hak_pakai_jelas?: boolean; shot_tiktok?: boolean; vo_batch?: string; buang_otomatis?: string[]; batas_durasi?: [number, number] | null; kecualikan_shot?: string[] };
+  /**
+   * Pisah Audio + Shot Library (audit yuki, fitur 1): the uploaded videos are copied to
+   * `<job>/masuk/<id>.<ext>`; the engine copies them on to `konten/1-upload/<batch>` itself.
+   */
+  pisah?: { batch: string; video_saja?: boolean };
 }
+
+/** Batch folder name in the engine's konten/ (one rule for batch, vo_batch, pisah and the library). */
+const BATCH_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/;
+export const isBatchName = (x: unknown): x is string => typeof x === 'string' && BATCH_NAME.test(x) && !x.includes('..');
+
+/** Engine-written text shown to the team: no local paths (drive letters, UNC). */
+export const scrubPaths = (t: string): string => t.replace(/(?:[A-Za-z]:[\\/]|\\\\[^\\\s]+\\)[^\s"'<>|]*/g, '<path>');
 
 const bad = (msg: string, details: Record<string, unknown> = {}): never => {
   throw new StorageError('EDIT_INVALID', msg, details);
@@ -116,6 +128,7 @@ const PLACEMENTS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
 /** Validate the browser's request (untrusted). */
 export function validateEngineJob(x: unknown): EngineJobInput {
   const o = (x ?? {}) as Record<string, unknown>;
+  if (o.mode === 'pisah') return validatePisahJob(o);
   const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
@@ -155,7 +168,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
     const be = Object.keys(bo).filter((k) => !ok.includes(k));
     if (be.length) bad(`batch: field tidak dikenal ${be.join(', ')}`);
     const name = str(bo.batch, 'nama batch', 80, false);
-    if (!/^[A-Za-z0-9_.-]+$/.test(name) || name.includes('..')) bad('nama batch hanya huruf, angka, _ . -');
+    if (!isBatchName(name)) bad('nama batch: mulai huruf/angka, lalu huruf, angka, _ . -');
     const jumlah = bo.jumlah;
     if (typeof jumlah !== 'number' || !Number.isInteger(jumlah) || jumlah < 1 || jumlah > 50) bad('jumlah varian 1–50');
     const tujuan = str(bo.tujuan ?? 'konversi', 'tujuan', 30, false);
@@ -164,7 +177,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
     if (akun !== undefined && (!Array.isArray(akun) || akun.length > 20 || !akun.every((a) => typeof a === 'string' && /^@?[A-Za-z0-9_.]{1,40}$/.test(a)))) bad('akun_sendiri harus daftar @akun');
     // Contract §8: VO taken from another batch (pictures stay from `batch`).
     const voBatch = bo.vo_batch === undefined || bo.vo_batch === '' ? undefined : str(bo.vo_batch, 'vo_batch', 80, false);
-    if (voBatch !== undefined && (!/^[A-Za-z0-9_.-]+$/.test(voBatch) || voBatch.includes('..'))) bad('vo_batch hanya huruf, angka, _ . -');
+    if (voBatch !== undefined && !isBatchName(voBatch)) bad('vo_batch: mulai huruf/angka, lalu huruf, angka, _ . -');
     // Kinds of VO sentence the engine may drop by itself (superlatif, urgensi, live, musiman, …). Default [] = none.
     const buang = bo.buang_otomatis;
     if (buang !== undefined && (!Array.isArray(buang) || buang.length > 20 || !buang.every((a) => typeof a === 'string' && a.trim().length > 0 && a.length <= 60))) bad('buang_otomatis harus daftar alasan (maks 20, tiap alasan maks 60 karakter)');
@@ -187,6 +200,41 @@ export function validateEngineJob(x: unknown): EngineJobInput {
     };
   } else if (o.batch !== undefined) bad('batch hanya untuk mode batch');
   return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}) };
+}
+
+const PISAH_SRC = /^\$sumber:([A-Za-z0-9_-]{1,40})$/;
+
+/** `engine pisah`: videos uploaded to the project → one batch in the engine's konten/. */
+function validatePisahJob(o: Record<string, unknown>): EngineJobInput {
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'pisah'].includes(k));
+  if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
+  if (!isSafeId(o.project_id)) bad('project_id tidak valid');
+  if (!Array.isArray(o.sources) || o.sources.length < 1 || o.sources.length > 50) bad('Pisah Audio butuh 1–50 video');
+  const sources = (o.sources as unknown[]).map((s, i) => {
+    const so = (s ?? {}) as Record<string, unknown>;
+    const r = (so.ref ?? {}) as Record<string, unknown>;
+    if (typeof so.kunci !== 'string' || !PISAH_SRC.test(so.kunci)) bad(`sources[${i}].kunci harus $sumber:<nama file>`);
+    if (!isSafeId(r.media_id) || !isSafeId(r.version_id)) bad(`sources[${i}].ref tidak valid`);
+    return { kunci: so.kunci as string, ref: { media_id: r.media_id as string, version_id: r.version_id as string } };
+  });
+  // The id becomes a file name in the engine's folder: unique without case (Windows).
+  if (new Set(sources.map((s) => s.kunci.toLowerCase())).size !== sources.length) bad('nama file sumber harus unik');
+  if (new Set(sources.map((s) => s.ref.version_id)).size !== sources.length) bad('video yang sama dipilih dua kali');
+  const po = (o.pisah ?? {}) as Record<string, unknown>;
+  const pe = Object.keys(po).filter((k) => !['batch', 'video_saja'].includes(k));
+  if (pe.length) bad(`pisah: field tidak dikenal ${pe.join(', ')}`);
+  const name = str(po.batch, 'nama batch', 80, false);
+  if (!isBatchName(name)) bad('nama batch: mulai huruf/angka, lalu huruf, angka, _ . -');
+  if (po.video_saja !== undefined && typeof po.video_saja !== 'boolean') bad('pisah.video_saja harus true/false');
+  return {
+    project_id: o.project_id as string,
+    mode: 'pisah',
+    sources,
+    preset: 'pisah',
+    brief: { produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' },
+    ai: false,
+    pisah: { batch: name, ...(po.video_saja === true ? { video_saja: true } : {}) },
+  };
 }
 
 // ------------------------------------------------------------------ job folder
@@ -229,10 +277,14 @@ export async function listEngineJobs(ws: Workspace, projectId: string): Promise<
 
 /** Absolute local path of a media version (read-only for the engine). */
 async function localPath(ws: Workspace, ref: MediaRef): Promise<string> {
+  return withSourceFile(ws, ref, async (abs) => abs);
+}
+/** Run `fn` with the local file of an ACTIVE media version (the file only lives during `fn`). */
+async function withSourceFile<T>(ws: Workspace, ref: MediaRef, fn: (abs: string) => Promise<T>): Promise<T> {
   const reg = await loadRegistry(ws);
   const v = reg.versions[ref.version_id];
   if (!v || v.media_id !== ref.media_id || v.lifecycle !== 'active') throw new StorageError('PRECONDITION', 'Video sumber tidak aktif (di Trash atau tidak dikenal)', { ...ref });
-  return ws.blobs.withLocalFile(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS), async (abs) => abs);
+  return ws.blobs.withLocalFile(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS), fn);
 }
 
 /** Brand placeholders in the export (`$logo`, `$sfx:pop-01`, …) → the kit's MediaRefs. */
@@ -266,7 +318,23 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
   let lease: { lease_id: string } | null = null;
   try {
     const sumber = [];
-    for (const s of input.sources) sumber.push({ kunci: s.kunci, path: (await localPath(ws, s.ref)).replace(/\\/g, '/') });
+    if (input.mode === 'pisah') {
+      // Pinned BEFORE the copy (up to 50 big videos): Auto Trash never moves a source mid-copy.
+      lease = await createLease(ws, { job: 'engine', label: `Mesin ${job_id}`, media: input.sources.map((s) => s.ref), actor: opts.actor ?? 'user', worker_pid: process.pid });
+      // The engine reads uploads from <job>/masuk/ (contract: it copies them into konten/ itself).
+      const masuk = path.join(jdir, 'masuk');
+      await fsp.mkdir(masuk);
+      for (const s of input.sources) {
+        const dest = await withSourceFile(ws, s.ref, async (abs) => {
+          const ext = path.extname(abs).toLowerCase();
+          if (ext !== '.mp4' && ext !== '.mov') bad(`${s.kunci.slice(8)}: Pisah Audio hanya untuk video .mp4 / .mov`);
+          const d = path.join(masuk, `${s.kunci.slice(8)}${ext}`);
+          await fsp.copyFile(abs, d);
+          return d;
+        });
+        sumber.push({ kunci: s.kunci, path: dest.replace(/\\/g, '/') });
+      }
+    } else for (const s of input.sources) sumber.push({ kunci: s.kunci, path: (await localPath(ws, s.ref)).replace(/\\/g, '/') });
     const brandExport = await exportBrandKit(ws, kit.brand_id, { paths: true });
     await writeJsonAtomic(path.join(jdir, 'brand_kit.json'), brandExport);
     const job = {
@@ -280,12 +348,13 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ai: input.ai,
       ...(input.mode_ops ? { mode_ops: input.mode_ops } : {}),
       ...(input.batch ?? {}),
+      ...(input.pisah ?? {}),
     };
     await writeJsonAtomic(path.join(jdir, 'job.json'), job);
     const refs: Record<string, MediaRef> = { ...brandPlaceholders(kit) };
     for (const s of input.sources) refs[s.kunci] = s.ref;
     await writeJsonAtomic(path.join(jdir, 'refs.json'), { schema: 'engine-refs/1', brand_id: kit.brand_id, refs });
-    lease = await createLease(ws, { job: 'engine', label: `Mesin ${job_id}`, media: input.sources.map((s) => s.ref), actor: opts.actor ?? 'user', worker_pid: process.pid });
+    lease ??= await createLease(ws, { job: 'engine', label: `Mesin ${job_id}`, media: input.sources.map((s) => s.ref), actor: opts.actor ?? 'user', worker_pid: process.pid });
     const status: EngineStatus = { schema: 'engine-status/1', job_id, project_id: input.project_id, mode: input.mode, state: 'menunggu', tahap: 'antre', persen: 0, pesan: '', created_at: now, started_at: null, finished_at: null, exit_code: null, alasan: null, lease_id: lease.lease_id };
     await writeStatus(ws, status);
     await audit(ws, { op: 'engine.prepare', actor: opts.actor ?? 'user', outcome: 'ok', project_id: input.project_id, job_id, mode: input.mode, sources: input.sources.length });
@@ -298,8 +367,16 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
   }
 }
 
+/**
+ * Remove a Pisah Audio job's copies of the uploads. On Windows a just-killed Demucs / FFmpeg may
+ * still hold a file for a moment (taskkill is async), so retry a few times.
+ */
+async function removeMasuk(jdir: string): Promise<void> {
+  await fsp.rm(path.join(jdir, 'masuk'), { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }).catch(() => undefined);
+}
+
 /** Stop the engine AND its children (Whisper, FFmpeg): on Windows `kill()` only ends the parent. */
-function killTree(child: { pid?: number | undefined; kill: () => boolean }): void {
+export function killTree(child: { pid?: number | undefined; kill: () => boolean }): void {
   if (process.platform === 'win32' && child.pid) execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, () => child.kill());
   else child.kill();
 }
@@ -407,16 +484,22 @@ export async function runEngineJob(
   });
   await writing;
   await fsp.writeFile(path.join(jdir, 'engine.log'), log, 'utf8').catch(() => undefined);
-  const rencana = await readJson<{ status?: string; alasan?: string }>(path.join(jdir, 'out', 'rencana.json')).catch(() => null);
+  // The copies in masuk/ were for the engine only (it keeps its own in konten/1-upload).
+  if (mode === 'pisah') await removeMasuk(jdir);
+  const resultFile = mode === 'pisah' ? 'pisah.json' : 'rencana.json';
+  const rencana = await readJson<{ status?: string; alasan?: string }>(path.join(jdir, 'out', resultFile)).catch(() => null);
   if (code === 0 && rencana?.status === 'ditolak') code = 2; // contract §5.1: the plan itself says refused
-  const tail = log.trim().split('\n').slice(-3).join(' · ').slice(0, 300);
+  // The log tail can hold local paths (D:\...): never shown to the browser as is.
+  const tail = scrubPaths(log.trim().split('\n').slice(-3).join(' · ')).slice(0, 300);
   if (code === 0) {
-    const okFiles = mode === 'batch' ? await fsp.stat(path.join(jdir, 'out', 'batch.json')).catch(() => null) : await fsp.stat(path.join(jdir, 'out', 'ops.json')).catch(() => null);
+    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : 'ops.json';
+    const okFiles = await fsp.stat(path.join(jdir, 'out', need)).catch(() => null);
     s = okFiles
       ? { ...s, state: 'siap', tahap: 'selesai', persen: 100, ...(rencana?.status === 'perlu_keputusan' ? { pesan: 'Perlu keputusan tim (lihat kartu rencana)' } : {}) }
-      : { ...s, state: 'gagal', alasan: `Mesin selesai tanpa ${mode === 'batch' ? 'batch.json' : 'ops.json'}` };
-  } else if (code === 2) s = { ...s, state: 'ditolak', alasan: (typeof rencana?.alasan === 'string' ? rencana.alasan : 'Input ditolak mesin').slice(0, 300) };
-  else s = { ...s, state: 'gagal', alasan: tail || `Mesin gagal (kode ${code})` };
+      : { ...s, state: 'gagal', alasan: `Mesin selesai tanpa ${need}` };
+  } else if (code === 2) s = { ...s, state: 'ditolak', alasan: scrubPaths(typeof rencana?.alasan === 'string' ? rencana.alasan : 'Input ditolak mesin').slice(0, 300) };
+  // Contract v0.3.2a: on a technical failure the result file may say why (`status: "gagal"`).
+  else s = { ...s, state: 'gagal', alasan: (rencana?.status === 'gagal' && typeof rencana.alasan === 'string' && rencana.alasan.trim() ? scrubPaths(rencana.alasan) : tail || `Mesin gagal (kode ${code})`).slice(0, 300) };
   s = { ...s, exit_code: code, finished_at: ws.clock.now() };
   if (s.lease_id) {
     await releaseLease(ws, { lease_id: s.lease_id, outcome: s.state === 'siap' ? 'completed' : 'failed', actor: 'user' }).catch(() => undefined);
@@ -432,6 +515,8 @@ export async function runEngineJob(
 export async function settleOrphanJob(ws: Workspace, s: EngineStatus): Promise<EngineStatus> {
   if (s.state !== 'berjalan' && s.state !== 'menunggu') return s;
   if (s.lease_id) await releaseLease(ws, { lease_id: s.lease_id, outcome: 'failed', actor: 'user' }).catch(() => undefined);
+  // A Pisah Audio job never run (cancelled in the queue / server restart): drop its copies of the uploads.
+  if (s.mode === 'pisah') await removeMasuk(jobAbs(ws, s.project_id, s.job_id));
   const out: EngineStatus = { ...s, state: 'gagal', alasan: 'Terhenti (server dimulai ulang); jalankan lagi', lease_id: null, finished_at: ws.clock.now() };
   await writeStatus(ws, out);
   return out;
@@ -532,6 +617,79 @@ export async function readEngineBatch(ws: Workspace, projectId: string, jobId: s
   const b = await readJson<Record<string, unknown>>(path.join(jobAbs(ws, projectId, jobId), 'out', 'batch.json'));
   if (!b) throw new StorageError('NOT_FOUND', 'batch.json belum ada');
   return b;
+}
+
+export interface PisahFile {
+  file: string;
+  video: boolean;
+  vokal: boolean;
+  musik: boolean;
+}
+/** `out/pisah.json` (Pisah Audio): what was split, without local paths. */
+export async function readPisahResult(ws: Workspace, projectId: string, jobId: string): Promise<{ batch: string | null; files: PisahFile[]; ditolak: { file: string; alasan: string }[]; alasan: string | null }> {
+  const s = await readEngineStatus(ws, projectId, jobId);
+  if (s.mode !== 'pisah') bad('Job ini bukan Pisah Audio');
+  const r = await readJson<unknown>(path.join(jobAbs(ws, projectId, jobId), 'out', 'pisah.json'));
+  if (!r) throw new StorageError('NOT_FOUND', 'pisah.json belum ada');
+  const o = (Array.isArray(r) ? { hasil: r } : r) as Record<string, unknown>;
+  const list = (Array.isArray(o.hasil) ? o.hasil : Array.isArray(o.file) ? o.file : Array.isArray(o.files) ? o.files : []) as Record<string, unknown>[];
+  const job = await readJson<{ batch?: unknown }>(path.join(jobAbs(ws, projectId, jobId), 'job.json'));
+  const base = (v: unknown) => (typeof v === 'string' && v ? path.basename(v.replace(/\\/g, '/')).slice(0, 120) : '');
+  return {
+    batch: typeof job?.batch === 'string' ? job.batch : null,
+    files: list.slice(0, 200).filter((f) => f && base(f.file)).map((f) => ({ file: base(f.file), video: !!f.video, vokal: !!f.vokal, musik: !!f.musik })),
+    // Contract v0.3.2a: uploads the engine skipped (broken / not a video); the job itself went on.
+    ditolak: (Array.isArray(o.file_ditolak) ? (o.file_ditolak as Record<string, unknown>[]) : [])
+      .slice(0, 200)
+      .filter((f) => f && base(f.file))
+      .map((f) => ({ file: base(f.file), alasan: scrubPaths(typeof f.alasan === 'string' ? f.alasan : 'dilewati mesin').slice(0, 200) })),
+    alasan: typeof o.alasan === 'string' ? scrubPaths(o.alasan).slice(0, 300) : null,
+  };
+}
+
+export interface BatchLine {
+  teks: string;
+  dari: number;
+  sampai: number;
+  shot: string[];
+}
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 1000) / 1000 : null);
+
+/**
+ * The batch table for the browser: no `media` map (local paths), and every row with `kalimat`
+ * (VO sentence → shots). The engine writes it (contract §8); older batches fall back to the
+ * subtitle clips of the row's ops.json (no shots then).
+ */
+export async function readEngineBatchView(ws: Workspace, projectId: string, jobId: string): Promise<Record<string, unknown>> {
+  const { media: _media, ...batch } = await readEngineBatch(ws, projectId, jobId);
+  void _media;
+  const rows = (Array.isArray(batch.varian) ? batch.varian : []) as Record<string, unknown>[];
+  const jdir = jobAbs(ws, projectId, jobId);
+  const varian = [];
+  for (const r of rows.slice(0, 50)) {
+    let kalimat: BatchLine[] = [];
+    let sumber: 'mesin' | 'ops' | null = null;
+    if (Array.isArray(r.kalimat)) {
+      sumber = 'mesin';
+      for (const k of (r.kalimat as Record<string, unknown>[]).slice(0, 100)) {
+        const dari = num(k?.dari);
+        const sampai = num(k?.sampai);
+        if (typeof k?.teks !== 'string' || dari === null || sampai === null) continue;
+        // Shot ids, or `footage＠in` (fullwidth @) for a fallback cut without a shot id (contract §9).
+        kalimat.push({ teks: k.teks.slice(0, 300), dari, sampai, shot: Array.isArray(k.shot) ? (k.shot as unknown[]).filter((x): x is string => typeof x === 'string' && /^[A-Za-z0-9_.#:@＠-]{1,80}$/.test(x)).slice(0, 20) : [] });
+      }
+    } else if (typeof r.id === 'string' && /^varian-\d{3}$/.test(r.id)) {
+      const ops = await readJson<{ ops?: unknown }>(path.join(jdir, 'out', r.id, 'ops.json')).catch(() => null);
+      const list = (Array.isArray(ops?.ops) ? ops.ops : []) as Record<string, unknown>[];
+      kalimat = list
+        .filter((o) => o?.op === 'add_clip' && o.track_kind === 'subtitle' && typeof o.text === 'string' && num(o.start_ms) !== null && num(o.duration_ms) !== null)
+        .slice(0, 100)
+        .map((o) => ({ teks: (o.text as string).slice(0, 300), dari: (o.start_ms as number) / 1000, sampai: ((o.start_ms as number) + (o.duration_ms as number)) / 1000, shot: [] }));
+      sumber = kalimat.length ? 'ops' : null;
+    }
+    varian.push({ ...r, kalimat, kalimat_sumber: sumber });
+  }
+  return { ...batch, varian };
 }
 
 /** Engine log tail for the "gagal" card. */

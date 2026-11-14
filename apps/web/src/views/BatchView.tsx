@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { Api, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role } from '../api';
+import { Fragment, useCallback, useEffect, useState } from 'react';
+import type { Api, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
 import { ErrorNotice } from '../ui';
+import { LineBreakdown, PisahPanel, batchLabel, useEngineBatches } from './BatchLibrary';
 import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
 
 /**
@@ -9,6 +10,13 @@ import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
  * approved variant projects of the batch project, and only those are rendered (contract §5.3a).
  */
 const today = () => new Date().toISOString().slice(0, 10);
+/** Kinds of VO sentence the engine may drop by itself (contract §8). Default: none. */
+const BUANG = [
+  { id: 'superlatif', label: 'Superlatif ("paling …")' },
+  { id: 'urgensi', label: 'Urgensi ("buruan, stok terbatas")' },
+  { id: 'live', label: 'Ajakan live' },
+  { id: 'musiman', label: 'Musiman (lebaran, ramadan …)' },
+];
 
 export function BatchView({ api, role = 'owner', projects, onOpenProject, onProjectsChanged }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void; onProjectsChanged: () => void }) {
   const [installed, setInstalled] = useState<boolean | null>(null);
@@ -19,6 +27,12 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const [tujuan, setTujuan] = useState('konversi');
   const [hak, setHak] = useState(false);
   const [akun, setAkun] = useState('');
+  const [voBatch, setVoBatch] = useState('');
+  const [musikUji, setMusikUji] = useState(false);
+  const [buang, setBuang] = useState<string[]>([]);
+  const [excluded, setExcluded] = useState<number | null>(null);
+  const [library, setLibrary] = useState<ShotLibrary | null>(null);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [preset, setPreset] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -38,6 +52,25 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     }, setError);
   }, [api]);
   const brand = brands.find((b) => b.brand_id === brandId) ?? null;
+  const { list: batchList, error: listError, reload: reloadBatches } = useEngineBatches(api, installed === true);
+  const pickable = (batchList?.batches ?? []).filter((b) => b.siap_batch);
+  useEffect(() => {
+    const pk = (batchList?.batches ?? []).filter((b) => b.siap_batch);
+    if (batchList?.tersedia) setBatchName((n) => (pk.some((b) => b.batch === n) ? n : (pk[0]?.batch ?? '')));
+  }, [batchList]);
+  // How many shots of the picture batch the team excluded (sent to the engine by the server).
+  useEffect(() => {
+    setExcluded(null);
+    if (!batchList?.tersedia || !batchName || !batchList.batches.some((b) => b.siap_batch && b.batch === batchName)) return;
+    let stale = false;
+    void api.engineShots(batchName).then(
+      (r) => !stale && setExcluded(r.kecualikan.length),
+      () => !stale && setExcluded(null),
+    );
+    return () => {
+      stale = true;
+    };
+  }, [api, batchName, batchList]);
   useEffect(() => {
     setPreset((p) => (brand?.presets.some((x) => x.id === p) ? p : (brand?.presets[0]?.id ?? 'standar')));
   }, [brand]);
@@ -65,6 +98,11 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     try {
       const r = await api.engineBatch(current.project_id, current.job_id);
       setTable(r.batch);
+      setOpen({});
+      // Shot labels for the breakdown (the picture batch); a batch without a library just has no labels.
+      setLibrary(null);
+      const lb = r.batch.batch;
+      if (lb) void api.engineShots(lb).then((x) => setLibrary((cur) => (x.library.batch === lb ? x.library : cur)), () => setLibrary(null));
       setSaved(r.decisions);
       setDraft(Object.fromEntries(r.batch.varian.map((v) => [v.id, r.decisions[v.id]?.status ?? 'usul'])));
     } catch (e) {
@@ -96,7 +134,16 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
         brief: { produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' },
         ai: false,
         mode_ops: 'u3',
-        batch: { batch: batchName.trim(), jumlah, tujuan, hak_pakai_jelas: hak, ...(akunList.length ? { akun_sendiri: akunList } : {}) },
+        batch: {
+          batch: batchName.trim(),
+          jumlah,
+          tujuan,
+          hak_pakai_jelas: hak,
+          ...(akunList.length ? { akun_sendiri: akunList } : {}),
+          ...(voBatch.trim() && voBatch.trim() !== batchName.trim() ? { vo_batch: voBatch.trim() } : {}),
+          ...(musikUji ? { izinkan_musik_tanpa_lisensi: true } : {}),
+          ...(buang.length ? { buang_otomatis: buang } : {}),
+        },
       });
       onProjectsChanged();
       setCurrent({ project_id: p.project_id, job_id: j.job_id });
@@ -142,8 +189,18 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
         <span className="muted small hideNarrow">Library video winning → N rencana varian → coret / setujui sekali → render yang disetujui</span>
       </header>
       <div className="body enginePage">
-        <ErrorNotice error={error ?? jobError} />
+        <ErrorNotice error={error ?? jobError ?? listError} />
         {installed === false && <div className="notice warn">Mesin belum dipasang di server ini. Set <code>MOTION_ENGINE_ROOT</code> ke folder repo mesin lalu jalankan ulang server.</div>}
+        <PisahPanel
+          api={api}
+          role={role}
+          brand={brand}
+          installed={installed === true}
+          onDone={(b) => {
+            onProjectsChanged();
+            void reloadBatches().then(() => setBatchName(b));
+          }}
+        />
         <section className="card" aria-label="Susun batch">
           <h2>1 · Susun batch</h2>
           <div className="inspGrid">
@@ -157,10 +214,45 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                 ))}
               </select>
             </label>
-            <label>
-              Nama batch (folder di mesin)
-              <input aria-label="Nama batch" value={batchName} maxLength={80} placeholder="2026-11-13_video-winning" onChange={(e) => setBatchName(e.target.value.replace(/[^A-Za-z0-9_.-]/g, ''))} />
-            </label>
+            {batchList?.tersedia ? (
+              <>
+                <label>
+                  Batch gambar (footage)
+                  <select aria-label="Nama batch" value={batchName} onChange={(e) => setBatchName(e.target.value)}>
+                    {!pickable.length && <option value="">Belum ada batch siap — upload &amp; pisahkan dulu</option>}
+                    {pickable.map((b) => (
+                      <option key={b.batch} value={b.batch}>
+                        {batchLabel(b)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  VO dari batch lain
+                  <select aria-label="VO dari batch lain" value={voBatch} onChange={(e) => setVoBatch(e.target.value)}>
+                    <option value="">Sama dengan batch gambar</option>
+                    {(batchList.batches ?? [])
+                      .filter((b) => b.vo > 0 && b.batch !== batchName)
+                      .map((b) => (
+                        <option key={b.batch} value={b.batch}>
+                          {b.batch} · {b.vo} VO
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </>
+            ) : (
+              <>
+                <label>
+                  Nama batch (folder di mesin)
+                  <input aria-label="Nama batch" value={batchName} maxLength={80} placeholder="2026-11-13_video-winning" onChange={(e) => setBatchName(e.target.value.replace(/[^A-Za-z0-9_.-]/g, ''))} />
+                </label>
+                <label>
+                  VO dari batch lain (opsional)
+                  <input aria-label="VO dari batch lain" value={voBatch} maxLength={80} placeholder="kosong = sama" onChange={(e) => setVoBatch(e.target.value.replace(/[^A-Za-z0-9_.-]/g, ''))} />
+                </label>
+              </>
+            )}
             <label>
               Jumlah varian
               <input aria-label="Jumlah varian" type="number" min={1} max={50} value={jumlah} onChange={(e) => setJumlah(Math.max(1, Math.min(50, Math.round(Number(e.target.value) || 1))))} />
@@ -194,7 +286,24 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
             <label className="inline inspFull">
               <input type="checkbox" aria-label="Hak pakai footage jelas" checked={hak} onChange={(e) => setHak(e.target.checked)} /> Hak pakai footage jelas milik brand (boleh blur watermark / teks bawaan)
             </label>
+            <label className="inline inspFull">
+              <input type="checkbox" aria-label="Izinkan musik tanpa lisensi" checked={musikUji} onChange={(e) => setMusikUji(e.target.checked)} /> Izinkan musik tanpa lisensi iklan (uji) — varian seperti ini diberi label UJI dan tidak boleh disetujui sebagai iklan
+            </label>
+            <fieldset className="inspFull buangSet">
+              <legend className="small">Buang otomatis kalimat VO jenis ini (default: tidak ada, hanya diberi peringatan)</legend>
+              {BUANG.map((b) => (
+                <label key={b.id} className="inline">
+                  <input type="checkbox" aria-label={`Buang ${b.id}`} checked={buang.includes(b.id)} onChange={(e) => setBuang((x) => (e.target.checked ? [...x, b.id] : x.filter((y) => y !== b.id)))} /> {b.label}
+                </label>
+              ))}
+            </fieldset>
           </div>
+          {batchList && !batchList.tersedia && <div className="muted small">Daftar batch belum bisa dibaca dari mesin ({batchList.alasan}); ketik nama folder batch.</div>}
+          {excluded !== null && (
+            <div className="muted small" aria-label="Shot dikecualikan">
+              {excluded ? `${excluded} shot dikecualikan tim untuk batch ini (atur di menu Shot).` : 'Tidak ada shot yang dikecualikan (atur di menu Shot).'}
+            </div>
+          )}
           <button className="btn primary" disabled={role === 'reviewer' || !installed || !brand || !batchName.trim() || !preset || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
             ▦ Susun {jumlah} varian
           </button>
@@ -213,6 +322,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
               3 · Tabel batch — {table.jumlah_jadi ?? table.varian.length} dari {table.jumlah_diminta ?? table.varian.length} varian
             </h2>
             {table.alasan_kurang && <div className="notice warn small">{table.alasan_kurang}</div>}
+            {table.vo_batch && <div className="muted small">VO diambil dari batch {table.vo_batch}.</div>}
             <div className="row wrap" style={{ gap: 6 }}>
               <button className="btn small" onClick={() => setAll('disetujui')}>
                 Setujui semua
@@ -237,10 +347,14 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                 </thead>
                 <tbody>
                   {table.varian.map((v) => (
-                    <tr key={v.id} data-status={draft[v.id]} className={draft[v.id] === 'dicoret' ? 'struck' : ''}>
+                    <Fragment key={v.id}>
+                    <tr data-status={draft[v.id]} className={draft[v.id] === 'dicoret' ? 'struck' : ''}>
                       <td>
                         {v.id}
                         {v.bukan_iklan && <span className="badge bad" title="Musik tanpa lisensi iklan: hanya untuk uji, bukan untuk iklan">UJI</span>}
+                        <button className="linkBtn small" aria-expanded={!!open[v.id]} aria-label={`Rincian ${v.id}`} onClick={() => setOpen((o) => ({ ...o, [v.id]: !o[v.id] }))}>
+                          {open[v.id] ? '▾ rincian' : '▸ rincian'}
+                        </button>
                       </td>
                       <td>{v.hook ?? '–'}</td>
                       <td>{v.vo ?? '–'}</td>
@@ -263,6 +377,14 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                         )}
                       </td>
                     </tr>
+                    {open[v.id] && (
+                      <tr className="detailRow">
+                        <td colSpan={8}>
+                          <LineBreakdown api={api} batch={table.batch ?? null} row={v} library={library} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

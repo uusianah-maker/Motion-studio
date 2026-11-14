@@ -1,0 +1,72 @@
+[
+  {
+    "id": "U8-01 Upload 2 video → mesin Pisah Audio (progres) → daftar hasil: video bisu, vokal, musik per file",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U8-01b Video rusak dilewati mesin dan disebut (nama file + alasan, tanpa path lokal)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U8-02 Mesin yang menyalin unggahan ke konten/1-upload/<batch>; salinan di job (masuk/) dihapus",
+    "ok": true,
+    "detail": "IN1.mp4,IN2.mp4"
+  },
+  {
+    "id": "U8-03 Nama batch = dropdown dari mesin (jumlah footage, VO, shot); batch hasil pisah langsung terpilih",
+    "ok": true,
+    "detail": "2026-11-14_baru · 2 footage · 2 VO · 5 shot"
+  },
+  {
+    "id": "U8-04 Grid shot per batch: 5 shot, thumbnail mesin (4; path di luar batch tidak dilayani), label tampil",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U8-05 Filter label (teks_bawaan) → 2 shot",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U8-06 Kecualikan 2 shot + simpan → tersimpan di sisi app (bukan di folder mesin)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U8-07 Filter \"Dikecualikan\" → 2 shot",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U8-08 Form batch menyebut jumlah shot yang dikecualikan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U8-09 job.json batch: kecualikan_shot dari app, izinkan musik tanpa lisensi, buang_otomatis",
+    "ok": true,
+    "detail": "{\"batch\":\"2026-11-14_baru\",\"kecualikan_shot\":[\"IN1#00\",\"IN2#01\"],\"buang\":[\"urgensi\"]}"
+  },
+  {
+    "id": "U8-10 Rincian varian: kalimat VO + waktu + shot di bawahnya",
+    "ok": true,
+    "detail": "0,0–0,8 dtk Hook 1 | F1#00 | 0,8–1,1 dtk Cek keranjang | F1#01 | F1#00 | F1＠1.5"
+  },
+  {
+    "id": "U8-11 Batch lama tanpa kalimat dari mesin: rincian dari caption rencana, diberi keterangan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "U8-12 Layar HP: Shot Library tidak keluar layar",
+    "ok": true,
+    "detail": "0 keluar"
+  },
+  {
+    "id": "U8-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

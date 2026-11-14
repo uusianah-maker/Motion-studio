@@ -8,7 +8,7 @@ import { ErrorNotice } from '../ui';
  * ONE undo step → render + QC in the Editor. Nothing is rendered here, nothing applies by itself.
  */
 export const ENGINE_STATE: Record<EngineJob['state'], string> = { menunggu: 'Antre', berjalan: 'Berjalan', siap: 'Rencana siap', ditolak: 'Ditolak mesin', gagal: 'Gagal' };
-const TAHAP: Record<string, string> = { antre: 'Menunggu giliran', mulai: 'Memulai mesin', cek_input: 'Cek video', transkrip: 'Transkrip (Whisper)', rencana: 'Menyusun rencana', selesai: 'Selesai' };
+const TAHAP: Record<string, string> = { antre: 'Menunggu giliran', mulai: 'Memulai mesin', cek_input: 'Cek video', transkrip: 'Transkrip (Whisper)', rencana: 'Menyusun rencana', pisah: 'Memisah audio (Demucs)', shot_library: 'Menyusun Shot Library', selesai: 'Selesai' };
 const sec = (n: number | undefined) => (typeof n === 'number' ? `${n.toFixed(1).replace('.', ',')} dtk` : '–');
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -50,7 +50,7 @@ export function EngineProgress({ job, log, onCancel }: { job: EngineJob; log: st
     <div className="engineJob" role="status" aria-label="Status mesin" data-state={job.state}>
       <div className="row" style={{ alignItems: 'center', gap: 10 }}>
         <b>{job.job_id}</b>
-        <span className={`badge ${job.state === 'siap' ? 'ok' : job.state === 'gagal' || job.state === 'ditolak' ? 'bad' : ''}`}>{ENGINE_STATE[job.state]}</span>
+        <span className={`badge ${job.state === 'siap' ? 'ok' : job.state === 'gagal' || job.state === 'ditolak' ? 'bad' : ''}`}>{job.mode === 'pisah' && job.state === 'siap' ? 'Selesai dipisah' : ENGINE_STATE[job.state]}</span>
         <span className="spacer" />
         {live && onCancel && (
           <button className="btn small" onClick={onCancel}>

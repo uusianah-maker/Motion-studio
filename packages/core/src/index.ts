@@ -50,12 +50,28 @@ export {
   engineEnv,
   type BatchDecision,
   readEngineBatch,
+  readEngineBatchView,
+  readPisahResult,
+  type PisahFile,
+  type BatchLine,
   readEngineLog,
   readEngineStatus,
   runEngineJob,
   settleOrphanJob,
   validateEngineJob,
 } from './storage/engine.js';
+export {
+  type EngineBatchInfo,
+  type LibraryShot,
+  type ShotLibrary,
+  isBatchName,
+  listEngineBatches,
+  parseBatchList,
+  readShotExclusions,
+  readShotLibrary,
+  readShotThumbs,
+  setShotExclusions,
+} from './storage/engineLibrary.js';
 export { type Word as CaptionWord, sliceWords } from './storage/words.js';
 export { MAX_VARIANTS_PER_RUN, type VariantState, validateBriefs, variantOps, variantState } from './storage/variants.js';
 export { type BrandGuard, EMPTY_GUARD, GUARD_LIMITS, type GuardIssue, bannedIn, checkBrandGuard, localDate } from './storage/brandGuard.js';

@@ -105,6 +105,19 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 .tableScroll { overflow-x: auto; max-width: 100%; }
 .batchTable tr.struck td { opacity: 0.45; text-decoration: line-through; }
 .batchTable tr.struck td:last-child { opacity: 1; text-decoration: none; }
+.batchTable tr.detailRow td { background: var(--panel-2, rgba(127,127,127,0.06)); }
+.lineBreakdown ol { margin: 4px 0; padding-left: 20px; display: grid; gap: 8px; }
+.lineBreakdown .lineText { font-weight: 600; }
+.shotMini { margin: 0; display: grid; gap: 2px; justify-items: center; }
+.shotThumb { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 6px; background: rgba(127,127,127,0.18); display: block; }
+.shotThumb.small { width: 54px; }
+.shotGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+.shotCard { display: grid; gap: 4px; align-content: start; padding: 6px; border: 1px solid var(--line, rgba(127,127,127,0.25)); border-radius: 8px; min-width: 0; }
+.shotCard.excluded { opacity: 0.5; border-style: dashed; }
+.shotCard .shotText { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.inspGrid .buangSet { border: 0; padding: 0; margin: 0; display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px 14px; }
+.inspGrid .buangSet label.inline { flex-direction: row; align-items: center; }
+.buangSet legend { padding: 0; margin-bottom: 4px; }
 .seg { display: inline-flex; gap: 4px; }
 .btn.sel { background: #3a2f6b; border-color: #7d68e0; color: #fff; }
 .linkBtn { background: none; border: none; color: #ae99ff; cursor: pointer; padding: 2px 4px; text-decoration: underline; }
@@ -390,6 +403,8 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; }
 .inspHead .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .inspGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .inspGrid label, .inspFull { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #b3bbce; min-width: 0; }
+.inspGrid > .inspFull { grid-column: 1 / -1; }
+.inspGrid label.inline { flex-direction: row; align-items: center; gap: 6px; }
 .inspector input:not([type=checkbox]):not([type=range]):not([type=color]), .inspector textarea { border: 1px solid var(--line); background: #10141e; border-radius: 8px; padding: 6px 8px; color: inherit; font: inherit; font-size: 12px; min-width: 0; }
 .inspector input[type=range] { width: 100%; accent-color: #8868ff; }
 .inspector input[type=color] { width: 44px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }

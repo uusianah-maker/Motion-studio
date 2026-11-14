@@ -43,6 +43,12 @@ await fsp.mkdir(path.join(engine, 'konten'));
 ff(['-f', 'lavfi', '-i', 'sine=f=330:d=2', '-af', 'volume=0.05', path.join(engine, 'aset', 'musik-lokal.wav')]);
 ff(['-f', 'lavfi', '-i', 'testsrc=s=640x360:r=30:d=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(engine, 'konten', 'f1.mp4')]);
 ff(['-f', 'lavfi', '-i', 'sine=f=220:d=3', '-af', 'volume=0.1', path.join(engine, 'konten', 'f1-vokal.wav')]);
+// The batch already split by the engine (konten/2-dipisah): it shows up in the batch dropdown.
+const dipisah = path.join(engine, 'konten', '2-dipisah', '2026-11-13_winning');
+for (const d of ['video-bisu', 'vokal']) await fsp.mkdir(path.join(dipisah, d), { recursive: true });
+await fsp.copyFile(path.join(engine, 'konten', 'f1.mp4'), path.join(dipisah, 'video-bisu', 'F1.mp4'));
+await fsp.copyFile(path.join(engine, 'konten', 'f1-vokal.wav'), path.join(dipisah, 'vokal', 'F1.wav'));
+await fsp.writeFile(path.join(dipisah, 'shots.json'), JSON.stringify({ schema: 'shots/1', batch: '2026-11-13_winning', footage: { F1: { durasi: 3 } }, shots: [{ id: 'F1#00', footage: 'F1', dari: 0, sampai: 1.5 }] }));
 const talk = path.join(work, 'rekaman-bicara.mp4');
 ff(['-f', 'lavfi', '-i', 'color=c=gray:s=360x640:r=30:d=3', '-f', 'lavfi', '-i', 'sine=f=200:d=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', talk]);
 await svc.createBrand({ kit: { name: 'Aysilla Factory', kode: 'AYS', produk: [{ nama: 'Loose Pants', varian: ['Espresso', 'Black'] }] }, actor: 'user' });
@@ -101,7 +107,8 @@ try {
   await page.getByRole('heading', { name: 'Batch Remix' }).waitFor();
   const bform = page.getByRole('region', { name: 'Susun batch' });
   await until(async () => (await bform.getByLabel('Brand').inputValue()) !== '');
-  await bform.getByLabel('Nama batch').fill('2026-11-13_winning');
+  await until(async () => (await bform.getByLabel('Nama batch').inputValue()) === '2026-11-13_winning');
+  await bform.getByLabel('Nama batch').selectOption('2026-11-13_winning');
   await bform.getByLabel('Jumlah varian').fill('3');
   await bform.getByLabel('Preset').fill('aysilla-konversi');
   await bform.getByLabel('Hak pakai footage jelas').check();

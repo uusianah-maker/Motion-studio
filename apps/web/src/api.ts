@@ -504,7 +504,7 @@ export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal'
 export interface EngineJob {
   job_id: string;
   project_id: string;
-  mode: 'generate' | 'batch' | 'ulang';
+  mode: 'generate' | 'batch' | 'ulang' | 'pisah';
   state: EngineState;
   tahap: string;
   persen: number;
@@ -529,7 +529,56 @@ export interface EngineStart {
   brief: EngineBrief;
   ai: boolean;
   mode_ops?: 'kompat' | 'u3';
-  batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[] };
+  batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[]; vo_batch?: string; izinkan_musik_tanpa_lisensi?: boolean; buang_otomatis?: string[] };
+}
+/** Pisah Audio + Shot Library: the project's uploaded videos → one batch in the engine. */
+export interface EnginePisahStart {
+  mode: 'pisah';
+  sources: { kunci: string; ref: { media_id: string; version_id: string } }[];
+  pisah: { batch: string; video_saja?: boolean };
+}
+export interface PisahResult {
+  batch: string | null;
+  files: { file: string; video: boolean; vokal: boolean; musik: boolean }[];
+  /** Uploads the engine skipped (broken / not a video). */
+  ditolak: { file: string; alasan: string }[];
+  alasan: string | null;
+}
+/** One batch in the engine's konten/ (`engine daftar_batch`). */
+export interface EngineBatchInfo {
+  batch: string;
+  upload: number;
+  footage: number;
+  vo: number;
+  musik: number;
+  dipisah: boolean;
+  dipisah_pada: number | null;
+  shot_library: boolean;
+  jumlah_shot: number;
+  siap_batch: boolean;
+}
+export interface LibraryShot {
+  id: string;
+  footage: string;
+  dari: number;
+  sampai: number;
+  label: Record<string, string | number | boolean>;
+  tag: string[];
+  ucapan: string | null;
+  teks: string[];
+  thumb: boolean;
+  koreksi: boolean;
+}
+export interface ShotLibrary {
+  batch: string;
+  footage: { id: string; durasi: number | null }[];
+  shots: LibraryShot[];
+}
+export interface BatchLine {
+  teks: string;
+  dari: number;
+  sampai: number;
+  shot: string[];
 }
 /** Engine plan summary (KONTRAK-ENGINE §5.1); every field optional — the engine writes it. */
 export interface EngineRencana {
@@ -558,6 +607,9 @@ export interface BatchRow {
   cta?: string;
   bukan_iklan?: boolean;
   qc_lulus?: boolean;
+  /** VO sentence → shots (engine), or the subtitle clips of ops.json (`ops`, no shots). */
+  kalimat?: BatchLine[];
+  kalimat_sumber?: 'mesin' | 'ops' | null;
 }
 export type BatchRowStatus = 'usul' | 'disetujui' | 'dicoret';
 export interface BatchTable {
@@ -565,6 +617,7 @@ export interface BatchTable {
   jumlah_diminta?: number;
   jumlah_jadi?: number;
   alasan_kurang?: string | null;
+  vo_batch?: string | null;
   varian: BatchRow[];
 }
 
@@ -743,6 +796,13 @@ export function createApi(token: string | null, base = '') {
       call<{ batch: BatchTable; decisions: Record<string, { status: BatchRowStatus; project_id: string | null }> }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch`),
     engineDecide: (id: string, jobId: string, rows: { varian: string; status: BatchRowStatus }[]) =>
       call<{ decisions: Record<string, { status: BatchRowStatus; project_id: string | null }> }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch/decide`, { json: { rows } }).then((r) => r.decisions),
+    // Batch Remix library (Pisah Audio, batch list, Shot Library)
+    enginePisah: (id: string, body: EnginePisahStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
+    enginePisahResult: (id: string, jobId: string) => call<{ pisah: PisahResult }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/pisah`).then((r) => r.pisah),
+    engineBatches: () => call<{ tersedia: boolean; batches: EngineBatchInfo[]; alasan: string | null }>('GET', '/api/engine/batches'),
+    engineShots: (batch: string) => call<{ library: ShotLibrary; kecualikan: string[] }>('GET', `/api/engine/batches/${encodeURIComponent(batch)}/shots`),
+    engineThumbs: (batch: string, ids: string[]) => call<{ thumbs: Record<string, string> }>('GET', `/api/engine/batches/${encodeURIComponent(batch)}/thumbs?ids=${encodeURIComponent(ids.join(','))}`).then((r) => r.thumbs),
+    engineSetExcluded: (batch: string, shots: string[]) => call<{ kecualikan: string[] }>('POST', `/api/engine/batches/${encodeURIComponent(batch)}/kecualikan`, { json: { shots } }).then((r) => r.kecualikan),
     outputUrl: (id: string, name: string, download = false) =>
       call<{ url: string; expires_at: number }>('GET', `/api/projects/${encodeURIComponent(id)}/output-url?${new URLSearchParams({ name, ...(download ? { download: '1' } : {}) })}`),
   };

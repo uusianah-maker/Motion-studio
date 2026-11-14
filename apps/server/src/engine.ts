@@ -6,16 +6,23 @@ import {
   type EngineStatus,
   type Workspace,
   audit,
+  isBatchName,
   isJobId,
+  listEngineBatches,
   listEngineJobs,
   loadEnginePlan,
   prepareEngineJob,
   readBatchDecisions,
-  readEngineBatch,
+  readEngineBatchView,
   readEngineLog,
   readEngineStatus,
+  readPisahResult,
   readProject,
+  readShotExclusions,
+  readShotLibrary,
+  readShotThumbs,
   runEngineJob,
+  setShotExclusions,
   settleOrphanJob,
   validateEngineJob,
 } from './core.js';
@@ -36,6 +43,11 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
   const preparing = new Set<string>();
   let running = false;
   const key = (p: string, j: string) => `${p}/${j}`;
+  // `engine daftar_batch` spawns Python: one at a time, answer reused for a few seconds, dropped
+  // when a job (Pisah Audio) may have changed the engine's konten/.
+  type BatchList = { tersedia: boolean; batches: Awaited<ReturnType<typeof listEngineBatches>>; alasan: string | null };
+  let batchCache: { at: number; value: BatchList } | null = null;
+  let batchFlight: Promise<BatchList> | null = null;
 
   const pump = () => {
     if (running || !opts.config) return;
@@ -48,6 +60,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
       .catch((e: unknown) => opts.onError?.(e))
       .finally(() => {
         active.delete(key(next.project_id, next.job_id));
+        batchCache = null;
         running = false;
         pump();
       });
@@ -59,6 +72,10 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
   const jobParam = (j: string | undefined) => {
     if (!isJobId(j)) throw new ApiError(404, 'NOT_FOUND', 'Job mesin tidak ditemukan');
     return j;
+  };
+  const batchParam = (b: string | undefined) => {
+    if (!isBatchName(b)) throw new ApiError(404, 'NOT_FOUND', 'Batch tidak ditemukan');
+    return b;
   };
   const needEngine = () => {
     if (!opts.config) throw new ApiError(409, 'ENGINE_MISSING', 'Mesin belum dipasang di server ini (set MOTION_ENGINE_ROOT ke folder repo mesin)');
@@ -88,6 +105,11 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
         if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh menjalankan mesin');
         const body = await readJsonBody(req);
         const input = validateEngineJob({ ...(body as object), project_id: params.project_id });
+        // The team's shot exclusions live here (app side); the engine gets them in job.json.
+        if (input.batch) {
+          const kecuali = await readShotExclusions(ws, input.batch.batch);
+          if (kecuali.length) input.batch.kecualikan_shot = kecuali;
+        }
         if (queue.length >= 20) throw new ApiError(429, 'BUSY', 'Antrean mesin penuh (20); tunggu dulu');
         preparing.add(input.project_id);
         try {
@@ -130,10 +152,9 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
       path: '/api/projects/:project_id/engine/jobs/:job_id/batch',
       handle: async ({ params }) => {
         const job = jobParam(params.job_id);
-        // Checkpoint I L2: the media map holds local paths — the browser does not need it.
-        const { media: _media, ...batch } = await readEngineBatch(ws, params.project_id!, job);
-        void _media;
-        return { batch, decisions: await readBatchDecisions(ws, params.project_id!, job) };
+        // Checkpoint I L2: the media map holds local paths — the browser does not need it (dropped
+        // by readEngineBatchView, which also adds the per-sentence shot breakdown).
+        return { batch: await readEngineBatchView(ws, params.project_id!, job), decisions: await readBatchDecisions(ws, params.project_id!, job) };
       },
     },
     {
@@ -157,6 +178,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
         const job = jobParam(params.job_id);
         const s = await readEngineStatus(ws, params.project_id!, job);
         if (s.state !== 'siap') throw new ApiError(409, 'NOT_READY', 'Rencana mesin belum siap');
+        if (s.mode === 'pisah') throw new ApiError(400, 'BAD_REQUEST', 'Pisah Audio tidak punya rencana edit');
         const variant = body.variant === undefined ? undefined : typeof body.variant === 'string' ? body.variant : undefined;
         const p = await loadEnginePlan(ws, opts.config, params.project_id!, job, variant);
         const r = p.rencana as { hook?: { teks?: unknown }; durasi?: { akhir?: unknown }; peringatan?: unknown; ragu?: unknown; menunggu_u3?: unknown };
@@ -178,6 +200,63 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
         });
         await audit(ws, { op: 'engine.plan', actor, outcome: 'ok', project_id: params.project_id!, job_id: job, plan_id: out.plan.plan_id, imported: p.imported.length });
         return { ...out, rencana: p.rencana, qc: p.qc };
+      },
+    },
+    {
+      // Pisah Audio result: which files got video / vocals / music (no local paths).
+      method: 'GET',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/pisah',
+      handle: async ({ params }) => ({ pisah: await readPisahResult(ws, params.project_id!, jobParam(params.job_id)) }),
+    },
+    {
+      // Batch dropdown (fitur 2): `engine daftar_batch`. An engine without it = free text in the form.
+      method: 'GET',
+      path: '/api/engine/batches',
+      handle: async () => {
+        const cfg = needEngine();
+        if (batchCache && Date.now() - batchCache.at < 5000) return batchCache.value;
+        batchFlight ??= listEngineBatches(cfg)
+          .then((batches): BatchList => ({ tersedia: true, batches, alasan: null }))
+          .catch((e: unknown): BatchList => ({ tersedia: false, batches: [], alasan: e instanceof Error ? e.message : String(e) }))
+          .then((value) => {
+            batchCache = { at: Date.now(), value };
+            return value;
+          })
+          .finally(() => {
+            batchFlight = null;
+          });
+        return batchFlight;
+      },
+    },
+    {
+      // Shot Library (fitur 5): labels per shot + the team's exclusions.
+      method: 'GET',
+      path: '/api/engine/batches/:batch/shots',
+      handle: async ({ params }) => {
+        const cfg = needEngine();
+        const batch = batchParam(params.batch);
+        return { library: await readShotLibrary(cfg, batch), kecualikan: await readShotExclusions(ws, batch) };
+      },
+    },
+    {
+      // Engine-made thumbnails as data URLs (an <img> cannot send the session's Authorization).
+      method: 'GET',
+      path: '/api/engine/batches/:batch/thumbs',
+      handle: async ({ params, url }) => {
+        const cfg = needEngine();
+        const ids = (url.searchParams.get('ids') ?? '').split(',').filter(Boolean);
+        if (!ids.length) throw new ApiError(400, 'BAD_REQUEST', 'ids wajib');
+        return { thumbs: await readShotThumbs(cfg, batchParam(params.batch), ids) };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/engine/batches/:batch/kecualikan',
+      handle: async ({ req, params, actor }) => {
+        if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh mengubah Shot Library');
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['shots']);
+        return { kecualikan: await setShotExclusions(ws, { batch: batchParam(params.batch), shots: body.shots, actor }) };
       },
     },
   ];
