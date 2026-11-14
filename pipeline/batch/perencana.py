@@ -31,6 +31,7 @@ from common import KONTEN, PIPELINE, norm  # noqa: E402
 import matcher  # noqa: E402
 import musik as musik_mod  # noqa: E402
 import vo as vo_mod  # noqa: E402
+import brand_lain  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, kata_klip  # noqa: E402  (milik venus, konvensi sama)
 
@@ -199,7 +200,7 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool) -> tuple[list[di
     return ops, menunggu
 
 
-def qc(v: dict, ops: list[dict], target, media: dict, terlarang: list[str], durasi_sumber: dict) -> dict:
+def qc(v: dict, ops: list[dict], target, media: dict, terlarang: list[str], durasi_sumber: dict, deteksi=None) -> dict:
     hasil = []
 
     def cek(nama, lulus, ket=""):
@@ -213,6 +214,11 @@ def qc(v: dict, ops: list[dict], target, media: dict, terlarang: list[str], dura
     teks_layar = " ".join(o.get("text", "") for o in ops).lower()
     kena = [t for t in terlarang if t and t.lower() in teks_layar]
     cek("kata_terlarang", not kena, ", ".join(kena))
+    if deteksi:
+        # Jaring kedua: kalimat VO terpakai + teks di layar tidak boleh menyebut brand lain.
+        sebut = [f"{x}" for k in v["rv"]["kalimat"] if (x := deteksi.cek(k["teks"]))]
+        sebut += [f"layar: {x}" for o in ops if o.get("text") and (x := deteksi.cek(o["text"]))]
+        cek("brand_lain", not sebut, ", ".join(dict.fromkeys(sebut)))
     cek("jumlah_ops", len(ops) <= MAKS_OPS, str(len(ops)))
     pendek = [f"{o['track_kind']}@{o['start_ms']}" for o in ops if o["op"] == "add_clip" and o["duration_ms"] < MIN_CLIP_MS]
     # (dicek semua track: video, audio/VO, subtitle, text)
@@ -318,7 +324,9 @@ def jalankan(job_dir: Path) -> int:
     progres("rencana", 20, "memilih voice over")
     produk = brief.get("produk", "")
     produk_kata = [x for x in re.split(r"\s+", produk.lower()) if x] + ["celana"] if produk else []
-    vos, vo_tolak = vo_mod.kandidat(vo_dir, vo_lib, brand, produk_kata)
+    akun_semua = sorted({a for m in lib["footage"].values() for a in m.get("watermark", {}).get("akun", [])})
+    deteksi = brand_lain.dari_job(brand_raw, brand, job.get("akun_sendiri", []), akun_semua)
+    vos, vo_tolak = vo_mod.kandidat(vo_dir, vo_lib, brand, produk_kata, deteksi)
     tolak_ids = {t["id"] for t in vo_tolak}
     # Footage boleh jadi broll: semua, kecuali yang ucapannya tentang produk lain.
     produk_lain = {t["id"] for t in vo_tolak if t["alasan"].startswith("tidak menyebut produk")}
@@ -484,7 +492,7 @@ def jalankan(job_dir: Path) -> int:
                    # v0.3.1 §8: aset milik mesin (stem vokal, musik) diimpor runner seperti placeholder lain.
                    "aset_lokal": [{"kunci": k, "path": media[k]} for k in sorted(aset_lokal)], "ops": ops}
         (vdir / "ops.json").write_text(json.dumps(ops_doc, ensure_ascii=False, indent=1), encoding="utf-8")
-        q = qc(v, ops, target, {**media, **{a["kunci"]: "" for a in brand_raw.get("aset", [])}}, terlarang, {f: m["durasi"] for f, m in lib["footage"].items()})
+        q = qc(v, ops, target, {**media, **{a["kunci"]: "" for a in brand_raw.get("aset", [])}}, terlarang, {f: m["durasi"] for f, m in lib["footage"].items()}, deteksi)
         (vdir / "qc_rencana.json").write_text(json.dumps(q, ensure_ascii=False, indent=1), encoding="utf-8")
         tabel.append({
             "id": v["id"], "vo": v["vo"], "hook": v["hook"]["teks"],

@@ -6,20 +6,22 @@ diputuskan tim nanti). Kalimat yang kena aturan (superlatif, urgensi, live, musi
   buang_otomatis: ["superlatif", "urgensi", ...]  -> kalimat jenis itu dibuang
   batas_durasi: [min, maks]                       -> kalimat tengah bertopik paling sedikit dibuang sampai masuk
 Kalimat pertama (hook) dan kalimat CTA terakhir tidak pernah dibuang karena durasi.
-Satu-satunya yang selalu dibuang: potongan Whisper < 0,35 dtk (klip < 100 ms ditolak Motion Studio).
+Yang selalu dibuang: potongan Whisper < 0,35 dtk (klip < 100 ms ditolak Motion Studio) dan kalimat yang
+menyebut brand LAIN (brand_lain.py: iklan brand ini tidak boleh menyebut toko/brand lain; bukan soal gaya).
 """
 
 import json
 import random
 from pathlib import Path
 
+import brand_lain
 from common import alasan_buang, apply_kamus, cek_ucapan, kalimat, merge_split_words, norm
 
 JEDA = 0.12  # detik jeda antar kalimat di timeline hasil
 MAKS_JUDUL = 6
 
 
-def kandidat(batch_dir: Path, lib: dict, brand: dict, produk_kata: list[str]) -> tuple[list[dict], list[dict]]:
+def kandidat(batch_dir: Path, lib: dict, brand: dict, produk_kata: list[str], deteksi=None) -> tuple[list[dict], list[dict]]:
     """Return (vo_layak, ditolak). Footage tanpa ucapan / lirik lagu / produk lain ditolak sebagai VO."""
     layak, tolak = [], []
     pk = {norm(x) for x in produk_kata}
@@ -45,9 +47,26 @@ def kandidat(batch_dir: Path, lib: dict, brand: dict, produk_kata: list[str]) ->
             k["saran_buang"] = alasan_buang(k["teks"], brand.get("superlatif_dilarang", []))
             # Teknis, bukan isi: gumaman/potongan Whisper, klip < 100 ms ditolak Motion Studio.
             k["teknis"] = "terlalu_pendek" if k["sampai"] - k["dari"] < 0.35 else None
-        boleh = [k for k in ks if not k["teknis"]]
+            lain = deteksi.cek(k["teks"]) if deteksi else None
+            k["brand_lain"] = f"brand lain: {lain}" if lain else None
+        # Whisper memecah kalimat di titik singkatan ("dari A.L." | "Store, yang ..."): cek juga pasangan
+        # kalimat bersebelahan; kalau nama brand lain melintasi batas, kedua kalimat ditandai.
+        for k1, k2 in zip(ks, ks[1:]) if deteksi else []:
+            if k2["brand_lain"]:
+                continue
+            if k1["brand_lain"]:
+                # "dari A.L.N." (sudah kena) | "Store dengan bahan ...": sisa nama toko ikut dibuang.
+                awal = brand_lain.token(k2["teks"])[:1]
+                if awal and awal[0] in brand_lain.SUFIKS:
+                    k2["brand_lain"] = k1["brand_lain"]
+                continue
+            lain = deteksi.cek(k1["teks"] + " " + k2["teks"])
+            if lain:
+                k1["brand_lain"] = k2["brand_lain"] = f"brand lain: {lain}"
+        boleh = [k for k in ks if not k["teknis"] and not k["brand_lain"]]
         if not boleh:
-            tolak.append({"id": fid, "alasan": "tidak ada kalimat utuh"})
+            alasan = "semua kalimat menyebut brand lain" if any(k["brand_lain"] for k in ks) else "tidak ada kalimat utuh"
+            tolak.append({"id": fid, "alasan": alasan})
             continue
         layak.append({"id": fid, "kalimat": ks, "durasi": meta["durasi"],
                       "skor": len({t for k in boleh for t in k["topik"]}) + (2 if any("cta" in k["topik"] for k in boleh) else 0)})
@@ -87,7 +106,7 @@ def susun(vo: dict, rng: random.Random, target: tuple[float, float] | None = Non
     buang_otomatis: jenis aturan yang boleh membuang kalimat (default kosong = hanya ditandai).
     """
     def kena(k):
-        return k["teknis"] or (_jenis(k["saran_buang"]) in buang_otomatis and k["saran_buang"])
+        return k["teknis"] or k.get("brand_lain") or (_jenis(k["saran_buang"]) in buang_otomatis and k["saran_buang"])
 
     boleh = [k for k in vo["kalimat"] if not kena(k)]
     dibuang = [{"dari": k["dari"], "sampai": k["sampai"], "teks": k["teks"], "jenis": kena(k), "sumber": "aturan"}

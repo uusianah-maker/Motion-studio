@@ -35,6 +35,9 @@ MIN_SHOT = 0.6
 WAJAH_KECIL = 0.07  # tinggi wajah < 7% frame: bibir tidak terbaca, aman dipakai lintas kreator
 AW, AH = 288, 512  # resolusi analisis
 THUMB_W = 270  # lebar thumbnail shot (tinggi ikut rasio sumber)
+# Teks latar (judul buku di rak, poster): tinggi kotak < 2,5% frame, atau diam di banyak shot pada footage satu take.
+# Caption tertanam selalu lebih besar. Teks latar tetap dicatat (dan di-blur) tapi tidak membuat shot "teks_bawaan".
+TEKS_KECIL = 0.025
 
 # Kotak watermark TikTok & footer (pecahan lebar/tinggi), diukur dari batch 2026-11-13.
 WM_KIRI = (0.0, 0.425, 0.34, 0.55)
@@ -241,6 +244,7 @@ def gabung_kotak(lst: list[dict]) -> list[dict]:
                     x0, y0 = min(a[0], b[0]), min(a[1], b[1])
                     x1, y1 = max(a[0] + a[2], b[0] + b[2]), max(a[1] + a[3], b[1] + b[3])
                     out[i] = {**out[i], "teks": out[i]["teks"] + " " + out[j]["teks"],
+                              "statis": bool(out[i].get("statis") and out[j].get("statis")),
                               "kotak": [round(x0, 3), round(y0, 3), round(x1 - x0, 3), round(y1 - y0, 3)]}
                     out.pop(j)
                     berubah = True
@@ -283,6 +287,11 @@ def words_in(words, a, b):
     return [w for w in words if w["startMs"] / 1000 < b and w["endMs"] / 1000 > a]
 
 
+def is_latar(t: dict, satu_take: bool) -> bool:
+    """Teks latar: kecil, atau diam lintas shot di footage satu take (tanpa potongan = tidak ada caption edit)."""
+    return t["kotak"][3] < TEKS_KECIL or bool(satu_take and t.get("statis"))
+
+
 def label_shot(rows, words, a, b, teks_lain, cek_kosong=False):
     rs = [r for r in rows if a <= r["t"] < b] or [min(rows, key=lambda r: abs(r["t"] - a))]
     fh = [r["face_h"] for r in rs]
@@ -312,8 +321,10 @@ def label_shot(rows, words, a, b, teks_lain, cek_kosong=False):
         # gerak_mulut hanya info: diuji 13 Nov, pose diam & bicara nilainya mirip (gerak kepala ikut terbaca).
         # Jadi aturannya konservatif: wajah cukup besar + ada ucapan = dianggap bicara.
         "wajah_bicara": bool(face_ratio >= 0.4 and face_h >= WAJAH_KECIL and bicara >= 0.4),
-        "teks_bawaan": bool(teks_lain),
-        "teks": [{"teks": t["teks"], "kotak": t["kotak"]} for t in teks_lain],
+        # teks_bawaan = caption/teks tertanam (shot dihindari kalau hak pakai belum jelas); teks_latar = info saja.
+        "teks_bawaan": any(not is_latar(t, cek_kosong) for t in teks_lain),
+        "teks_latar": any(is_latar(t, cek_kosong) for t in teks_lain),
+        "teks": [{"teks": t["teks"], "kotak": t["kotak"], "latar": is_latar(t, cek_kosong)} for t in teks_lain],
         "buram": bool(np.median([r["tajam"] for r in rs]) < 40),
         "kosong": bool(cek_kosong and np.mean([r.get("hadir", True) for r in rs]) < 0.5),
         "tag": tags,
