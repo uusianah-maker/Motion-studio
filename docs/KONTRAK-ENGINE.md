@@ -280,3 +280,15 @@ Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "bran
 **Keputusan owner 14 Nov 2026 (Batch Remix): satu-satunya pengecualian dari "kalimat VO tidak dibuang otomatis".**
 - Kalimat VO yang menyebut brand atau toko lain **selalu dibuang otomatis** dan dicatat di QC `brand_lain` (yuki, 4e1073b + aba89de). Kata owner: "Ya, buang otomatis".
 - Kalimat superlatif, urgensi, live, musiman, dan soal durasi tetap mengikuti `buang_otomatis`. Defaultnya tidak dibuang dan hanya diberi peringatan.
+
+## 10. Pengaman ops (v0.3.3, 14 Nov 2026, venus)
+
+Mesin menjaga sendiri supaya Motion Studio tidak pernah menerima ops yang tidak valid (`pipeline/jaga_ops.py`, dipakai Generate dan Batch Remix):
+- **Klip ≤ panjang file sumber.** Batasnya diukur dengan ffprobe dari file asli, dikurangi 1 frame. Klip yang kelebihan dipendekkan. Klip yang sisanya kurang dari 100 ms dibuang.
+- **Teks kosong dibuang.** Contohnya CTA saat Brand Kit belum punya CTA. Teks lebih dari 500 karakter dipotong.
+- **Waktu kata caption (`words`) dirapikan** supaya urut, tidak tumpang tindih, dan berada di dalam klip.
+- **Gerbang akhir:** setiap `ops.json` diuji dengan validator asli Motion Studio (`validasi_ops.mjs`).
+  - **Batch Remix:** varian yang tetap ditolak mendapat `"rusak": "<alasan>"` di baris `out/batch.json`, `qc_lulus: false`, dan peringatan `block` `rusak`. Varian rusak **tidak boleh** bisa disetujui. Varian lain tetap bisa disimpan.
+  - **Generate:** ditolak berarti kode 1 dengan alasan yang jelas.
+- Setiap perubahan oleh pengaman dicatat sebagai peringatan `info` `durasi_sumber` di `rencana.json`.
+

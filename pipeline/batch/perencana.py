@@ -34,6 +34,7 @@ import vo as vo_mod  # noqa: E402
 import brand_lain  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, kata_klip  # noqa: E402  (milik venus, konvensi sama)
+from jaga_ops import buang_teks_kosong, cek_durasi, jaga_durasi, rapikan_kata, validasi_motion_studio  # noqa: E402  (pengaman venus: klip <= panjang file sumber)
 
 from jalur import BATCH_PY  # noqa: E402  (Python yang punya OpenCV untuk Shot Library; Windows/Linux)
 # Saran durasi per tujuan: hanya informasi di rencana. Batas baru berlaku kalau job menulis batas_durasi
@@ -418,7 +419,15 @@ def jalankan(job_dir: Path) -> int:
             elif kind == "$musik" and m and ph == m["kunci"] and m["sumber"] != "brand_kit":
                 # Musik dari Brand Kit sudah dikenal runner lewat asetnya; hanya musik milik mesin yang ditulis.
                 media[ph] = path_media(m["path"])
-        peringatan = []
+        # Pengaman (venus, 14 Nov): tiap klip <= panjang ASLI file sumbernya. Satu klip yang kelebihan
+        # dulu membuat Motion Studio menolak Simpan keputusan untuk SEMUA varian (KORSET varian-003).
+        aset_brand = {a["kunci"]: a.get("path") for a in brand_raw.get("aset", []) if a.get("kunci")}
+        path_of = lambda k, media=media, aset_brand=aset_brand: media.get(k) or aset_brand.get(k)  # noqa: E731
+        catatan_durasi = jaga_durasi(ops, path_of) + buang_teks_kosong(ops) + rapikan_kata(ops)
+        masih_lebih = cek_durasi(ops, path_of)
+        peringatan = [{"level": "info", "jenis": "durasi_sumber", "teks": c} for c in catatan_durasi]
+        if masih_lebih:
+            peringatan.append({"level": "block", "jenis": "rusak", "teks": "klip melebihi sumber: " + "; ".join(masih_lebih)})
         ada_wm = any(p["blur"] for p in sus["potongan"])
         if ada_wm and not hak_jelas:
             peringatan.append({"level": "warn", "jenis": "watermark", "teks":
@@ -495,6 +504,14 @@ def jalankan(job_dir: Path) -> int:
                    # v0.3.1 §8: aset milik mesin (stem vokal, musik) diimpor runner seperti placeholder lain.
                    "aset_lokal": [{"kunci": k, "path": media[k]} for k in sorted(aset_lokal)], "ops": ops}
         (vdir / "ops.json").write_text(json.dumps(ops_doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        # Gerbang akhir (venus, 14 Nov): validator ASLI Motion Studio. Varian yang ditolak ditandai rusak,
+        # supaya satu varian tidak pernah menggagalkan Simpan keputusan untuk yang lain.
+        tolak_ms = validasi_motion_studio(vdir / "ops.json", bk_path)
+        if tolak_ms:
+            masih_lebih = masih_lebih + [tolak_ms]
+            peringatan.append({"level": "block", "jenis": "rusak", "teks": "ditolak validator Motion Studio: " + tolak_ms})
+            rencana["peringatan"] = peringatan
+            (vdir / "rencana.json").write_text(json.dumps(rencana, ensure_ascii=False, indent=1), encoding="utf-8")
         q = qc(v, ops, target, {**media, **{a["kunci"]: "" for a in brand_raw.get("aset", [])}}, terlarang, {f: m["durasi"] for f, m in lib["footage"].items()}, deteksi)
         (vdir / "qc_rencana.json").write_text(json.dumps(q, ensure_ascii=False, indent=1), encoding="utf-8")
         tabel.append({
@@ -502,7 +519,9 @@ def jalankan(job_dir: Path) -> int:
             "shot": [p["shot"] or f"{p['footage']}@{p['in']:.1f}" for p in sus["potongan"]],
             "footage": sorted({p["footage"] for p in sus["potongan"]}),
             "musik": m["kunci"] if m else None, "durasi": v["durasi"], "cta": v["cta"],
-            "status": "usul", "bukan_iklan": bukan_iklan, "qc_lulus": q["lulus"],
+            "status": "usul", "bukan_iklan": bukan_iklan, "qc_lulus": q["lulus"] and not masih_lebih,
+            # Gerbang akhir: varian yang tetap tidak valid ditandai, supaya tidak bisa menggagalkan varian lain.
+            **({"rusak": "; ".join(masih_lebih)[:300]} if masih_lebih else {}),
             # Untuk pratinjau di app: kalimat VO di timeline varian + shot yang tampil selama kalimat itu.
             "kalimat": kalimat_varian(rv["kalimat"], sus),
             "folder": f"out/{v['id']}",
