@@ -111,6 +111,21 @@ describe('W13 usage, cost and hard budget', () => {
     expect(again.summary().month.usd).toBeCloseTo(ACTUAL, 8);
   });
 
+  it('audit 14 Nov: a first provider without prices does not block failover to the next one; all refused = 402', async () => {
+    const s = await setup();
+    await s.add({}); // priority 1: paid, prices not filled in → refused by the spend gate
+    await s.call('/api/ai/providers', { provider: 'openai_compatible', label: 'Ollama', model: 'llama', capabilities: ['planner'], base_url: s.fake.url });
+    const r = await s.plan();
+    expect(r.status).toBe(200); // answered by the second connection
+    expect(s.fake.count('anthropic.messages')).toBe(0);
+    // Nothing usable at all → still the budget answer (402), with each connection's reason.
+    const t = await setup();
+    await t.add({});
+    const blocked = await t.plan();
+    expect(blocked.status).toBe(402);
+    expect(blocked.json.error.message).toMatch(/Harga .* belum diisi/);
+  });
+
   it('a paid provider without prices is blocked (cannot estimate); a local keyless server may be free', async () => {
     const s = await setup();
     const a = await s.add({});

@@ -156,7 +156,8 @@ describe('U8 Batch Remix library', () => {
     expect(log).toContain('engine.shot_exclude');
   });
 
-  it('engine text shown to the team carries no local paths (drive letters, UNC)', () => {
+  it('engine text shown to the team carries no local paths (drive letters, UNC, Linux)', () => {
+    expect(scrubPaths('Traceback: File "/home/motion/remotion/pipeline/pisah.py", line 3; /tmp/ms-x/a.wav dan https://contoh.com/home/x')).toBe('Traceback: File "<path>", line 3; <path> dan https://contoh.com/home/x');
     expect(scrubPaths('gagal baca D:/VIBECODING/remotion/konten/x.mp4 dan \\\\nas\\share\\a.mp4 ok')).toBe('gagal baca <path> dan <path> ok');
   });
 
@@ -172,6 +173,9 @@ describe('U8 Batch Remix library', () => {
     const input = validateEngineJob({ project_id: 'b', mode: 'batch', sources: [], preset: 'p', brief, ai: false, mode_ops: 'u3', batch: { batch: 'gambar', jumlah: 3, vo_batch: 'vo-lain' } });
     input.batch!.kecualikan_shot = ['F1#02']; // as the server does from setShotExclusions
     const s = await prepareEngineJob(ws, input);
+    // Audit Jenius #6: deciding rows of a batch that is not ready is refused BEFORE any import.
+    const svc = new StorageService(ws);
+    expect(await code(() => svc.decideBatch({ project_id: 'b', job_id: s.job_id, rows: [{ varian: 'varian-001', status: 'disetujui' }], config: cfg, actor: 'user' }))).toBe('EDIT_INVALID');
     expect(await runEngineJob(ws, cfg, 'b', s.job_id)).toMatchObject({ state: 'siap', alasan: null });
     const view = await readEngineBatchView(ws, 'b', s.job_id);
     expect(view.media).toBeUndefined();

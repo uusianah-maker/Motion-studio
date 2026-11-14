@@ -98,6 +98,9 @@ export function createRouter(opts: RouterOptions) {
     let attempts = 0;
     /** What this one logical request has already cost (retries + failover), for the per-request cap. */
     let spent = 0;
+    /** Connections refused by the spend gate (no prices, caps): the next one may still be allowed. */
+    let budgetBlocked: ApiError | null = null;
+    let budgetBlocks = 0;
     outer: for (const c of list) {
       const ident = hostOf(c);
       if (tried.has(ident)) continue; // never another key of the same provider (same host)
@@ -113,7 +116,20 @@ export function createRouter(opts: RouterOptions) {
       for (let attempt = 0; attempt <= settings.max_retries; attempt++) {
         attempts++;
         const est = Math.max(0, meta.estimate(c));
-        const reservation = opts.gate ? await opts.gate.reserve({ connection: c, estimate_usd: est, prior_usd: spent, capability: cap, project_id: meta.project_id }) : null;
+        let reservation: Awaited<ReturnType<NonNullable<typeof opts.gate>['reserve']>> | null = null;
+        if (opts.gate) {
+          try {
+            reservation = await opts.gate.reserve({ connection: c, estimate_usd: est, prior_usd: spent, capability: cap, project_id: meta.project_id });
+          } catch (e) {
+            // Audit 14 Nov: a refused reservation (prices not filled in, a cap) used to end the whole
+            // request; it now counts as this connection's failure and failover goes on.
+            if (!(e instanceof ApiError) || e.code !== 'BUDGET_EXCEEDED') throw e;
+            budgetBlocked = e;
+            budgetBlocks++;
+            failures.push(`${c.label}: ${e.message}`);
+            break;
+          }
+        }
         const signal = AbortSignal.timeout(settings.timeout_ms);
         let out: Awaited<ReturnType<typeof fn>>;
         try {
@@ -169,6 +185,8 @@ export function createRouter(opts: RouterOptions) {
       }
       if (!settings.failover) break;
     }
+    // Every connection tried was refused by the budget: that is the answer (402, as before).
+    if (budgetBlocked && budgetBlocks === failures.length) throw new ApiError(402, 'BUDGET_EXCEEDED', failures.join('; '));
     throw new ApiError(503, 'AI_UNAVAILABLE', `Semua koneksi AI gagal, tidak ada perubahan yang dibuat. ${failures.join('; ')}`);
   }
 

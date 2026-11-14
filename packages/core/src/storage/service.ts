@@ -132,9 +132,16 @@ export class StorageService {
   // ---- U5 Batch Remix: approve / strike rows of an engine batch
   decideBatch(input: { project_id: string; job_id: string; rows: unknown; config: engine.EngineConfig | null; actor: Actor }) {
     if (input.actor !== 'user') throw new StorageError('FORBIDDEN', 'Hanya pengguna yang boleh menyetujui batch');
-    return engine.loadBatchPlans(this.ws, input.config, input.project_id, input.job_id, input.rows).then((plans) =>
+    // Audit Jenius #6: nothing is imported from a job that is not a finished batch.
+    return engine
+      .readEngineStatus(this.ws, input.project_id, input.job_id)
+      .then((s) => {
+        if (s.mode !== 'batch') throw new StorageError('EDIT_INVALID', 'Job ini bukan Batch Remix');
+        if (s.state !== 'siap') throw new StorageError('EDIT_INVALID', 'Batch belum siap');
+      })
+      .then(() => engine.loadBatchPlans(this.ws, input.config, input.project_id, input.job_id, input.rows).then((plans) =>
       mutate(this.ws, 'svc.decideBatch', input.actor, () => engine.decideBatch(this.ws, input.config, { ...input, actor: 'user', newId: newProjectId, plans })),
-    );
+    ));
   }
 
   // ---- X06 Brand Kit (workspace level). Saving reconciles clocks: font/logo become held.

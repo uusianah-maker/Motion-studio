@@ -57,6 +57,9 @@ describe('U7 roles enforced on the server', () => {
     expect(can('POST', '/api/projects/:project_id/review')).toBe('owner,reviewer');
     expect(can('POST', '/api/projects/:project_id/variant-approval')).toBe('owner,reviewer');
     expect(can('POST', '/api/projects/:project_id/engine/jobs/:job_id/batch/decide')).toBe('owner,reviewer');
+    // Audit 14 Nov: opening an engine plan imports the engine's media (a write) — not for reviewers.
+    expect(can('POST', '/api/projects/:project_id/engine/jobs/:job_id/plan')).toBe('owner,editor');
+    expect(can('POST', '/api/projects/:project_id/engine/jobs')).toBe('owner,editor');
   });
 
   it('role lists from env: must be allowed emails, one role each, at least one owner; unlisted = reviewer', () => {

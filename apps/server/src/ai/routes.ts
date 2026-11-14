@@ -116,7 +116,13 @@ export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fe
   });
 
   return [
-    { method: 'GET', path: '/api/ai/providers', handle: async () => view() },
+    {
+      // Audit Jenius #5: connections, prices, budget and errors are the owner's; the others' Copilot
+      // only needs the mode.
+      method: 'GET',
+      path: '/api/ai/providers',
+      handle: async ({ role }) => (role === 'owner' ? view() : { connections: [], settings: { mode: store.settings().mode }, catalog: [] }),
+    },
     {
       method: 'POST',
       path: '/api/ai/providers',

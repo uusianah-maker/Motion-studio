@@ -84,6 +84,13 @@ describe('X09 variants API', () => {
       { project_id: v2.project_id, reason: 'diubah setelah disetujui' },
       { project_id: v3.project_id, reason: 'belum disetujui' },
     ]);
+    // Audit Jenius #1: a single render of a variant follows the same rule (no way around approval).
+    for (const [v, why] of [[v3, 'belum disetujui'], [v2, 'diubah setelah disetujui']] as const) {
+      const single = await s.call(`/api/projects/${v.project_id}/render`, {});
+      expect(single.status).toBe(409);
+      expect(single.json.error).toMatchObject({ code: 'NOT_APPROVED' });
+      expect(single.json.error.message).toContain(why);
+    }
     let rows: { project_id: string; render: { status: string } | null; outputs: number; state: string }[] = [];
     for (let i = 0; i < 200; i++) {
       rows = (await s.call('/api/projects/p1/variants')).json.variants;

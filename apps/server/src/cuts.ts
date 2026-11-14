@@ -9,11 +9,28 @@ import { onlyKeys } from './routes.js';
  * X07 routes: analyse a media version for silences + scene changes (FFmpeg, read-only, no AI),
  * then turn the user's chosen cuts into a normal reviewed plan (diff → approve → one undo step).
  */
+/** FFmpeg passes for timeline visuals running at once (the rest queue). */
+export const VISUALS_AT_ONCE = 2;
+
 export function cutRoutes(ws: Workspace, opts: { copilot: Copilot }): Route[] {
   // One analysis at a time per server: it is CPU-heavy on long footage.
   let running = false;
   // Timeline visuals: one FFmpeg pass per version, shared by concurrent requests, then cached on disk.
   const visuals = new Map<string, Promise<MediaVisuals>>();
+  // Audit Jenius #3: at most VISUALS_AT_ONCE FFmpeg passes at a time, whoever asks; the rest wait.
+  let visualsRunning = 0;
+  const visualsWaiting: (() => void)[] = [];
+  const slot = async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (visualsRunning >= VISUALS_AT_ONCE) await new Promise<void>((r) => visualsWaiting.push(r));
+    else visualsRunning++;
+    try {
+      return await fn();
+    } finally {
+      const next = visualsWaiting.shift();
+      if (next) next(); // the slot passes on as is
+      else visualsRunning--;
+    }
+  };
   return [
     {
       method: 'GET',
@@ -22,7 +39,7 @@ export function cutRoutes(ws: Workspace, opts: { copilot: Copilot }): Route[] {
         const id = params.version_id!;
         let p = visuals.get(id);
         if (!p) {
-          p = mediaVisuals(ws, { version_id: id })
+          p = slot(() => mediaVisuals(ws, { version_id: id }))
             .then(({ cached: _cached, ...v }) => v)
             .finally(() => visuals.delete(id));
           visuals.set(id, p);

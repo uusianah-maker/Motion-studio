@@ -20,7 +20,7 @@ import { openAiStore } from './ai/store.js';
 import { createCopilot } from './copilot.js';
 import { STT_TMP_PREFIX, transcribeRoutes } from './transcribe.js';
 import { cutRoutes } from './cuts.js';
-import { engineRoutes } from './engine.js';
+import { createEngine } from './engine.js';
 import { reviewRoutes } from './review.js';
 import { parseRoleLists, roleResolver, teamRoleResolver } from './roles.js';
 import { type TeamStore, envMembers, openTeamStore, teamRoutes } from './team.js';
@@ -113,13 +113,15 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
       ...(tokenEndpoint ? { tokenEndpoint } : {}),
     });
   }
+  const engine = createEngine(ws, { copilot, config: engineConfigFromEnv(env), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
+  void engine.sweepOrphans().catch((e: unknown) => process.stderr.write(`[server] mesin (job yatim): ${String(e)}\n`));
   const app = createApp({
     ws,
     ...(auth ? { auth } : {}),
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...engineRoutes(ws, { copilot, config: engineConfigFromEnv(env), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) }), ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...engine.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
     roleOf: team ? teamRoleResolver(team.roleOf) : roleResolver(roleLists),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
@@ -143,6 +145,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     bound = await app.listen(port);
   } catch (e) {
     scheduler?.stop();
+    await engine.stopAll();
     await jobs.stopAll();
     throw e;
   }
@@ -172,6 +175,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     stateDir,
     async stop() {
       scheduler?.stop();
+      await engine.stopAll();
       await jobs.stopAll();
       await app.close();
     },

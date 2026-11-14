@@ -20,6 +20,7 @@ export type HttpErrorCode =
   | 'ENGINE_MISSING'
   | 'NOT_RUNNING'
   | 'NOT_READY'
+  | 'NOT_APPROVED'
   | 'ALREADY_MEMBER'
   | 'MANAGED_BY_ENV'
   | 'SELF_CHANGE'

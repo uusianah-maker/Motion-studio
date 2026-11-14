@@ -113,7 +113,12 @@ const BATCH_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/;
 export const isBatchName = (x: unknown): x is string => typeof x === 'string' && BATCH_NAME.test(x) && !x.includes('..');
 
 /** Engine-written text shown to the team: no local paths (drive letters, UNC). */
-export const scrubPaths = (t: string): string => t.replace(/(?:[A-Za-z]:[\\/]|\\\\[^\\\s]+\\)[^\s"'<>|]*/g, '<path>');
+export const scrubPaths = (t: string): string =>
+  t
+    // A drive letter on its own ("D:\…"), not the "s:" of "https://…".
+    .replace(/(?:(?<![A-Za-z])[A-Za-z]:[\\/](?!\/)|\\\\[^\\\s]+\\)[^\s"'<>|]*/g, '<path>')
+    // Linux / VPS paths too (audit Jenius #10); not URLs ("https://x/home/…" keeps its host).
+    .replace(/(?<![\w:/.~-])\/(?:home|root|opt|srv|var|tmp|mnt|media|usr|etc|data|workspace|app)\/[^\s"'<>|]*/g, '<path>');
 
 const bad = (msg: string, details: Record<string, unknown> = {}): never => {
   throw new StorageError('EDIT_INVALID', msg, details);
@@ -310,11 +315,22 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
   await fsp.mkdir(dir, { recursive: true });
   const taken = new Set((await fsp.readdir(dir)).filter(isJobId));
   let n = 1;
-  while (taken.has(`${kit.kode}-${day}-${String(n).padStart(3, '0')}`)) n++;
-  if (n > 999) throw new StorageError('PRECONDITION', 'Terlalu banyak job hari ini (maks 999)');
-  const job_id = `${kit.kode}-${day}-${String(n).padStart(3, '0')}`;
-  const jdir = jobAbs(ws, input.project_id, job_id);
-  await fsp.mkdir(jdir); // fails if a parallel request took the same id
+  let job_id = '';
+  let jdir = '';
+  // mkdir is the claim: a parallel request that picked the same number moves on to the next one.
+  for (;;) {
+    while (taken.has(`${kit.kode}-${day}-${String(n).padStart(3, '0')}`)) n++;
+    if (n > 999) throw new StorageError('PRECONDITION', 'Terlalu banyak job hari ini (maks 999)');
+    job_id = `${kit.kode}-${day}-${String(n).padStart(3, '0')}`;
+    jdir = jobAbs(ws, input.project_id, job_id);
+    try {
+      await fsp.mkdir(jdir);
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      taken.add(job_id);
+    }
+  }
   let lease: { lease_id: string } | null = null;
   try {
     const sumber = [];
@@ -512,12 +528,12 @@ export async function runEngineJob(
 }
 
 /** A job left `berjalan` / `menunggu` by a server that stopped: mark it failed, free its lease. */
-export async function settleOrphanJob(ws: Workspace, s: EngineStatus): Promise<EngineStatus> {
+export async function settleOrphanJob(ws: Workspace, s: EngineStatus, alasan = 'Terhenti (server dimulai ulang); jalankan lagi'): Promise<EngineStatus> {
   if (s.state !== 'berjalan' && s.state !== 'menunggu') return s;
   if (s.lease_id) await releaseLease(ws, { lease_id: s.lease_id, outcome: 'failed', actor: 'user' }).catch(() => undefined);
   // A Pisah Audio job never run (cancelled in the queue / server restart): drop its copies of the uploads.
   if (s.mode === 'pisah') await removeMasuk(jobAbs(ws, s.project_id, s.job_id));
-  const out: EngineStatus = { ...s, state: 'gagal', alasan: 'Terhenti (server dimulai ulang); jalankan lagi', lease_id: null, finished_at: ws.clock.now() };
+  const out: EngineStatus = { ...s, state: 'gagal', alasan, lease_id: null, finished_at: ws.clock.now() };
   await writeStatus(ws, out);
   return out;
 }
@@ -701,7 +717,7 @@ export async function readEngineLog(ws: Workspace, projectId: string, jobId: str
   };
   if (cfg) swap(cfg.root, '<mesin>');
   swap(ws.root, '<workspace>');
-  return log.replace(/[A-Za-z]:[\\/][^\s"'<>|]*/g, '<path>');
+  return scrubPaths(log);
 }
 
 // ------------------------------------------------------------------ Batch Remix decisions (U5)

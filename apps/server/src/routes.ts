@@ -171,7 +171,7 @@ export interface UploadOptions {
  * Stream the request body to a temp file (outside the workspace), enforcing the declared
  * Content-Length exactly. The storage core then copies + hashes it into the workspace.
  */
-async function receiveUpload(ws: Workspace, req: IncomingMessage, opts: UploadOptions): Promise<{ file: string; dir: string; name: string; size: number }> {
+export async function receiveUpload(ws: Workspace, req: IncomingMessage, opts: UploadOptions): Promise<{ file: string; dir: string; name: string; size: number }> {
   const type = (req.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
   if (type !== 'application/octet-stream') throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Upload harus application/octet-stream');
   const declared = Number(req.headers['content-length']);
@@ -201,6 +201,10 @@ async function receiveUpload(ws: Workspace, req: IncomingMessage, opts: UploadOp
   try {
     await pipeline(req, counter, createWriteStream(file, { flags: 'wx' }));
     if (size !== declared) throw bad('Upload terputus (ukuran tidak cocok)');
+    // Audit 14 Nov: the idle timeout is for a stalled SENDER. All bytes are here now; probing,
+    // copying and hashing a multi-GB file may take minutes and must not cut the reply (the user
+    // saw "Upload terputus" for media that was in fact imported).
+    req.setTimeout(0);
     return { file, dir, name, size };
   } catch (e) {
     await fsp.rm(dir, { recursive: true, force: true });
@@ -572,6 +576,9 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         onlyKeys(body, ['output_name', 'short_side', 'accept_brand_warnings']);
         if (body.accept_brand_warnings !== undefined && typeof body.accept_brand_warnings !== 'boolean') throw bad('accept_brand_warnings harus true/false');
         const project = await readProject(ws, params.project_id!);
+        // A variant renders only as approved (same rule as "Render varian disetujui"), whoever asks.
+        if (project.variant && variantState(project) !== 'approved')
+          throw new ApiError(409, 'NOT_APPROVED', `Varian ini ${variantState(project) === 'changed' ? 'diubah setelah disetujui' : 'belum disetujui'}. Minta Owner / Reviewer menyetujuinya dulu, baru render.`);
         const raw = str(body, 'output_name', { optional: true, max: 120 });
         const short = body.short_side;
         if (short !== undefined && short !== 720 && short !== 1080) throw bad('short_side wajib 720 atau 1080');

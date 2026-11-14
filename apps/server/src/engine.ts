@@ -9,6 +9,7 @@ import {
   isBatchName,
   isJobId,
   listEngineBatches,
+  listProjectIds,
   listEngineJobs,
   loadEnginePlan,
   prepareEngineJob,
@@ -37,11 +38,22 @@ import { onlyKeys } from './routes.js';
  * the team approves → one undo step. Nothing is rendered here.
  */
 export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void }): Route[] {
+  return createEngine(ws, opts).routes;
+}
+
+/**
+ * The engine runner + its routes. `stopAll` (server stop) cancels queued jobs, kills the running
+ * engine (and its Whisper / FFmpeg children) and waits for it, so no Python outlives the server
+ * and a restarted server never finds a live job it would settle as an orphan (audit Jenius #2).
+ */
+export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number> } {
   const queue: { project_id: string; job_id: string; mode: EngineMode }[] = [];
   const active = new Map<string, AbortController>();
-  /** Jobs being prepared by a request right now: never "orphans" (Checkpoint I H1). */
-  const preparing = new Set<string>();
+  /** Requests preparing a job right now, per project: never "orphans" (Checkpoint I H1, audit Jenius #4). */
+  const preparing = new Map<string, number>();
   let running = false;
+  let current: Promise<void> | null = null;
+  let stopping = false;
   const key = (p: string, j: string) => `${p}/${j}`;
   // `engine daftar_batch` spawns Python: one at a time, answer reused for a few seconds, dropped
   // when a job (Pisah Audio) may have changed the engine's konten/.
@@ -50,25 +62,50 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
   let batchFlight: Promise<BatchList> | null = null;
 
   const pump = () => {
-    if (running || !opts.config) return;
+    if (running || stopping || !opts.config) return;
     const next = queue.shift();
     if (!next) return;
     running = true;
     const ac = new AbortController();
     active.set(key(next.project_id, next.job_id), ac);
-    void runEngineJob(ws, opts.config, next.project_id, next.job_id, { mode: next.mode, signal: ac.signal })
+    current = runEngineJob(ws, opts.config, next.project_id, next.job_id, { mode: next.mode, signal: ac.signal })
+      .then(() => undefined)
       .catch((e: unknown) => opts.onError?.(e))
       .finally(() => {
         active.delete(key(next.project_id, next.job_id));
         batchCache = null;
         running = false;
+        current = null;
         pump();
       });
+  };
+  /**
+   * Server start (audit Jenius #9): jobs a previous server left waiting / running are settled now,
+   * not only when someone opens them — their leases are freed and Pisah Audio's copies removed.
+   */
+  const sweepOrphans = async () => {
+    let n = 0;
+    for (const p of await listProjectIds(ws).catch(() => [] as string[])) {
+      for (const s of await listEngineJobs(ws, p).catch(() => [])) {
+        if (s.state !== 'menunggu' && s.state !== 'berjalan') continue;
+        if ((await live(s)) !== s) n++;
+      }
+    }
+    return n;
+  };
+  const stopAll = async () => {
+    stopping = true;
+    for (const q of queue.splice(0)) {
+      const s = await readEngineStatus(ws, q.project_id, q.job_id).catch(() => null);
+      if (s) await settleOrphanJob(ws, s, 'Server dihentikan sebelum job ini mulai; jalankan lagi').catch((e: unknown) => opts.onError?.(e));
+    }
+    for (const ac of active.values()) ac.abort();
+    await current;
   };
 
   /** Jobs this server is not running or queueing were left by a previous server: settle them. */
   const live = async (s: EngineStatus) =>
-    active.has(key(s.project_id, s.job_id)) || preparing.has(s.project_id) || queue.some((q) => q.project_id === s.project_id && q.job_id === s.job_id) ? s : settleOrphanJob(ws, s);
+    active.has(key(s.project_id, s.job_id)) || (preparing.get(s.project_id) ?? 0) > 0 || queue.some((q) => q.project_id === s.project_id && q.job_id === s.job_id) ? s : settleOrphanJob(ws, s);
   const jobParam = (j: string | undefined) => {
     if (!isJobId(j)) throw new ApiError(404, 'NOT_FOUND', 'Job mesin tidak ditemukan');
     return j;
@@ -82,7 +119,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
     return opts.config;
   };
 
-  return [
+  const routes: Route[] = [
     {
       method: 'GET',
       path: '/api/engine',
@@ -111,14 +148,17 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
           if (kecuali.length) input.batch.kecualikan_shot = kecuali;
         }
         if (queue.length >= 20) throw new ApiError(429, 'BUSY', 'Antrean mesin penuh (20); tunggu dulu');
-        preparing.add(input.project_id);
+        if (stopping) throw new ApiError(409, 'BUSY', 'Server sedang dihentikan; coba lagi sebentar lagi');
+        preparing.set(input.project_id, (preparing.get(input.project_id) ?? 0) + 1);
         try {
           const status = await prepareEngineJob(ws, input);
           queue.push({ project_id: status.project_id, job_id: status.job_id, mode: status.mode });
           pump();
           return { job: status };
         } finally {
-          preparing.delete(input.project_id);
+          const left = (preparing.get(input.project_id) ?? 1) - 1;
+          if (left > 0) preparing.set(input.project_id, left);
+          else preparing.delete(input.project_id);
         }
       },
     },
@@ -139,7 +179,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
         const qi = queue.findIndex((q) => key(q.project_id, q.job_id) === k);
         if (qi >= 0) {
           queue.splice(qi, 1);
-          return { job: await settleOrphanJob(ws, await readEngineStatus(ws, params.project_id!, job)) };
+          return { job: await settleOrphanJob(ws, await readEngineStatus(ws, params.project_id!, job), 'Dibatalkan pengguna sebelum mulai') };
         }
         const ac = active.get(k);
         if (!ac) throw new ApiError(409, 'NOT_RUNNING', 'Job tidak sedang berjalan');
@@ -260,4 +300,5 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
       },
     },
   ];
+  return { routes, stopAll, sweepOrphans };
 }
