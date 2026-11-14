@@ -84,8 +84,8 @@ describe('U3b per-word captions (libass)', () => {
     const ev = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
     expect(ev.map((l) => l.split(',').slice(1, 3).join('–'))).toEqual(['0:00:01.00–0:00:01.40', '0:00:01.40–0:00:01.70', '0:00:01.70–0:00:02.20']);
     expect(ev[0]).toMatch(/\\fscx70\\fscy70\\t\(0,100,\\fscx100\\fscy100\)\}Celana/); // first word pops in
-    expect(ev[0]).toMatch(/\{\\alpha&HFF&[^}]*\}anti/); // not yet spoken: invisible (layout stays)
-    expect(ev[1]).toMatch(/\{\\alpha&H00&\\c&H3539E5&\\fscx91\\fscy91\\t\(0,100,\\fscx130\\fscy130\)\}anti/); // keyword: red, bigger, popping
+    expect(ev[0]).toMatch(/\{\\1a&HFF&[^}]*\}anti/); // not yet spoken: invisible (layout stays)
+    expect(ev[1]).toMatch(/\{\\1a&H00&\\c&H3539E5&\\fscx91\\fscy91\\t\(0,100,\\fscx130\\fscy130\)\}anti/); // keyword: red, bigger, popping
     expect(ass).toContain('PlayResX: 1080');
     expect(ass).toMatch(/\\fs(\d+(\.\d+)?)/);
     const probe = { duration_ms: 8000, width: 360, height: 640, video_codec: 'h264', audio_codec: 'aac' };
@@ -96,6 +96,27 @@ describe('U3b per-word captions (libass)', () => {
     // Hostile text cannot open override blocks.
     const evil = buildAss({ clips: [{ kind: 'text', clip: { clip_id: 'e', start_ms: 0, end_ms: 1000, text: '{\\b1}x\\N', style: { anim: 'pop' } } }], width: 100, height: 100, ratio: '1:1', total_ms: 1000, fonts: { bold: { family: 'Arial', unitsPerEm: 2048, winHeight: 2288, bold: true }, regular: { family: 'Arial', unitsPerEm: 2048, winHeight: 2288, bold: false }, brand: null, caption: null } });
     expect(evil.split('\n').find((l) => l.startsWith('Dialogue'))).toContain('(/b1)x/N');
+  });
+
+  it('audit 14 Nov: a boxed caption keeps its see-through, full-width box; "Pop" on plain text really pops', () => {
+    const fonts = { bold: { family: 'Arial', unitsPerEm: 2048, winHeight: 2288, bold: true }, regular: { family: 'Arial', unitsPerEm: 2048, winHeight: 2288, bold: false }, brand: null, caption: null };
+    const boxed = buildAss({
+      clips: [{ kind: 'subtitle', clip: { clip_id: 's', start_ms: 0, end_ms: 2000, text: 'halo semua', words: [{ text: 'halo', start_ms: 0, end_ms: 800 }, { text: 'semua', start_ms: 800, end_ms: 1600 }], style: { bg: '#000000', bg_opacity: 0.62 } } }],
+      width: 1080, height: 1920, ratio: '9:16', total_ms: 2000, fonts,
+    });
+    const ev = boxed.split('\n').filter((l) => l.startsWith('Dialogue'));
+    expect(ev).toHaveLength(2);
+    for (const e of ev) {
+      expect(e).toMatch(/\\3a&H61&/); // the box keeps 62 % (alpha 0x61)
+      expect(e).not.toMatch(/\\alpha&H/); // nothing resets every alpha (that made the box opaque)
+    }
+    expect(ev[0]).toMatch(/\{\\1a&HFF&[^}]*\}semua/); // not yet spoken: text hidden, box stays full width
+    expect(ev[1]).toMatch(/\{\\1a&H00&[^}]*\}semua/);
+    const pop = buildAss({ clips: [{ kind: 'text', clip: { clip_id: 't', start_ms: 0, end_ms: 1000, text: 'Diskon besar', style: { anim: 'pop' } } }], width: 1080, height: 1920, ratio: '9:16', total_ms: 1000, fonts });
+    const line = pop.split('\n').find((l) => l.startsWith('Dialogue'))!;
+    // Each word starts small and grows (a block-level \fscx70 was undone by every word's \fscx100).
+    expect(line.match(/\\fscx70\\fscy70\\t\(0,\d+,\\fscx100\\fscy100\)/g)).toHaveLength(2);
+    expect(line).not.toMatch(/\}\{?[^{]*\\fscx100\\fscy100\}Diskon/);
   });
 
   it('subtitles from a transcript keep word timings when the cue was not edited', () => {

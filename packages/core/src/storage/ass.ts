@@ -60,6 +60,9 @@ export interface AssInput {
   total_ms: number;
 }
 
+/** `line(…, ALL)`: every visible word is "new" (the whole block animates in). */
+const ALL = -2;
+
 export function buildAss(input: AssInput): string {
   const { width: W, height: H } = input;
   const short = Math.min(W, H);
@@ -98,21 +101,26 @@ export function buildAss(input: AssInput): string {
       n += l.split(' ').filter(Boolean).length;
       breakAfter.add(n - 1);
     }
+    // Audit (14 Nov): `\alpha` sets EVERY alpha, so on a boxed caption it made the box opaque and
+    // grow word by word. A boxed caption only hides / shows the text (`\1a`); the box (`\3a`) stays
+    // as the style says, full width, like the preview.
+    const SHOW = box ? '\\1a&H00&' : '\\alpha&H00&';
+    const HIDE = box ? '\\1a&HFF&' : '\\alpha&HFF&';
     const wordTag = (w: Word, i: number, state: 'hidden' | 'new' | 'shown', current: boolean) => {
       const isKey = keys.has(wordKey(w.text));
       const hot = (isKey || (current && !!hl?.current)) && !!hl;
       // Boxed keyword: a thick outline in the highlight colour behind the word, text in contrast.
       const color = hot ? (hl!.box ? `\\c${assColor(contrastText(hl!.color))}\\3c${assColor(hl!.color)}\\3a&H00&\\bord${Math.max(2, Math.round(px * 0.18))}\\shad0` : `\\c${assColor(hl!.color)}`) : `\\c${assColor(s.color)}${restore}`;
       const scale = (isKey || (current && hl?.current)) && hl ? Math.round(hl.scale * 100) : 100;
-      if (state === 'hidden') return `{\\alpha&HFF&\\fscx${scale}\\fscy${scale}${color}}`;
-      if (state === 'new' && s.anim === 'pop') return `{\\alpha&H00&${color}\\fscx${Math.round(scale * 0.7)}\\fscy${Math.round(scale * 0.7)}\\t(0,${s.anim_ms},\\fscx${scale}\\fscy${scale})}`;
-      if (state === 'new' && s.anim === 'fade') return `{\\alpha&HFF&${color}\\fscx${scale}\\fscy${scale}\\t(0,${s.anim_ms},\\alpha&H00&)}`;
+      if (state === 'hidden') return `{${HIDE}\\fscx${scale}\\fscy${scale}${color}}`;
+      if (state === 'new' && s.anim === 'pop') return `{${SHOW}${color}\\fscx${Math.round(scale * 0.7)}\\fscy${Math.round(scale * 0.7)}\\t(0,${s.anim_ms},\\fscx${scale}\\fscy${scale})}`;
+      if (state === 'new' && s.anim === 'fade') return `{${HIDE}${color}\\fscx${scale}\\fscy${scale}\\t(0,${s.anim_ms},${SHOW})}`;
       void i;
-      return `{\\alpha&H00&${color}\\fscx${scale}\\fscy${scale}}`;
+      return `{${SHOW}${color}\\fscx${scale}\\fscy${scale}}`;
     };
     const line = (visible: number, fresh: number) =>
       words
-        .map((w, i) => `${wordTag(w, i, i < visible ? (i === fresh ? 'new' : 'shown') : 'hidden', i === visible - 1)}${safe(w.text)}${i === words.length - 1 ? '' : breakAfter.has(i) ? '\\N' : ' '}`)
+        .map((w, i) => `${wordTag(w, i, i < visible ? (i === fresh || fresh === ALL ? 'new' : 'shown') : 'hidden', i === visible - 1)}${safe(w.text)}${i === words.length - 1 ? '' : breakAfter.has(i) ? '\\N' : ' '}`)
         .join('');
     if (timed) {
       // One event per spoken word: words so far shown, the newest one animating in.
@@ -123,9 +131,9 @@ export function buildAss(input: AssInput): string {
         events.push(`Dialogue: 0,${time(from)},${time(to)},${style},,0,0,0,,{${look}}${line(i + 1, i)}`);
       });
     } else {
-      // Whole text at once: pop / fade the block (per-word styles still give keyword colours).
-      const anim = s.anim === 'pop' ? `\\fscx70\\fscy70\\t(0,${s.anim_ms},\\fscx100\\fscy100)` : s.anim === 'fade' ? `\\fad(${s.anim_ms},0)` : '';
-      events.push(`Dialogue: 0,${time(clip.start_ms)},${time(end)},${style},,0,0,0,,{${look}${anim}}${line(words.length, -1)}`);
+      // Whole text at once: every word pops / fades in together. (A block-level \fscx was undone by
+      // each word's own \fscx100 — audit 14 Nov: "Pop" did nothing.)
+      events.push(`Dialogue: 0,${time(clip.start_ms)},${time(end)},${style},,0,0,0,,{${look}}${line(words.length, s.anim === 'pop' || s.anim === 'fade' ? ALL : -1)}`);
     }
   }
   return [
