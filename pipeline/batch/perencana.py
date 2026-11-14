@@ -158,8 +158,11 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool) -> tuple[list[di
     # Track `music` (U3b, keputusan ucok 13 Nov): lane suara ketiga di samping `audio` (VO) dan `sfx`.
     if m and (u3 or punya_track_music()):
         t, total = 0.0, v["durasi"]
+        # Durasi file musik dari metadata bisa dibulatkan ke atas beberapa ms; Motion Studio menolak klip
+        # yang 1 ms pun lebih panjang dari sumbernya ("Klip melebihi panjang video sumber"). Sisakan 1 frame.
+        maks_musik = max(0.1, (int(m["durasi"] * 1000) - 34) / 1000)
         while t < total - 0.05:  # musik pendek diulang, klip berurutan tanpa tumpang tindih
-            d = min(m["durasi"], total - t)
+            d = min(maks_musik, total - t)
             ops.append({"op": "add_clip", "track_kind": "music", "media": m["kunci"],
                         "start_ms": ms(t), "duration_ms": ms(d), "in_ms": 0, "volume": m["volume"]})
             t += d
