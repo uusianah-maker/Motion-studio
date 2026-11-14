@@ -21,7 +21,7 @@ Pembagian kerja:
 - sukma: uji online.
 - venus: operasional server.
 
-Semua perbaikan sudah di-commit **lokal**. Push menunggu venus dan izin owner.
+Semua perbaikan sudah di-commit dan **sudah di-push ke GitHub** (`main` = `5b41522`, 14 Nov malam, atas izin owner). Tim cukup `git pull` untuk mendapat versi terbaru.
 
 Tingkat temuan:
 - **Berat:** hasil atau data salah, atau alur buntu.
@@ -250,7 +250,7 @@ Diperbaiki:
 
 ---
 
-## 4. Commit lokal (belum di-push)
+## 4. Daftar commit (sudah di-push ke GitHub `main`)
 
 Aplikasi Motion Studio (repo ini), di atas `b9f9451`:
 
@@ -330,3 +330,32 @@ Rekomendasi Jenius ditulis setelah tanda →.
   - tes tidak boleh memakai port server online atau mematikan proses node/powershell secara umum;
   - restart server hanya lewat Stop/Start task, setelah cek tidak ada job yang jalan, dan kabari venus.
 - Sebelum VPS jalur B dipakai: kerjakan killTree untuk Linux (bagian 2, Server).
+
+---
+
+## 7. Pembaruan setelah laporan (venus, 14 Nov 2026 malam)
+
+**Sudah dikerjakan sejak laporan ini ditulis**
+- **Semua commit sudah di-push ke GitHub** (`main` = `5b41522`), atas izin owner. Isinya:
+  - perbaikan audit ucok dan laporan ini;
+  - perbaikan thumbnail/waveform Paket 1 (`b5a3594`);
+  - sync mesin `engine/`, termasuk 4 commit Batch Remix yuki.
+  Bagian atas laporan sudah disesuaikan.
+- **Watchdog terpasang** (`MotionStudio-Watchdog`, tiap 5 menit). Sudah diuji: terowongan sengaja dimatikan, lalu dinyalakan lagi otomatis. Situs paling lama mati sekitar 5 menit, apa pun penyebabnya.
+- **Penjaga server dan terowongan** sekarang mencatat setiap mulai dan berhenti beserta kode keluarnya (`penjaga-*.log`). Penyebab mati jam 18.41 dan 19.49 belum terbukti. Untuk membuktikannya perlu log Task Scheduler, dan itu butuh izin owner.
+- **Keputusan "VO yang menyebut brand lain dibuang otomatis"** sudah dicatat di kontrak mesin.
+
+**Keputusan owner (14 Nov malam), dikerjakan 15 Nov setelah kerja malam**
+
+| Butir | Keputusan owner | Dikerjakan |
+| --- | --- | --- |
+| G2 hook menumpuk teks video | Jangan timpa teks yang sudah ada. Mesin membaca teks di layar, lalu menggeser atau melewati hook. | venus |
+| G3 SFX tidak terpakai | Penyebab: mesin mengambil SFX pertama yang cocok tag-nya. SFX itu terlalu pendek (12–68 ms) sehingga dibuang. Perbaikan: pilih SFX dengan durasi pas, bervariasi, dan kembali ke SFX bawaan kalau tidak ada. | venus |
+| G4 nomor job sama | Disetujui: nomor dihitung per brand per hari untuk semua proyek (contoh `AYS-20261114-007`). | ucok |
+| Crop di Safari/Firefox | Cukup Chrome. Tidak dikerjakan. | — |
+| Undo terlalu cepat setelah ubah gaya | Undo wajib. Diperbaiki. | ucok |
+| Musik di Batch Remix | Musik dihilangkan, cukup voice over. | yuki + ucok |
+| Suara saat b-roll tampil | Suara pembicara tetap jalan. B-roll hanya mengganti gambar. | ucok |
+| G1 video lagu diterima | Prioritas pertama perbaikan mesin. | venus |
+
+**Fitur baru (kerja malam 15 Nov, 02.00–pagi):** fade audio + ducking, reduksi noise, latar blur untuk video bukan 9:16, adjust warna, filter warna, transisi, keyframe. Laporannya ada di `docs/LAPORAN-MALAM-2026-11-15.md`.
