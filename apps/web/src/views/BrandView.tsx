@@ -3,6 +3,7 @@ import type { Api, BrandKit, BrandKitInput, BrandPreset, Media, Platform, Ref } 
 import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY, emptyKit, toInput, useBrand } from '../brand';
 import { nextPresetId } from '../lib';
 import { ErrorNotice } from '../ui';
+import { LOOKS, LOOK_IDS } from '../../../../packages/core/dist/storage/clipLook.js';
 import { AssetLibrary } from './AssetLibrary';
 
 const FONT_RE = /\.(ttf|otf)$/i;
@@ -429,6 +430,17 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                 <label>
                   Color grading
                   <input aria-label="Color grading" maxLength={120} placeholder="mis. Hangat, natural" value={draft.grading} onChange={(e) => set({ grading: e.target.value })} />
+                </label>
+                <label title="Dipakai semua klip video/b-roll proyek brand ini, kecuali klip yang memilih filter sendiri (Inspector → Filter warna).">
+                  Filter bawaan video
+                  <select aria-label="Filter bawaan video" value={draft.filter_bawaan ?? ''} onChange={(e) => set({ filter_bawaan: e.target.value ? (e.target.value as (typeof LOOK_IDS)[number]) : null })}>
+                    <option value="">Tanpa filter</option>
+                    {LOOK_IDS.map((id) => (
+                      <option key={id} value={id}>
+                        {LOOKS[id].label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
             </Section>

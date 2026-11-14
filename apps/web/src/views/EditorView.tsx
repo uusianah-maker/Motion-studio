@@ -481,6 +481,7 @@ export function EditorView({
               busy={busy}
               readOnly={project.status === 'archived' || reviewer}
               brand={brand?.kit ?? null}
+              duck={project.timeline.tracks.find((t) => t.kind === 'music')?.duck}
               {...(project.status !== 'archived' && !reviewer ? { onCutReview: () => setCutClip(sel) } : {})}
               onEdit={(ops) => edit(ops)}
               onDraft={setStyleDraft}

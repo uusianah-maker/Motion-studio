@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { blurAt, placeOnCanvas } from '../../../../packages/core/dist/storage/framing.js';
 import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
+import { DEFAULT_DUCK, duckGainAt, effectiveLook, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import type { LoadedBrand } from '../brand';
 import type { Api, Clip, Media, Project } from '../api';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
@@ -205,11 +206,16 @@ export function Preview({
     };
   }, []);
   // X04: each layer plays at its clip's volume; a muted track is silent (same rule as render).
-  const gainOf = (c: Clip | null) => (!c ? 1 : tracks.find((tr) => tr.clips.some((x) => x.clip_id === c.clip_id))?.muted ? 0 : (c.volume ?? 1));
+  // Malam 15 Nov: × the clip's fades (same curve as the render's volume filter).
+  const gainOf = (c: Clip | null) => (!c ? 1 : tracks.find((tr) => tr.clips.some((x) => x.clip_id === c.clip_id))?.muted ? 0 : (c.volume ?? 1) * fadeGainAt(c, t - c.start_ms, c.end_ms - c.start_ms));
+  // Malam 15 Nov: ducking — the music goes down while someone speaks (same ranges as the render).
+  const musicTrack = tracks.find((tr) => tr.kind === 'music');
+  const duck = musicTrack?.duck;
+  const duckRanges = duck !== undefined ? speechRanges(project.timeline, (c) => !!versionOf(c as Clip)?.probe?.audio_codec) : [];
   const visualGain = gainOf(visual);
   const audioGain = gainOf(audio);
   const sfxGain = gainOf(sfx);
-  const musicGain = gainOf(music);
+  const musicGain = Math.round(gainOf(music) * (duck !== undefined ? duckGainAt(duckRanges, duck ?? DEFAULT_DUCK, t) : 1) * 1000) / 1000;
   useEffect(() => {
     if (musicRef.current) musicRef.current.volume = musicGain;
     if (videoRef.current) videoRef.current.volume = visualGain;
@@ -223,6 +229,46 @@ export function Preview({
   const crop = visual?.crop;
   const srcNow = visual ? (visual.in_ms ?? 0) + (t - visual.start_ms) : 0;
   const blurs = srcSize ? blurAt(visual?.blur, srcNow) : [];
+  // Malam 15 Nov: colour look (+ Brand Kit default), fit and the incoming transition of the picture.
+  const lk = visual ? effectiveLook(visual, brand?.kit.filter_bawaan ?? null) : null;
+  const css = lk ? lookCss(lk.adjust, lk.mono) : null;
+  const fit = visual?.fit;
+  const allVisual = [...clipsOf('video'), ...clipsOf('broll')];
+  const halfMs = (c: Clip, prev: Clip | null) => (c.transition ? Math.min(c.transition.ms / 2, c.end_ms - c.start_ms, prev ? prev.end_ms - prev.start_ms : 0) : 0);
+  let trans: ReturnType<typeof transitionCss> | null = null;
+  if (visual) {
+    // Into the current clip …
+    const prev = clipAt(clipsOf('broll'), visual.start_ms - 1) ?? clipAt(clipsOf('video'), visual.start_ms - 1);
+    const h = halfMs(visual, prev);
+    if (h > 0 && prev && t - visual.start_ms < h) trans = transitionCss(visual.transition!.type, 0.5 + (t - visual.start_ms) / (2 * h));
+    // … or out of it, into the next one.
+    const next = allVisual.find((c) => c.start_ms === visual.end_ms && c.transition);
+    const nh = next ? halfMs(next, visual) : 0;
+    if (!trans && next && nh > 0 && visual.end_ms - t <= nh) trans = transitionCss(next.transition!.type, 0.5 - (visual.end_ms - t) / (2 * nh));
+  }
+  const bgRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    // "Pas + latar blur": a blurred, filled copy of the current frame behind the picture.
+    const cv = bgRef.current;
+    const el = videoRef.current;
+    if (!cv || !el || fit !== 'blur') return;
+    const draw = () => {
+      const ctx = cv.getContext('2d');
+      if (!ctx || !el.videoWidth) return;
+      cv.width = 90;
+      cv.height = Math.round((90 * canvasPx.h) / Math.max(1, canvasPx.w));
+      const k = Math.max(cv.width / el.videoWidth, cv.height / el.videoHeight);
+      ctx.filter = `blur(3px) brightness(0.94)`;
+      ctx.drawImage(el, (cv.width - el.videoWidth * k) / 2, (cv.height - el.videoHeight * k) / 2, el.videoWidth * k, el.videoHeight * k);
+    };
+    draw();
+    el.addEventListener('seeked', draw);
+    el.addEventListener('loadeddata', draw);
+    return () => {
+      el.removeEventListener('seeked', draw);
+      el.removeEventListener('loadeddata', draw);
+    };
+  });
   const zoomStyle = zoom !== 1 && fx?.effect ? { transform: `scale(${zoom})`, transformOrigin: `${fx.effect.x * 100}% ${fx.effect.y * 100}%` } : {};
   const cropStyle = crop ? ({ objectViewBox: `inset(${crop.y * 100}% ${(1 - crop.x - crop.w) * 100}% ${(1 - crop.y - crop.h) * 100}% ${crop.x * 100}%)` } as Record<string, string>) : {};
   const unsupported = v && v.preview === false ? `Codec ${v.probe?.video_codec ?? '?'} belum bisa dipratinjau di browser (tetap bisa dirender).` : null;
@@ -254,6 +300,7 @@ export function Preview({
       </div>
       <div className="canvasArea">
         <div className="canvas live" ref={canvasRef} style={{ aspectRatio: aspectCss(ratio) }} aria-label="Area pratinjau">
+          {fit === 'blur' && visual?.media && <canvas ref={bgRef} className="fitBlurBg" aria-hidden="true" style={css?.filter ? { filter: `blur(12px) ${css.filter}` } : undefined} />}
           <video
             ref={videoRef}
             playsInline
@@ -262,12 +309,26 @@ export function Preview({
             data-zoom={zoom.toFixed(3)}
             data-crop={crop ? `${crop.x},${crop.y},${crop.w},${crop.h}` : undefined}
             className={visual?.media && !unsupported ? '' : 'off'}
-            style={{ ...zoomStyle, ...cropStyle }}
+            data-look={visual?.look ?? brand?.kit.filter_bawaan ?? undefined}
+            data-fit={fit ?? undefined}
+            style={{
+              ...zoomStyle,
+              ...cropStyle,
+              ...(css?.filter ? { filter: css.filter } : {}),
+              ...(fit === 'isi' ? { objectFit: 'cover' as const } : {}),
+              ...(fit === 'blur' ? { background: 'transparent' } : fit === 'warna' && visual?.fit_color ? { background: visual.fit_color } : {}),
+              ...(trans?.opacity !== undefined ? { opacity: trans.opacity } : {}),
+              ...(trans?.clipPath ? { clipPath: trans.clipPath } : {}),
+              ...(trans?.transform ? { transform: `${trans.transform} ${'transform' in zoomStyle ? zoomStyle.transform : ''}` } : {}),
+            }}
           />
+          {css && css.warmth !== 0 && visual?.media && <div className="lookWash" aria-hidden="true" data-warmth={css.warmth.toFixed(2)} style={{ background: css.warmth > 0 ? '#ff9a3c' : '#3c8cff', opacity: Math.abs(css.warmth) * 0.28 }} />}
+          {css && css.vignette > 0 && visual?.media && <div className="lookVignette" aria-hidden="true" style={{ background: `radial-gradient(ellipse at center, transparent ${Math.round(70 - css.vignette * 50)}%, rgba(0,0,0,${(css.vignette * 0.9).toFixed(2)}) 100%)` }} />}
+          {trans?.flash !== undefined && trans.flash > 0 && <div className="transFlash" aria-hidden="true" style={{ opacity: trans.flash }} />}
           {blurs.length > 0 && srcSize && (
             <div className="blurLayer" style={zoomStyle} aria-hidden="true">
               {blurs.map((b, i) => {
-                const r = placeOnCanvas(srcSize, crop, canvasPx, b);
+                const r = placeOnCanvas(srcSize, crop, canvasPx, b, fit === 'isi');
                 const px = `${(b.radius * Math.min(canvasPx.w, canvasPx.h)) / 1080}px`;
                 return <div key={i} className="blurBox" data-blur={i} style={{ left: r.left, top: r.top, width: r.width, height: r.height, backdropFilter: `blur(${px})`, WebkitBackdropFilter: `blur(${px})` }} />;
               })}

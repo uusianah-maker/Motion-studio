@@ -1,0 +1,122 @@
+{
+  "at": "2026-11-14T19:16:35.866Z",
+  "passed": 23,
+  "total": 23,
+  "results": [
+    {
+      "id": "M15-01 Inspector \"Di canvas: Pas + latar blur\" tersimpan di klip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-02 Pratinjau: latar blur di belakang video (canvas blur + video data-fit)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-03 Filter warna \"Hitam Putih\" tersimpan (preset buatan sendiri)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-04 Pratinjau: filter CSS mendekati render (grayscale + kontras)",
+      "ok": true,
+      "detail": "contrast(1.075) grayscale(1)"
+    },
+    {
+      "id": "M15-05 Slider Adjust (Vignette): 3 langkah tombol panah = satu simpan",
+      "ok": true,
+      "detail": "{\"terang\":0,\"kontras\":0,\"saturasi\":0,\"suhu\":0,\"tajam\":0,\"vignette\":3}"
+    },
+    {
+      "id": "M15-06 Undo mengembalikan Adjust (satu langkah undo)",
+      "ok": true,
+      "detail": "null"
+    },
+    {
+      "id": "M15-07 Redo memakai lagi",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-08 Fade masuk 0,5 dtk tersimpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-09 Reduksi noise \"Sedang\" tersimpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-10 Pratinjau: suara mengecil di awal fade masuk",
+      "ok": true,
+      "detail": "0.2"
+    },
+    {
+      "id": "M15-11 Ducking musik aktif di track Musik (30%)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-12 Pratinjau: musik turun saat ada suara bicara (video)",
+      "ok": true,
+      "detail": "0.3"
+    },
+    {
+      "id": "M15-13 Transisi \"Dissolve\" tersimpan di klip kedua",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-14 Durasi transisi 800 ms tersimpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-15 Pratinjau: perkiraan dissolve di titik potong",
+      "ok": true,
+      "detail": "0.5125"
+    },
+    {
+      "id": "M15-16 \"Isi layar (crop)\" tersimpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-17 Brand Kit: \"Filter bawaan video\" tersimpan per brand",
+      "ok": true,
+      "detail": "hangat"
+    },
+    {
+      "id": "M15-18 Render: latar blur (bukan bar hitam) + hitam putih di klip 1",
+      "ok": true,
+      "detail": "atas 37,40,37 tengah 79,82,79"
+    },
+    {
+      "id": "M15-19 Render: durasi tetap 4 dtk walau ada transisi",
+      "ok": true,
+      "detail": "4"
+    },
+    {
+      "id": "M15-19b Render: klip 2 tanpa filter sendiri memakai filter bawaan brand (Hangat: lebih merah dari biru)",
+      "ok": true,
+      "detail": "131,124,113"
+    },
+    {
+      "id": "M15-20 Render: metadata bersih",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-21 HP 390 px: inspector tampil tanpa scroll horizontal",
+      "ok": true,
+      "detail": "lebih 0px"
+    },
+    {
+      "id": "M15-99 0 error JS",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

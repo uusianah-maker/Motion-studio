@@ -123,6 +123,10 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 .linkBtn { background: none; border: none; color: #ae99ff; cursor: pointer; padding: 2px 4px; text-decoration: underline; }
 .blurLayer { position: absolute; inset: 0; pointer-events: none; }
 .blurBox { position: absolute; }
+.fitBlurBg { position: absolute; inset: 0; width: 100%; height: 100%; filter: blur(12px); transform: scale(1.08); pointer-events: none; }
+.lookWash { position: absolute; inset: 0; mix-blend-mode: soft-light; pointer-events: none; }
+.lookVignette { position: absolute; inset: 0; pointer-events: none; }
+.transFlash { position: absolute; inset: 0; background: #fff; pointer-events: none; }
 .importRow { padding: 0 15px 8px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

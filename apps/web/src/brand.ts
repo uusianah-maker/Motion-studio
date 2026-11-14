@@ -82,6 +82,7 @@ export const emptyKit = (): BrandKitInput => ({
   outro: { ref: null, detik: 2 },
   gaya: '',
   grading: '',
+  filter_bawaan: null,
   cta: {},
   cta_wajib: '',
   disclaimer: null,

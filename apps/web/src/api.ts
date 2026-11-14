@@ -1,4 +1,5 @@
 import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js';
+import type { Adjust, ClipExtras, Denoise, FitMode, LookId, Transition } from '../../../packages/core/dist/storage/clipLook.js';
 /**
  * Typed client for the server API (apps/server). Local mode: URL token (memory/sessionStorage only).
  * Google mode (W09): no token at all; the HttpOnly session cookie travels by itself, and every call
@@ -97,6 +98,8 @@ export interface BrandKit {
   outro: { ref: Ref | null; detik: number };
   gaya: string;
   grading: string;
+  /** Malam 15 Nov: default colour look for video/b-roll clips (null = none). */
+  filter_bawaan: LookId | null;
   cta: Partial<Record<Platform, string>>;
   cta_wajib: string;
   disclaimer: { teks: string; kapan: 'selalu' | 'varian_warna' | 'harga' | 'manual' } | null;
@@ -156,7 +159,8 @@ export interface ProjectSummary {
   error?: string;
 }
 
-export interface Clip {
+/** Malam 15 Nov: + fades, denoise, fit, adjust, look, transition (ClipExtras). */
+export interface Clip extends ClipExtras {
   clip_id: string;
   start_ms: number;
   end_ms: number;
@@ -180,7 +184,7 @@ export type BlurRegion = Crop & { dari_ms: number; sampai_ms: number; radius: nu
 export type ClipEffect = { type: 'zoom'; scale: number; mode: 'cut' | 'smooth'; x: number; y: number } | { type: 'zoom_through'; scale: number; x: number; y: number };
 
 export type EditOp =
-  | { op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[] }
+  | ({ op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[] } & ClipExtras)
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -194,13 +198,18 @@ export type EditOp =
   | { op: 'set_volume'; clip_id: string; volume: number }
   | { op: 'set_framing'; clip_id: string; crop?: Crop | null; blur?: BlurRegion[] }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'music' | 'sfx'; muted: boolean }
-  | { op: 'set_loudness'; lufs: number | null };
+  | { op: 'set_loudness'; lufs: number | null }
+  | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off' }
+  | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
+  | { op: 'set_ducking'; on: boolean; level?: number };
 export interface Track {
   track_id: string;
   kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';
   clips: Clip[];
   /** X04: media track silenced in preview and render. */
   muted?: boolean;
+  /** Malam 15 Nov: music track ducking level under speech. */
+  duck?: number;
 }
 export interface Project extends Required<Omit<ProjectSummary, 'error' | 'variant' | 'brand_id'>> {
   brand_id?: string;
