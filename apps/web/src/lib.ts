@@ -188,3 +188,41 @@ export function safeInsets(ratio: CanvasRatio): [number, number, number, number]
 }
 
 export const aspectCss = (ratio: CanvasRatio): string => ratio.replace(':', ' / ');
+
+/** Text of any error for the team (an ApiError, our own `new Error('…')`, or something unknown). */
+export function errorText(e: unknown): string {
+  if (e && typeof e === 'object' && 'code' in e && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
+    const { message, code } = e as { message: string; code?: unknown };
+    return `${message}${typeof code === 'string' && code && code !== 'UNKNOWN' ? ` (${code})` : ''}`;
+  }
+  if (e instanceof Error && e.message) return e.message;
+  return 'Terjadi kesalahan yang tidak dikenal.';
+}
+
+/** A number typed by an Indonesian user ("0,5", "3.5", " 2 "); null when empty or not a number. */
+export function parseDecimal(raw: string): number | null {
+  const t = raw.trim().replace(',', '.');
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Next free `preset-N` id (deleting one must never make the next id a duplicate). */
+export function nextPresetId(ids: string[]): string {
+  let n = ids.length + 1;
+  while (ids.includes(`preset-${n}`)) n++;
+  return `preset-${n}`;
+}
+
+/** Poll delay after `failures` failed status checks in a row: keeps trying, slower and slower. */
+export function pollDelay(failures: number): number {
+  return failures <= 0 ? 800 : Math.min(15_000, 1000 * 2 ** Math.min(failures, 4));
+}
+
+/**
+ * Is `job` the finished ("siap") state of the job on screen? While switching jobs the previous
+ * job's status lingers for a render; acting on it loaded / applied the wrong job (audit 14 Nov).
+ */
+export function readyJobShown(job: { job_id: string; state: string } | null | undefined, shown: { job_id: string } | null | undefined): boolean {
+  return !!job && !!shown && job.state === 'siap' && job.job_id === shown.job_id;
+}

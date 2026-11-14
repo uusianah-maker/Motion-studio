@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AiCatalogItem, AiConnection, AiLogEntry, AiSettings, AiUsage, Api, Capability, ProviderId } from '../api';
-import { formatDate } from '../lib';
+import { formatDate, parseDecimal } from '../lib';
 import { ErrorNotice } from '../ui';
 
 const MODE_TEXT: Record<AiSettings['mode'], string> = {
@@ -43,16 +43,19 @@ export function AiView({ api }: { api: Api }) {
     load().catch(setError);
   }, [load]);
 
-  const act = async (fn: () => Promise<unknown>, ok?: string) => {
+  /** Resolves true when it worked (forms clear themselves only then — audit 14 Nov). */
+  const act = async (fn: () => Promise<unknown>, ok?: string): Promise<boolean> => {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
       await fn();
       if (ok) setNotice(ok);
-      await load();
+      await load().catch(setError);
+      return true;
     } catch (e) {
       setError(e);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -215,7 +218,7 @@ function Meter({ label, spent, cap }: { label: string; spent: number; cap: numbe
   );
 }
 
-function BudgetSection({ settings, usage, busy, onSave }: { settings: AiSettings; usage: AiUsage; busy: boolean; onSave: (b: AiSettings['budget']) => Promise<void> }) {
+function BudgetSection({ settings, usage, busy, onSave }: { settings: AiSettings; usage: AiUsage; busy: boolean; onSave: (b: AiSettings['budget']) => Promise<boolean> }) {
   const [daily, setDaily] = useState(String(settings.budget.daily_usd));
   const [monthly, setMonthly] = useState(String(settings.budget.monthly_usd));
   const [perReq, setPerReq] = useState(String(settings.budget.per_request_usd));
@@ -224,8 +227,9 @@ function BudgetSection({ settings, usage, busy, onSave }: { settings: AiSettings
     setMonthly(String(settings.budget.monthly_usd));
     setPerReq(String(settings.budget.per_request_usd));
   }, [settings.budget.daily_usd, settings.budget.monthly_usd, settings.budget.per_request_usd]);
-  const nums = [daily, monthly, perReq].map(Number);
-  const valid = nums.every((n) => Number.isFinite(n) && n >= 0);
+  // "0,5" is half a dollar; an empty field is not 0 (that would block all AI).
+  const nums = [daily, monthly, perReq].map(parseDecimal);
+  const valid = nums.every((n) => n !== null && n >= 0);
   return (
     <section className="card aiSection" aria-label="Anggaran dan pemakaian AI">
       <h3>Anggaran &amp; pemakaian</h3>
@@ -287,7 +291,7 @@ function BudgetSection({ settings, usage, busy, onSave }: { settings: AiSettings
   );
 }
 
-function RotateKey({ onRotate, disabled, label }: { onRotate: (key: string) => Promise<void>; disabled: boolean; label: string }) {
+function RotateKey({ onRotate, disabled, label }: { onRotate: (key: string) => Promise<boolean>; disabled: boolean; label: string }) {
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState('');
   if (!open)
@@ -303,7 +307,8 @@ function RotateKey({ onRotate, disabled, label }: { onRotate: (key: string) => P
         className="btn small primary"
         disabled={disabled || key.length < 8}
         onClick={() => {
-          void onRotate(key).then(() => {
+          void onRotate(key).then((ok) => {
+            if (!ok) return;
             setKey('');
             setOpen(false);
           });
@@ -318,7 +323,7 @@ function RotateKey({ onRotate, disabled, label }: { onRotate: (key: string) => P
   );
 }
 
-function AddConnection({ catalog, busy, onAdd }: { catalog: AiCatalogItem[]; busy: boolean; onAdd: (b: Parameters<Api['aiAdd']>[0]) => Promise<void> }) {
+function AddConnection({ catalog, busy, onAdd }: { catalog: AiCatalogItem[]; busy: boolean; onAdd: (b: Parameters<Api['aiAdd']>[0]) => Promise<boolean> }) {
   const [provider, setProvider] = useState<ProviderId>('anthropic');
   const [label, setLabel] = useState('');
   const [model, setModel] = useState('');
@@ -336,15 +341,16 @@ function AddConnection({ catalog, busy, onAdd }: { catalog: AiCatalogItem[]; bus
   }, [provider, item]);
 
   const submit = async () => {
-    await onAdd({
+    const ok = await onAdd({
       provider,
       ...(label.trim() ? { label: label.trim() } : {}),
       model: model.trim(),
       ...(key ? { api_key: key } : {}),
       capabilities: caps,
       ...(baseUrl.trim() ? { base_url: baseUrl.trim() } : {}),
-      prices: { input_per_mtok: Number(pin) || 0, output_per_mtok: Number(pout) || 0, per_audio_minute: Number(pmin) || 0 },
+      prices: { input_per_mtok: parseDecimal(pin) ?? 0, output_per_mtok: parseDecimal(pout) ?? 0, per_audio_minute: parseDecimal(pmin) ?? 0 },
     });
+    if (!ok) return; // keep what was typed so it can be fixed
     setKey('');
     setModel('');
     setLabel('');

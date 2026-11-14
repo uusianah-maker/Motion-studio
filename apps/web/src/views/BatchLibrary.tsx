@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Api, BatchRow, BrandKit, EngineBatchInfo, LibraryShot, PisahResult, Role, ShotLibrary } from '../api';
+import { readyJobShown } from '../lib';
 import { ErrorNotice } from '../ui';
 import { EngineProgress, useEngineJob } from './GenerateView';
 
@@ -104,7 +105,7 @@ export function PisahPanel({ api, role, brand, installed, onDone }: { api: Api; 
   const done = useRef(onDone);
   done.current = onDone;
   // Only the CURRENT job's own "siap" (the previous job's state lingers for one render).
-  const finished = job?.state === 'siap' && !!current && job.job_id === current.job_id;
+  const finished = readyJobShown(job, current);
   useEffect(() => {
     if (!finished || !current) return;
     void api.enginePisahResult(current.project_id, current.job_id).then((r) => {
@@ -117,6 +118,7 @@ export function PisahPanel({ api, role, brand, installed, onDone }: { api: Api; 
     }, setError);
   }, [api, finished, current]);
 
+  const unstarted = useRef<string | null>(null);
   const nameOk = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(batch) && !batch.includes('..');
   const start = async () => {
     if (!brand || !files.length) return;
@@ -127,9 +129,11 @@ export function PisahPanel({ api, role, brand, installed, onDone }: { api: Api; 
     setError(null);
     setResult(null);
     try {
-      const p = await api.createProject(`Footage ${batch}`.slice(0, 120));
+      // A project made for a start that then failed is reused by the retry (audit 14 Nov).
+      const p = unstarted.current ? { project_id: unstarted.current } : await api.createProject(`Footage ${batch}`.slice(0, 120));
+      unstarted.current = p.project_id;
       const full = await api.project(p.project_id);
-      await api.updateProject(p.project_id, full.revision, { brand_id: brand.brand_id });
+      if (full.brand_id !== brand.brand_id) await api.updateProject(p.project_id, full.revision, { brand_id: brand.brand_id });
       const sources: { kunci: string; ref: { media_id: string; version_id: string } }[] = [];
       const used = new Set<string>();
       for (const [i, f] of files.entries()) {
@@ -144,6 +148,7 @@ export function PisahPanel({ api, role, brand, installed, onDone }: { api: Api; 
       }
       setUpload(null);
       const j = await api.enginePisah(p.project_id, { mode: 'pisah', sources, pisah: { batch, ...(videoSaja ? { video_saja: true } : {}) } });
+      unstarted.current = null;
       setCurrent({ project_id: p.project_id, job_id: j.job_id });
     } catch (e) {
       setError(e);

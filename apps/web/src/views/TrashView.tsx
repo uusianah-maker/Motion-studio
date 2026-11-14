@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { type Api, type PurgePlan, type TrashItem } from '../api';
+import { type Api, type PurgePlan, type Role, type TrashItem } from '../api';
 import { blockerText, formatBytes, formatDate } from '../lib';
 import { ErrorNotice, Modal } from '../ui';
 
-export function TrashView({ api }: { api: Api }) {
+export function TrashView({ api, role = 'owner' }: { api: Api; role?: Role }) {
   const [items, setItems] = useState<TrashItem[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [note, setNote] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
@@ -62,9 +62,11 @@ export function TrashView({ api }: { api: Api }) {
         <h1>Trash</h1>
         <span className="muted">{items ? `${items.length} item` : '…'}</span>
         <div className="spacer" />
-        <button className="btn danger" disabled={selected.size === 0} onClick={() => setPurgeFor([...selected])}>
-          Hapus permanen… {selected.size > 0 ? `(${selected.size})` : ''}
-        </button>
+        {role === 'owner' && (
+          <button className="btn danger" disabled={selected.size === 0} onClick={() => setPurgeFor([...selected])}>
+            Hapus permanen… {selected.size > 0 ? `(${selected.size})` : ''}
+          </button>
+        )}
       </header>
       <div className="body">
         <div className="notice info">
@@ -103,7 +105,7 @@ export function TrashView({ api }: { api: Api }) {
                     <td className="hideNarrow">{formatDate(i.trashed_at)}</td>
                     <td className="hideNarrow mono">{i.original_rel_path}</td>
                     <td style={{ textAlign: 'right' }}>
-                      <button className="btn small" disabled={busy !== null} onClick={() => restore(i)}>
+                      <button className="btn small" disabled={busy !== null || role === 'reviewer'} title={role === 'reviewer' ? 'Reviewer hanya bisa melihat' : undefined} onClick={() => restore(i)}>
                         {busy === i.version_id ? 'Memulihkan…' : '↺ Pulihkan'}
                       </button>
                     </td>
@@ -163,12 +165,23 @@ function PurgeDialog({ api, versionIds, onClose }: { api: Api; versionIds: strin
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ purged: string[]; blocked: { version_id: string; reasons: string[] }[]; freed_bytes: number } | null>(null);
 
-  useEffect(() => {
-    api.preparePurge(versionIds).then(setPlan, setError);
+  const prepare = useCallback(() => {
+    setPlan(null);
+    setPhrase('');
+    api.preparePurge(versionIds).then(
+      (p) => {
+        setError(null);
+        setPlan(p);
+      },
+      setError,
+    );
   }, [api, versionIds]);
+  useEffect(prepare, [prepare]);
+  // Audit 14 Nov: the server burns the request on any attempt (expired, wrong) — then a fresh one is needed.
+  const [spent, setSpent] = useState(false);
 
   const purgeable = plan?.items.filter((i) => i.purgeable) ?? [];
-  const canRun = !!plan && purgeable.length > 0 && phrase === plan.required_phrase && !busy && !result;
+  const canRun = !!plan && purgeable.length > 0 && phrase === plan.required_phrase && !busy && !result && !spent;
 
   const run = async () => {
     if (!plan || !canRun) return;
@@ -177,6 +190,7 @@ function PurgeDialog({ api, versionIds, onClose }: { api: Api; versionIds: strin
       setResult(await api.executePurge(plan, phrase));
     } catch (e) {
       setError(e);
+      setSpent(true);
     } finally {
       setBusy(false);
     }
@@ -186,7 +200,26 @@ function PurgeDialog({ api, versionIds, onClose }: { api: Api; versionIds: strin
     <Modal title="Hapus permanen" onClose={() => onClose(!!result)} busy={busy}>
       <ErrorNotice error={error} />
       {!plan && !error && <p>Memeriksa ulang dependensi…</p>}
-      {plan && !result && (
+      {(spent || (!plan && !!error)) && !result && (
+        <div className="modalActions">
+          <button className="btn" onClick={() => onClose(false)} disabled={busy}>
+            Tutup
+          </button>
+          {spent && (
+            <button
+              className="btn"
+              onClick={() => {
+                setSpent(false);
+                setError(null);
+                prepare();
+              }}
+            >
+              Siapkan permintaan baru
+            </button>
+          )}
+        </div>
+      )}
+      {plan && !result && !spent && (
         <>
           <div className="notice err">
             <b>Tidak bisa dibatalkan.</b> File dihapus dari disk untuk selamanya. Pastikan ada backup bila masih dibutuhkan.

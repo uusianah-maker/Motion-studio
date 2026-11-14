@@ -1,5 +1,6 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
+import { readyJobShown } from '../lib';
 import { ErrorNotice } from '../ui';
 import { LineBreakdown, PisahPanel, batchLabel, useEngineBatches } from './BatchLibrary';
 import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
@@ -93,10 +94,14 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     void loadJobs();
   }, [loadJobs, job?.state]);
 
-  const loadTable = useCallback(async () => {
+  const loadTable = useCallback(async (isStale: () => boolean) => {
     if (!current) return;
     try {
       const r = await api.engineBatch(current.project_id, current.job_id);
+      // Audit 14 Nov: a slower answer for the batch shown before must not land here (its rows
+      // would be saved onto this job).
+      if (isStale()) return;
+      setError(null);
       setTable(r.batch);
       setOpen({});
       // Shot labels for the breakdown (the picture batch); a batch without a library just has no labels.
@@ -106,23 +111,34 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
       setSaved(r.decisions);
       setDraft(Object.fromEntries(r.batch.varian.map((v) => [v.id, r.decisions[v.id]?.status ?? 'usul'])));
     } catch (e) {
-      setError(e);
+      if (!isStale()) setError(e);
     }
   }, [api, current]);
   useEffect(() => {
     setTable(null);
     setRendered(null);
-    if (job?.state === 'siap') void loadTable();
-  }, [job?.state, loadTable]);
+    // Only this job's own "siap" (the previous job's state lingers for one render).
+    if (!readyJobShown(job, current)) return;
+    let stale = false;
+    void loadTable(() => stale);
+    return () => {
+      stale = true;
+    };
+  }, [job?.state, job?.job_id, current, loadTable]);
 
+  // Audit 14 Nov: a project made for a start that then failed is reused by the retry (no pile of
+  // empty "Batch …" projects); a brand without a code is refused before anything is made.
+  const unstarted = useRef<string | null>(null);
   const start = async () => {
     if (!brand) return;
+    if (!brand.kode) return setError(new Error('Brand ini belum punya kode (Brand Kit → A). Isi dulu, baru susun batch.'));
     setBusy(true);
     setError(null);
     try {
-      const p = await api.createProject(`Batch ${batchName} ${today()}`.slice(0, 120));
+      const p = unstarted.current ? { project_id: unstarted.current } : await api.createProject(`Batch ${batchName} ${today()}`.slice(0, 120));
+      unstarted.current = p.project_id;
       const full = await api.project(p.project_id);
-      await api.updateProject(p.project_id, full.revision, { brand_id: brand.brand_id });
+      if (full.brand_id !== brand.brand_id) await api.updateProject(p.project_id, full.revision, { brand_id: brand.brand_id });
       const akunList = akun
         .split(/[\s,]+/)
         .map((a) => a.trim())
@@ -145,6 +161,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
           ...(buang.length ? { buang_otomatis: buang } : {}),
         },
       });
+      unstarted.current = null;
       onProjectsChanged();
       setCurrent({ project_id: p.project_id, job_id: j.job_id });
     } catch (e) {

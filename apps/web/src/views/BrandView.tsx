@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, BrandKit, BrandKitInput, BrandPreset, Media, Platform, Ref } from '../api';
 import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY, emptyKit, toInput, useBrand } from '../brand';
+import { nextPresetId } from '../lib';
 import { ErrorNotice } from '../ui';
 import { AssetLibrary } from './AssetLibrary';
 
@@ -43,8 +44,8 @@ const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-const newPreset = (n: number): BrandPreset => ({
-  id: `preset-${n}`,
+const newPreset = (id: string): BrandPreset => ({
+  id,
   nama: 'Konversi',
   tujuan: '',
   placement: ['tiktok'],
@@ -133,6 +134,19 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
     [api],
   );
   useEffect(() => void load(), [load]);
+  // Audit 14 Nov: an upload finishing later must merge into the CURRENT draft of the SAME brand —
+  // not overwrite edits made meanwhile, and never land in another brand picked meanwhile.
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const later = useCallback(() => {
+    const owner = selectedRef.current;
+    return (fn: (d: BrandKitInput) => Partial<BrandKitInput>) => {
+      if (selectedRef.current !== owner) return false;
+      setDraft((d) => ({ ...d, ...fn(d) }));
+      setSaved(false);
+      return true;
+    };
+  }, []);
 
   if (!brands) return <div className="body">{error ? <ErrorNotice error={error} /> : <div className="sectionNote">Memuat Brand Kit…</div>}</div>;
 
@@ -160,16 +174,21 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
   const upload = (file: File | undefined, slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro') =>
     act(`up-${slot}`, async () => {
       if (!file) return;
+      const input = fileRefs[slot].current;
+      if (input) input.value = ''; // picking the same file again after a failure works too
       const re = slot.startsWith('font') ? FONT_RE : slot === 'outro' ? OUTRO_RE : LOGO_RE;
       if (!re.test(file.name)) throw new Error(slot.startsWith('font') ? 'Pilih file font .ttf atau .otf.' : slot === 'outro' ? 'Pilih video (MP4/MOV/WebM) atau gambar.' : 'Pilih gambar PNG, JPG atau WebP.');
+      const apply = later();
       const r = await api.importFile(file, { kind: 'shared' });
       const ref = { media_id: r.media_id, version_id: r.version.version_id };
       setMedia(await api.media({ scope: 'shared' }));
-      if (slot === 'logo') set({ logo: { ref, corner: draft.logo?.corner ?? 'tr', size: draft.logo?.size ?? 18, opacity: draft.logo?.opacity ?? 1, show: draft.logo?.show ?? 'sepanjang' } });
-      else if (slot === 'outro') set({ outro: { ...draft.outro, ref } });
-      else set({ [slot]: ref } as Partial<BrandKitInput>);
-      const input = fileRefs[slot].current;
-      if (input) input.value = '';
+      apply((d) =>
+        slot === 'logo'
+          ? { logo: { ref, corner: d.logo?.corner ?? 'tr', size: d.logo?.size ?? 18, opacity: d.logo?.opacity ?? 1, show: d.logo?.show ?? 'sepanjang' } }
+          : slot === 'outro'
+            ? { outro: { ...d.outro, ref } }
+            : ({ [slot]: ref } as Partial<BrandKitInput>),
+      );
     });
 
   const save = () =>
@@ -529,7 +548,7 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
             </Section>
 
             <Section id="e" title="E. Aset brand" hint="mesin memilih aset dari tag; tanpa lisensi tidak pernah dipakai di iklan">
-              <AssetLibrary api={api} draft={draft} set={set} media={media} onMedia={setMedia} />
+              <AssetLibrary api={api} draft={draft} set={set} later={later} media={media} onMedia={setMedia} />
               <label>
                 SFX dilarang (pisah koma)
                 <input aria-label="SFX dilarang" placeholder="kaget, kartun" value={csv(draft.sfx_dilarang)} onChange={(e) => set({ sfx_dilarang: fromCsv(e.target.value) })} />
@@ -676,7 +695,7 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                   </button>
                 </div>
               ))}
-              <button className="btn small" disabled={draft.presets.length >= 12} onClick={() => set({ presets: [...draft.presets, newPreset(draft.presets.length + 1)] })}>
+              <button className="btn small" disabled={draft.presets.length >= 12} onClick={() => set({ presets: [...draft.presets, newPreset(nextPresetId(draft.presets.map((p) => p.id)))] })}>
                 ＋ Preset
               </button>
             </Section>

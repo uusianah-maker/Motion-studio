@@ -134,9 +134,9 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {view === 'generate' && <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />}
         {view === 'batch' && <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />}
         {view === 'shots' && <ShotLibraryView api={api} role={role} />}
-        {view === 'media' && <MediaView api={api} projects={projects ?? []} selectedProject={selected} />}
+        {view === 'media' && <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />}
         {view === 'brand' && <BrandView api={api} readOnly={role !== 'owner'} />}
-        {view === 'trash' && <TrashView api={api} />}
+        {view === 'trash' && <TrashView api={api} role={role} />}
         {view === 'storage' && <StorageView api={api} />}
         {view === 'ai' && <AiView api={api} />}
         {view === 'team' && role === 'owner' && account && <TeamView api={api} />}

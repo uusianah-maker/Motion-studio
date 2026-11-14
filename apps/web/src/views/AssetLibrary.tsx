@@ -33,7 +33,22 @@ const canAds = (s: BrandAsset['lisensi']['status']) => s === 'milik_sendiri' || 
  * the automation engine can pick files by tag and never puts an unlicensed file in an ad.
  * Files are uploaded like any media (they stay on this PC); the kit holds them (never trashed).
  */
-export function AssetLibrary({ api, draft, set, media, onMedia }: { api: Api; draft: BrandKitInput; set: (patch: Partial<BrandKitInput>) => void; media: Media[]; onMedia: (m: Media[]) => void }) {
+export function AssetLibrary({
+  api,
+  draft,
+  set,
+  later,
+  media,
+  onMedia,
+}: {
+  api: Api;
+  draft: BrandKitInput;
+  set: (patch: Partial<BrandKitInput>) => void;
+  /** Applier bound to the brand shown now; it merges into the draft as it is when called. */
+  later: () => (fn: (d: BrandKitInput) => Partial<BrandKitInput>) => boolean;
+  media: Media[];
+  onMedia: (m: Media[]) => void;
+}) {
   const [kind, setKind] = useState<'' | BrandAsset['jenis']>('');
   const [q, setQ] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -54,13 +69,13 @@ export function AssetLibrary({ api, draft, set, media, onMedia }: { api: Api; dr
     setUploading(true);
     setError(null);
     const jenis = kind || 'sfx';
-    const taken = new Set(draft.aset.map((a) => a.id));
+    const apply = later();
     const added: BrandAsset[] = [];
     try {
       for (const f of Array.from(files)) {
         const r = await api.importFile(f, { kind: 'shared' });
         added.push({
-          id: uniqueId(slug(f.name), taken),
+          id: slug(f.name),
           ref: { media_id: r.media_id, version_id: r.version.version_id },
           jenis,
           nama: f.name.replace(/\.[a-z0-9]+$/i, ''),
@@ -75,11 +90,16 @@ export function AssetLibrary({ api, draft, set, media, onMedia }: { api: Api; dr
           catatan: '',
         });
       }
-      onMedia(await api.media({ scope: 'shared' }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      set({ aset: [...draft.aset, ...added] });
+      // Merged into the draft as it is NOW (edits made during the upload stay), ids unique there.
+      apply((d) => {
+        const taken = new Set(d.aset.map((a) => a.id));
+        return { aset: [...d.aset, ...added.map((a) => ({ ...a, id: uniqueId(a.id, taken) }))] };
+      });
+      // File names of what did get uploaded, also after a partial failure.
+      if (added.length) onMedia(await api.media({ scope: 'shared' }).catch(() => media));
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
     }

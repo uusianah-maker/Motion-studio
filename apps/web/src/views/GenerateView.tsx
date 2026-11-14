@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, ProjectSummary, Role } from '../api';
+import { pollDelay, readyJobShown } from '../lib';
 import { ErrorNotice } from '../ui';
 
 /**
@@ -23,16 +24,21 @@ export function useEngineJob(api: Api, projectId: string | null, jobId: string |
     if (!projectId || !jobId) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout>;
+    let failures = 0;
     const tick = async () => {
       try {
         const r = await api.engineJob(projectId, jobId);
         if (stop) return;
+        failures = 0;
         setJob(r.job);
         setLog(r.log);
         setError(null);
-        if (r.job.state === 'menunggu' || r.job.state === 'berjalan') timer = setTimeout(() => void tick(), 800);
+        if (r.job.state === 'menunggu' || r.job.state === 'berjalan') timer = setTimeout(() => void tick(), pollDelay(0));
       } catch (e) {
-        if (!stop) setError(e);
+        if (stop) return;
+        setError(e);
+        // Audit 14 Nov: one failed check (tunnel hiccup) used to stop the progress for good.
+        timer = setTimeout(() => void tick(), pollDelay(++failures));
       }
     };
     void tick();
@@ -199,14 +205,27 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
     if (final && current) void loadHistory(current.project_id);
   }, [final, current, loadHistory]);
   useEffect(() => {
-    if (!current || job?.state !== 'siap' || plan || applied) return;
-    void api.enginePlan(current.project_id, current.job_id).then((r) => {
-      if (r.plan) setPlan({ plan: r.plan, diff: r.diff, rencana: r.rencana, qc: r.qc });
-    }, setError);
-  }, [api, current, job?.state, plan, applied]);
+    // Opening a plan imports the engine's media (a write): Owner / Editor only (audit 14 Nov).
+    if (role === 'reviewer' || !current || !readyJobShown(job, current) || plan || applied) return;
+    // Audit 14 Nov: a slower answer for the job shown before must never become this job's plan.
+    let stale = false;
+    void api.enginePlan(current.project_id, current.job_id).then(
+      (r) => {
+        if (!stale && r.plan) setPlan({ plan: r.plan, diff: r.diff, rencana: r.rencana, qc: r.qc });
+      },
+      (e) => !stale && setError(e),
+    );
+    return () => {
+      stale = true;
+    };
+  }, [api, role, current, job?.state, job?.job_id, plan, applied]);
 
+  // Audit 14 Nov: a new project made for a start that then failed is reused by the retry; a brand
+  // without a code is refused before anything is made or uploaded.
+  const unstarted = useRef<string | null>(null);
   const start = async () => {
     if (!file || !brand) return;
+    if (!brand.kode) return setError(new Error('Brand ini belum punya kode (Brand Kit → A). Isi dulu, baru jalankan mesin.'));
     setBusy(true);
     setError(null);
     setPlan(null);
@@ -214,8 +233,8 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
     try {
       let projectId = target;
       if (target === 'new') {
-        const p = await api.createProject(name.trim() || `Generate ${brief.produk || brand.name} ${today()}`);
-        projectId = p.project_id;
+        projectId = unstarted.current ?? (await api.createProject(name.trim() || `Generate ${brief.produk || brand.name} ${today()}`)).project_id;
+        unstarted.current = projectId;
       }
       const p = await api.project(projectId);
       if (p.brand_id !== brand.brand_id) await api.updateProject(projectId, p.revision, { brand_id: brand.brand_id });
@@ -223,6 +242,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
       const up = await api.importFile(file, { kind: 'project', project_id: projectId }, setUpload);
       setUpload(null);
       const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai });
+      unstarted.current = null;
       setTarget(projectId);
       setCurrent({ project_id: projectId, job_id: j.job_id });
     } catch (e) {
@@ -380,7 +400,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
             <EngineProgress job={job} log={log} onCancel={() => void api.engineCancel(current.project_id, current.job_id).catch(setError)} />
           </section>
         )}
-        {role === 'reviewer' && <div className="notice info">Peran Reviewer: bisa melihat job & rencana, tidak menjalankan mesin atau menerapkan draf.</div>}
+        {role === 'reviewer' && <div className="notice info">Peran Reviewer: bisa melihat status job mesin. Rencana edit dibuka dan diterapkan oleh Editor / Owner; setelah itu Reviewer menilainya di Editor (Lulus / Revisi).</div>}
         {plan && <PlanCard rencana={plan.rencana} qc={plan.qc} plan={plan.plan} diff={plan.diff} busy={busy || role === 'reviewer'} onApprove={() => void approve()} onReject={() => void reject()} />}
         {applied && (
           <section className="card" aria-label="Draf diterapkan">

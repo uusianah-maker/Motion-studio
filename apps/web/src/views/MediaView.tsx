@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Api, ApiError, type Media, type ProjectSummary } from '../api';
+import { type Api, ApiError, type Media, type ProjectSummary, type Role } from '../api';
 import { formatBytes, formatDate } from '../lib';
 import { ErrorNotice, StatusBadges } from '../ui';
 
@@ -14,7 +14,7 @@ interface UploadItem {
 
 let seq = 0;
 
-export function MediaView({ api, projects, selectedProject }: { api: Api; projects: ProjectSummary[]; selectedProject: string | null }) {
+export function MediaView({ api, projects, selectedProject, role = 'owner' }: { api: Api; projects: ProjectSummary[]; selectedProject: string | null; role?: Role }) {
   const [media, setMedia] = useState<Media[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [target, setTarget] = useState<string>('shared');
@@ -72,9 +72,11 @@ export function MediaView({ api, projects, selectedProject }: { api: Api; projec
         <h1>Media</h1>
         <span className="muted">{media ? `${media.length} item` : '…'}</span>
         <div className="spacer" />
-        <button className="btn primary" onClick={() => input.current?.click()}>
-          ＋ Import Media
-        </button>
+        {role !== 'reviewer' && (
+          <button className="btn primary" onClick={() => input.current?.click()}>
+            ＋ Import Media
+          </button>
+        )}
       </header>
       <div className="body">
         <ErrorNotice error={error} />

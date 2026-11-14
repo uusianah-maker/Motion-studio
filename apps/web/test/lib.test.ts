@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TIMELINE_ZOOM, aspectCss, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
+import { TIMELINE_ZOOM, aspectCss, errorText, readyJobShown, nextPresetId, parseDecimal, pollDelay, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
 
 const TOKEN = 'a'.repeat(64);
 
@@ -100,5 +100,31 @@ describe('W09 auth error fragment', () => {
     expect(takeAuthError('#view=trash&auth_error=ACCESS_DENIED')).toEqual({ code: 'ACCESS_DENIED', rest: '#view=trash' });
     expect(takeAuthError('#auth_error=<script>').code).toBeNull();
     expect(takeAuthError('')).toEqual({ code: null, rest: '' });
+  });
+
+  it('audit 14 Nov: error text, Indonesian decimals, preset ids, polling after a failure', () => {
+    expect(errorText(new Error('Pilih file font .ttf atau .otf.'))).toBe('Pilih file font .ttf atau .otf.');
+    expect(errorText({ code: 'CONFLICT', message: 'Proyek berubah' })).toBe('Proyek berubah (CONFLICT)');
+    expect(errorText({ code: 'UNKNOWN', message: 'HTTP 502' })).toBe('HTTP 502');
+    expect(errorText('x')).toBe('Terjadi kesalahan yang tidak dikenal.');
+    expect(parseDecimal('0,5')).toBe(0.5);
+    expect(parseDecimal(' 3.5 ')).toBe(3.5);
+    expect(parseDecimal('')).toBeNull();
+    expect(parseDecimal('abc')).toBeNull();
+    expect(nextPresetId([])).toBe('preset-1');
+    expect(nextPresetId(['preset-2'])).toBe('preset-3'); // preset-1 deleted earlier: never a duplicate
+    expect(nextPresetId(['preset-1', 'preset-3'])).toBe('preset-4');
+    expect(pollDelay(0)).toBe(800);
+    expect(pollDelay(1)).toBeGreaterThan(800);
+    expect(pollDelay(50)).toBe(15_000); // keeps polling, slowly
+  });
+
+  it('audit 14 Nov: only the shown job own "siap" counts (no plan or table of the previous job)', () => {
+    expect(readyJobShown({ job_id: 'AYS-20261114-001', state: 'siap' }, { job_id: 'AYS-20261114-001' })).toBe(true);
+    // Switched to job 002: job 001's "siap" still in state for one render → must not load 001's plan into 002.
+    expect(readyJobShown({ job_id: 'AYS-20261114-001', state: 'siap' }, { job_id: 'AYS-20261114-002' })).toBe(false);
+    expect(readyJobShown({ job_id: 'AYS-20261114-002', state: 'berjalan' }, { job_id: 'AYS-20261114-002' })).toBe(false);
+    expect(readyJobShown(null, { job_id: 'x' })).toBe(false);
+    expect(readyJobShown({ job_id: 'x', state: 'siap' }, null)).toBe(false);
   });
 });

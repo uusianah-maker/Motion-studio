@@ -8,6 +8,7 @@ import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
+import { freeSlot } from './PresetPanel';
 import { ProjectMenu } from './ProjectMenu';
 import { CutReviewDialog } from './CutReviewDialog';
 import { VariantsDialog } from './VariantsDialog';
@@ -298,8 +299,9 @@ export function EditorView({
     void edit([{ op: 'add_clip', track_kind: kind, media: { media_id: m.media_id, version_id: m.current_version_id }, start_ms: trackEnd, duration_ms: probe?.duration_ms ?? DEFAULT_CLIP_MS }]);
   };
 
+  // Audit 14 Nov: at the playhead if free, else the next free spot (no "tumpang tindih" error).
   const addText = (kind: 'text' | 'subtitle') =>
-    void edit([{ op: 'add_clip', track_kind: kind, text: kind === 'text' ? 'Teks baru' : 'Subtitle baru', start_ms: playhead, duration_ms: TEXT_CLIP_MS }]);
+    project && void edit([{ op: 'add_clip', track_kind: kind, text: kind === 'text' ? 'Teks baru' : 'Subtitle baru', start_ms: freeSlot(project, kind, playhead, TEXT_CLIP_MS), duration_ms: TEXT_CLIP_MS }]);
 
   useEffect(() => setTextDraft(sel?.text ?? ''), [sel?.clip_id, sel?.text]);
   const saveText = () => {
@@ -333,7 +335,12 @@ export function EditorView({
           </button>
         )}
         {project && <ProjectMenu api={api} project={project} busy={busy} run={run} onDuplicated={(id) => onProjectCreated?.(id)} brandName={brand?.kit.brand_id ? `${brand.kit.kode} · ${brand.kit.name}` : null} />}
-        <button className="btn primary" disabled={!project} onClick={() => setRenderOpen(true)} title="Render proyek ke MP4 (metadata dibersihkan)">
+        <button
+          className="btn primary"
+          disabled={!project || (!!project.variant && project.variant.approved_revision !== project.revision)}
+          onClick={() => setRenderOpen(true)}
+          title={project?.variant && project.variant.approved_revision !== project.revision ? 'Varian harus disetujui (Owner / Reviewer) sebelum dirender' : 'Render proyek ke MP4 (metadata dibersihkan)'}
+        >
           ↧ Render
         </button>
       </header>
@@ -453,6 +460,8 @@ export function EditorView({
         <div className="panelBody">
           {sel && project && (
             <InspectorPanel
+              // Audit 14 Nov: one panel per clip — a half-typed field never lands on the next clip.
+              key={sel.clip_id}
               clip={sel}
               name={clipName(sel)}
               sourceMs={sourceMs(sel)}

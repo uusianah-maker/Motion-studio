@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ApiError, type ProjectSummary } from './api';
-import { INTEGRITY_LABEL, LIFECYCLE_LABEL, formatDate } from './lib';
+import type { ProjectSummary } from './api';
+import { INTEGRITY_LABEL, LIFECYCLE_LABEL, errorText, formatDate } from './lib';
 
 /** Live media query (one layout rendered at a time, so no duplicated controls in the DOM). */
 export function useMediaQuery(query: string): boolean {
@@ -16,7 +16,8 @@ export function useMediaQuery(query: string): boolean {
 
 export function ErrorNotice({ error }: { error: unknown }) {
   if (!error) return null;
-  const msg = error instanceof ApiError ? `${error.message}${error.code && error.code !== 'UNKNOWN' ? ` (${error.code})` : ''}` : 'Terjadi kesalahan yang tidak dikenal.';
+  // Audit 14 Nov: our own `new Error('Pilih file font …')` used to show as "kesalahan tidak dikenal".
+  const msg = errorText(error);
   return (
     <div className="notice err" role="alert">
       {msg}
@@ -36,18 +37,23 @@ export function StatusBadges({ lifecycle, integrity }: { lifecycle: string; inte
 /** Accessible modal: focus moves in, Escape closes (unless busy), focus returns on close. */
 export function Modal({ title, onClose, busy, children }: { title: string; onClose: () => void; busy?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Audit 14 Nov: callers pass a new `onClose` on every render (and the editor re-renders every
+  // frame while playing), so focus moved on each keystroke. Focus in once, back once; the key
+  // handler reads the latest props through a ref.
+  const latest = useRef({ onClose, busy });
+  latest.current = { onClose, busy };
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) onClose();
+      if (e.key === 'Escape' && !latest.current.busy) latest.current.onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       prev?.focus?.();
     };
-  }, [onClose, busy]);
+  }, []);
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>

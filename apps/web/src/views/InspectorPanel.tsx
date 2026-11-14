@@ -3,7 +3,7 @@ import { fillCrop } from '../../../../packages/core/dist/storage/framing.js';
 import { TEXT_PRESETS } from '../../../../packages/core/dist/storage/textPresets.js';
 import { DEFAULT_STYLES, type TextStyle, effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import type { BrandKit, Clip, EditOp, Track } from '../api';
-import { formatDuration } from '../lib';
+import { formatDuration, parseDecimal } from '../lib';
 
 export type SelectedClip = Clip & { kind: Track['kind'] };
 const KIND_NAME: Record<Track['kind'], string> = { video: 'Video', broll: 'B-roll', text: 'Teks', subtitle: 'Subtitle', audio: 'Audio', music: 'Musik', sfx: 'SFX', effects: 'Efek' };
@@ -133,8 +133,9 @@ export function InspectorPanel({
   };
 
   const commitTiming = () => {
-    const st = Math.round(Number(start.replace(',', '.')) * 1000);
-    const d = Math.round(Number(dur.replace(',', '.')) * 1000);
+    // Audit 14 Nov: an emptied field means "unchanged", never 0 s.
+    const st = Math.round((parseDecimal(start) ?? NaN) * 1000);
+    const d = Math.round((parseDecimal(dur) ?? NaN) * 1000);
     const ops: EditOp[] = [];
     if (Number.isFinite(st) && st >= 0 && st !== clip.start_ms) ops.push({ op: 'move_clip', clip_id: clip.clip_id, start_ms: st });
     const base = ops.length ? st : clip.start_ms;
@@ -360,6 +361,8 @@ export function InspectorPanel({
                 key={`${clip.clip_id}:${(s.highlight?.words ?? []).join('|')}`}
                 onBlur={(e) => {
                   const words = e.target.value.split(',').flatMap((w) => w.trim().split(/\s+/)).filter(Boolean);
+                  // Audit 14 Nov: leaving the field unchanged is not an edit (no empty undo step).
+                  if (words.join('|') === (s.highlight?.words ?? []).join('|')) return;
                   change({ highlight: words.length || s.highlight?.current ? { words, color: s.highlight?.color ?? brand?.colors[1] ?? '#ffd23f', scale: s.highlight?.scale ?? 1.15, current: s.highlight?.current ?? false, box: s.highlight?.box ?? false } : null });
                 }}
               />
