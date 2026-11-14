@@ -11,6 +11,8 @@ import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
  * approved variant projects of the batch project, and only those are rendered (contract §5.3a).
  */
 const today = () => new Date().toISOString().slice(0, 10);
+/** Jam Susun (HH.MM) di nama proyek batch: tiap Susun di hari yang sama dapat nama berbeda (owner 14 Nov). */
+const jamSusun = () => new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.');
 /** Kinds of VO sentence the engine may drop by itself (contract §8). Default: none. */
 const BUANG = [
   { id: 'superlatif', label: 'Superlatif ("paling …")' },
@@ -152,7 +154,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     setBusy(true);
     setError(null);
     try {
-      const p = unstarted.current ? { project_id: unstarted.current } : await api.createProject(`Batch ${batchName} ${today()}`.slice(0, 120));
+      const p = unstarted.current ? { project_id: unstarted.current } : await api.createProject(`Batch ${batchName} · ${today()} ${jamSusun()}`.slice(0, 120));
       unstarted.current = p.project_id;
       const full = await api.project(p.project_id);
       if (full.brand_id !== brand.brand_id) await api.updateProject(p.project_id, full.revision, { brand_id: brand.brand_id });
