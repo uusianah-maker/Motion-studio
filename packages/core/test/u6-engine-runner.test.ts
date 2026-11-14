@@ -254,4 +254,15 @@ describe('U6 engine runner', () => {
     const struck = await svc.decideBatch({ project_id: 'k', job_id: s.job_id, rows: [{ varian: 'varian-002', status: 'dicoret' }], config: cfg, actor: 'user' });
     expect(struck.result['varian-002']).toEqual({ status: 'dicoret', project_id: null });
   }, 90_000);
+
+  it.skipIf(!hasFfmpeg)('contract v0.3.3 §10: a row the engine marked "rusak" is never approved; the other rows are saved', async () => {
+    const { ws, cfg } = await setup();
+    await createProject(ws, { project_id: 'm', name: 'Batch mesin' });
+    const s = await prepareEngineJob(ws, validateEngineJob({ project_id: 'm', mode: 'batch', sources: [], preset: 'p', brief: brief(), ai: false, mode_ops: 'u3', batch: { batch: 'b', jumlah: 2, tujuan: 'konversi', akun_sendiri: ['@rusakmesin'] } }));
+    expect((await runEngineJob(ws, cfg, 'm', s.job_id)).state).toBe('siap');
+    const r = await new StorageService(ws).decideBatch({ project_id: 'm', job_id: s.job_id, rows: [{ varian: 'varian-001', status: 'disetujui' }, { varian: 'varian-002', status: 'disetujui' }], config: cfg, actor: 'user' });
+    expect(r.result['varian-001']).toEqual({ status: 'usul', project_id: null, rusak: 'Durasi VO melebihi footage yang tersedia' });
+    expect(r.result['varian-002']).toMatchObject({ status: 'disetujui' });
+    expect((await listVariants(ws, 'm')).map((p) => p.variant!.label.split(' · ')[0])).toEqual(['varian-002']);
+  }, 90_000);
 });

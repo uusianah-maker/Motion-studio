@@ -168,6 +168,20 @@ try {
     await page.screenshot({ path: path.join(EVID, 'batch-rusak.png') });
   }
 
+  // ---- Contract v0.3.3 §10: a row the ENGINE marked "rusak" shows it before any save, approve off.
+  {
+    await bform.getByLabel('Akun sendiri').fill('@rusakmesin');
+    await bform.getByLabel('Jumlah varian').fill('2');
+    await bform.getByRole('button', { name: /Susun 2 varian/ }).click();
+    await until(async () => (await page.getByLabel('Pilihan yang dikirim').innerText().catch(() => '')).includes('@rusakmesin'), 30000);
+    const shown = await until(() => table.getByLabel('Varian rusak varian-001').isVisible(), 30000);
+    const ok2 = table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Setujui/ });
+    check(
+      'U8-16 Varian yang ditandai rusak oleh mesin: badge + alasan sebelum disimpan, Setujui mati (varian lain tetap bisa)',
+      shown && (await table.getByLabel('Varian rusak varian-001').innerText()).includes('Durasi VO melebihi') && (await table.getByRole('group', { name: 'Keputusan varian-001' }).getByRole('button', { name: /Setujui/ }).isDisabled()) && (await ok2.isEnabled()),
+    );
+  }
+
   // Phone width: Shot Library fits.
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   phone.on('pageerror', (e) => errors.push(String(e)));

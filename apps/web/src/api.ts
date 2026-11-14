@@ -610,6 +610,8 @@ export interface BatchRow {
   /** VO sentence → shots (engine), or the subtitle clips of ops.json (`ops`, no shots). */
   kalimat?: BatchLine[];
   kalimat_sumber?: 'mesin' | 'ops' | null;
+  /** Contract v0.3.3 §10: the engine found this row invalid (reason); never approvable. */
+  rusak?: string;
 }
 export type BatchRowStatus = 'usul' | 'disetujui' | 'dicoret';
 /** A row's saved decision; `rusak` = the engine's plan cannot become a timeline (row stays unapproved). */

@@ -103,7 +103,9 @@ if (mode === 'batch') {
     fs.writeFileSync(path.join(out, id, 'ops.json'), JSON.stringify({ schema: 'ms-ops/1', mode: 'u3', aset_lokal: [], ops }));
     fs.writeFileSync(path.join(out, id, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap', hook: { teks: `Hook ${i}` } }));
     const kalimat = i === 2 ? undefined : [{ teks: `Hook ${i}`, dari: 0, sampai: 0.8, shot: ['F1#00'] }, { teks: 'Cek keranjang', dari: 0.8, sampai: 1.1, shot: ['F1#01', 'F1#00', 'F1＠1.5'] }];
-    rows.push({ id, ...(kalimat ? { kalimat } : {}), vo: 'F1', hook: `Hook ${i}`, shot: ['F1@0.1'], footage: ['F1'], musik: null, durasi: 1 + i / 10, cta: 'Cek keranjang', status: 'usul', bukan_iklan: i === 3, qc_lulus: true, folder: `out/${id}` });
+    // Contract v0.3.3 §10: a row the engine itself found invalid carries `rusak` (+ qc_lulus false).
+    const rusakMesin = (job.akun_sendiri ?? []).includes('@rusakmesin') && i === 1 ? { rusak: 'Durasi VO melebihi footage yang tersedia', qc_lulus: false } : {};
+    rows.push({ id, ...(kalimat ? { kalimat } : {}), vo: 'F1', hook: `Hook ${i}`, shot: ['F1@0.1'], footage: ['F1'], musik: null, durasi: 1 + i / 10, cta: 'Cek keranjang', status: 'usul', bukan_iklan: i === 3, qc_lulus: true, folder: `out/${id}`, ...rusakMesin });
   }
   fs.writeFileSync(path.join(out, 'batch.json'), JSON.stringify({ schema: 'batch-remix/1', job_id: job.job_id, batch: job.batch, tujuan: job.tujuan, jumlah_diminta: job.jumlah, jumlah_jadi: rows.length, media, varian: rows, kecualikan_diterima: job.kecualikan_shot ?? [], vo_batch: job.vo_batch ?? null }));
   say('selesai', 100, `${rows.length} varian`);

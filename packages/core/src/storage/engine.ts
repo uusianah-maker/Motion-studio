@@ -757,7 +757,7 @@ export async function decideBatch(
   if (s.state !== 'siap') bad('Batch belum siap');
   if (!Array.isArray(input.rows) || input.rows.length === 0 || input.rows.length > 50) bad('rows harus daftar 1–50');
   const batch = await readEngineBatch(ws, input.project_id, input.job_id);
-  const table = (Array.isArray(batch.varian) ? batch.varian : []) as { id?: unknown; hook?: unknown; bukan_iklan?: unknown }[];
+  const table = (Array.isArray(batch.varian) ? batch.varian : []) as { id?: unknown; hook?: unknown; bukan_iklan?: unknown; rusak?: unknown }[];
   const byId = new Map(table.filter((r) => typeof r.id === 'string').map((r) => [r.id as string, r]));
   const wanted = (input.rows as unknown[]).map((r, i) => {
     const o = (r ?? {}) as Record<string, unknown>;
@@ -779,6 +779,12 @@ export async function decideBatch(
   const broken = new Map<string, string>();
   for (const w of wanted) {
     if (w.status !== 'disetujui' || decisions[w.varian]?.project_id) continue;
+    // Contract v0.3.3 §10: the engine itself already found this row invalid — never approved.
+    const engineSays = byId.get(w.varian)?.rusak;
+    if (typeof engineSays === 'string' && engineSays.trim()) {
+      broken.set(w.varian, scrubPaths(engineSays.trim()).slice(0, 300));
+      continue;
+    }
     let timeline: Timeline;
     try {
       const p = input.plans?.get(w.varian) ?? (await loadEnginePlan(ws, cfg, input.project_id, input.job_id, w.varian));

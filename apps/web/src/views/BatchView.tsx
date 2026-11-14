@@ -241,7 +241,9 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   };
   const approvedCount = Object.values(saved).filter((d) => d.status === 'disetujui').length;
   // "Setujui semua" never approves a row the engine's plan cannot make (it stays as it is).
-  const setAll = (s: BatchRowStatus) => setDraft((d) => Object.fromEntries(Object.keys(d).map((k) => [k, s === 'disetujui' && saved[k]?.rusak ? d[k]! : s])));
+  /** Why a row cannot be approved: the engine said so (batch.json) or a save found it (keputusan). */
+  const rusakOf = (id: string): string | undefined => saved[id]?.rusak ?? table?.varian.find((v) => v.id === id)?.rusak ?? undefined;
+  const setAll = (s: BatchRowStatus) => setDraft((d) => Object.fromEntries(Object.keys(d).map((k) => [k, s === 'disetujui' && rusakOf(k) ? d[k]! : s])));
 
   return (
     <>
@@ -419,6 +421,11 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                       <td>
                         {v.id}
                         {v.bukan_iklan && <span className="badge bad" title="Musik tanpa lisensi iklan: hanya untuk uji, bukan untuk iklan">UJI</span>}
+                        {rusakOf(v.id) && (
+                          <span className="badge bad" title={rusakOf(v.id)}>
+                            rusak
+                          </span>
+                        )}
                         <button className="linkBtn small" aria-expanded={!!open[v.id]} aria-label={`Rincian ${v.id}`} onClick={() => setOpen((o) => ({ ...o, [v.id]: !o[v.id] }))}>
                           {open[v.id] ? '▾ rincian' : '▸ rincian'}
                         </button>
@@ -436,17 +443,17 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                               key={s}
                               className={`btn small${draft[v.id] === s ? ' sel' : ''}`}
                               aria-pressed={draft[v.id] === s}
-                              disabled={s === 'disetujui' && !!saved[v.id]?.rusak}
-                              title={s === 'disetujui' && saved[v.id]?.rusak ? `Tidak bisa disetujui: ${saved[v.id]!.rusak}` : undefined}
+                              disabled={s === 'disetujui' && !!rusakOf(v.id)}
+                              title={s === 'disetujui' && rusakOf(v.id) ? `Tidak bisa disetujui: ${rusakOf(v.id)}` : undefined}
                               onClick={() => setDraft((d) => ({ ...d, [v.id]: d[v.id] === s ? 'usul' : s }))}
                             >
                               {s === 'disetujui' ? '✓ Setujui' : '✕ Coret'}
                             </button>
                           ))}
                         </div>
-                        {saved[v.id]?.rusak && (
+                        {rusakOf(v.id) && (
                           <div className="small" style={{ color: 'var(--bad, #ff8a80)' }} aria-label={`Varian rusak ${v.id}`}>
-                            Rusak — tidak bisa dibuat: {saved[v.id]!.rusak}
+                            Rusak — tidak bisa dibuat: {rusakOf(v.id)}
                           </div>
                         )}
                         {saved[v.id]?.project_id && (
