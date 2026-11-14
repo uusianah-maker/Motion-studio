@@ -1,7 +1,7 @@
 {
-  "at": "2026-11-14T19:16:35.866Z",
-  "passed": 23,
-  "total": 23,
+  "at": "2026-11-14T19:26:50.942Z",
+  "passed": 28,
+  "total": 28,
   "results": [
     {
       "id": "M15-01 Inspector \"Di canvas: Pas + latar blur\" tersimpan di klip",
@@ -80,6 +80,31 @@
     },
     {
       "id": "M15-16 \"Isi layar (crop)\" tersimpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-K1 \"Gerak cepat: Zoom pelan\" menyimpan 2 keyframe (skala 1 → 1,15)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-K2 Pratinjau: video membesar mengikuti keyframe di akhir klip",
+      "ok": true,
+      "detail": "translate(0%, 0%) scale(1.1491)"
+    },
+    {
+      "id": "M15-K3 Ubah Opasitas titik 2 → 40 % tersimpan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "M15-K4 Pratinjau: video memudar mengikuti keyframe",
+      "ok": true,
+      "detail": "0.415"
+    },
+    {
+      "id": "M15-K5 Undo mengembalikan opasitas keyframe",
       "ok": true,
       "detail": ""
     },

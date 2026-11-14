@@ -290,6 +290,7 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_audio: 'Fade / reduksi noise',
   set_picture: 'Tampilan gambar',
   set_ducking: 'Ducking musik',
+  set_keyframes: 'Keyframe',
 };
 
 /** Short human label for the undo history ("Geser klip", "3 perubahan"). */

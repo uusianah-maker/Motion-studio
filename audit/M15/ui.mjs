@@ -141,6 +141,27 @@ try {
   await look.getByLabel('Tampilan di canvas').selectOption('isi');
   check('M15-16 "Isi layar (crop)" tersimpan', await until(async () => (await vclips())[1].fit === 'isi'));
 
+  // 3b. Keyframe (posisi / skala / opasitas) di klip 2.
+  await pick(1);
+  const kfp = insp.getByRole('group', { name: 'Keyframe' });
+  await kfp.getByLabel('Gerak cepat').selectOption('kenburns');
+  check('M15-K1 "Gerak cepat: Zoom pelan" menyimpan 2 keyframe (skala 1 → 1,15)', await until(async () => (await vclips())[1].keyframes?.length === 2 && (await vclips())[1].keyframes[1].scale === 1.15));
+  await seek(3900);
+  const tf = await video.evaluate((v) => v.style.transform);
+  check('M15-K2 Pratinjau: video membesar mengikuti keyframe di akhir klip', /scale\(1\.1[0-5]/.test(tf), tf);
+  await pick(1);
+  await kfp.getByLabel('Opasitas % keyframe 2').fill('40');
+  await kfp.getByLabel('Opasitas % keyframe 2').press('Enter');
+  check('M15-K3 Ubah Opasitas titik 2 → 40 % tersimpan', await until(async () => (await vclips())[1].keyframes?.[1]?.opacity === 0.4));
+  await seek(3800);
+  const vop = Number(await video.evaluate((v) => getComputedStyle(v).opacity));
+  check('M15-K4 Pratinjau: video memudar mengikuti keyframe', vop < 0.6, String(vop));
+  await page.getByRole('button', { name: '↶ Undo' }).click();
+  check('M15-K5 Undo mengembalikan opasitas keyframe', await until(async () => (await vclips())[1].keyframes?.[1]?.opacity === 1));
+  await pick(1);
+  await kfp.scrollIntoViewIfNeeded();
+  await insp.screenshot({ path: path.join(EVID, 'keyframe.png') });
+
   // 4. Brand Kit: Filter bawaan video.
   await page.getByRole('button', { name: /Brand/ }).first().click();
   await page.getByRole('heading', { name: 'Brand Kit' }).waitFor();

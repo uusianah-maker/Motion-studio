@@ -2,8 +2,10 @@ import { StorageError } from './errors.js';
 import { type ClipEffect, validateEffect } from './effects.js';
 import { type BlurRegion, type Crop, validateBlur, validateCrop } from './framing.js';
 import { type Word, cutWords, sliceWords, validateWords } from './words.js';
-import { type TextStyle, validateStyle } from './textStyle.js';
+import { type TextStyle, effectiveStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
+import { type Keyframe, cutKeyframes, sliceKeyframes, validateKeyframes } from './keyframes.js';
+import { needsAss } from './ass.js';
 import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateTransition } from './clipLook.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
 
@@ -27,7 +29,7 @@ const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle',
 export const SOUND_TRACKS: readonly TrackKind[] = ['audio', 'music', 'sfx'];
 
 export type EditOp =
-  | ({ op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[] } & ClipExtras)
+  | ({ op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[]; keyframes?: Keyframe[] } & ClipExtras)
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -51,7 +53,9 @@ export type EditOp =
   /** Malam 15 Nov: picture of a video/b-roll clip; null clears a field. */
   | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
   /** Malam 15 Nov: music ducking under speech; `level` = music gain while someone speaks. */
-  | { op: 'set_ducking'; on: boolean; level?: number };
+  | { op: 'set_ducking'; on: boolean; level?: number }
+  /** Malam 15 Nov: keyframes of a video/b-roll/text/subtitle clip ([] = none). */
+  | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -81,7 +85,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
     };
     switch (o.op) {
       case 'add_clip': {
-        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words', 'effect', 'crop', 'blur', ...EXTRA_FIELDS]);
+        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words', 'effect', 'crop', 'blur', 'keyframes', ...EXTRA_FIELDS]);
         if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
         let media: MediaRef | undefined;
         if (o.media !== undefined) {
@@ -94,6 +98,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         return {
           op: 'add_clip',
           ...extras,
+          ...(o.keyframes !== undefined ? { keyframes: validateKeyframes(o.keyframes, `ops[${i}].keyframes`) } : {}),
           track_kind: o.track_kind as TrackKind,
           ...(media ? { media } : {}),
           ...(o.text !== undefined ? { text: textOf(o.text) } : {}),
@@ -204,6 +209,9 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           ...opt('transition', validateTransition),
         } as EditOp;
       }
+      case 'set_keyframes':
+        keys(['op', 'clip_id', 'keyframes']);
+        return { op: 'set_keyframes', clip_id: clipId(o.clip_id), keyframes: validateKeyframes(o.keyframes, `ops[${i}].keyframes`) };
       case 'set_ducking':
         keys(['op', 'on', 'level']);
         if (typeof o.on !== 'boolean') bad(`ops[${i}]: on harus true/false`);
@@ -227,6 +235,15 @@ function splitInto(track: Track, index: number, at: number, newClipId: () => str
   // Malam 15 Nov: the look/sound carry over; a fade-in and the incoming transition stay on the left
   // half (the clip's start), a fade-out moves to the right half (the clip's end).
   Object.assign(right, copyExtras(clip));
+  // Keyframes: each half keeps its part of the curve (re-timed to its own start).
+  if (clip.keyframes) {
+    const rel = at - clip.start_ms;
+    const r = sliceKeyframes(clip.keyframes, rel, clip.end_ms - clip.start_ms);
+    const l = sliceKeyframes(clip.keyframes, 0, rel);
+    if (r) right.keyframes = r;
+    if (l) clip.keyframes = l;
+    else delete clip.keyframes;
+  }
   delete right.fade_in_ms;
   delete right.transition;
   delete clip.fade_out_ms;
@@ -260,6 +277,15 @@ const withWords = (c: Clip, words: Word[] | undefined): Clip => {
   return out;
 };
 
+/** Replace a clip's keyframes (null = leave as is, undefined = none left). */
+const withKeys = (c: Clip, k: Keyframe[] | undefined | null): Clip => {
+  if (k === null) return c;
+  const out = { ...c };
+  if (k) out.keyframes = k;
+  else delete out.keyframes;
+  return out;
+};
+
 const timelineEnd = (t: Timeline) => Math.max(0, ...t.tracks.flatMap((tr) => tr.clips.map((c) => c.end_ms)));
 
 const clone = (t: Timeline): Timeline => ({
@@ -275,6 +301,7 @@ const clone = (t: Timeline): Timeline => ({
       ...(c.blur ? { blur: c.blur.map((b) => ({ ...b })) } : {}),
       ...(c.adjust ? { adjust: { ...c.adjust } } : {}),
       ...(c.transition ? { transition: { ...c.transition } } : {}),
+      ...(c.keyframes ? { keyframes: c.keyframes.map((k) => ({ ...k })) } : {}),
     })),
   })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
@@ -305,6 +332,8 @@ function assertConsistent(t: Timeline, sourceDuration?: SourceDuration): void {
       if (c.start_ms < prevEnd) bad('Klip saling tumpang tindih di track yang sama', { clip_id: c.clip_id, track_id: track.track_id });
       if (c.media && !MEDIA_TRACKS.includes(track.kind)) bad(`Media tidak boleh di track ${track.kind}`, { clip_id: c.clip_id });
       if (c.text !== undefined && !TEXT_TRACKS.includes(track.kind)) bad('Teks hanya di track teks/subtitle', { clip_id: c.clip_id });
+      // Malam 15 Nov: text keyframes are drawn with drawtext; captions word-by-word / animated / highlighted go through libass.
+      if (c.keyframes && TEXT_TRACKS.includes(track.kind) && needsAss(effectiveStyle(track.kind as 'text' | 'subtitle', c.style), c)) bad('Keyframe teks belum bisa digabung dengan kata per kata, animasi, atau sorot kata. Matikan itu dulu atau hapus keyframe.', { clip_id: c.clip_id });
       if (c.media && sourceDuration) {
         const total = sourceDuration(c.media);
         if (total !== undefined && (c.in_ms ?? 0) + (c.end_ms - c.start_ms) > total) {
@@ -362,6 +391,10 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
           if (op.blur?.length) clip.blur = op.blur.map((b) => ({ ...b }));
         }
         Object.assign(clip, copyExtras(op));
+        if (op.keyframes?.length) {
+          if (!((op.track_kind === 'video' || op.track_kind === 'broll') && op.media) && !TEXT_TRACKS.includes(op.track_kind)) bad('Keyframe hanya untuk klip video, b-roll, teks, subtitle');
+          clip.keyframes = op.keyframes.map((k) => ({ ...k }));
+        }
         if (op.track_kind === 'effects' && !op.effect) bad('Klip di track efek wajib punya efek (zoom / zoom_through)');
         if (op.words) {
           if (!TEXT_TRACKS.includes(op.track_kind)) bad('Kata per kata hanya untuk klip teks/subtitle');
@@ -391,6 +424,11 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
             clip.in_ms = nextIn;
           }
           if (clip.words) clip.words = sliceWords(clip.words, delta, clip.end_ms - clip.start_ms);
+          if (clip.keyframes) {
+            const k = sliceKeyframes(clip.keyframes, delta, clip.end_ms - clip.start_ms);
+            if (k) clip.keyframes = k;
+            else delete clip.keyframes;
+          }
           clip.start_ms = op.to_ms;
         }
         if (clip.end_ms <= clip.start_ms) bad('Trim membuat klip kosong', { clip_id: clip.clip_id });
@@ -434,10 +472,18 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
                 delete right.fade_in_ms;
                 const left: Clip = { ...c, end_ms: from };
                 delete left.fade_out_ms;
+                if (c.keyframes) {
+                  const lk = sliceKeyframes(c.keyframes, 0, from - c.start_ms);
+                  const rk = sliceKeyframes(c.keyframes, to - c.start_ms, c.end_ms - c.start_ms);
+                  if (lk) left.keyframes = lk;
+                  else delete left.keyframes;
+                  if (rk) right.keyframes = rk;
+                  else delete right.keyframes;
+                }
                 out.push(left, right);
-              } else out.push(withWords({ ...c, end_ms: c.end_ms - len }, c.words ? cutWords(c.words, from - c.start_ms, to - c.start_ms) : undefined));
+              } else out.push(withKeys(withWords({ ...c, end_ms: c.end_ms - len }, c.words ? cutWords(c.words, from - c.start_ms, to - c.start_ms) : undefined), c.keyframes ? cutKeyframes(c.keyframes, from - c.start_ms, to - c.start_ms, c.end_ms - c.start_ms) : null));
             } else if (c.start_ms < from) out.push(withWords({ ...c, end_ms: from }, c.words ? sliceWords(c.words, 0, from - c.start_ms) : undefined));
-            else out.push(withWords({ ...c, start_ms: from, end_ms: c.end_ms - len, ...(c.media ? { in_ms: (c.in_ms ?? 0) + (to - c.start_ms) } : {}) }, c.words ? sliceWords(c.words, to - c.start_ms, c.end_ms - c.start_ms) : undefined));
+            else out.push(withKeys(withWords({ ...c, start_ms: from, end_ms: c.end_ms - len, ...(c.media ? { in_ms: (c.in_ms ?? 0) + (to - c.start_ms) } : {}) }, c.words ? sliceWords(c.words, to - c.start_ms, c.end_ms - c.start_ms) : undefined), c.keyframes ? sliceKeyframes(c.keyframes, to - c.start_ms, c.end_ms - c.start_ms) : null));
           }
           tr.clips = out.filter((c) => c.end_ms - c.start_ms >= MIN_CLIP_MS);
         }
@@ -520,6 +566,13 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         else if (op.transition) clip.transition = { ...op.transition };
         if (op.adjust === null || (op.adjust && isNeutral(op.adjust))) delete clip.adjust;
         else if (op.adjust) clip.adjust = { ...op.adjust };
+        break;
+      }
+      case 'set_keyframes': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (!((track.kind === 'video' || track.kind === 'broll') && clip.media) && !TEXT_TRACKS.includes(track.kind)) bad('Keyframe hanya untuk klip video, b-roll, teks, subtitle', { clip_id: op.clip_id });
+        if (op.keyframes.length) clip.keyframes = op.keyframes.map((k) => ({ ...k }));
+        else delete clip.keyframes;
         break;
       }
       case 'set_ducking': {

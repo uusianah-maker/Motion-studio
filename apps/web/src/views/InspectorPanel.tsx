@@ -5,6 +5,7 @@ import { DEFAULT_STYLES, type TextStyle, effectiveStyle } from '../../../../pack
 import type { BrandKit, Clip, EditOp, Track } from '../api';
 import { formatDuration, parseDecimal } from '../lib';
 import { ClipLookPanel } from './ClipLookPanel';
+import { KeyframePanel } from './KeyframePanel';
 import { LOOKS } from '../../../../packages/core/dist/storage/clipLook.js';
 
 export type SelectedClip = Clip & { kind: Track['kind'] };
@@ -29,6 +30,7 @@ export function InspectorPanel({
   sourceSize = null,
   canvasRatio = 9 / 16,
   duck,
+  playhead = 0,
 }: {
   clip: SelectedClip;
   name: string;
@@ -47,6 +49,8 @@ export function InspectorPanel({
   canvasRatio?: number;
   /** Malam 15 Nov: music-track ducking level (undefined = off). */
   duck?: number | undefined;
+  /** Malam 15 Nov: playhead (ms) for "＋ Keyframe di playhead". */
+  playhead?: number;
 }) {
   const isText = clip.kind === 'text' || clip.kind === 'subtitle';
   const [start, setStart] = useState(sec(clip.start_ms));
@@ -283,6 +287,7 @@ export function InspectorPanel({
         </div>
       )}
       {clip.media && <ClipLookPanel key={clip.clip_id} clip={clip} kind={clip.kind} submit={submit} duck={duck} brandLook={brand?.filter_bawaan ? LOOKS[brand.filter_bawaan].label : null} />}
+      {((clip.media && (clip.kind === 'video' || clip.kind === 'broll')) || isText) && <KeyframePanel clip={clip} playhead={playhead} submit={submit} />}
       {clip.media && onCutReview && (
         <button className="btn small" onClick={onCutReview} title="Cari jeda & pergantian adegan, lalu pilih yang mau dipotong (FFmpeg, tanpa AI)">
           ✂ Deteksi jeda & adegan

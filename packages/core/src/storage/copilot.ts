@@ -130,6 +130,8 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return [op.fade_in_ms !== undefined ? `fade masuk ${(op.fade_in_ms / 1000).toFixed(1).replace('.', ',')} dtk` : '', op.fade_out_ms !== undefined ? `fade keluar ${(op.fade_out_ms / 1000).toFixed(1).replace('.', ',')} dtk` : '', op.denoise !== undefined ? `reduksi noise ${op.denoise === 'off' ? 'mati' : op.denoise}` : ''].filter(Boolean).join(', ').replace(/^/, `Suara ${ref(op.clip_id)}: `);
     case 'set_picture':
       return `Ubah tampilan gambar ${ref(op.clip_id)}`;
+    case 'set_keyframes':
+      return op.keyframes.length ? `Keyframe ${ref(op.clip_id)}: ${op.keyframes.length} titik` : `Hapus keyframe ${ref(op.clip_id)}`;
     case 'set_ducking':
       return op.on ? `Ducking musik aktif (musik turun ke ${Math.round((op.level ?? 0.3) * 100)}% saat ada suara bicara)` : 'Ducking musik mati';
   }

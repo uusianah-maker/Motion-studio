@@ -482,6 +482,7 @@ export function EditorView({
               readOnly={project.status === 'archived' || reviewer}
               brand={brand?.kit ?? null}
               duck={project.timeline.tracks.find((t) => t.kind === 'music')?.duck}
+              playhead={playhead}
               {...(project.status !== 'archived' && !reviewer ? { onCutReview: () => setCutClip(sel) } : {})}
               onEdit={(ops) => edit(ops)}
               onDraft={setStyleDraft}

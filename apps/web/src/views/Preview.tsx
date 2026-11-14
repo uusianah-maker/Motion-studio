@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { blurAt, placeOnCanvas } from '../../../../packages/core/dist/storage/framing.js';
 import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
+import { keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
 import { DEFAULT_DUCK, duckGainAt, effectiveLook, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import type { LoadedBrand } from '../brand';
 import type { Api, Clip, Media, Project } from '../api';
@@ -246,6 +247,8 @@ export function Preview({
     const nh = next ? halfMs(next, visual) : 0;
     if (!trans && next && nh > 0 && visual.end_ms - t <= nh) trans = transitionCss(next.transition!.type, 0.5 - (visual.end_ms - t) / (2 * nh));
   }
+  // Malam 15 Nov: keyframes of the visual clip (same curve as the render).
+  const kf = visual?.keyframes?.length ? keyframeCss(keyframeAt(visual.keyframes, t - visual.start_ms)) : {};
   const bgRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     // "Pas + latar blur": a blurred, filled copy of the current frame behind the picture.
@@ -300,7 +303,7 @@ export function Preview({
       </div>
       <div className="canvasArea">
         <div className="canvas live" ref={canvasRef} style={{ aspectRatio: aspectCss(ratio) }} aria-label="Area pratinjau">
-          {fit === 'blur' && visual?.media && <canvas ref={bgRef} className="fitBlurBg" aria-hidden="true" style={css?.filter ? { filter: `blur(12px) ${css.filter}` } : undefined} />}
+          {fit === 'blur' && visual?.media && <canvas ref={bgRef} className="fitBlurBg" aria-hidden="true" style={{ ...(css?.filter ? { filter: `blur(12px) ${css.filter}` } : {}), ...(kf.transform ? { transform: `${kf.transform} scale(1.08)` } : {}), ...(kf.opacity !== undefined ? { opacity: kf.opacity } : {}) }} />}
           <video
             ref={videoRef}
             playsInline
@@ -317,9 +320,9 @@ export function Preview({
               ...(css?.filter ? { filter: css.filter } : {}),
               ...(fit === 'isi' ? { objectFit: 'cover' as const } : {}),
               ...(fit === 'blur' ? { background: 'transparent' } : fit === 'warna' && visual?.fit_color ? { background: visual.fit_color } : {}),
-              ...(trans?.opacity !== undefined ? { opacity: trans.opacity } : {}),
+              ...(trans?.opacity !== undefined || kf.opacity !== undefined ? { opacity: (trans?.opacity ?? 1) * (kf.opacity ?? 1) } : {}),
               ...(trans?.clipPath ? { clipPath: trans.clipPath } : {}),
-              ...(trans?.transform ? { transform: `${trans.transform} ${'transform' in zoomStyle ? zoomStyle.transform : ''}` } : {}),
+              ...(trans?.transform || kf.transform ? { transform: `${trans?.transform ?? ''} ${'transform' in zoomStyle ? zoomStyle.transform : ''} ${kf.transform ?? ''}`.trim() } : {}),
             }}
           />
           {css && css.warmth !== 0 && visual?.media && <div className="lookWash" aria-hidden="true" data-warmth={css.warmth.toFixed(2)} style={{ background: css.warmth > 0 ? '#ff9a3c' : '#3c8cff', opacity: Math.abs(css.warmth) * 0.28 }} />}
@@ -351,6 +354,7 @@ export function Preview({
               {...(onSelectClip ? { onSelect: () => onSelectClip(c.clip_id) } : {})}
               {...(onMoveText && !busy ? { onMove: (x: number, y: number) => onMoveText(c.clip_id, x, y) } : {})}
               time={t}
+              kf={c.keyframes?.length ? keyframeAt(c.keyframes, t - c.start_ms) : null}
             />
           ))}
           {project.timeline.brand_logo && brand?.kit.logo && brand.logoUrl && (

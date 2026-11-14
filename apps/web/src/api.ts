@@ -1,5 +1,6 @@
 import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js';
 import type { Adjust, ClipExtras, Denoise, FitMode, LookId, Transition } from '../../../packages/core/dist/storage/clipLook.js';
+import type { Keyframe } from '../../../packages/core/dist/storage/keyframes.js';
 /**
  * Typed client for the server API (apps/server). Local mode: URL token (memory/sessionStorage only).
  * Google mode (W09): no token at all; the HttpOnly session cookie travels by itself, and every call
@@ -161,6 +162,8 @@ export interface ProjectSummary {
 
 /** Malam 15 Nov: + fades, denoise, fit, adjust, look, transition (ClipExtras). */
 export interface Clip extends ClipExtras {
+  /** Malam 15 Nov: position / scale / opacity keyframes. */
+  keyframes?: Keyframe[];
   clip_id: string;
   start_ms: number;
   end_ms: number;
@@ -184,7 +187,7 @@ export type BlurRegion = Crop & { dari_ms: number; sampai_ms: number; radius: nu
 export type ClipEffect = { type: 'zoom'; scale: number; mode: 'cut' | 'smooth'; x: number; y: number } | { type: 'zoom_through'; scale: number; x: number; y: number };
 
 export type EditOp =
-  | ({ op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[] } & ClipExtras)
+  | ({ op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[]; keyframes?: Keyframe[] } & ClipExtras)
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -201,7 +204,8 @@ export type EditOp =
   | { op: 'set_loudness'; lufs: number | null }
   | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off' }
   | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
-  | { op: 'set_ducking'; on: boolean; level?: number };
+  | { op: 'set_ducking'; on: boolean; level?: number }
+  | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] };
 export interface Track {
   track_id: string;
   kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';

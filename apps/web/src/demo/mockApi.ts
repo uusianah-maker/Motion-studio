@@ -205,7 +205,7 @@ function commit(s: Stored, expected: number, ops: EditOp[], label: string): Proj
   return view(s);
 }
 
-const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_framing: 'Crop / blur', set_brand_logo: 'Logo brand', remove_range: 'Hapus jeda', split_at: 'Potong di adegan', set_loudness: 'Loudness', set_track_mute: 'Bisukan/nyalakan track', set_audio: 'Fade / reduksi noise', set_picture: 'Tampilan gambar', set_ducking: 'Ducking musik' };
+const OP_LABEL: Record<EditOp['op'], string> = { add_clip: 'Tambah klip', move_clip: 'Geser klip', trim_clip: 'Trim klip', split_clip: 'Split klip', delete_clip: 'Hapus klip', set_text: 'Ubah teks', set_canvas: 'Ubah rasio', set_style: 'Ubah gaya teks', set_volume: 'Ubah volume', set_framing: 'Crop / blur', set_brand_logo: 'Logo brand', remove_range: 'Hapus jeda', split_at: 'Potong di adegan', set_loudness: 'Loudness', set_track_mute: 'Bisukan/nyalakan track', set_audio: 'Fade / reduksi noise', set_picture: 'Tampilan gambar', set_ducking: 'Ducking musik', set_keyframes: 'Keyframe' };
 
 // ------------------------------------------------------------------ copilot plans
 const plans = new Map<string, { plan: EditPlan; status: 'proposed' | 'applied' | 'rejected'; applied_revision: number | null }>();

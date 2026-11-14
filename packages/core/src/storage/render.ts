@@ -3,6 +3,7 @@ import { framingFilters } from './framing.js';
 import { zoomExpr } from './effects.js';
 import { DEFAULT_DUCK, type LookId, XFADE, denoiseFilter, duckFilter, effectiveLook, fadeFilter, fitFilters, lookFilters, speechRanges } from './clipLook.js';
 export { speechRanges } from './clipLook.js';
+import { kfExpr, keyframeFilters } from './keyframes.js';
 import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
 import { readFontInfo } from './fontInfo.js';
 import { type LogoCorner, brandRenderRefs, readBrandFor } from './brand.js';
@@ -298,11 +299,16 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const look = lookFilters(lk.adjust, lk.mono);
       const head = `${framing ? `[fo${k}]` : `[${idx}:v:0]setpts=PTS-STARTPTS,`}fps=${fps}${look ? `,${look}` : ''}`;
       const tail = `setsar=1,format=yuv420p${holdStart ? `,tpad=start_mode=clone:start=${holdStart}` : ''},tpad=stop_mode=clone:stop=${total},trim=end_frame=${total},setpts=PTS-STARTPTS[v${k}]`;
+      // Malam 15 Nov: keyframes move/scale/fade the fitted canvas picture (clip time at t = 0: srcFrom − in).
+      const kf = c.keyframes?.length ? keyframeFilters(c.keyframes, { W, H, fps, frames: total - holdStart, offMs: srcFrom - (c.in_ms ?? 0), id: `s${k}`, inLabel: `kp${k}`, outLabel: `kq${k}` }) : null;
+      const fitted = (label: string) => (kf ? [`[${label}]setsar=1[kp${k}]`, ...kf, `[kq${k}]${tail}`] : [`[${label}]${tail}`]);
       if (c.fit === 'isi' || c.fit === 'blur') {
-        graph.push(`${head}[fp${k}]`, ...fitFilters(c.fit, c.fit_color, W, H, `s${k}`, `fp${k}`, `ff${k}`), `[ff${k}]${tail}`);
+        graph.push(`${head}[fp${k}]`, ...fitFilters(c.fit, c.fit_color, W, H, `s${k}`, `fp${k}`, `ff${k}`), ...fitted(`ff${k}`));
       } else {
         const bars = c.fit === 'warna' && c.fit_color ? `0x${c.fit_color.slice(1)}` : 'black';
-        graph.push(`${head},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=${bars},${tail}`);
+        const fit = `${head},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=${bars}`;
+        if (kf) graph.push(`${fit}[fz${k}]`, ...fitted(`fz${k}`));
+        else graph.push(`${fit},${tail}`);
       }
     } else graph.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${s6(durMs / 1000)},format=yuv420p,setsar=1,trim=end_frame=${frames}[v${k}]`);
     if (hasA) {
@@ -398,8 +404,15 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
           : s.font === 'caption' && brand.font_caption
             ? `fontc${path.extname(brand.font_caption).toLowerCase()}`
             : `${s.bold || !regularFont ? 'fontb' : 'fontr'}${path.extname(face).toLowerCase()}`;
+      // Malam 15 Nov: keyframes = moving/scaling/fading text (same curve as the preview).
+      const kfs = c.keyframes?.length ? c.keyframes : null;
+      const T = `(t-${s6(c.start_ms / 1000)})`;
+      const kx = kfs ? `+(${kfExpr(kfs, 'x', T)})*${W}` : '';
+      const ky = kfs ? `+(${kfExpr(kfs, 'y', T)})*${H}` : '';
+      const size = kfs && kfs.some((k) => k.scale !== 1) ? `'max(4,${fs}*(${kfExpr(kfs, 'scale', T)}))'` : `${fs}`;
+      const alpha = kfs && kfs.some((k) => k.opacity !== 1) ? `:alpha='${kfExpr(kfs, 'opacity', T)}'` : '';
       draws.push(
-        `drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}:enable='gte(t,${s6(c.start_ms / 1000)})*lt(t,${s6(c.end_ms / 1000)})'`,
+        `drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${size}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${kfs ? `'${Math.round(s.x * W)}-text_w/2${kx}'` : `${Math.round(s.x * W)}-text_w/2`}:y=${kfs ? `'${Math.round(s.y * H)}-text_h/2${ky}'` : `${Math.round(s.y * H)}-text_h/2`}${look ? `:${look}` : ''}${alpha}:enable='gte(t,${s6(c.start_ms / 1000)})*lt(t,${s6(c.end_ms / 1000)})'`,
       );
     }
   }

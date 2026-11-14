@@ -2,6 +2,7 @@ import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { type TextStyle, contrastText, effectiveStyle, layoutText } from '../../../../packages/core/dist/storage/textStyle.js';
 import { spokenCount, wordKey } from '../../../../packages/core/dist/storage/words.js';
 import type { Clip } from '../api';
+import type { KfValues } from '../../../../packages/core/dist/storage/keyframes.js';
 import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY } from '../brand';
 
 /**
@@ -75,6 +76,7 @@ export function TextOverlay({
   onSelect,
   onMove,
   time,
+  kf = null,
 }: {
   clip: Clip;
   kind: 'text' | 'subtitle';
@@ -86,6 +88,8 @@ export function TextOverlay({
   onMove?: (x: number, y: number) => void;
   /** U3b: playhead (ms) — words appear as they are spoken. */
   time?: number;
+  /** Malam 15 Nov: keyframe values at the playhead (move / scale / fade, like drawtext). */
+  kf?: KfValues | null;
 }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const start = useRef<{ px: number; py: number; x: number; y: number; id: number } | null>(null);
@@ -101,8 +105,10 @@ export function TextOverlay({
   const s: TextStyle = { ...effectiveStyle(kind, clip.style), ...(draft ?? {}), ...(pos ?? {}) };
   const px = (Math.min(canvas.w, canvas.h) * s.size) / 100;
   const style: CSSProperties = {
-    left: `${s.x * 100}%`,
-    top: `${s.y * 100}%`,
+    left: `${(s.x + (kf?.x ?? 0)) * 100}%`,
+    top: `${(s.y + (kf?.y ?? 0)) * 100}%`,
+    ...(kf && kf.scale !== 1 ? { transform: `translate(-50%, -50%) scale(${kf.scale})` } : {}),
+    ...(kf && kf.opacity !== 1 ? { opacity: kf.opacity } : {}),
     fontSize: `${px}px`,
     lineHeight: 1.15,
     color: s.color,

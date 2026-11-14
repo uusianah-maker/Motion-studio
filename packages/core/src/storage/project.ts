@@ -5,6 +5,7 @@ import { type Word, validateWords } from './words.js';
 import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 import { type ClipExtras, readExtras, validateDuck } from './clipLook.js';
+import { type Keyframe, validateKeyframes } from './keyframes.js';
 
 export const PROJECT_SCHEMA_VERSION = 1;
 
@@ -44,6 +45,8 @@ export interface Clip extends ClipExtras {
   crop?: Crop;
   /** U3d: blurred areas of the source, timed in SOURCE ms. */
   blur?: BlurRegion[];
+  /** Malam 15 Nov: position / scale / opacity keyframes (video, b-roll, text, subtitle). */
+  keyframes?: Keyframe[];
 }
 
 export const CANVAS_RATIOS = ['9:16', '3:4', '1:1', '16:9'] as const;
@@ -284,6 +287,15 @@ function validateTracks(timeline: Obj, where: string): Track[] {
           clip.words = validateWords(co.words, end - start, `${cw}.words`);
         } catch (e) {
           fail(`${cw}.words`, e instanceof Error ? e.message : 'tidak valid');
+        }
+      }
+      if (co.keyframes !== undefined) {
+        if (!((kind === 'video' || kind === 'broll') && clip.media) && kind !== 'text' && kind !== 'subtitle') fail(`${cw}.keyframes`, 'keyframe hanya untuk klip video, b-roll, teks, subtitle');
+        try {
+          const k = validateKeyframes(co.keyframes, `${cw}.keyframes`);
+          if (k.length) clip.keyframes = k;
+        } catch (e) {
+          fail(`${cw}.keyframes`, e instanceof Error ? e.message : 'tidak valid');
         }
       }
       try {

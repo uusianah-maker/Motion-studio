@@ -33,6 +33,7 @@ export { recoverOnStartup, type RecoveryReport } from './storage/recovery.js';
 export { StorageService, describeOps } from './storage/service.js';
 export { type ClipEffect, RAMP_MS, validateEffect, zoomAt } from './storage/effects.js';
 export { type BlurRegion, type Crop, fillCrop, validateBlur, validateCrop } from './storage/framing.js';
+export { type Keyframe, keyframeAt } from './storage/keyframes.js';
 export { type Adjust, type ClipExtras, LOOKS, LOOK_IDS, type LookId, TRANSITIONS, type Transition, effectiveLook } from './storage/clipLook.js';
 export { type Author, MAX_COMMENTS, type ReviewComment, type ReviewDecision, type ReviewState, addComment, decideReview, readReview, resolveComment, reviewState } from './storage/review.js';
 export {

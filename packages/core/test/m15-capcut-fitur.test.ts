@@ -308,3 +308,99 @@ describe.skipIf(!hasFfmpeg)('render nyata FFmpeg (kecil)', () => {
     expect(at(2.6)[0]).toBeGreaterThan(200);
   }, 120_000);
 });
+
+describe('keyframe posisi / skala / opacity (fitur 13)', () => {
+  it('validation, curve (linear + ease), split/trim keep the curve, text + ASS refused', async () => {
+    const { validateKeyframes, keyframeAt, sliceKeyframes, kfExpr } = await import('../src/storage/keyframes.js');
+    const k = validateKeyframes([{ at_ms: 1000, x: 0.5, scale: 2, opacity: 0, ease: 'ease' }, { at_ms: 0 }]);
+    expect(k.map((x) => x.at_ms)).toEqual([0, 1000]);
+    for (const bad of [[{ at_ms: 0 }, { at_ms: 0 }], [{ at_ms: 0, scale: 9 }], [{ at_ms: 0, ease: 'bounce' }], [{ at_ms: 'x' }], Array(21).fill(0).map((_, i) => ({ at_ms: i })), 'x']) expect(code(() => validateKeyframes(bad))).toBe('EDIT_INVALID');
+    expect(keyframeAt(k, -5)).toEqual({ x: 0, y: 0, scale: 1, opacity: 1 });
+    expect(keyframeAt(k, 500).scale).toBeCloseTo(1.5); // ease-in-out: halfway = half
+    expect(keyframeAt(k, 250).scale).toBeCloseTo(1 + (0.5 - 0.5 * Math.cos(Math.PI * 0.25)));
+    expect(keyframeAt(k, 5000)).toEqual({ x: 0.5, y: 0, scale: 2, opacity: 0 });
+    // Same numbers from the FFmpeg expression (evaluated here with JS semantics).
+    const js = kfExpr(k, 'scale', 'T').replace(/if\(/g, 'iff(').replace(/lt\(/g, 'lt(').replace(/PI/g, 'Math.PI').replace(/cos\(/g, 'Math.cos(');
+    const iff = (c: number, a: number, b: number) => (c ? a : b);
+    const lt = (a: number, b: number) => (a < b ? 1 : 0);
+    const clip = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+    for (const ms of [0, 250, 500, 999, 1500]) expect(new Function('T', 'iff', 'lt', 'clip', `return ${js}`)(ms / 1000, iff, lt, clip)).toBeCloseTo(keyframeAt(k, ms).scale, 4);
+    // Slice keeps the curve: value at 600 ms of the original = value at 100 ms of the right part.
+    const right = sliceKeyframes(k, 500, 2000)!;
+    expect(keyframeAt(right, 100).scale).toBeCloseTo(keyframeAt(k, 600).scale, 6);
+    const t0 = applyOps({ tracks: [] }, validateOps([{ op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 2000, keyframes: k }]), ids);
+    const id = t0.tracks[0]!.clips[0]!.clip_id;
+    const [l, r] = applyOps(t0, validateOps([{ op: 'split_clip', clip_id: id, at_ms: 500 }]), ids).tracks[0]!.clips;
+    expect(keyframeAt(l!.keyframes, 500).scale).toBeCloseTo(1.5);
+    expect(keyframeAt(r!.keyframes, 0).scale).toBeCloseTo(1.5);
+    expect(keyframeAt(r!.keyframes, 500).scale).toBeCloseTo(2);
+    const tr = applyOps(t0, validateOps([{ op: 'trim_clip', clip_id: id, edge: 'start', to_ms: 500 }]), ids).tracks[0]!.clips[0]!;
+    expect(keyframeAt(tr.keyframes, 0).scale).toBeCloseTo(1.5);
+    expect(applyOps(t0, validateOps([{ op: 'set_keyframes', clip_id: id, keyframes: [] }]), ids).tracks[0]!.clips[0]!.keyframes).toBeUndefined();
+    // Text: plain text ok; with word timings / animation → refused with a clear reason.
+    const tt = applyOps({ tracks: [] }, validateOps([{ op: 'add_clip', track_kind: 'text', text: 'Halo', start_ms: 0, duration_ms: 1000, keyframes: [{ at_ms: 0, opacity: 0 }, { at_ms: 500 }] }]), ids);
+    expect(tt.tracks[0]!.clips[0]!.keyframes).toHaveLength(2);
+    expect(code(() => applyOps(tt, validateOps([{ op: 'set_style', clip_id: tt.tracks[0]!.clips[0]!.clip_id, style: { anim: 'pop' } }]), ids))).toBe('EDIT_INVALID');
+    expect(code(() => applyOps({ tracks: [] }, validateOps([{ op: 'add_clip', track_kind: 'music', media: V, start_ms: 0, duration_ms: 500, keyframes: [{ at_ms: 0 }] }]), ids))).toBe('EDIT_INVALID');
+    const base = { schema_version: 1, project_id: 'p', name: 'P', status: 'active', revision: 0, created_at: 1, updated_at: 1, snapshots: [] };
+    expect(validateProjectManifest({ ...base, timeline: t0 }).timeline.tracks[0]!.clips[0]!.keyframes).toHaveLength(2);
+  });
+
+  it.skipIf(!hasFfmpeg)('render nyata: video mengecil + bergeser + memudar, teks muncul pelan; sama dengan kurva pratinjau', async () => {
+    const fx = await fixtureWorkspace();
+    const svc = new StorageService(fx.ws);
+    const f = path.join(fx.src, 'white.mp4');
+    execFileSync(FFMPEG, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=180x320:r=30:d=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', f], { windowsHide: true });
+    const r = await svc.importMedia({ sourcePath: f, scope: { kind: 'shared' }, actor: 'user' });
+    const white = { media_id: r.media.media_id, version_id: r.version.version_id };
+    await createProject(fx.ws, { project_id: 'kf', name: 'KF' });
+    await svc.editTimeline({
+      project_id: 'kf',
+      expected_revision: 0,
+      actor: 'user',
+      ops: [
+        // 0–1 s full size; 1–2 s shrinks to half and moves right by 25 %; 2–3 s fades to black.
+        { op: 'add_clip', track_kind: 'video', media: white, start_ms: 0, duration_ms: 3000, keyframes: [{ at_ms: 1000 }, { at_ms: 2000, scale: 0.5, x: 0.25 }, { at_ms: 3000, scale: 0.5, x: 0.25, opacity: 0 }] },
+        // Black text near the top fades in over the first second.
+        { op: 'add_clip', track_kind: 'text', text: 'MMMM', style: { color: '#000000', y: 0.1, size: 12, outline: false, bg: null }, start_ms: 0, duration_ms: 3000, keyframes: [{ at_ms: 0, opacity: 0 }, { at_ms: 1000 }] },
+      ],
+    });
+    expect((await renderProject(fx.ws, { project_id: 'kf', output_name: 'kf.mp4', actor: 'user' }, { settings: { short_side: 180, preset: 'ultrafast' } })).status).toBe('completed');
+    const out = path.join(fx.ws.root, (await listOutputs(fx.ws, 'kf'))[0]!.rel);
+    const row = (t: number) => {
+      const b = execFileSync(FFMPEG, ['-v', 'error', '-ss', String(t), '-i', out, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { windowsHide: true });
+      let a = -1;
+      let z = -1;
+      let peak = 0;
+      for (let x = 0; x < 180; x++) {
+        const v = b[160 * 180 + x]!;
+        peak = Math.max(peak, v);
+        if (v > 100) {
+          if (a < 0) a = x;
+          z = x;
+        }
+      }
+      return { a, z, w: z - a + 1, peak };
+    };
+    const full = row(0.5);
+    expect(full.w).toBeGreaterThan(170);
+    const half = row(2.05);
+    expect(half.w).toBeGreaterThan(80);
+    expect(half.w).toBeLessThan(100); // half size
+    expect((half.a + half.z) / 2).toBeGreaterThan(125); // centre moved right by ~45 px
+    expect((half.a + half.z) / 2).toBeLessThan(145);
+    const mid = row(1.5); // eased? linear: 0.75 size
+    expect(mid.w).toBeGreaterThan(125);
+    expect(mid.w).toBeLessThan(145);
+    expect(row(2.5).peak).toBeLessThan(180); // fading
+    expect(row(2.5).peak).toBeGreaterThan(70);
+    const darkest = (t: number) => {
+      const b = execFileSync(FFMPEG, ['-v', 'error', '-ss', String(t), '-i', out, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { windowsHide: true });
+      let lo = 255;
+      for (let y = 22; y < 42; y++) for (let x = 40; x < 140; x++) lo = Math.min(lo, b[y * 180 + x]!);
+      return lo;
+    };
+    expect(darkest(0.03)).toBeGreaterThan(200); // text still invisible
+    expect(darkest(0.8)).toBeLessThan(120); // text faded in
+  }, 120_000);
+});
