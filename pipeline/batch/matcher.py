@@ -68,9 +68,9 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
     # Wajah dekat dari footage lain tidak dipakai: bibirnya terbaca, padahal suaranya VO orang lain.
     broll_pool = [s for s in shots if s["footage"] != fid and s["footage"] in footage_boleh
                   and not s["wajah_bicara"] and s["framing"] != "wajah_dekat"
-                  and (boleh_teks or not s["teks_bawaan"]) and not s["buram"] and not s.get("kosong")
+                  and (boleh_teks or not s["teks_bawaan"]) and not s["buram"] and not s.get("beku") and not s.get("kosong")
                   and s["sampai"] - s["dari"] >= MIN_POTONG and s["id"] not in kecuali]
-    own = [s for s in shots if s["footage"] == fid and not s["buram"] and s["id"] not in kecuali]
+    own = [s for s in shots if s["footage"] == fid and not s["buram"] and not s.get("beku") and s["id"] not in kecuali]
     dipakai = Counter()
     potongan, vo_klip = [], []
     t_out = 0.0

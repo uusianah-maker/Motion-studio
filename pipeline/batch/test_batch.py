@@ -334,5 +334,21 @@ class SusunVO(unittest.TestCase):
         self.assertIn("cta", rv["kalimat"][-1]["topik"])
 
 
+class ShotBeku(unittest.TestCase):
+    """KORSET 14 Nov: footage A_18 diam 2,3-4,2 dtk -> render terlihat beku. Shot beku tidak dipakai."""
+
+    def test_aturan_beku(self):
+        from beku import shot_beku
+        self.assertTrue(shot_beku(2.07, 4.13, [(2.31, 4.17)]))
+        self.assertFalse(shot_beku(5.0, 8.0, [(7.8, 8.2)]))
+        self.assertTrue(shot_beku(0.0, 1.0, [(0.5, 0.9)]))
+
+    def test_matcher_melewati_shot_beku(self):
+        import inspect
+        import matcher
+        src = inspect.getsource(matcher)
+        self.assertEqual(src.count('not s.get("beku")'), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
