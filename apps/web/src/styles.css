@@ -25,7 +25,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .app { display: grid; grid-template-columns: 67px 254px minmax(0, 1fr); height: 100vh; min-height: 640px; }
 .app.noSide { grid-template-columns: 67px minmax(0, 1fr); }
 .rail { background: #11141c; border-right: 1px solid var(--line); padding: 18px 8px; display: flex; align-items: center; flex-direction: column; gap: 8px; }
-.brand { display: grid; place-items: center; background: linear-gradient(135deg, #7668ff, #38bfc8); height: 38px; width: 38px; border-radius: 12px; font-weight: 900; font-size: 17px; margin-bottom: 17px; box-shadow: 0 5px 30px #7654ff38; }
+.brand { display: grid; place-items: center; height: 38px; width: 38px; margin-bottom: 17px; }
+.gateLogo { display: flex; justify-content: center; margin-bottom: 6px; }
 .nav { width: 50px; border: none; background: transparent; display: flex; align-items: center; flex-direction: column; gap: 6px; border-radius: 10px; padding: 11px 1px; color: #8c96aa; font-size: 10px; }
 .nav .sym { font-size: 19px; line-height: 1; }
 .nav:hover { color: #c9cfdd; }
@@ -265,6 +266,7 @@ table.list tr:hover td { background: #191d29; }
 .ruler .tick { position: absolute; top: 4px; font-size: 10px; color: #7f899f; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }
 .ruler .tick:first-child { transform: none; }
 .editorHeader .time { font-variant-numeric: tabular-nums; color: #b0b8c9; }
+
 .timelineTop { flex-wrap: wrap; height: auto; min-height: 47px; padding: 6px 17px; }
 .timelineTop .smallbtn:disabled { opacity: 0.45; }
 

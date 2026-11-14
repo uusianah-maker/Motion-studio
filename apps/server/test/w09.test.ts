@@ -7,7 +7,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type FakeGoogle, startFakeGoogle } from '../../../scripts/fake-google.mjs';
 import { HOST, createApp } from '../src/app.js';
-import { SESSION_IDLE_MS, SESSION_MAX_MS, checkIdToken, createGoogleAuth, maskEmail, parseAllowlist, parseCookies } from '../src/auth.js';
+import { SESSIONS_FILE, SESSION_IDLE_MS, SESSION_MAX_MS, checkIdToken, createGoogleAuth, maskEmail, parseAllowlist, parseCookies } from '../src/auth.js';
 import { initWorkspace, readAudit } from '../src/core.js';
 import { start } from '../src/main.js';
 import { createSecretBox, loadSecretKey } from '../src/secrets.js';
@@ -72,7 +72,7 @@ const setCookies = (r: Reply) => (r.headers['set-cookie'] ?? []) as string[];
 const cookieNamed = (r: Reply, name: string) => setCookies(r).find((c) => c.startsWith(`${name}=`));
 const pair = (c: string | undefined) => (c ? c.split(';')[0]! : '');
 
-async function setup(o: { allowed?: string[]; now?: () => number; dir?: string; g?: FakeGoogle } = {}) {
+async function setup(o: { allowed?: string[]; now?: () => number; dir?: string; g?: FakeGoogle; stateDir?: string } = {}) {
   const dir = o.dir ?? (await tmp());
   const g = o.g ?? (await google());
   const ws = await initWorkspace(path.join(dir, `ws-${randomBytes(3).toString('hex')}`));
@@ -86,6 +86,7 @@ async function setup(o: { allowed?: string[]; now?: () => number; dir?: string; 
     authEndpoint: g.authUrl,
     tokenEndpoint: g.tokenUrl,
     ...(o.now ? { now: o.now } : {}),
+    ...(o.stateDir ? { stateDir: o.stateDir } : {}),
   });
   const app = createApp({ ws, auth, routes: apiRoutes({ tmpDir: dir }, createStreamSigner()) });
   port = await app.listen(0);
@@ -253,6 +254,42 @@ describe('W09 login Google', () => {
     }
     clock = born + SESSION_MAX_MS + 1;
     expect((await s.api('/api/session', old)).status).toBe(401);
+  });
+
+  it('sessions survive a server restart (only the sha256 of the id on disk); logout, removal and a damaged file fail closed', async () => {
+    const dir = await tmp();
+    const stateDir = path.join(dir, 'state');
+    const g = await google();
+    const a = await setup({ dir, g, stateDir, allowed: ['owner@example.com', 'editor@example.com'] });
+    const { sid } = await a.login();
+    const raw = await fsp.readFile(path.join(stateDir, SESSIONS_FILE), 'utf8');
+    expect(raw).not.toContain(sid.split('=')[1]!); // the cookie itself is never written
+    expect(raw).not.toMatch(/fake-refresh|ya29|id_token/);
+
+    // "Restart": a new server process reading the same state folder keeps the team signed in.
+    const b = await setup({ dir, g, stateDir, allowed: ['owner@example.com', 'editor@example.com'] });
+    expect((await b.api('/api/session', sid)).json).toMatchObject({ user: { email: 'owner@example.com' } });
+
+    // Logout is written at once: it does not come back after the next restart.
+    expect((await b.api('/api/auth/logout', sid, { method: 'POST', body: '{}' })).status).toBe(200);
+    const c = await setup({ dir, g, stateDir, allowed: ['owner@example.com', 'editor@example.com'] });
+    expect((await c.api('/api/session', sid)).status).toBe(401);
+
+    // An email no longer on the team is not restored.
+    const again = (await c.login()).sid;
+    const d = await setup({ dir, g, stateDir, allowed: ['editor@example.com'] });
+    expect((await d.api('/api/session', again)).status).toBe(401);
+
+    // A damaged file only means logging in again.
+    await fsp.writeFile(path.join(stateDir, SESSIONS_FILE), '{not json');
+    const e = await setup({ dir, g, stateDir });
+    expect(e.auth.sessionCount()).toBe(0);
+    expect((await e.login()).sid).toMatch(/^motion_sid=/);
+  });
+
+  it('a team laptop stays signed in for a week idle and 30 days at most', () => {
+    expect(SESSION_IDLE_MS).toBe(7 * 24 * 3_600_000);
+    expect(SESSION_MAX_MS).toBe(30 * 24 * 3_600_000);
   });
 
   it('secrets at rest (for W12 API keys): AES-GCM bound to its owner, key file created once, bad keys fail closed', async () => {

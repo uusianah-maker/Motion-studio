@@ -456,6 +456,14 @@ export class ApiError extends Error {
 
 /** U7: who may do what (enforced by the server). */
 export type Role = 'owner' | 'editor' | 'reviewer';
+/** Halaman Tim: one account allowed to sign in with Google. `env` = from .env.local (locked here). */
+export interface TeamMember {
+  email: string;
+  role: Role;
+  source: 'env' | 'web';
+  added_at: number | null;
+  added_by: string | null;
+}
 export interface ReviewComment {
   comment_id: string;
   at_ms: number;
@@ -667,6 +675,10 @@ export function createApi(token: string | null, base = '') {
     aiRotate: (id: string, api_key: string) => call<{ connection: AiConnection }>('POST', `/api/ai/providers/${encodeURIComponent(id)}/key`, { json: { api_key } }).then((r) => r.connection),
     aiTest: (id: string) => call<{ result: { ok: boolean; models: number | null; model_listed: boolean | null; error: { class: string; status: number | null; message: string } | null }; connection: AiConnection }>('POST', `/api/ai/providers/${encodeURIComponent(id)}/test`, { json: {} }),
     aiRemove: (id: string) => call<{ ok: true }>('DELETE', `/api/ai/providers/${encodeURIComponent(id)}`),
+    team: () => call<{ members: TeamMember[]; me: string | null; max: number }>('GET', '/api/team'),
+    teamAdd: (email: string, role: Role) => call<{ member: TeamMember; members: TeamMember[] }>('POST', '/api/team', { json: { email, role } }),
+    teamSetRole: (email: string, role: Role) => call<{ member: TeamMember; members: TeamMember[] }>('PUT', '/api/team', { json: { email, role } }),
+    teamRemove: (email: string) => call<{ removed: string; members: TeamMember[] }>('DELETE', '/api/team', { json: { email } }),
     aiSettings: (patch: Partial<Omit<AiSettings, 'budget'>> & { budget?: Partial<AiSettings['budget']> }) => call<{ settings: AiSettings }>('POST', '/api/ai/settings', { json: patch }).then((r) => r.settings),
     aiUsage: () => call<{ usage: AiUsage }>('GET', '/api/ai/usage').then((r) => r.usage),
     aiLog: () => call<{ entries: AiLogEntry[] }>('GET', '/api/ai/log').then((r) => r.entries),

@@ -4,6 +4,7 @@ import { ApiError, type Session, authMode, createApi } from './api';
 import { App } from './App';
 import { AUTH_ERRORS, takeAuthError, takeTokenFromHash } from './lib';
 import './styles.css';
+import { Logo } from './Logo';
 
 const STORAGE_KEY = 'motion.session';
 
@@ -37,6 +38,9 @@ function Gate({ reason }: { reason: string }) {
   return (
     <div className="gate">
       <div className="card">
+        <div className="gateLogo">
+          <Logo size={56} />
+        </div>
         <h2>Motion Studio</h2>
         <p>{reason}</p>
         <p className="muted">
@@ -53,6 +57,9 @@ function LoginGate({ error, signedOut }: { error: string | null; signedOut: bool
   return (
     <div className="gate">
       <div className="card login">
+        <div className="gateLogo">
+          <Logo size={56} />
+        </div>
         <h2>Motion Studio</h2>
         {signedOut && !error && <div className="notice info" role="status">Anda sudah keluar.</div>}
         {error && (

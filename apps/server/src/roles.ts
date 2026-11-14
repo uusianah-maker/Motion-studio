@@ -23,6 +23,8 @@ const OWNER: readonly Role[] = ['owner'];
 const RULES: { method: RegExp; path: RegExp; roles: readonly Role[] }[] = [
   // AI spending and prompts are the owner's (the editor's Copilot only needs the mode in /providers).
   { method: /./, path: /^\/api\/ai\/(usage|log)$/, roles: OWNER },
+  // Halaman Tim: who may sign in, and with which role, is the owner's (reading it too).
+  { method: /./, path: /^\/api\/team(\/|$)/, roles: OWNER },
   { method: /^(GET|HEAD)$/, path: /./, roles: ALL },
   { method: /./, path: /^\/api\/auth\/logout$/, roles: ALL },
   // Owner-only administration.
@@ -74,4 +76,9 @@ export function roleResolver(lists: RoleLists | null): (user: SessionUser | null
     if (lists.editor.includes(e)) return 'editor';
     return 'reviewer';
   };
+}
+
+/** Halaman Tim: role from the CURRENT team list (re-read on every request). Not listed = reviewer. */
+export function teamRoleResolver(roleOf: (email: string) => Role | null): (user: SessionUser | null) => Role {
+  return (user) => (user ? (roleOf(user.email) ?? 'reviewer') : 'owner');
 }

@@ -20,6 +20,11 @@ export type HttpErrorCode =
   | 'ENGINE_MISSING'
   | 'NOT_RUNNING'
   | 'NOT_READY'
+  | 'ALREADY_MEMBER'
+  | 'MANAGED_BY_ENV'
+  | 'SELF_CHANGE'
+  | 'LAST_OWNER'
+  | 'TEAM_FULL'
   | 'INTERNAL';
 
 /** Typed API error: `{ error: { code, message } }` with a fitting HTTP status. */

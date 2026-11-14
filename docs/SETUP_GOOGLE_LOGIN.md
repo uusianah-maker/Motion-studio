@@ -57,7 +57,27 @@ npm run start:server
 - **Token Google**: tidak disimpan sama sekali. Server cuma membaca email dari Google sekali saat login, lalu membuat sesinya sendiri.
 - **Browser**: hanya menyimpan cookie sesi HttpOnly.
 - **Sesi**:
-  - Habis setelah 12 jam tidak dipakai, atau paling lama 7 hari.
-  - Restart server berarti login ulang, cukup satu klik.
+  - Habis setelah 7 hari tidak dipakai, atau paling lama 30 hari.
+  - Restart server **tidak** membuat tim ter-logout: sesi disimpan di `<folder state>/sessions.json` (hanya sidik sha256 ID sesi, bukan cookie dan bukan token Google).
+  - Render dan Generate Otomatis jalan di server, jadi tetap lanjut walaupun laptop tim ter-logout atau ditutup.
 - **File video**: tetap di disk komputer/server yang menjalankan app (PC-13), bukan di Google.
 - **Cabut akses kapan saja**: https://myaccount.google.com/permissions → Motion Studio → Remove access.
+
+## 6. Menambah anggota tim dari web (halaman Tim)
+Setelah login sebagai **owner**, buka menu **Tim** di rail kiri. Menu ini hanya muncul untuk owner dan hanya saat login Google aktif.
+
+1. Ketik email Google anggota, pilih perannya (**Editor**, **Reviewer**, atau **Owner**), lalu klik **Tambah**.
+2. **Selama app Google masih status Testing**, email baru itu juga harus ditambahkan sebagai **Test user** di Google Auth Platform → **Audience** → **Test users** → **Add users**. Kalau belum, Google menolak login email itu sebelum sampai ke Motion Studio. Kalau app sudah **In production**, langkah ini tidak perlu.
+3. Selesai. Tidak perlu edit `.env.local` dan tidak perlu restart server.
+
+Aturan yang dijaga server:
+- **Langsung berlaku.** Login, setiap request, dan peran selalu membaca daftar terbaru. Ganti peran langsung berlaku di sesi yang sedang jalan. Email yang dihapus langsung keluar di request berikutnya, dan login berikutnya ditolak.
+- **Email dari `.env.local` terkunci.** Email di `MOTION_ALLOWED_EMAILS` (dan perannya dari `MOTION_OWNER_EMAILS` / `MOTION_EDITOR_EMAILS` / `MOTION_REVIEWER_EMAILS`) tetap berlaku dan hanya bisa diubah di `.env.local`. Jadi owner di `.env.local` tidak mungkin terkunci keluar lewat web. Kalau tidak ada daftar peran di env, semua email env adalah owner, sama seperti sebelumnya.
+- **Selalu ada minimal satu owner.** Owner terakhir tidak bisa dihapus atau diturunkan perannya.
+- **Akun sendiri tidak bisa diubah dari web.** Minta owner lain yang mengubahnya.
+- **Hanya owner** yang bisa melihat dan mengubah daftar ini. API `GET/POST/PUT/DELETE /api/team` ditolak (403) untuk editor dan reviewer.
+
+Penyimpanan:
+- Anggota yang ditambah dari web disimpan di `%USERPROFILE%\.motion-studio\team.json` (atau di `MOTION_STATE_DIR` kalau di-set). File ini di luar workspace dan di luar git, dan isinya hanya email, peran, serta kapan dan oleh siapa ditambahkan. Tidak ada secret di dalamnya.
+- Kalau file itu rusak, server **menolak start** dengan pesan yang menyebut lokasi file. Perbaiki atau hapus file itu. Kalau dihapus, yang tersisa hanya email dari `.env.local`.
+- Setiap tambah, ganti peran, dan hapus dicatat di audit log workspace (`team.add`, `team.role`, `team.remove`).

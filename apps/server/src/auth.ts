@@ -1,4 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Route } from './app.js';
 import { createSecretBox } from './secrets.js';
@@ -17,8 +19,12 @@ export const GOOGLE_AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/aut
 export const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const GOOGLE_ISSUERS = new Set(['https://accounts.google.com', 'accounts.google.com']);
 
-export const SESSION_IDLE_MS = 12 * 3_600_000;
-export const SESSION_MAX_MS = 7 * 24 * 3_600_000;
+/** A team laptop stays signed in for a week of not using the app, and at most 30 days in a row. */
+export const SESSION_IDLE_MS = 7 * 24 * 3_600_000;
+export const SESSION_MAX_MS = 30 * 24 * 3_600_000;
+/** `last` changes on every request; it is written to disk at most this often. */
+const SESSION_TOUCH_SAVE_MS = 5 * 60_000;
+export const SESSIONS_FILE = 'sessions.json';
 export const LOGIN_TTL_MS = 10 * 60_000;
 const MAX_USED_STATES = 10_000;
 const MAX_SESSIONS = 200;
@@ -44,7 +50,7 @@ export function parseCookies(header: string | undefined): Record<string, string>
 
 const sha = (s: string) => createHash('sha256').update(s).digest();
 const sameText = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-const EMAIL_RE = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
+export const EMAIL_RE = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
 
 export function parseAllowlist(raw: string | undefined): string[] {
   const list = (raw ?? '')
@@ -104,13 +110,22 @@ export interface GoogleAuthOptions {
   ws: Workspace;
   clientId: string;
   clientSecret: string;
-  allowedEmails: string[];
+  /** Fixed list (tests, older callers). Ignored when `isAllowed` is given. */
+  allowedEmails?: string[];
+  /** Halaman Tim: the CURRENT allowlist, asked at every login and on every request of a session. */
+  isAllowed?: (email: string) => boolean;
   /** Public origin of the app, e.g. `http://127.0.0.1:4317` or `https://motion.example.com`. */
   publicUrl: () => string;
   authEndpoint?: string;
   tokenEndpoint?: string;
   now?: () => number;
   fetch?: typeof fetch;
+  /**
+   * Folder that keeps sessions across server restarts (`<state dir>/sessions.json`). Only the
+   * sha256 of each session id is stored, never the cookie itself nor any Google token.
+   * Without it sessions live in memory only (tests, older callers).
+   */
+  stateDir?: string;
 }
 
 /** Login-in-progress data, sealed into the browser's own state cookie (no server map to flood). */
@@ -127,16 +142,18 @@ interface Session extends SessionUser {
 
 export function createGoogleAuth(opts: GoogleAuthOptions) {
   if (!opts.clientId || !opts.clientSecret) throw new Error('Client ID/secret Google wajib');
-  if (!opts.allowedEmails.length) throw new Error('Daftar email yang diizinkan kosong');
+  if (!opts.isAllowed && !opts.allowedEmails?.length) throw new Error('Daftar email yang diizinkan kosong');
   const now = opts.now ?? Date.now;
   const doFetch = opts.fetch ?? fetch;
-  const allowed = new Set(opts.allowedEmails.map((e) => e.toLowerCase()));
+  const fixed = new Set((opts.allowedEmails ?? []).map((e) => e.toLowerCase()));
+  const isAllowed = opts.isAllowed ?? ((email: string) => fixed.has(email));
   // Checkpoint E E3: no server-side map of pending logins that anonymous callers could fill to
   // evict real ones. PKCE verifier + nonce travel sealed (AES-GCM, key per server start) in the
   // state cookie; only *finished* states are remembered (to refuse replays), and only until expiry.
   const stateBox = createSecretBox(randomBytes(32));
   const used = new Map<string, number>(); // sha256(state) → expiry
   const sessions = new Map<string, Session>(); // key: hex sha256(session id)
+  const sessionFile = opts.stateDir ? path.join(opts.stateDir, SESSIONS_FILE) : null;
 
   const secure = () => opts.publicUrl().startsWith('https://');
   const sidCookie = () => (secure() ? '__Host-motion_sid' : 'motion_sid');
@@ -155,9 +172,68 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
     const t = now();
     for (const [k, exp] of used) if (exp < t) used.delete(k);
     while (used.size >= MAX_USED_STATES) used.delete(used.keys().next().value!);
-    for (const [k, s] of sessions) if (expired(s, t)) sessions.delete(k);
+    const before = sessions.size;
+    for (const [k, s] of sessions) if (expired(s, t) || !isAllowed(s.email)) sessions.delete(k);
+    if (sessions.size !== before) saveSessions();
   }
   const expired = (s: Session, t: number) => t - s.last > SESSION_IDLE_MS || t - s.created > SESSION_MAX_MS;
+
+  // ---------------------------------------------------------------- sessions on disk
+  // A restart of the PC server must not sign the whole team out. A damaged file only costs a
+  // fresh login (fail closed: nothing in it is trusted unless every field checks out).
+  function loadSessions(): void {
+    if (!sessionFile) return;
+    let raw: string;
+    try {
+      raw = readFileSync(sessionFile, 'utf8');
+    } catch {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { version?: unknown; sessions?: unknown };
+      if (parsed.version !== 1 || !Array.isArray(parsed.sessions)) return;
+      const t = now();
+      for (const r of parsed.sessions.slice(0, MAX_SESSIONS) as Record<string, unknown>[]) {
+        if (!r || typeof r !== 'object') continue;
+        const { k, sub, email, name, created, last } = r;
+        if (typeof k !== 'string' || !/^[0-9a-f]{64}$/.test(k)) continue;
+        if (typeof sub !== 'string' || typeof email !== 'string' || !EMAIL_RE.test(email) || typeof name !== 'string') continue;
+        if (typeof created !== 'number' || typeof last !== 'number' || last < created || last > t + CLOCK_SKEW_MS) continue;
+        const s: Session = { sub, email: email.toLowerCase(), name: name.slice(0, 120), created, last };
+        if (!expired(s, t) && isAllowed(s.email)) sessions.set(k, s);
+      }
+    } catch {
+      sessions.clear();
+    }
+  }
+
+  let savedAt = 0;
+  let saveTimer: NodeJS.Timeout | null = null;
+  /** Write now (login, logout, revoke) — synchronous so a removed session cannot come back after a crash. */
+  function saveSessions(): void {
+    if (!sessionFile) return;
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    const body = JSON.stringify({ version: 1, sessions: [...sessions].map(([k, s]) => ({ k, ...s })) });
+    try {
+      mkdirSync(path.dirname(sessionFile), { recursive: true, mode: 0o700 });
+      const tmp = `${sessionFile}.${randomBytes(6).toString('hex')}.tmp`;
+      writeFileSync(tmp, body, { mode: 0o600 });
+      renameSync(tmp, sessionFile);
+      savedAt = now();
+    } catch (e) {
+      process.stderr.write(`[server] sesi login tidak bisa disimpan: ${e instanceof Error ? e.message : String(e)}\n`);
+    }
+  }
+  /** Activity only moves `last`: batch those writes. */
+  function touchSoon(): void {
+    if (!sessionFile || saveTimer || now() - savedAt < SESSION_TOUCH_SAVE_MS) return;
+    saveTimer = setTimeout(saveSessions, 1_000);
+    saveTimer.unref();
+  }
+  loadSessions();
 
   function beginLogin(res: ServerResponse): void {
     prune();
@@ -239,13 +315,14 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
       return deny(res, 'ID_TOKEN_INVALID', { claim: e instanceof Error ? e.message.slice(0, 40) : 'unknown' });
     }
     if (!user.email_verified) return deny(res, 'EMAIL_UNVERIFIED', { email: maskEmail(user.email) });
-    if (!allowed.has(user.email)) return deny(res, 'EMAIL_NOT_ALLOWED', { email: maskEmail(user.email) });
+    if (!isAllowed(user.email)) return deny(res, 'EMAIL_NOT_ALLOWED', { email: maskEmail(user.email) });
 
 
     const sid = b64u(randomBytes(32));
     const t = now();
     while (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value!);
     sessions.set(sha(sid).toString('hex'), { sub: user.sub, email: user.email, name: user.name, created: t, last: t });
+    saveSessions();
     await audit(opts.ws, { op: 'auth.login', actor: 'user', outcome: 'ok', email: user.email });
     redirect(res, '/', [clearState(), cookie(sidCookie(), sid, `SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_MS / 1000}`)]);
   }
@@ -262,11 +339,14 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
     const s = sessions.get(k);
     if (!s) return null;
     const t = now();
-    if (expired(s, t)) {
+    // Halaman Tim: an email removed from the team loses its session at once, not at expiry.
+    if (expired(s, t) || !isAllowed(s.email)) {
       sessions.delete(k);
+      saveSessions();
       return null;
     }
     s.last = t;
+    touchSoon();
     return { sub: s.sub, email: s.email, name: s.name };
   }
 
@@ -288,7 +368,7 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
       path: '/api/auth/logout',
       handle: async ({ req, res, user }) => {
         const k = sessionKey(req);
-        if (k) sessions.delete(k);
+        if (k && sessions.delete(k)) saveSessions();
         await audit(opts.ws, { op: 'auth.logout', actor: 'user', outcome: 'ok', email: user?.email ?? null }).catch(() => undefined);
         res.setHeader('Set-Cookie', cookie(sidCookie(), '', 'SameSite=Strict; Path=/; Max-Age=0'));
         return { ok: true };
@@ -300,7 +380,19 @@ export function createGoogleAuth(opts: GoogleAuthOptions) {
     mode: 'google' as const,
     routes,
     authenticate,
-    allowedCount: allowed.size,
+    /** Drop every session of this email now (Halaman Tim: removed from the team). */
+    revokeEmail(email: string): number {
+      const e = email.toLowerCase();
+      let n = 0;
+      for (const [k, s] of sessions) {
+        if (s.email === e) {
+          sessions.delete(k);
+          n++;
+        }
+      }
+      if (n) saveSessions();
+      return n;
+    },
     /** Test/ops view: active session count (no secrets). */
     sessionCount: () => {
       prune();

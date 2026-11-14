@@ -7,10 +7,12 @@ import { EditorView } from './views/EditorView';
 import { GenerateView } from './views/GenerateView';
 import { MediaView } from './views/MediaView';
 import { StorageView } from './views/StorageView';
+import { TeamView } from './views/TeamView';
 import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
+import { Logo } from './Logo';
 
-export type View = 'generate' | 'batch' | 'editor' | 'media' | 'brand' | 'trash' | 'storage' | 'ai';
+export type View = 'generate' | 'batch' | 'editor' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
 
 // PC-16: one app — Generate Otomatis, Batch Remix, Editor (+ library / admin pages).
 const NAV: { id: View; sym: string; label: string }[] = [
@@ -22,6 +24,7 @@ const NAV: { id: View; sym: string; label: string }[] = [
   { id: 'trash', sym: '♲', label: 'Trash' },
   { id: 'storage', sym: '▥', label: 'Storage' },
   { id: 'ai', sym: '✦', label: 'AI' },
+  { id: 'team', sym: '☺', label: 'Tim' },
 ];
 
 export interface Account {
@@ -93,8 +96,10 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
   return (
     <div className={`app${view === 'editor' ? '' : ' noSide'}`}>
       <nav className="rail" aria-label="Navigasi utama">
-        <div className="brand" aria-hidden="true">▶</div>
-        {NAV.filter((n) => n.id !== 'ai' || role === 'owner').map((n) => (
+        <div className="brand" aria-hidden="true">
+          <Logo size={38} />
+        </div>
+        {NAV.filter((n) => (n.id !== 'ai' || role === 'owner') && (n.id !== 'team' || (role === 'owner' && account !== null))).map((n) => (
           <button key={n.id} className={`nav${view === n.id ? ' sel' : ''}`} aria-current={view === n.id ? 'page' : undefined} onClick={() => setView(n.id)}>
             <span className="sym" aria-hidden="true">{n.sym}</span>
             {n.label}
@@ -131,6 +136,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {view === 'trash' && <TrashView api={api} />}
         {view === 'storage' && <StorageView api={api} />}
         {view === 'ai' && <AiView api={api} />}
+        {view === 'team' && role === 'owner' && account && <TeamView api={api} />}
       </div>
     </div>
   );

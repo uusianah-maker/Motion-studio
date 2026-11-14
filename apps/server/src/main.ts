@@ -22,7 +22,8 @@ import { STT_TMP_PREFIX, transcribeRoutes } from './transcribe.js';
 import { cutRoutes } from './cuts.js';
 import { engineRoutes } from './engine.js';
 import { reviewRoutes } from './review.js';
-import { parseRoleLists, roleResolver } from './roles.js';
+import { parseRoleLists, roleResolver, teamRoleResolver } from './roles.js';
+import { type TeamStore, envMembers, openTeamStore, teamRoutes } from './team.js';
 import { createRenderJobs } from './render.js';
 import { apiRoutes, sweepUploadTemp } from './routes.js';
 import { createStreamSigner } from './stream.js';
@@ -95,14 +96,18 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   const ledger = await openSpendGate({ ws, store: aiStore, stateDir });
   const aiRouter = createRouter({ ws, store: aiStore, gate: ledger.gate });
   const copilot = createCopilot(ws, { ai: createAiPlanner(aiStore, aiRouter), mode: () => aiStore.settings().mode });
-  if (googleSet.length) {
+  // Halaman Tim: env accounts (locked) + accounts the owner added on the web (<state dir>/team.json).
+  const team: TeamStore | null = googleSet.length ? await openTeamStore({ stateDir, env: envMembers(allowedEmails, roleLists) }) : null;
+  if (team) {
     const authEndpoint = endpoint(env.MOTION_GOOGLE_AUTH_ENDPOINT, 'MOTION_GOOGLE_AUTH_ENDPOINT');
     const tokenEndpoint = endpoint(env.MOTION_GOOGLE_TOKEN_ENDPOINT, 'MOTION_GOOGLE_TOKEN_ENDPOINT');
     auth = createGoogleAuth({
       ws,
       clientId: env.MOTION_GOOGLE_CLIENT_ID!.trim(),
       clientSecret: env.MOTION_GOOGLE_CLIENT_SECRET!.trim(),
-      allowedEmails,
+      isAllowed: team.isAllowed,
+      // Sesi login disimpan di folder state supaya restart server tidak me-logout tim.
+      stateDir,
       publicUrl: () => publicUrl ?? `http://${HOST}:${port}`,
       ...(authEndpoint ? { authEndpoint } : {}),
       ...(tokenEndpoint ? { tokenEndpoint } : {}),
@@ -114,8 +119,8 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...engineRoutes(ws, { copilot, config: engineConfigFromEnv(env), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) })],
-    roleOf: roleResolver(roleLists),
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...engineRoutes(ws, { copilot, config: engineConfigFromEnv(env), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) }), ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
+    roleOf: team ? teamRoleResolver(team.roleOf) : roleResolver(roleLists),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
 
@@ -143,7 +148,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   }
   out(`Motion Studio server jalan di http://${HOST}:${bound} (GC: ${gc})`);
   if (auth) {
-    out(`Login Google aktif (${auth.allowedCount} email diizinkan). Buka: ${publicUrl ?? `http://${HOST}:${bound}`}/`);
+    out(`Login Google aktif (${team?.size() ?? 0} email diizinkan). Buka: ${publicUrl ?? `http://${HOST}:${bound}`}/`);
   } else {
     out(`Mode lokal (tanpa login Google, hanya untuk komputer ini). Buka: http://${HOST}:${bound}/#token=${app.token}`);
   }
@@ -161,6 +166,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     scheduler,
     jobs,
     auth: auth ?? null,
+    team,
     copilot,
     ai: { store: aiStore, router: aiRouter, ledger },
     stateDir,

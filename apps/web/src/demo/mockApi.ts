@@ -13,6 +13,7 @@ import {
   type AiSettings,
   type Api,
   type ReviewComment,
+  type TeamMember,
   type ReviewInfo,
   ApiError,
   type ApplyReply,
@@ -43,6 +44,10 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let seq = 100;
 const nid = (p: string) => `${p}_${(++seq).toString(16).padStart(16, '0')}`;
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+const team: TeamMember[] = [
+  { email: 'owner@contoh.com', role: 'owner', source: 'env', added_at: null, added_by: null },
+  { email: 'editor@contoh.com', role: 'editor', source: 'web', added_at: Date.now() - 3 * 86_400_000, added_by: 'owner@contoh.com' },
+];
 const fail = (status: number, code: string, message: string): never => {
   throw new ApiError(status, code, message);
 };
@@ -563,6 +568,24 @@ export function createDemoApi(): Api {
       const i = connections.findIndex((x) => x.connection_id === id);
       if (i >= 0) connections.splice(i, 1);
       return { ok: true };
+    },
+    team: async () => ({ members: clone(team), me: 'owner@contoh.com', max: 200 }),
+    teamAdd: async (email, role) => {
+      if (team.some((m) => m.email === email)) fail(409, 'ALREADY_MEMBER', 'Email ini sudah ada di daftar tim');
+      const member: TeamMember = { email, role, source: 'web', added_at: now(), added_by: 'owner@contoh.com' };
+      team.push(member);
+      return { member: clone(member), members: clone(team) };
+    },
+    teamSetRole: async (email, role) => {
+      const m = team.find((x) => x.email === email && x.source === 'web') ?? fail(404, 'NOT_FOUND', 'Email ini tidak ada di daftar tim');
+      m.role = role;
+      return { member: clone(m), members: clone(team) };
+    },
+    teamRemove: async (email) => {
+      const i = team.findIndex((x) => x.email === email && x.source === 'web');
+      if (i < 0) fail(404, 'NOT_FOUND', 'Email ini tidak ada di daftar tim');
+      team.splice(i, 1);
+      return { removed: email, members: clone(team) };
     },
     aiSettings: async (patch) => {
       Object.assign(settings, { ...patch, budget: { ...settings.budget, ...patch.budget } });
