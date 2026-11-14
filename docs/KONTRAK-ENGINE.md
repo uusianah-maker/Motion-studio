@@ -339,3 +339,13 @@ Zoom-through tetap memakai efek lama (`effect: {type: "zoom_through"}` di track 
 
 ### 12.4 Split / potong jeda
 - Klip yang dipotong: fade masuk dan transisi tetap di potongan kiri (awal klip). Fade keluar pindah ke potongan kanan (akhir klip). Filter, adjust, fit, dan reduksi noise ikut ke dua potongan.
+
+### 12.5 Keyframe (posisi, skala, opacity)
+- Field opsional `keyframes` di `add_clip` dan klip tersimpan, untuk klip **video / b-roll (dengan media), teks, subtitle**. Maksimal 20 titik:
+  `[{ "at_ms": 0, "x": 0, "y": 0, "scale": 1, "opacity": 1, "ease": "linear" | "ease" }, ...]`
+  - `at_ms`: waktu di dalam klip (0 = awal klip). Boleh di luar klip (hasil split/trim) sebagai jangkar kurva.
+  - `x`, `y`: geser dari posisi normal, pecahan canvas −1..1. `scale` 0.1..4 (di sekitar titik tengah klip). `opacity` 0..1 (gambar memudar ke hitam, teks memudar).
+  - `ease`: kurva dari titik sebelumnya ke titik ini (`ease` = ease-in-out). Field yang tidak ada memakai nilai netral.
+- Operasi baru: `{ "op": "set_keyframes", "clip_id": "...", "keyframes": [...] }` (`[]` = hapus semua).
+- Batas: keyframe di teks **tidak bisa** digabung dengan caption kata per kata (`words`), animasi `pop`/`fade`, atau sorot kata. Ops seperti itu ditolak dengan alasan jelas.
+- Split/trim/potong jeda menjaga gerakan yang sama di tiap potongan.
