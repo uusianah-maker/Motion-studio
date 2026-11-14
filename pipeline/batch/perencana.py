@@ -403,7 +403,8 @@ def jalankan(job_dir: Path) -> int:
         shots = {p["shot"] for p in sus["potongan"] if p["jenis"] == "broll"}
         mirip = [x for x in varian if x["vo"] == rv["vo"] and jaccard(shots, x["_shots"]) > MAKS_MIRIP]
         if mirip:
-            m_pakai[m["kunci"]] -= 1 if m else 0
+            if m:  # batch tanpa musik: m = None (dulu crash: "NoneType not subscriptable")
+                m_pakai[m["kunci"]] -= 1
             if percobaan % 5 == 0:
                 vo_pakai[vo_c["id"]] += 1  # VO ini sudah jenuh, beri kesempatan VO lain
             continue
