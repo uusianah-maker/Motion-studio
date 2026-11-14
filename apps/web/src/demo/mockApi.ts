@@ -715,6 +715,12 @@ export function createDemoApi(): Api {
       return clone(job);
     },
     renders: async (id) => ({ jobs: clone(renderJobs.filter((j) => j.project_id === id)), outputs: clone(outputs.get(id) ?? []) }),
+    allOutputs: async (o = {}) => {
+      const all = [...outputs.entries()].flatMap(([pid, list]) => list.map((f) => ({ project_id: pid, project_name: projects.get(pid)?.p.name ?? pid, ...f })));
+      const q = (o.q ?? '').toLowerCase();
+      const found = all.filter((i) => !q || i.name.toLowerCase().includes(q) || i.project_name.toLowerCase().includes(q)).sort((a, b) => b.mtime_ms - a.mtime_ms);
+      return { outputs: found.slice(o.offset ?? 0, (o.offset ?? 0) + (o.limit ?? 200)), total: found.length, offset: o.offset ?? 0, limit: o.limit ?? 200 };
+    },
     cancelRender: async (jobId) => {
       const j = renderJobs.find((x) => x.job_id === jobId) ?? fail(404, 'NOT_FOUND', 'Job tidak ada');
       if (j.status === 'running' || j.status === 'queued') Object.assign(j, { status: 'cancelled', finished_at: now(), error: { code: 'CANCELLED', message: 'Render dibatalkan' } });

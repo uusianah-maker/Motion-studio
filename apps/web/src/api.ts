@@ -300,6 +300,16 @@ export interface RenderOutputFile {
   mtime_ms: number;
 }
 
+/** Halaman Hasil: satu file render beserta proyeknya. */
+export interface OutputItem {
+  project_id: string;
+  project_name: string;
+  name: string;
+  size: number;
+  mtime_ms: number;
+  variant?: { master_id: string; number: number; uji: boolean };
+}
+
 export interface RenderTools {
   ok: boolean;
   version: string | null;
@@ -783,6 +793,11 @@ export function createApi(token: string | null, base = '') {
     startRender: (id: string, opts: { output_name?: string; short_side?: 720 | 1080; accept_brand_warnings?: boolean }) =>
       call<{ job: RenderJob }>('POST', `/api/projects/${encodeURIComponent(id)}/render`, { json: opts }).then((r) => r.job),
     renders: (id: string) => call<{ jobs: RenderJob[]; outputs: RenderOutputFile[] }>('GET', `/api/projects/${encodeURIComponent(id)}/renders`),
+    allOutputs: (o: { q?: string; master?: string; offset?: number; limit?: number } = {}) =>
+      call<{ outputs: OutputItem[]; total: number; offset: number; limit: number }>(
+        'GET',
+        `/api/outputs?${new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]))}`,
+      ),
     cancelRender: (jobId: string) => call<{ job: RenderJob }>('POST', `/api/render/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }).then((r) => r.job),
     /** Short-lived signed link to play (or download) one finished output. */
     // U7 review

@@ -286,7 +286,10 @@ table.list tr:hover td { background: #191d29; }
 .editorHeader .time { font-variant-numeric: tabular-nums; color: #b0b8c9; }
 
 /* ---------- timeline zoom, waveform, thumbnails (paket 1) ---------- */
-@media (min-width: 901px) { .editorGrid { grid-template-rows: auto minmax(280px, 1fr) 300px; } }
+/* Pratinjau tidak boleh menyusut jadi titik saat judul panjang / banner varian makan tempat (bug owner 14 Nov):
+   area tengah minimal 440px; kalau layar terlalu pendek, halaman di-scroll (.page overflow: auto). */
+@media (min-width: 901px) { .editorGrid { grid-template-rows: auto minmax(440px, 1fr) 300px; } .editor { overflow-y: auto; } }
+.canvasArea { min-height: 300px; }
 .trackSurface .lane { position: absolute; top: 0; bottom: 0; left: 0; will-change: transform; }
 .trackSurface.ruler { overflow: hidden; }
 .track.tall { height: 52px; }

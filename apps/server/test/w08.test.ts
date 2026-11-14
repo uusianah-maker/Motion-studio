@@ -133,6 +133,17 @@ describe.skipIf(!hasFfmpeg)('W08 render API', () => {
     expect(list.json.outputs).toEqual([{ name: 'Promo Lebaran Diskon.mp4', size: done.output.size, mtime_ms: expect.any(Number) }]);
     expect(list.json.jobs[0].job_id).toBe(done.job_id);
 
+    // Halaman Hasil (owner 14 Nov): semua output lintas proyek, tanpa path lokal; cari & paginasi.
+    const all = await s.req('/api/outputs', { headers: s.auth });
+    expect(all.status).toBe(200);
+    expect(all.json).toMatchObject({ total: 1, offset: 0, outputs: [{ project_id: 'promo', name: 'Promo Lebaran Diskon.mp4', size: done.output.size, mtime_ms: expect.any(Number) }] });
+    expect(all.json.outputs[0].project_name).toBeTruthy();
+    expect(JSON.stringify(all.json)).not.toMatch(/[A-Za-z]:\\|\/tmp\/|05_OUTPUT|PROJECTS|"rel"/);
+    expect((await s.req('/api/outputs?q=lebaran', { headers: s.auth })).json.total).toBe(1);
+    expect((await s.req('/api/outputs?q=tidak-ada', { headers: s.auth })).json.total).toBe(0);
+    expect((await s.req('/api/outputs?limit=1&offset=1', { headers: s.auth })).json.outputs).toEqual([]);
+    expect((await s.req('/api/outputs')).status).toBe(401);
+
     // Signed link: Range playback, download disposition; tampering/other names fail.
     const play = (await s.req(`/api/projects/promo/output-url?name=${encodeURIComponent('Promo Lebaran Diskon.mp4')}`, { headers: s.auth })).json;
     const part = await s.req(play.url, { headers: { range: 'bytes=0-99' } });

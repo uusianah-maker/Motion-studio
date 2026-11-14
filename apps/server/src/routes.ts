@@ -147,6 +147,15 @@ export function revision(body: Record<string, unknown>): number {
   return r;
 }
 
+interface OutputItem {
+  project_id: string;
+  project_name: string;
+  name: string;
+  size: number;
+  mtime_ms: number;
+  variant?: { master_id: string; number: number; uji: boolean };
+}
+
 const projectSummary = (m: ProjectManifest) => ({
   project_id: m.project_id,
   name: m.name,
@@ -594,6 +603,36 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       handle: async ({ ws, params }) => {
         const outputs = (await listOutputs(ws, params.project_id!)).map(({ name, size, mtime_ms }) => ({ name, size, mtime_ms }));
         return { jobs: jobsFor(ws).list(params.project_id!), outputs };
+      },
+    },
+    {
+      // Halaman Hasil (owner 14 Nov): semua file render dari semua proyek, terbaru dulu. Tanpa path lokal.
+      method: 'GET',
+      path: '/api/outputs',
+      handle: async ({ ws, url }) => {
+        const q = (url.searchParams.get('q') ?? '').trim().toLowerCase().slice(0, 100);
+        const master = url.searchParams.get('master') ?? '';
+        const limit = Math.min(Math.max(Math.floor(Number(url.searchParams.get('limit'))) || 200, 1), 500);
+        const offset = Math.max(Math.floor(Number(url.searchParams.get('offset'))) || 0, 0);
+        const items: OutputItem[] = [];
+        for (const id of await listProjectIds(ws)) {
+          const m = await readProject(ws, id).catch(() => null);
+          if (!m) continue;
+          if (master && m.variant?.master_id !== master && m.project_id !== master) continue;
+          for (const o of await listOutputs(ws, id).catch(() => [])) {
+            items.push({
+              project_id: id,
+              project_name: m.name,
+              name: o.name,
+              size: o.size,
+              mtime_ms: o.mtime_ms,
+              ...(m.variant ? { variant: { master_id: m.variant.master_id, number: m.variant.number, uji: m.variant.bukan_iklan === true } } : {}),
+            });
+          }
+        }
+        const found = q ? items.filter((i) => i.name.toLowerCase().includes(q) || i.project_name.toLowerCase().includes(q)) : items;
+        found.sort((a, b) => b.mtime_ms - a.mtime_ms);
+        return { outputs: found.slice(offset, offset + limit), total: found.length, offset, limit };
       },
     },
     {

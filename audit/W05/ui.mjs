@@ -106,11 +106,11 @@ try {
   // Trash: restore one.
   await page.getByRole('button', { name: /Trash/ }).click();
   await page.getByLabel('Pilih lama-b.mp4').waitFor();
-  const rows = await page.locator('tbody tr').count();
+  const rows = await page.locator('tbody tr:visible').count(); // halaman lain tetap hidup tapi tersembunyi (04afb25)
   check('UI-09 Trash menampilkan 2 item', rows === 2, `rows=${rows}`);
   await page.locator('tr', { hasText: 'lama-b.mp4' }).getByRole('button', { name: /Pulihkan/ }).click();
   await page.getByText(/dipulihkan\. Periode 30 hari dimulai dari nol/).waitFor();
-  check('UI-10 Restore dari Trash', (await page.locator('tbody tr').count()) === 1);
+  check('UI-10 Restore dari Trash', (await page.locator('tbody tr:visible').count()) === 1);
 
   // Purge: phrase gate, then permanent delete.
   await page.getByLabel('Pilih lama-a.mp4').check();
