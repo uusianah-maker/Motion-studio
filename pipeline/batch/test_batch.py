@@ -166,6 +166,35 @@ class DaftarBatch(unittest.TestCase):
         self.assertTrue(r["lama"]["siap_batch"])
 
 
+class JalurPortabel(unittest.TestCase):
+    def test_venv_py_windows_dan_linux(self):
+        import tempfile
+        import jalur
+        with tempfile.TemporaryDirectory() as tmp:
+            lin = Path(tmp) / "lin"
+            (lin / "bin").mkdir(parents=True)
+            (lin / "bin" / "python").write_text("")
+            win = Path(tmp) / "win"
+            (win / "Scripts").mkdir(parents=True)
+            (win / "Scripts" / "python.exe").write_text("")
+            self.assertEqual(jalur.venv_py(lin), lin / "bin" / "python")
+            self.assertEqual(jalur.venv_py(win), win / "Scripts" / "python.exe")
+
+    def test_relatif_ke_root_pakai_garis_miring(self):
+        import jalur
+        r = jalur.relatif(jalur.KONTEN / "2-dipisah" / "b" / "thumb" / "x__00.jpg")
+        self.assertEqual(r, "konten/2-dipisah/b/thumb/x__00.jpg")
+
+    def test_nama_aman_diterima_app(self):
+        import re
+        import jalur
+        pola = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
+        for n in ("uji klip", "Video (1) #final", "...", "a" * 90, "dji_0017", "ÆØÅ ñ"):
+            self.assertRegex(jalur.nama_aman(n), pola)
+        self.assertEqual(jalur.nama_aman("dji_0017"), "dji_0017")
+        self.assertEqual(jalur.nama_aman("uji klip"), "uji_klip")
+
+
 def vo_dengan_saran():
     v = vo_sintetis()
     v["kalimat"][1]["saran_buang"] = "urgensi"

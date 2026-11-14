@@ -34,7 +34,7 @@ import vo as vo_mod  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, kata_klip  # noqa: E402  (milik venus, konvensi sama)
 
-BATCH_PY = Path(r"D:\VIBECODING\tools\demucs-venv\Scripts\python.exe")  # punya OpenCV untuk Shot Library
+from jalur import BATCH_PY  # noqa: E402  (Python yang punya OpenCV untuk Shot Library; Windows/Linux)
 # Saran durasi per tujuan: hanya informasi di rencana. Batas baru berlaku kalau job menulis batas_durasi
 # (keputusan owner: batas diputuskan tim nanti, sekarang tanpa batas).
 SARAN_DURASI = {"konversi": (20.0, 30.0), "awareness": (12.0, 25.0), "branding": (20.0, 45.0)}
@@ -302,7 +302,7 @@ def jalankan(job_dir: Path) -> int:
     if not lib_path.exists():
         progres("shot_library", 5, "membuat Shot Library (sekali per batch)")
         cmd = [str(BATCH_PY), str(PIPELINE / "batch" / "shotlib.py"), batch] + (["--tiktok"] if job.get("shot_tiktok") else [])
-        subprocess.run(cmd, check=True, stdout=sys.stderr)
+        subprocess.run(cmd, check=True, stdout=sys.stderr, cwd=PIPELINE.parent)
     lib = json.loads(lib_path.read_text(encoding="utf-8"))
     shot_footage = set(lib["footage"])
     # Jalur VO: gambar dari batch ini, voice over dari batch lain (vo_batch). Default: batch yang sama.

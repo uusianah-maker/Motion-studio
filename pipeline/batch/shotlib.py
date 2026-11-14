@@ -28,9 +28,7 @@ import cv2
 import numpy as np
 
 from common import topik_dari  # noqa: E402
-
-KONTEN = Path("konten")
-MAIN_PY = Path(".venv/Scripts/python.exe")
+from jalur import KONTEN, MAIN_PY, ROOT, relatif  # noqa: E402
 SAMPLE_FPS = 5
 MAX_SHOT = 3.0  # detik; shot panjang dipecah supaya label tetap lokal
 MIN_SHOT = 0.6
@@ -343,7 +341,7 @@ def tulis_thumbs(video: Path, shots: list, thumb_dir: Path) -> dict:
             h, w = fr.shape[:2]
             fr = cv2.resize(fr, (THUMB_W, int(round(h * THUMB_W / w))), interpolation=cv2.INTER_AREA)
             cv2.imwrite(str(out), fr, [cv2.IMWRITE_JPEG_QUALITY, 82])
-        hasil[sid] = str(out.resolve()).replace("\\", "/")  # path absolut (kontrak §8)
+        hasil[sid] = relatif(out)  # relatif ke root mesin, '/' (portabel Windows/Linux; app menggabung dengan root)
     cap.release()
     return hasil
 
@@ -355,7 +353,7 @@ def ensure_transcript(batch_dir: Path, name: str) -> Path:
         vokal = batch_dir / "vokal" / f"{name}.wav"
         print(f"  transkrip {name} ...", file=sys.stderr)
         subprocess.run([str(MAIN_PY), "pipeline/transcribe.py", str(vokal), str(out), "--brandkit", "brandkit/aysilla.json"],
-                       check=True, stdout=subprocess.DEVNULL)
+                       check=True, stdout=subprocess.DEVNULL, cwd=ROOT)
     return out
 
 
@@ -373,7 +371,7 @@ def main() -> None:
         lib = json.loads(lib_path.read_text(encoding="utf-8"))
         for name, meta in lib["footage"].items():
             mine = [s for s in lib["shots"] if s["footage"] == name]
-            th = tulis_thumbs(Path(meta["video"]), [(s["id"], s["dari"], s["sampai"]) for s in mine], batch_dir / "thumb")
+            th = tulis_thumbs(ROOT / meta["video"], [(s["id"], s["dari"], s["sampai"]) for s in mine], batch_dir / "thumb")
             for s in mine:
                 s["thumb"] = th.get(s["id"])
         lib_path.write_text(json.dumps(lib, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -426,9 +424,9 @@ def main() -> None:
                     lst.append(t)
             ocr_per_shot[k2] = gabung_kotak(lst)
         lib["footage"][name] = {
-            "video": str(v).replace("\\", "/"),
-            "vokal": str(batch_dir / "vokal" / f"{name}.wav").replace("\\", "/") if has_vokal else None,
-            "musik": str(batch_dir / "musik" / f"{name}.wav").replace("\\", "/") if has_vokal else None,
+            "video": relatif(v),
+            "vokal": relatif(batch_dir / "vokal" / f"{name}.wav") if has_vokal else None,
+            "musik": relatif(batch_dir / "musik" / f"{name}.wav") if has_vokal else None,
             "durasi": round(dur, 2),
             "jumlah_kata": len(words),
             "watermark": watermark_info(rows, args.tiktok or ada_logo),

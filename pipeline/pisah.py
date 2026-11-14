@@ -31,9 +31,8 @@ import time
 import traceback
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-KONTEN = ROOT / "konten"
-DEMUCS_PY = Path(r"D:\VIBECODING\tools\demucs-venv\Scripts\python.exe")  # juga punya OpenCV (Shot Library)
+sys.path.insert(0, str(Path(__file__).resolve().parent / "batch"))
+from jalur import BATCH_PY as DEMUCS_PY, KONTEN, ROOT, nama_aman  # noqa: E402  (Demucs + OpenCV; Windows/Linux)
 MODEL = "htdemucs_ft"
 EXT = {".mp4", ".mov"}
 NAMA_BATCH = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
@@ -100,7 +99,7 @@ def pisah_batch(batch: str, video_saja=False, cpu=False, progres=None, job=False
     videos = sorted(p for p in src_dir.iterdir() if p.suffix.lower() in EXT)
     todo_stem = []
     for i, v in enumerate(videos):
-        name = v.stem
+        name = nama_aman(v.stem)  # unggahan lewat CLI bisa berisi spasi; Motion Studio hanya menerima [A-Za-z0-9_.-]
         progres("pisah_video", 10 + int(30 * i / max(1, len(videos))), v.name)
         bisu = dirs["video-bisu"] / f"{name}.mp4"
         asli = dirs["audio-asli"] / f"{name}.wav"
@@ -146,8 +145,8 @@ def pisah_batch(batch: str, video_saja=False, cpu=False, progres=None, job=False
     def ada(p: Path):
         return str(p.resolve()).replace("\\", "/") if p.exists() else None
 
-    return [{"file": v.name, "video": ada(dirs["video-bisu"] / f"{v.stem}.mp4"),
-             "vokal": ada(dirs["vokal"] / f"{v.stem}.wav"), "musik": ada(dirs["musik"] / f"{v.stem}.wav")}
+    return [{"file": v.name, "video": ada(dirs["video-bisu"] / f"{nama_aman(v.stem)}.mp4"),
+             "vokal": ada(dirs["vokal"] / f"{nama_aman(v.stem)}.wav"), "musik": ada(dirs["musik"] / f"{nama_aman(v.stem)}.wav")}
             for v in videos]
 
 
@@ -188,11 +187,12 @@ def jalankan_job(job_dir: Path) -> int:
     baru = []
     for i, f in enumerate(files):
         progres("salin", 2 + int(8 * i / max(1, len(files))), f.name)
-        tujuan = upload / f.name
+        aman = nama_aman(f.stem)  # nama yang diterima Motion Studio (id footage/shot)
+        tujuan = upload / f"{aman}{f.suffix.lower()}"
         n = 2
         sf = sidik(f)
         while tujuan.exists() and sidik(tujuan) != sf:
-            tujuan = upload / f"{f.stem}-{n}{f.suffix.lower()}"
+            tujuan = upload / f"{aman}-{n}{f.suffix.lower()}"
             n += 1
         if not tujuan.exists():
             shutil.copy2(f, tujuan)

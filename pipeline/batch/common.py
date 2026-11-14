@@ -15,7 +15,7 @@ from autocut import merge_split_words  # noqa: E402,F401  (milik venus)
 from cek_ucapan import cek_ucapan  # noqa: E402  (milik venus)
 from edit import SUPERLATIF_UMUM, apply_kamus  # noqa: E402,F401  (milik venus)
 
-KONTEN = Path("konten")
+from jalur import KONTEN, ROOT  # noqa: E402,F401  (absolut: tidak bergantung folder kerja)
 
 # Topik dari kata yang diucapkan. Dipakai Shot Library (label shot) dan Matcher (label kalimat VO).
 TOPIK = {
