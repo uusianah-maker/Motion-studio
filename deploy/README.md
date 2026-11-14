@@ -1,6 +1,21 @@
 # Paket deploy Motion Studio (W15)
 
-## Jalur B (dipakai sejak 13 Nov 2026): semua di VPS
+## Yang dipakai sekarang (sejak 14 Nov 2026): jalur A — PC kantor = server, VPS = pintu
+`https://motionproject.online` → VPS (Caddy, HTTPS) → terowongan SSH → PC kantor `127.0.0.1:4317`.
+
+Tiga task Windows berjalan untuk user owner. Dipasang dengan `install-autostart.ps1 -Vps <IP>`:
+- `MotionStudio-Server` (`start-motion.ps1`): menjalankan server dan menyalakannya ulang kalau berhenti.
+- `MotionStudio-Tunnel` (`start-tunnel.ps1`): menjalankan terowongan SSH dan menyambung ulang kalau putus.
+- `MotionStudio-Watchdog` (`watchdog.ps1`, tiap 5 menit): kalau port 4317 kosong atau ssh tidak jalan, dan task penjaganya tidak Running, task itu dinyalakan lagi.
+
+Catatan ada di `%LOCALAPPDATA%\MotionStudio\logs`:
+- `penjaga-server-YYYYMMDD.log`, `penjaga-tunnel-YYYYMMDD.log`, `penjaga-watchdog-YYYYMMDD.log`: jam mulai/berhenti, kode keluar, dan tindakan watchdog.
+- `server-YYYYMMDD-HHMMSS.out/err.log`, `tunnel-…`: output program per jalan.
+- File yang lebih dari 7 hari dihapus otomatis.
+
+Restart server online hanya lewat task (`Stop-ScheduledTask` / `Start-ScheduledTask MotionStudio-Server`), setelah dicek tidak ada job atau render yang sedang jalan. Sesi login tersimpan di disk, jadi tim tidak ter-logout.
+
+## Jalur B (cadangan, belum dipakai): semua di VPS
 Aplikasi, mesin (Generate Otomatis / Batch Remix), dan workspace jalan penuh di VPS. Tim bisa kerja bergantian kapan saja, dan PC owner boleh mati.
 
 1. **DNS**: buat A record `motion` → IP VPS. Kalau DNS di Cloudflare, set ke DNS only (awan abu-abu).
@@ -17,7 +32,8 @@ Aplikasi, mesin (Generate Otomatis / Batch Remix), dan workspace jalan penuh di 
 
 Catatan:
 - Batch Remix di Linux masih butuh penyesuaian path Python di `engine/pipeline/batch/` (bagian yuki).
-- Bagian di bawah ini adalah jalur A (VPS hanya pintu ke PC owner), disimpan sebagai cadangan.
+
+## Jalur A — rincian pemasangan
 
 Arahan owner (PC-14): **VPS cuma jadi pintu supaya app bisa dibuka online. File video, render (FFmpeg), dan semua data tetap di PC owner.**
 

@@ -11,14 +11,44 @@ $logDir = Join-Path $env:LOCALAPPDATA 'MotionStudio\logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 $delay = 5
+# Catatan penjaga: baris pendek per kejadian. Ditulis dengan berbagi-akses + coba ulang, jadi tidak pernah
+# menghentikan loop walaupun file sedang dibuka program lain (dulu `*>>` mengunci log sepanjang proses jalan).
+function Tulis-Catatan([string]$Path, [string]$Teks) {
+    for ($i = 0; $i -lt 5; $i++) {
+        try {
+            $fs = [IO.File]::Open($Path, 'Append', 'Write', 'ReadWrite')
+            $b = [Text.Encoding]::UTF8.GetBytes("[$(Get-Date -Format s)] $Teks`r`n")
+            $fs.Write($b, 0, $b.Length); $fs.Close(); return
+        } catch { Start-Sleep -Milliseconds 200 }
+    }
+}
+# Output program ke file sendiri per jalan (stdout + stderr terpisah) lewat Start-Process: PowerShell 5.1 tidak lagi
+# mengubah stderr jadi error, dan tidak ada pengalihan yang mengunci file catatan. File lebih dari 7 hari dihapus.
+function Bersihkan-Log([string]$Dir) {
+    Get-ChildItem $Dir -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
+$ErrorActionPreference = 'Continue'
+$node = (Get-Command node -ErrorAction Stop).Source
 while ($true) {
-    $log = Join-Path $logDir ('server-' + (Get-Date -Format 'yyyyMMdd') + '.log')
+    Bersihkan-Log $logDir
+    $hari = Get-Date -Format 'yyyyMMdd'
+    $log = Join-Path $logDir "penjaga-server-$hari.log"
+    $jalan = Join-Path $logDir ("server-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
     $started = Get-Date
-    Add-Content -Path $log -Value "[$(Get-Date -Format s)] server mulai"
-    & node $main *>> $log
-    $code = $LASTEXITCODE
+    $code = $null
+    try {
+        $p = Start-Process -FilePath $node -ArgumentList "`"$main`"" -WorkingDirectory $Repo -NoNewWindow -PassThru `
+            -RedirectStandardOutput "$jalan.out.log" -RedirectStandardError "$jalan.err.log"
+        Tulis-Catatan $log "server mulai (pid $($p.Id); output: $(Split-Path -Leaf $jalan).*.log)"
+        $null = $p.Handle  # PowerShell 5.1: tanpa ini ExitCode kosong
+        $p.WaitForExit()
+        $code = $p.ExitCode
+    } catch {
+        Tulis-Catatan $log "server gagal dijalankan: $($_.Exception.Message)"
+    }
     # Jalan lama lalu berhenti = mulai lagi cepat; berhenti terus-menerus = jeda makin panjang (maks 5 menit).
     if (((Get-Date) - $started).TotalMinutes -gt 5) { $delay = 5 } else { $delay = [Math]::Min($delay * 2, 300) }
-    Add-Content -Path $log -Value "[$(Get-Date -Format s)] server berhenti (kode $code), mulai ulang dalam $delay detik"
+    Tulis-Catatan $log "server berhenti (kode $code), mulai ulang dalam $delay detik"
     Start-Sleep -Seconds $delay
 }

@@ -7,7 +7,7 @@ param(
     [switch]$Remove
 )
 $ErrorActionPreference = 'Stop'
-$names = @('MotionStudio-Server', 'MotionStudio-Tunnel')
+$names = @('MotionStudio-Server', 'MotionStudio-Tunnel', 'MotionStudio-Watchdog')
 if ($Remove) {
     foreach ($n in $names) { Unregister-ScheduledTask -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue }
     Write-Output 'Autostart Motion Studio dicabut.'
@@ -21,4 +21,9 @@ $server = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -WindowStyl
 $tunnel = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSScriptRoot\start-tunnel.ps1`" -Vps $Vps"
 Register-ScheduledTask -TaskName $names[0] -Action $server -Trigger $trigger -Settings $settings -Description 'Motion Studio server (PC owner)' -Force | Out-Null
 Register-ScheduledTask -TaskName $names[1] -Action $tunnel -Trigger $trigger -Settings $settings -Description 'Motion Studio terowongan SSH ke VPS' -Force | Out-Null
+# Watchdog: tiap 5 menit menyalakan lagi server/terowongan kalau penjaganya ikut hilang (lihat watchdog.ps1).
+$wdTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+$wdSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
+$wd = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSScriptRoot\watchdog.ps1`""
+Register-ScheduledTask -TaskName $names[2] -Action $wd -Trigger @($wdTrigger, $trigger) -Settings $wdSettings -Description 'Motion Studio watchdog (tiap 5 menit)' -Force | Out-Null
 Write-Output "Autostart dipasang: $($names -join ', '). Mulai sekarang tanpa logout: Start-ScheduledTask -TaskName MotionStudio-Server; Start-ScheduledTask -TaskName MotionStudio-Tunnel"

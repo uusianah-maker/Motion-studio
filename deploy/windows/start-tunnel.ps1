@@ -15,14 +15,44 @@ if (-not (Test-Path $Key)) { throw "Key SSH tidak ada: $Key (buat dengan ssh-key
 $logDir = Join-Path $env:LOCALAPPDATA 'MotionStudio\logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
+# Catatan penjaga: baris pendek per kejadian. Ditulis dengan berbagi-akses + coba ulang, jadi tidak pernah
+# menghentikan loop walaupun file sedang dibuka program lain (dulu `*>>` mengunci log sepanjang proses jalan).
+function Tulis-Catatan([string]$Path, [string]$Teks) {
+    for ($i = 0; $i -lt 5; $i++) {
+        try {
+            $fs = [IO.File]::Open($Path, 'Append', 'Write', 'ReadWrite')
+            $b = [Text.Encoding]::UTF8.GetBytes("[$(Get-Date -Format s)] $Teks`r`n")
+            $fs.Write($b, 0, $b.Length); $fs.Close(); return
+        } catch { Start-Sleep -Milliseconds 200 }
+    }
+}
+# Output program ke file sendiri per jalan (stdout + stderr terpisah) lewat Start-Process: PowerShell 5.1 tidak lagi
+# mengubah stderr jadi error, dan tidak ada pengalihan yang mengunci file catatan. File lebih dari 7 hari dihapus.
+function Bersihkan-Log([string]$Dir) {
+    Get-ChildItem $Dir -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
+$ErrorActionPreference = 'Continue'
+$ssh = (Get-Command ssh -ErrorAction Stop).Source
+# StrictHostKeyChecking=yes: sidik jari VPS harus sudah dikenal (sekali, manual) — mencegah VPS palsu.
+$argSsh = @('-N', '-T', '-p', $SshPort, '-i', "`"$Key`"", '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=30',
+    '-o', 'ServerAliveCountMax=3', '-o', 'StrictHostKeyChecking=yes', '-o', 'BatchMode=yes',
+    '-R', "127.0.0.1:${RemotePort}:127.0.0.1:${LocalPort}", "motiontunnel@$Vps")
 while ($true) {
-    $log = Join-Path $logDir ('tunnel-' + (Get-Date -Format 'yyyyMMdd') + '.log')
-    Add-Content -Path $log -Value "[$(Get-Date -Format s)] menyambung ke $Vps"
-    # StrictHostKeyChecking=yes: sidik jari VPS harus sudah dikenal (sekali, manual) — mencegah VPS palsu.
-    & ssh -N -T -p $SshPort -i $Key `
-        -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 `
-        -o StrictHostKeyChecking=yes -o BatchMode=yes `
-        -R "127.0.0.1:${RemotePort}:127.0.0.1:${LocalPort}" "motiontunnel@$Vps" *>> $log
-    Add-Content -Path $log -Value "[$(Get-Date -Format s)] terputus (kode $LASTEXITCODE), sambung ulang dalam 10 detik"
+    Bersihkan-Log $logDir
+    $log = Join-Path $logDir ('penjaga-tunnel-' + (Get-Date -Format 'yyyyMMdd') + '.log')
+    $jalan = Join-Path $logDir ("tunnel-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $code = $null
+    try {
+        $p = Start-Process -FilePath $ssh -ArgumentList $argSsh -NoNewWindow -PassThru `
+            -RedirectStandardOutput "$jalan.out.log" -RedirectStandardError "$jalan.err.log"
+        Tulis-Catatan $log "menyambung ke $Vps (pid $($p.Id))"
+        $null = $p.Handle  # PowerShell 5.1: tanpa ini ExitCode kosong
+        $p.WaitForExit()
+        $code = $p.ExitCode
+    } catch {
+        Tulis-Catatan $log "ssh gagal dijalankan: $($_.Exception.Message)"
+    }
+    Tulis-Catatan $log "terputus (kode $code), sambung ulang dalam 10 detik"
     Start-Sleep -Seconds 10
 }
