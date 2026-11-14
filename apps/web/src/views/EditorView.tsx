@@ -2,7 +2,8 @@ import { CopilotPanel } from './CopilotPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Role, type Track } from '../api';
-import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration } from '../lib';
+import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, TIMELINE_ZOOM, clampScroll, dragSpan, ellipsize, formatBytes, formatDate, formatDuration, rulerTicks, snap, visibleDuration, zoomAround } from '../lib';
+import { ClipThumbs, ClipWave, useMediaVisuals } from './TimelineVisuals';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
@@ -34,6 +35,20 @@ interface Drag {
   startX: number;
   deltaMs: number;
   pointerId: number;
+}
+
+/** Tracks that show a thumbnail strip / a waveform inside their clips (paket 1). */
+const THUMB_TRACKS = new Set<Track['kind']>(['video', 'broll']);
+const WAVE_TRACKS: Partial<Record<Track['kind'], string>> = { audio: '#8fe0d2', music: '#9fc4ff', sfx: '#f6d67c' };
+
+/** Waveform or thumbnails for one media clip; renders nothing until the server has made them. */
+function ClipVisual({ api, clip, kind, inMs, lenMs }: { api: Api; clip: Clip; kind: Track['kind']; inMs: number; lenMs: number }) {
+  const v = useMediaVisuals(api, clip.media?.version_id);
+  if (!v) return null;
+  if (THUMB_TRACKS.has(kind) && v.thumbs) return <ClipThumbs v={v} inMs={inMs} lenMs={lenMs} />;
+  const color = WAVE_TRACKS[kind];
+  if (color && v.peaks) return <ClipWave v={v} inMs={inMs} lenMs={lenMs} color={color} />;
+  return null;
 }
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
@@ -82,6 +97,11 @@ export function EditorView({
   const [playing, setPlaying] = useState(false);
   const [textDraft, setTextDraft] = useState('');
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const tracksRef = useRef<HTMLDivElement>(null);
+  /** Paket 1: timeline zoom (1 = whole timeline fits) and horizontal scroll of the zoomed lane, in px. */
+  const [zoom, setZoom] = useState(1);
+  const [scrollPx, setScrollPx] = useState(0);
+  const [viewPx, setViewPx] = useState(0);
   // Parent callback kept in a ref: it is a new function each render and must not retrigger loads.
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
@@ -101,6 +121,8 @@ export function EditorView({
     setPlaying(false);
     setError(null);
     setNotice(null);
+    setZoom(1);
+    setScrollPx(0);
     load().catch(setError);
   }, [load]);
 
@@ -141,8 +163,60 @@ export function EditorView({
   const sel = allClips.find((c) => c.clip_id === selected) ?? null;
   const canSplit = !!sel && playhead > sel.start_ms && playhead < sel.end_ms;
 
-  const msPerPx = () => duration / Math.max(1, surfaceRef.current?.getBoundingClientRect().width ?? 1);
+  const msPerPx = () => duration / Math.max(1, (surfaceRef.current?.getBoundingClientRect().width ?? 1) * zoom);
   const pct = (ms: number) => `${(ms / duration) * 100}%`;
+  /** The zoomed lane inside every track surface: wider than the view, shifted by the scroll. */
+  const lane = { width: `${zoom * 100}%`, transform: `translateX(${-scrollPx}px)` };
+
+  // Paket 1: keep the view width current (zoom/scroll limits depend on it).
+  useEffect(() => {
+    const el = surfaceRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setViewPx(e!.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [project?.project_id]);
+  useEffect(() => setScrollPx((s) => clampScroll(s, viewPx, zoom)), [viewPx, zoom]);
+
+  /** Zoom keeping the time under `anchorPx` still (default: the playhead if visible, else the view centre). */
+  const zoomTo = useCallback(
+    (next: number, anchorPx?: number) => {
+      if (viewPx <= 0) return;
+      const headPx = (playhead / duration) * viewPx * zoom - scrollPx;
+      const anchor = anchorPx ?? (headPx >= 0 && headPx <= viewPx ? headPx : viewPx / 2);
+      const r = zoomAround(zoom, next, scrollPx, anchor, viewPx);
+      setZoom(r.zoom);
+      setScrollPx(r.scrollPx);
+    },
+    [viewPx, zoom, scrollPx, playhead, duration],
+  );
+
+  // Ctrl/⌘ + wheel zooms into the cursor; plain wheel (or Shift + wheel) scrolls sideways when zoomed.
+  useEffect(() => {
+    const el = tracksRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const rect = surfaceRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        zoomTo(zoom * Math.exp(-e.deltaY * 0.0025), Math.min(rect.width, Math.max(0, e.clientX - rect.left)));
+      } else if (zoom > 1 && (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY))) {
+        e.preventDefault();
+        const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        setScrollPx((s) => clampScroll(s + d, rect.width, zoom));
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [zoom, zoomTo, project?.project_id]);
+
+  // While playing, page the view along so the playhead never runs off screen.
+  useEffect(() => {
+    if (!playing || zoom <= 1 || viewPx <= 0) return;
+    const x = (playhead / duration) * viewPx * zoom;
+    if (x < scrollPx || x > scrollPx + viewPx * 0.95) setScrollPx(clampScroll(x - viewPx * 0.1, viewPx, zoom));
+  }, [playing, playhead, duration, zoom, viewPx, scrollPx]);
 
   // Keyboard: S split · Del delete · ←/→ nudge (Shift = 1 s) · Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y.
   useEffect(() => {
@@ -210,7 +284,7 @@ export function EditorView({
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
     setPlaying(false); // seeking stops playback; press play again from the new position
-    setPlayhead(snap(Math.min(duration, Math.max(0, (e.clientX - rect.left) * msPerPx()))));
+    setPlayhead(snap(Math.min(duration, Math.max(0, (e.clientX - rect.left + scrollPx) * msPerPx()))));
     setSelected(null);
   };
 
@@ -510,6 +584,34 @@ export function EditorView({
           <button className="smallbtn" disabled={locked || !sel} onClick={() => sel && edit([{ op: 'delete_clip', clip_id: sel.clip_id }])} title="Hapus klip terpilih (Del)">
             🗑 Hapus
           </button>
+          <span className="zoomCtl" role="group" aria-label="Zoom linimasa">
+            <button className="smallbtn" disabled={zoom <= TIMELINE_ZOOM.min} onClick={() => zoomTo(zoom / 1.5)} title="Perkecil linimasa (Ctrl + scroll)" aria-label="Perkecil linimasa">
+              −
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round((Math.log(zoom) / Math.log(TIMELINE_ZOOM.max)) * 100)}
+              onChange={(e) => zoomTo(Math.exp((Number(e.target.value) / 100) * Math.log(TIMELINE_ZOOM.max)))}
+              aria-label={`Zoom linimasa ${zoom.toFixed(1)}×`}
+              title="Zoom linimasa (Ctrl + scroll di linimasa)"
+            />
+            <button className="smallbtn" disabled={zoom >= TIMELINE_ZOOM.max} onClick={() => zoomTo(zoom * 1.5)} title="Perbesar linimasa (Ctrl + scroll)" aria-label="Perbesar linimasa">
+              ＋
+            </button>
+            <button
+              className="smallbtn"
+              disabled={zoom === 1}
+              onClick={() => {
+                setZoom(1);
+                setScrollPx(0);
+              }}
+              title="Tampilkan seluruh linimasa"
+            >
+              Pas
+            </button>
+          </span>
         </div>
         {sel?.text !== undefined && (
           <div className="textEdit">
@@ -528,22 +630,24 @@ export function EditorView({
             />
           </div>
         )}
-        <div className="tracks">
+        <div className="tracks" ref={tracksRef}>
           <div className="track rulerRow">
             <div className="trackLabel muted">{formatDuration(playhead)}</div>
             <div className="trackSurface ruler" ref={surfaceRef} onClick={seek} role="slider" aria-label="Posisi playhead" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={playhead} tabIndex={-1}>
-              {rulerTicks(duration).map((t) => (
-                <span key={t} className="tick" style={{ left: pct(t) }}>
-                  {formatDuration(t)}
-                </span>
-              ))}
-              <div className="playhead" style={{ left: pct(playhead) }} />
+              <div className="lane" style={lane}>
+                {rulerTicks(duration, duration / zoom).map((t) => (
+                  <span key={t} className="tick" style={{ left: pct(t) }}>
+                    {formatDuration(t)}
+                  </span>
+                ))}
+                <div className="playhead" style={{ left: pct(playhead) }} />
+              </div>
             </div>
           </div>
           {TRACKS.map((t) => {
             const clips = tracks.filter((x) => x.kind === t.kind).flatMap((x) => x.clips);
             return (
-              <div className="track" key={t.kind}>
+              <div className={`track${THUMB_TRACKS.has(t.kind) ? ' tall' : WAVE_TRACKS[t.kind] ? ' mid' : ''}`} key={t.kind}>
                 <div className="trackLabel">
                   {t.label}
                   {(t.kind === 'video' || t.kind === 'broll' || t.kind === 'audio' || t.kind === 'music' || t.kind === 'sfx') && (
@@ -560,6 +664,7 @@ export function EditorView({
                   )}
                 </div>
                 <div className="trackSurface" onClick={seek}>
+                  <div className="lane" style={lane}>
                   <div className="playhead" style={{ left: pct(playhead) }} />
                   {clips.map((c) => {
                     const live = drag && drag.clip.clip_id === c.clip_id ? dragSpan(drag.mode, { ...c, hasMedia: !!c.media, sourceMs: sourceMs(c) }, drag.deltaMs) : c;
@@ -584,17 +689,35 @@ export function EditorView({
                         onPointerUp={endDrag}
                         onPointerCancel={() => setDrag(null)}
                       >
+                        {c.media && (
+                          <ClipVisual api={api} clip={c} kind={t.kind} inMs={(c.in_ms ?? 0) + (drag?.mode === 'trim-start' ? live.start_ms - c.start_ms : 0) /* trimming the start moves the source in-point too */} lenMs={live.end_ms - live.start_ms} />
+                        )}
                         <span className="handle start" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-start')} onPointerMove={moveDrag} onPointerUp={endDrag} />
                         <span className="clipLabel">{ellipsize(clipName(c), 28)}</span>
                         <span className="handle end" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-end')} onPointerMove={moveDrag} onPointerUp={endDrag} />
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
+        {zoom > 1 && viewPx > 0 && (
+          <div className="laneScroll">
+            <div className="trackLabel muted">{zoom.toFixed(1)}×</div>
+            <input
+              type="range"
+              min={0}
+              max={Math.round(viewPx * zoom - viewPx)}
+              value={Math.round(scrollPx)}
+              onChange={(e) => setScrollPx(clampScroll(Number(e.target.value), viewPx, zoom))}
+              aria-label="Geser linimasa"
+              title="Geser linimasa (atau Shift + scroll)"
+            />
+          </div>
+        )}
         <div className="footerNote">
           {allClips.length === 0
             ? 'Linimasa kosong. Tambahkan media dari panel kanan (＋ Video).'

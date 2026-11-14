@@ -568,6 +568,16 @@ export interface BatchTable {
   varian: BatchRow[];
 }
 
+/** Paket 1 timeline visuals (server: packages/core/src/storage/visuals.ts). */
+export interface MediaVisuals {
+  version_id: string;
+  duration_ms: number;
+  /** base64, one byte 0–255 per bucket_ms; null = no audio. */
+  peaks: { bucket_ms: number; data: string } | null;
+  /** One JPEG (base64) with `count` frames side by side; frame i = source time i*interval_ms. */
+  thumbs: { interval_ms: number; count: number; frame_w: number; frame_h: number; jpeg: string } | null;
+}
+
 export function createApi(token: string | null, base = '') {
   const authHeaders = (): Record<string, string> => ({ 'x-motion-request': '1', ...(token ? { authorization: `Bearer ${token}` } : {}) });
   async function call<T>(method: string, path: string, init: { json?: unknown; body?: Blob | File; headers?: Record<string, string> } = {}): Promise<T> {
@@ -657,6 +667,8 @@ export function createApi(token: string | null, base = '') {
       call<{ result: { purged: string[]; blocked: { version_id: string; reasons: string[] }[]; freed_bytes: number } }>('POST', '/api/purge/execute', {
         json: { request_id: plan.request_id, confirmation_token: plan.confirmation_token, typed_phrase: typedPhrase },
       }).then((r) => r.result),
+    /** Paket 1: waveform + thumbnail strip of one media version (made once on the server, cached). */
+    mediaVisuals: (versionId: string) => call<{ visuals: MediaVisuals }>('GET', `/api/media/${encodeURIComponent(versionId)}/visuals`).then((r) => r.visuals),
     /** Short-lived signed playback URL for one media version (W07). */
     streamUrl: (versionId: string) => call<{ url: string; expires_at: number; mime: string }>('GET', `/api/media/${encodeURIComponent(versionId)}/stream-url`),
     copilotPlan: (id: string, body: { prompt: string; selected_clip_ids?: string[]; playhead_ms?: number; mode?: 'local' | 'auto' | 'ai' }) =>

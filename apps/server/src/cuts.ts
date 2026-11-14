@@ -1,6 +1,6 @@
 import type { Route } from './app.js';
 import type { Copilot } from './copilot.js';
-import { type Workspace, analyzeMedia, audit, cutOps, readProject } from './core.js';
+import { type MediaVisuals, type Workspace, analyzeMedia, audit, cutOps, mediaVisuals, readProject } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { onlyKeys } from './routes.js';
@@ -12,7 +12,24 @@ import { onlyKeys } from './routes.js';
 export function cutRoutes(ws: Workspace, opts: { copilot: Copilot }): Route[] {
   // One analysis at a time per server: it is CPU-heavy on long footage.
   let running = false;
+  // Timeline visuals: one FFmpeg pass per version, shared by concurrent requests, then cached on disk.
+  const visuals = new Map<string, Promise<MediaVisuals>>();
   return [
+    {
+      method: 'GET',
+      path: '/api/media/:version_id/visuals',
+      handle: async ({ params }) => {
+        const id = params.version_id!;
+        let p = visuals.get(id);
+        if (!p) {
+          p = mediaVisuals(ws, { version_id: id })
+            .then(({ cached: _cached, ...v }) => v)
+            .finally(() => visuals.delete(id));
+          visuals.set(id, p);
+        }
+        return { visuals: await p };
+      },
+    },
     {
       method: 'POST',
       path: '/api/media/:version_id/analyze',

@@ -501,6 +501,8 @@ export function createDemoApi(): Api {
       }
       return { purged: ids, blocked: [], freed_bytes: plan.total_bytes };
     },
+    // Demo: no waveform/thumbnails (the timeline simply shows plain clips).
+    mediaVisuals: async (vid) => ({ version_id: vid, duration_ms: 0, peaks: null, thumbs: null }),
     streamUrl: async (vid) => {
       const url = sampleUrl(mediaUrl[vid] ?? '') ?? fail(404, 'NOT_FOUND', 'Video contoh tidak termuat');
       return { url, expires_at: now() + 600_000, mime: 'video/mp4' };

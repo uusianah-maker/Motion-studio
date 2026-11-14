@@ -60,6 +60,7 @@ export { type Word as CaptionWord, sliceWords } from './storage/words.js';
 export { MAX_VARIANTS_PER_RUN, type VariantState, validateBriefs, variantOps, variantState } from './storage/variants.js';
 export { type BrandGuard, EMPTY_GUARD, GUARD_LIMITS, type GuardIssue, bannedIn, checkBrandGuard, localDate } from './storage/brandGuard.js';
 export { ANALYSIS_LIMITS, type AnalysisParams, DEFAULT_ANALYSIS, MAX_CUTS, type MediaAnalysis, analyzeMedia, cutOps } from './storage/analysis.js';
+export { type MediaVisuals, PEAK_BUCKET_MS, mediaVisuals } from './storage/visuals.js';
 export {
   type BrandKit,
   type BrandLogo,

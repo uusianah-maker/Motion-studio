@@ -267,6 +267,27 @@ table.list tr:hover td { background: #191d29; }
 .ruler .tick:first-child { transform: none; }
 .editorHeader .time { font-variant-numeric: tabular-nums; color: #b0b8c9; }
 
+/* ---------- timeline zoom, waveform, thumbnails (paket 1) ---------- */
+@media (min-width: 901px) { .editorGrid { grid-template-rows: auto minmax(280px, 1fr) 300px; } }
+.trackSurface .lane { position: absolute; top: 0; bottom: 0; left: 0; will-change: transform; }
+.trackSurface.ruler { overflow: hidden; }
+.track.tall { height: 52px; }
+.track.tall .trackSurface { height: 44px; }
+.track.mid { height: 40px; }
+.track.mid .trackSurface { height: 32px; }
+.clip .clipVis { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+.clip .clipWave { width: 100%; height: 100%; display: block; opacity: 0.75; }
+.clip .clipVis.thumbs span { position: absolute; top: 0; bottom: 0; background-repeat: no-repeat; border-right: 1px solid #0006; }
+.clip .clipVis.thumbs + .handle + .clipLabel,
+.clip .clipVis + .handle + .clipLabel { position: relative; z-index: 1; align-self: flex-start; margin-top: 1px; padding: 0 4px; border-radius: 3px; background: #0b0f18b3; }
+.clip .handle { z-index: 2; }
+.clip.music { background: #2b3d63; border-color: #5d7fc0; }
+.clip.sfx { background: #574b26; border-color: #b39b4c; }
+.zoomCtl { display: inline-flex; align-items: center; gap: 4px; }
+.zoomCtl input[type='range'] { width: 90px; accent-color: #9b86ff; }
+.laneScroll { display: flex; align-items: center; gap: 6px; padding: 0 14px 4px; }
+.laneScroll input[type='range'] { flex: 1; accent-color: #9b86ff; }
+@media (max-width: 900px) { .zoomCtl input[type='range'] { width: 60px; } }
 .timelineTop { flex-wrap: wrap; height: auto; min-height: 47px; padding: 6px 17px; }
 .timelineTop .smallbtn:disabled { opacity: 0.45; }
 

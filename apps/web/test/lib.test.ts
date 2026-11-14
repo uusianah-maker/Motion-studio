@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aspectCss, blockerText, clipAt, dragSpan, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
+import { TIMELINE_ZOOM, aspectCss, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
 
 const TOKEN = 'a'.repeat(64);
 
@@ -56,6 +56,21 @@ describe('timeline drag math (W06)', () => {
     expect(rulerTicks(8000)).toHaveLength(9);
     expect(visibleDuration(0)).toBe(30_000);
     expect(visibleDuration(41_200)).toBe(50_000);
+    // Zoomed in to 6 s of a 60 s timeline: 1 s ticks across the whole minute.
+    expect(rulerTicks(60_000, 6000)).toHaveLength(61);
+  });
+  it('zoom keeps the time under the cursor still and never scrolls past the ends (paket 1)', () => {
+    // 1000 px view at 2×: the lane is 2000 px, at most 1000 px of scroll.
+    expect(clampScroll(-5, 1000, 2)).toBe(0);
+    expect(clampScroll(5000, 1000, 2)).toBe(1000);
+    expect(clampScroll(300, 1000, 1)).toBe(0);
+    // Cursor at 250 px with no scroll = 25% of the timeline; after 1→2× that same 25% is still under 250 px.
+    const r = zoomAround(1, 2, 0, 250, 1000);
+    expect(r).toEqual({ zoom: 2, scrollPx: 250 });
+    expect((r.scrollPx + 250) / (1000 * r.zoom)).toBe(0.25);
+    // Zooming out past 1× snaps back to fit; past the max is capped.
+    expect(zoomAround(2, 0.3, 600, 100, 1000)).toEqual({ zoom: TIMELINE_ZOOM.min, scrollPx: 0 });
+    expect(zoomAround(30, 999, 0, 0, 1000).zoom).toBe(TIMELINE_ZOOM.max);
   });
 });
 

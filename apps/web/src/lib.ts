@@ -134,13 +134,33 @@ export function dragSpan(mode: DragMode, c: ClipSpan, deltaMs: number): { start_
   return { start_ms: start, end_ms: c.end_ms };
 }
 
-/** Ruler ticks: a "nice" step so there are at most ~10 labels. */
-export function rulerTicks(durationMs: number): number[] {
+/**
+ * Ruler ticks: a "nice" step so there are at most ~10 labels in view. With timeline zoom only
+ * `visibleMs` is on screen, so the step follows that while ticks still cover the whole duration.
+ */
+export function rulerTicks(durationMs: number, visibleMs = durationMs): number[] {
   const steps = [1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000];
-  const step = steps.find((s) => durationMs / s <= 10) ?? 600_000;
+  const step = steps.find((s) => visibleMs / s <= 10) ?? 600_000;
   const out: number[] = [];
   for (let t = 0; t <= durationMs; t += step) out.push(t);
   return out;
+}
+
+// ------------------------------------------------------------------ timeline zoom (paket 1)
+
+export const TIMELINE_ZOOM = { min: 1, max: 40 } as const;
+
+/** Clamp a scroll offset (px) so the zoomed lane never leaves an empty gap at either end. */
+export const clampScroll = (scrollPx: number, viewPx: number, zoom: number): number => Math.min(Math.max(0, viewPx * zoom - viewPx), Math.max(0, scrollPx));
+
+/**
+ * Change zoom while keeping the time under `anchorPx` (px from the left of the view) in place —
+ * Ctrl+scroll zooms "into the cursor" like video editors do. Returns the new zoom and scroll.
+ */
+export function zoomAround(zoom: number, nextZoom: number, scrollPx: number, anchorPx: number, viewPx: number): { zoom: number; scrollPx: number } {
+  const z = Math.min(TIMELINE_ZOOM.max, Math.max(TIMELINE_ZOOM.min, nextZoom));
+  const contentX = (scrollPx + anchorPx) * (z / zoom);
+  return { zoom: z, scrollPx: clampScroll(contentX - anchorPx, viewPx, z) };
 }
 
 /** Timeline length shown: at least 30 s and always 5 s of room after the last clip. */
