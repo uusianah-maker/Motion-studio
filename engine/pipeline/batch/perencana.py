@@ -33,7 +33,8 @@ import musik as musik_mod  # noqa: E402
 import vo as vo_mod  # noqa: E402
 import brand_lain  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
-from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, kata_klip  # noqa: E402  (milik venus, konvensi sama)
+from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, efek_video, kata_klip  # noqa: E402  (milik venus, konvensi sama)
+from efek_otomatis import efek_batch, pilih_sfx, saring_sfx  # noqa: E402  (venus: SFX + efek otomatis, sama dengan Generate)
 from jaga_ops import buang_teks_kosong, cek_durasi, jaga_durasi, rapikan_kata, validasi_motion_studio  # noqa: E402  (pengaman venus: klip <= panjang file sumber)
 
 from jalur import BATCH_PY  # noqa: E402  (Python yang punya OpenCV untuk Shot Library; Windows/Linux)
@@ -195,6 +196,34 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool) -> tuple[list[di
     ops.append({"op": "add_clip", "track_kind": "text", "text": hook["teks"].upper(), "start_ms": ms(hook["dari"]),
                 "duration_ms": ms(hook["sampai"] - hook["dari"]), "style": gaya_hook})
     total_ms = ms(v["durasi"])
+    # Efek + SFX otomatis (venus, 14 Nov; aturan sama dengan Generate): zoom halus di <= 2 kalimat penting,
+    # zoom-through di <= 2 titik potong, SFX dari Library brand (durasi pas, bervariasi), jarak >= 2 dtk.
+    potong = [ms(p["start"]) for p in v["susunan"]["potongan"][1:]]
+    kalimat = [(ms(vk["start"]), ms(vk["start"] + vk["dur"])) for vk in v["susunan"]["vo_klip"]]
+    hook_akhir = ms(hook["sampai"])
+    framing, zt = efek_batch(potong, kalimat, hook_akhir, total_ms)
+    for a, b, eff in efek_video(framing, zt, total_ms):
+        if b - a >= MIN_CLIP_MS:
+            ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": a, "duration_ms": b - a, "effect": eff})
+    kejadian = [(ms(hook["dari"]) + 100, "muncul")] + [(max(0, z - 100), "whoosh") for z in zt]
+    for o in ops:
+        if o.get("track_kind") == "subtitle" and (o.get("style") or {}).get("highlight"):
+            kunci_hl = set(o["style"]["highlight"]["words"])
+            for w in o.get("words", []):
+                if _bersih(w["text"]) in kunci_hl:
+                    kejadian.append((o["start_ms"] + w["start_ms"] - 60, "pop"))
+                    break
+    aset = brand.get("aset", [])
+    for i, (t, jenis) in enumerate(saring_sfx(kejadian, total_ms)):
+        a = pilih_sfx(aset, jenis, i, f"{v['id']}|{v['vo']}", brand.get("sfx_dilarang", []))
+        if a:
+            kunci, dur = a["kunci"], int(a.get("durasi_ms") or 300)
+        else:  # Library brand tidak punya yang pas: SFX bawaan mesin
+            kunci, dur = ("$sfx:pop", 250) if jenis == "pop" else ("$sfx:whoosh", 450)
+        dur = min(dur, total_ms - t)
+        if dur >= MIN_CLIP_MS:
+            ops.append({"op": "add_clip", "track_kind": "sfx", "media": kunci, "start_ms": t, "duration_ms": dur,
+                        "volume": 0.5 if jenis == "pop" else 0.6})
     cta_mulai = max(ms(hook["sampai"]), total_ms - CTA_MS)
     ops.append({"op": "add_clip", "track_kind": "text", "text": v["cta"], "start_ms": cta_mulai,
                 "duration_ms": total_ms - cta_mulai,
@@ -405,7 +434,9 @@ def jalankan(job_dir: Path) -> int:
         rv, sus, m = v["rv"], v["susunan"], v["musik"]
         bukan_iklan = bool(m and not m["lisensi_iklan"])
         ops, menunggu = buat_ops(v, brand, mode_ops, hak_jelas)
+        kunci_brand = {a["kunci"] for a in brand_raw.get("aset", []) if a.get("kunci")}
         aset_lokal = {o["media"] for o in ops if o.get("media") and not o["media"].startswith("$sumber")
+                      and o["media"] not in kunci_brand  # aset Brand Kit (SFX, musik) dikenal runner lewat Brand Kit
                       and not (m and o["media"] == m["kunci"] and m["sumber"] == "brand_kit")}
         for o in ops:
             ph = o.get("media")
@@ -416,6 +447,8 @@ def jalankan(job_dir: Path) -> int:
                 media[ph] = path_media(lib["footage"][fid]["video"])
             elif kind == "$vokal":
                 media[ph] = path_media(lib["footage"][fid]["vokal"])
+            elif kind == "$sfx" and ph not in kunci_brand:  # SFX bawaan mesin (public/sfx)
+                media[ph] = path_media(str(ROOT / "public" / "sfx" / f"{fid}.wav"))
             elif kind == "$musik" and m and ph == m["kunci"] and m["sumber"] != "brand_kit":
                 # Musik dari Brand Kit sudah dikenal runner lewat asetnya; hanya musik milik mesin yang ditulis.
                 media[ph] = path_media(m["path"])
@@ -481,8 +514,9 @@ def jalankan(job_dir: Path) -> int:
             "dibuang": rv["dibuang"],
             "hook": {**v["hook"], "sumber": "aturan"},
             "kata_kunci": kk,
-            "efek": [],
-            "audio": {"sfx": 0, "musik": m["kunci"] if m else None, "alasan_tanpa_musik": alasan_m,
+            "efek": [{"jenis": o["effect"]["type"], "dari": o["start_ms"] / 1000, "sampai": (o["start_ms"] + o["duration_ms"]) / 1000}
+                     for o in ops if o.get("track_kind") == "effects"],
+            "audio": {"sfx": sum(1 for o in ops if o.get("track_kind") == "sfx"), "musik": m["kunci"] if m else None, "alasan_tanpa_musik": alasan_m,
                       "musik_bpm": m["bpm"] if m else None, "musik_volume": m["volume"] if m else None,
                       "musik_path": m["path"] if m else None},
             "cta": v["cta"],
