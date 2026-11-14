@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { promises as fsp } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { scrubPaths } from './engine.js';
 import { StorageError } from './errors.js';
 import { ffmpegBin } from './ffmpeg.js';
 import { isSafeId } from './ids.js';
@@ -23,6 +24,8 @@ export const PEAK_BUCKET_MS = 20;
 export const MAX_THUMBS = 120;
 export const MIN_THUMB_INTERVAL_MS = 1000;
 export const THUMB_HEIGHT = 72;
+/** Up to this length every frame is decoded (exact thumbnails); longer files use keyframes only. */
+export const KEYFRAME_ONLY_FROM_MS = 120_000;
 
 export interface MediaVisuals {
   schema_version: 1;
@@ -33,6 +36,8 @@ export interface MediaVisuals {
   /** Thumbnail strip: one JPEG with `count` frames side by side; frame i shows source time i*interval_ms. */
   thumbs: { interval_ms: number; count: number; frame_w: number; frame_h: number; jpeg: string } | null;
   made_at: number;
+  /** Part that could not be made this time (the other part is still shown; not cached, retried later). */
+  gagal?: { peaks?: string; thumbs?: string };
 }
 
 const cacheFile = (ws: Workspace, versionId: string) => path.join(ws.root, LAYOUT.meta, 'visuals', `${versionId}.json`);
@@ -58,7 +63,8 @@ function run(args: string[], signal?: AbortSignal, onStdout?: (b: Buffer) => voi
       signal?.removeEventListener('abort', abort);
       if (signal?.aborted) reject(new StorageError('PRECONDITION', 'Dibatalkan'));
       else if (code === 0) resolve();
-      else reject(new StorageError('PRECONDITION', `FFmpeg gagal (${code}): ${err.trim().slice(-300)}`));
+      // FFmpeg's stderr names the input file and our temp JPEG: no local paths to the browser.
+      else reject(new StorageError('PRECONDITION', `FFmpeg gagal (${code}): ${scrubPaths(err.trim().slice(-300))}`));
     });
   });
 }
@@ -91,7 +97,16 @@ async function makePeaks(file: string, signal?: AbortSignal): Promise<string> {
   return Buffer.from(out.map((v) => Math.round((v / max) * 255))).toString('base64');
 }
 
-/** One JPEG strip of evenly spaced frames (keyframes only: fast even on long files). */
+/**
+ * One JPEG strip of evenly spaced frames.
+ *
+ * Bug fix (W05 / W15, FFmpeg 9): with `-skip_frame nokey` a short clip with ONE keyframe (long
+ * GOP, common for phone / editor exports) gives fewer frames than tiles, so `tile` only emits its
+ * strip when flushed at the end — and that frame reaches the MJPEG encoder as limited ("tv") range,
+ * which FFmpeg 9's MJPEG refuses ("Non full-range YUV is non-standard" → -22, nothing written →
+ * 422). Now: convert to full range (`out_range=full` + `yuvj420p`) before `tile`, and decode every
+ * frame for files up to KEYFRAME_ONLY_FROM_MS so short clips get real thumbnails, not one frame.
+ */
 async function makeThumbs(file: string, durationMs: number, srcW: number, srcH: number, signal?: AbortSignal): Promise<NonNullable<MediaVisuals['thumbs']>> {
   const interval = Math.max(MIN_THUMB_INTERVAL_MS, Math.ceil(durationMs / MAX_THUMBS / 100) * 100);
   const count = Math.max(1, Math.ceil(durationMs / interval));
@@ -101,7 +116,12 @@ async function makeThumbs(file: string, durationMs: number, srcW: number, srcH: 
   const jpg = path.join(dir, 'strip.jpg');
   try {
     await run(
-      ['-skip_frame', 'nokey', '-i', file, '-map', '0:v:0', '-an', '-vf', `fps=1000/${interval},scale=${frameW}:${frameH}:force_original_aspect_ratio=increase,crop=${frameW}:${frameH},tile=${count}x1`, '-frames:v', '1', '-q:v', '6', '-y', jpg],
+      [
+        ...(durationMs > KEYFRAME_ONLY_FROM_MS ? ['-skip_frame', 'nokey'] : []),
+        '-i', file, '-map', '0:v:0', '-an',
+        '-vf', `fps=1000/${interval},scale=${frameW}:${frameH}:force_original_aspect_ratio=increase:out_range=full,crop=${frameW}:${frameH},format=yuvj420p,tile=${count}x1`,
+        '-frames:v', '1', '-q:v', '6', '-y', jpg,
+      ],
       signal,
     );
     const data = await fsp.readFile(jpg);
@@ -127,11 +147,34 @@ export async function mediaVisuals(ws: Workspace, input: { version_id: string; s
   const out = await ws.blobs.withLocalFile(rel, async (file): Promise<MediaVisuals> => {
     const probe = v.probe ?? (await probeFile(file));
     if (!probe) throw new StorageError('PRECONDITION', 'File ini bukan video/audio');
-    const peaks = probe.audio_codec ? { bucket_ms: PEAK_BUCKET_MS, data: await makePeaks(file, input.signal) } : null;
-    const thumbs = probe.video_codec ? await makeThumbs(file, probe.duration_ms, probe.width ?? 0, probe.height ?? 0, input.signal) : null;
-    return { schema_version: 1, version_id: v.version_id, duration_ms: probe.duration_ms, peaks, thumbs, made_at: input.now ?? Date.now() };
+    // Waveform and thumbnails fail independently: one broken part never hides the other.
+    const gagal: NonNullable<MediaVisuals['gagal']> = {};
+    const why = (e: unknown) => {
+      if (input.signal?.aborted) throw e;
+      return (e instanceof Error ? e.message : String(e)).slice(0, 300);
+    };
+    let peaks: MediaVisuals['peaks'] = null;
+    if (probe.audio_codec)
+      try {
+        peaks = { bucket_ms: PEAK_BUCKET_MS, data: await makePeaks(file, input.signal) };
+      } catch (e) {
+        gagal.peaks = why(e);
+      }
+    let thumbs: MediaVisuals['thumbs'] = null;
+    if (probe.video_codec)
+      try {
+        thumbs = await makeThumbs(file, probe.duration_ms, probe.width ?? 0, probe.height ?? 0, input.signal);
+      } catch (e) {
+        gagal.thumbs = why(e);
+      }
+    // Both wanted parts broken: a real error (the route answers it), not an empty result.
+    if ((gagal.peaks || !probe.audio_codec) && (gagal.thumbs || !probe.video_codec) && (gagal.peaks || gagal.thumbs)) throw new StorageError('PRECONDITION', gagal.thumbs ?? gagal.peaks!);
+    return { schema_version: 1, version_id: v.version_id, duration_ms: probe.duration_ms, peaks, thumbs, made_at: input.now ?? Date.now(), ...(gagal.peaks || gagal.thumbs ? { gagal } : {}) };
   });
-  await fsp.mkdir(path.dirname(cache), { recursive: true });
-  await writeJsonAtomic(cache, out);
+  // A partial result is not cached: the missing part is tried again next time.
+  if (!out.gagal) {
+    await fsp.mkdir(path.dirname(cache), { recursive: true });
+    await writeJsonAtomic(cache, out);
+  }
   return { ...out, cached: false };
 }
