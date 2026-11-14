@@ -3,6 +3,10 @@
   engine generate <job_dir>   Generate Otomatis: satu video -> rencana.json + ops.json + qc_rencana.json
   engine ulang    <job_dir>   susun ulang draf memakai <job_dir>/koreksi.json (tanpa transkrip ulang)
   engine batch    <job_dir>   Batch Remix (modul yuki: pipeline/batch/perencana.py)
+  engine pisah    <job_dir>   Batch Remix: unggahan <job_dir>/masuk/ -> konten/, pisah audio + Shot Library
+                              (pipeline/pisah.py --job); hasil di <job_dir>/out/pisah.json (schema pisah/1)
+  engine daftar_batch         daftar batch untuk dropdown (read-only, tanpa job_dir);
+                              stdout satu JSON {"schema":"daftar-batch/1","batch":[...]}
   engine cek                  cek alat (ffmpeg, Whisper, GPU, OpenCV) untuk halaman status
 
 Jalankan dari D:\\VIBECODING\\remotion dengan Python .venv:
@@ -41,6 +45,14 @@ def jalankan(cmd: list[str]) -> int:
     """Proses anak: stdout-nya dialihkan ke stderr supaya stdout tetap JSON progres saja."""
     log("$ " + " ".join(cmd))
     return subprocess.run(cmd, cwd=ROOT, stdout=sys.stderr, stderr=sys.stderr).returncode
+
+
+def teruskan(cmd: list[str]) -> int:
+    """Proses anak yang menulis stdout-nya sendiri (JSON-lines progres / satu JSON hasil):
+    stdout & stderr diteruskan apa adanya, kode keluar juga (0 / 2 ditolak / 1 gagal)."""
+    log("$ " + " ".join(cmd))
+    sys.stdout.flush()
+    return subprocess.run(cmd, cwd=ROOT).returncode
 
 
 def baca_job(job_dir: Path) -> dict:
@@ -190,7 +202,18 @@ def ulang(job_dir: Path) -> int:
 
 def batch(job_dir: Path) -> int:
     progres("rencana", 5, "Batch Remix")
-    return jalankan([PY, "pipeline/batch/perencana.py", str(job_dir)])
+    # perencana.py menulis progres JSON-lines sendiri: stdout-nya harus sampai ke app.
+    return teruskan([PY, "pipeline/batch/perencana.py", str(job_dir)])
+
+
+def pisah(job_dir: Path) -> int:
+    if not (job_dir / "job.json").exists():
+        raise FileNotFoundError(f"job.json tidak ada di {job_dir}")
+    return teruskan([PY, "pipeline/pisah.py", "--job", str(job_dir)])
+
+
+def daftar_batch() -> int:
+    return teruskan([PY, "pipeline/batch/daftar.py"])
 
 
 def cek_alat() -> int:
@@ -223,18 +246,20 @@ def cek_alat() -> int:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
-    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "cek"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "daftar_batch", "cek"):
         log(__doc__)
         return 1
     cmd = sys.argv[1]
     if cmd == "cek":
         return cek_alat()
+    if cmd == "daftar_batch":
+        return daftar_batch()
     if len(sys.argv) < 3:
         log(f"pakai: engine {cmd} <job_dir>")
         return 1
     job_dir = Path(sys.argv[2]).resolve()
     try:
-        return {"generate": generate, "ulang": ulang, "batch": batch}[cmd](job_dir)
+        return {"generate": generate, "ulang": ulang, "batch": batch, "pisah": pisah}[cmd](job_dir)
     except Exception as e:  # noqa: BLE001 - gagal teknis: kode 1, pesan ke progres
         log(f"GAGAL: {e!r}")
         progres("gagal", 100, str(e)[:300])

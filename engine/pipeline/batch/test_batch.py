@@ -110,6 +110,62 @@ class Matcher(unittest.TestCase):
         self.assertEqual(len(b), 2)
 
 
+class KecualikanShot(unittest.TestCase):
+    def test_broll_tidak_memakai_shot_dikecualikan(self):
+        rv = vo.susun(vo_sintetis(), random.Random(1), (10, 28))
+        x = {f"B#{i:02d}" for i in range(10)} | {"C#01", "C#03"}
+        h = matcher.susun_shot(rv, lib_sintetis(), {"A", "B", "C"}, random.Random(3), kecuali=x)
+        self.assertFalse({p["shot"] for p in h["potongan"]} & x)
+        self.assertTrue(any(p["jenis"] == "broll" for p in h["potongan"]))
+
+    def test_shot_kreator_dikecualikan_jadi_broll(self):
+        rv = vo.susun(vo_sintetis(), random.Random(1), (10, 28))
+        x = {f"A#{i:02d}" for i in range(10)}
+        h = matcher.susun_shot(rv, lib_sintetis(), {"A", "B", "C"}, random.Random(3), kecuali=x)
+        self.assertTrue(all(p["jenis"] == "broll" and p["footage"] != "A" for p in h["potongan"]))
+
+
+class KalimatVarian(unittest.TestCase):
+    def test_kalimat_dan_shot_per_kalimat(self):
+        import perencana
+        rv = vo.susun(vo_sintetis(), random.Random(1), (10, 28))
+        h = matcher.susun_shot(rv, lib_sintetis(), {"A", "B", "C"}, random.Random(3))
+        ks = perencana.kalimat_varian(rv["kalimat"], h)
+        self.assertEqual(len(ks), len(rv["kalimat"]))
+        self.assertEqual(ks[0]["dari"], 0)
+        for k in ks:
+            self.assertTrue(k["teks"] and k["shot"])
+            self.assertLess(k["dari"], k["sampai"])
+        semua = {p["shot"] or f"{p['footage']}@{p['in']:.1f}" for p in h["potongan"]}
+        self.assertTrue({s for k in ks for s in k["shot"]} <= semua)
+
+
+class DaftarBatch(unittest.TestCase):
+    def test_hitung_dan_status(self):
+        import json
+        import tempfile
+        import daftar
+        with tempfile.TemporaryDirectory() as tmp:
+            k = Path(tmp)
+            (k / "1-upload" / "baru").mkdir(parents=True)
+            (k / "1-upload" / "baru" / "a.mp4").write_bytes(b"x")
+            d = k / "2-dipisah" / "lama"
+            for sub, f in (("video-bisu", "a.mp4"), ("vokal", "a.wav"), ("musik", "a.wav")):
+                (d / sub).mkdir(parents=True)
+                (d / sub / f).write_bytes(b"x")
+            (d / "shots.json").write_text(json.dumps({"shots": [{"id": "a#00", "thumb": "t.jpg"}, {"id": "a#01"}]}))
+            lama_konten, daftar.KONTEN = daftar.KONTEN, k
+            try:
+                r = {x["batch"]: x for x in daftar.daftar()}
+            finally:
+                daftar.KONTEN = lama_konten
+        self.assertEqual(r["baru"]["upload"], 1)
+        self.assertFalse(r["baru"]["dipisah"])
+        self.assertFalse(r["baru"]["siap_batch"])
+        self.assertEqual((r["lama"]["footage"], r["lama"]["vo"], r["lama"]["jumlah_shot"], r["lama"]["thumb"]), (1, 1, 2, 1))
+        self.assertTrue(r["lama"]["siap_batch"])
+
+
 def vo_dengan_saran():
     v = vo_sintetis()
     v["kalimat"][1]["saran_buang"] = "urgensi"
