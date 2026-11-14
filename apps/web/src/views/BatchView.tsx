@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { pantauDanUnduh } from '../autoUnduh';
 import type { Api, BatchDecision, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
@@ -234,7 +235,10 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     setBusy(true);
     setError(null);
     try {
-      setRendered(await api.renderVariants(current.project_id, { short_side: 1080 }));
+      const r = await api.renderVariants(current.project_id, { short_side: 1080 });
+      setRendered(r);
+      // Owner 14 Nov: tiap varian yang selesai dirender langsung terunduh ke komputer ini.
+      for (const j of r.jobs) pantauDanUnduh(api, j);
     } catch (e) {
       setError(e);
     } finally {
@@ -513,7 +517,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
             </div>
             {rendered && (
               <div className="notice small" role="status">
-                {rendered.jobs.length} render masuk antrean{rendered.skipped.length ? ` · dilewati: ${rendered.skipped.map((s) => s.reason).join(', ')}` : ''}. Pantau di Editor (proyek varian).
+                {rendered.jobs.length} render masuk antrean — tiap video otomatis terunduh begitu selesai (jangan tutup tab ini){rendered.skipped.length ? ` · dilewati: ${rendered.skipped.map((s) => s.reason).join(', ')}` : ''}. Pantau di Editor (proyek varian).
               </div>
             )}
           </section>

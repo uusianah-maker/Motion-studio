@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { pantauDanUnduh } from '../autoUnduh';
 import type { Api, GuardIssue, Project, RenderJob, RenderOutputFile, RenderPhase, RenderTools } from '../api';
 import { formatBytes, formatDate, formatDuration } from '../lib';
 import { ErrorNotice, Modal } from '../ui';
@@ -90,7 +91,9 @@ export function RenderDialog({ api, project, onClose }: { api: Api; project: Pro
     setError(null);
     setStarting(true);
     try {
-      await api.startRender(project.project_id, { output_name: name.trim() || project.name, short_side: short, ...(acceptWarn && warnings.length ? { accept_brand_warnings: true } : {}) });
+      const job = await api.startRender(project.project_id, { output_name: name.trim() || project.name, short_side: short, ...(acceptWarn && warnings.length ? { accept_brand_warnings: true } : {}) });
+      // Owner 14 Nov: begitu selesai, video langsung terunduh ke komputer ini (walau dialog ditutup).
+      pantauDanUnduh(api, job);
       await refresh();
     } catch (e) {
       setError(e);
@@ -132,7 +135,7 @@ export function RenderDialog({ api, project, onClose }: { api: Api; project: Pro
   return (
     <Modal title="Render MP4" onClose={onClose}>
       <p>
-        Hasil render disimpan sebagai file baru di folder output proyek. Nama yang sudah ada tidak ditimpa (jadi <code>_v2</code>, <code>_v3</code>…). File asli tidak pernah diubah.
+        Begitu render selesai, video <b>otomatis terunduh</b> ke komputer ini (boleh tutup jendela ini; jangan tutup tab aplikasinya). Hasil render juga disimpan sebagai file baru di folder output proyek. Nama yang sudah ada tidak ditimpa (jadi <code>_v2</code>, <code>_v3</code>…). File asli tidak pernah diubah.
       </p>
       <div className="notice info" role="note">
         🔒 Metadata (judul, lokasi/GPS, perangkat, encoder, tanggal) <b>dihapus otomatis</b> dan diverifikasi ulang sebelum file dinyatakan jadi. Kalau verifikasi gagal, file tidak disimpan.

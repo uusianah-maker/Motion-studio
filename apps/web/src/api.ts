@@ -798,6 +798,7 @@ export function createApi(token: string | null, base = '') {
         'GET',
         `/api/outputs?${new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]))}`,
       ),
+    renderJob: (jobId: string) => call<{ job: RenderJob }>('GET', `/api/render/jobs/${encodeURIComponent(jobId)}`).then((r) => r.job),
     cancelRender: (jobId: string) => call<{ job: RenderJob }>('POST', `/api/render/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }).then((r) => r.job),
     /** Short-lived signed link to play (or download) one finished output. */
     // U7 review

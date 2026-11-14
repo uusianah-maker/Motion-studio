@@ -8,6 +8,7 @@ import {
   type Workspace,
   isStorageError,
   renderProject,
+  salinKeHasil,
 } from './core.js';
 
 /**
@@ -103,6 +104,8 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
         void _rel;
         next.output = out;
         next.output_name = out.name;
+        // Folder "HASIL RENDER/<tanggal>" yang mudah dibaca di Explorer (owner 14 Nov). Salinan; gagal = tidak apa-apa.
+        void salinKeHasil(ws, { project_id: next.project_id, rel: r.output.rel, name: out.name }).catch((e: unknown) => onError?.(e));
       }
     } catch (e) {
       next.status = isStorageError(e, 'CANCELLED') ? 'cancelled' : 'failed';

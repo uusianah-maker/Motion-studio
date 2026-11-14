@@ -721,6 +721,7 @@ export function createDemoApi(): Api {
       const found = all.filter((i) => !q || i.name.toLowerCase().includes(q) || i.project_name.toLowerCase().includes(q)).sort((a, b) => b.mtime_ms - a.mtime_ms);
       return { outputs: found.slice(o.offset ?? 0, (o.offset ?? 0) + (o.limit ?? 200)), total: found.length, offset: o.offset ?? 0, limit: o.limit ?? 200 };
     },
+    renderJob: async (jobId) => clone(renderJobs.find((j) => j.job_id === jobId) ?? fail(404, 'NOT_FOUND', 'Job render tidak ditemukan')),
     cancelRender: async (jobId) => {
       const j = renderJobs.find((x) => x.job_id === jobId) ?? fail(404, 'NOT_FOUND', 'Job tidak ada');
       if (j.status === 'running' || j.status === 'queued') Object.assign(j, { status: 'cancelled', finished_at: now(), error: { code: 'CANCELLED', message: 'Render dibatalkan' } });

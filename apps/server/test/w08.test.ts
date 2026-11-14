@@ -144,6 +144,17 @@ describe.skipIf(!hasFfmpeg)('W08 render API', () => {
     expect((await s.req('/api/outputs?limit=1&offset=1', { headers: s.auth })).json.outputs).toEqual([]);
     expect((await s.req('/api/outputs')).status).toBe(401);
 
+    // Folder HASIL RENDER/<tanggal> yang mudah dibaca di Explorer: salinan otomatis setelah render selesai.
+    const hasilDir = path.join(s.ws.root, 'HASIL RENDER');
+    let salinan: string[] = [];
+    for (let i = 0; i < 40 && salinan.length === 0; i++) {
+      salinan = (await fsp.readdir(hasilDir, { recursive: true }).catch(() => [] as string[])).map(String).filter((f) => f.endsWith('.mp4'));
+      if (!salinan.length) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(salinan).toHaveLength(1);
+    expect(salinan[0]).toMatch(/^\d{4}-\d{2}-\d{2}[\\/]Promo Lebaran Diskon\.mp4$/);
+    expect((await fsp.stat(path.join(hasilDir, salinan[0]!))).size).toBe(done.output.size);
+
     // Signed link: Range playback, download disposition; tampering/other names fail.
     const play = (await s.req(`/api/projects/promo/output-url?name=${encodeURIComponent('Promo Lebaran Diskon.mp4')}`, { headers: s.auth })).json;
     const part = await s.req(play.url, { headers: { range: 'bytes=0-99' } });

@@ -20,6 +20,7 @@ export {
   renderProject,
   visualSegments,
 } from './storage/render.js';
+export { HASIL_DIR, namaAman, salinKeHasil } from './storage/hasilRender.js';
 export { loadLeases, releaseOrphanLeases } from './storage/deps.js';
 export type { PreflightProblem, PreflightResult } from './storage/preflight.js';
 export type { Clip, ProjectManifest, Track } from './storage/project.js';

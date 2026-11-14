@@ -87,10 +87,14 @@ try {
   await dialog.getByLabel('Nama file output').fill('Hasil Promo');
   await dialog.getByLabel('Resolusi render').selectOption('720');
   check('RD-04 Ukuran sesuai rasio & resolusi', await dialog.getByText('9:16 · 720×1280').isVisible());
+  // Owner 14 Nov: begitu render selesai, video otomatis terunduh (tanpa klik Unduh).
+  const autoDl = page.waitForEvent('download', { timeout: 90_000 }).then((d) => d, () => null);
   await startBtn.click();
   const sawProgress = await dialog.getByRole('progressbar').waitFor({ timeout: 5000 }).then(() => true, () => false);
   await dialog.getByText('Selesai', { exact: true }).waitFor({ timeout: 60_000 });
   check('RD-05 Progres tampil lalu selesai', sawProgress);
+  const auto = await autoDl;
+  check('RD-05b Selesai render → video otomatis terunduh', auto?.suggestedFilename() === 'Hasil Promo.mp4', auto?.suggestedFilename() ?? 'tidak ada unduhan');
   check('RD-06 Status "metadata bersih (terverifikasi)"', await dialog.getByText(/metadata bersih \(terverifikasi\)/).isVisible());
   await page.screenshot({ path: path.join(EVID, 'render-done.png') });
 
