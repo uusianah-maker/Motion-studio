@@ -14,6 +14,29 @@ export function useMediaQuery(query: string): boolean {
   );
 }
 
+/**
+ * useState kept for this browser tab (sessionStorage): a form survives switching menus (audit
+ * 14 Nov, sukma: "Susun batch" went back to defaults). Never fails: no storage = plain state.
+ */
+export function useSessionState<T>(key: string, init: T): [T, (v: T | ((prev: T) => T)) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = sessionStorage.getItem(`ms:${key}`);
+      return raw === null ? init : (JSON.parse(raw) as T);
+    } catch {
+      return init;
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(`ms:${key}`, JSON.stringify(value));
+    } catch {
+      /* private mode / full: the form still works for this visit */
+    }
+  }, [key, value]);
+  return [value, setValue];
+}
+
 export function ErrorNotice({ error }: { error: unknown }) {
   if (!error) return null;
   // Audit 14 Nov: our own `new Error('Pilih file font …')` used to show as "kesalahan tidak dikenal".

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TIMELINE_ZOOM, aspectCss, errorText, readyJobShown, nextPresetId, parseDecimal, pollDelay, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
+import { TIMELINE_ZOOM, aspectCss, errorText, mediaKind, shotWord, readyJobShown, nextPresetId, parseDecimal, pollDelay, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
 
 const TOKEN = 'a'.repeat(64);
 
@@ -129,5 +129,19 @@ describe('W09 auth error fragment', () => {
     expect(readyJobShown({ job_id: 'AYS-20261114-002', state: 'berjalan' }, { job_id: 'AYS-20261114-002' })).toBe(false);
     expect(readyJobShown(null, { job_id: 'x' })).toBe(false);
     expect(readyJobShown({ job_id: 'x', state: 'siap' }, null)).toBe(false);
+  });
+
+  it('audit 14 Nov: media kind for the library filter', () => {
+    expect(mediaKind({ video_codec: 'h264', audio_codec: 'aac', duration_ms: 8000 })).toBe('video');
+    expect(mediaKind({ video_codec: null, audio_codec: 'pcm_s16le', duration_ms: 300 })).toBe('audio');
+    expect(mediaKind({ video_codec: 'mjpeg', audio_codec: null, duration_ms: 0 })).toBe('lain'); // a still image
+    expect(mediaKind(null)).toBe('lain');
+  });
+
+  it('audit 14 Nov: Shot Library labels in Indonesian', () => {
+    expect(shotWord('full_body')).toBe('seluruh badan');
+    expect(shotWord('closeup_produk')).toBe('close-up produk');
+    expect(shotWord('wajah_bicara')).toBe('wajah bicara');
+    expect(shotWord('label_baru_mesin')).toBe('label baru mesin'); // unknown: readable, never snake_case
   });
 });

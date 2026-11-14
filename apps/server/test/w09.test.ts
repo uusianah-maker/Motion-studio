@@ -347,7 +347,8 @@ describe('W09 login Google', () => {
     const lines: string[] = [];
     const s = await start({ ...full, MOTION_PORT: String(port) }, (l) => lines.push(l));
     cleanup.push(() => s.stop());
-    expect(lines.join('\n')).toContain(`Login Google aktif (1 email diizinkan). Buka: http://127.0.0.1:${port}/`);
+    // Audit 14 Nov: counts the team list at start and points to the Tim page for the live list.
+    expect(lines.join('\n')).toContain(`Login Google aktif: 1 email di daftar tim saat server mulai (daftar terbaru di halaman Tim). Buka: http://127.0.0.1:${port}/`);
     expect(lines.join('\n')).not.toContain('#token=');
     expect((await call(port, '/api/auth/mode')).json).toEqual({ mode: 'google' });
     expect((await call(port, '/api/session', { headers: { authorization: `Bearer ${s.app.token}` } })).status).toBe(401);

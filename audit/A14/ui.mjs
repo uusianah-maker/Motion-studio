@@ -48,6 +48,7 @@ const variant = async (tag) => {
 // Editor project: a video, two text clips (one with word timings + pop → word spans in the preview).
 const imp = await svc.importMedia({ sourcePath: await variant('lucy'), scope: { kind: 'shared' }, display_name: 'Lucy-8s.mp4', actor: 'user' });
 await core.createProject(ws, { project_id: 'cp', name: 'Uji Copilot Kosong' });
+await core.createProject(ws, { project_id: 'panjang', name: 'Proyek dengan nama yang sangat panjang sekali untuk uji layar HP Motion Studio' });
 await core.createProject(ws, { project_id: 'ed', name: 'Uji Audit Editor' });
 await svc.editTimeline({
   project_id: 'ed',
@@ -182,6 +183,24 @@ try {
   const finished = await until(async () => (await rows.filter({ hasText: 'Selesai' }).count()) === 2, 30000);
   check('A14-16 Media: antrean upload tetap terlihat setelah pindah halaman dan selesai semua (tanpa BUSY)', still && finished && (await page.getByText(/sedang berjalan/).count()) === 0, `${await rows.count()} baris`);
   await page.unroute('**/api/media/import**');
+
+  // ---- Batch: the form survives switching menus (sukma).
+  await nav.getByRole('button', { name: /Batch/ }).click();
+  await page.getByRole('heading', { name: 'Batch Remix' }).waitFor();
+  {
+    const bform = page.getByRole('region', { name: 'Susun batch' });
+    await bform.getByLabel('Jumlah varian').fill('7');
+    await bform.getByLabel('Hak pakai footage jelas').check();
+    await bform.getByLabel('Buang urgensi').check();
+    await nav.getByRole('button', { name: /Media/ }).click();
+    await page.getByRole('heading', { name: 'Media' }).waitFor();
+    await nav.getByRole('button', { name: /Batch/ }).click();
+    await page.getByRole('heading', { name: 'Batch Remix' }).waitFor();
+    check(
+      'A14-19 Batch: isian form tetap setelah pindah menu (jumlah, hak pakai, buang otomatis)',
+      (await bform.getByLabel('Jumlah varian').inputValue()) === '7' && (await bform.getByLabel('Hak pakai footage jelas').isChecked()) && (await bform.getByLabel('Buang urgensi').isChecked()),
+    );
+  }
 
   // ---- Trash: type the phrase key by key; a spent request offers a fresh one.
   await nav.getByRole('button', { name: /Trash/ }).click();
@@ -321,6 +340,10 @@ try {
   const vw = await phone.evaluate(() => innerWidth);
   check('A14-18 HP Editor: tombol CC media tidak terpotong layar', !!box && box.x >= 0 && box.x + box.width <= vw + 1, box ? `${Math.round(box.x + box.width)} / ${vw}` : 'tidak ada');
   await phone.screenshot({ path: path.join(EVID, 'trash-phone.png') });
+  await phone.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Media/ }).click();
+  await phone.getByRole('heading', { name: 'Media' }).waitFor();
+  const overMedia = await phone.evaluate(() => [...document.querySelectorAll('select, input, button')].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.getAttribute('aria-label') ?? e.textContent));
+  check('A14-20 HP Media: select & tombol tidak keluar layar (nama proyek panjang)', overMedia.length === 0, overMedia.join(', '));
   check('A14-99 0 error JS', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('A14-XX run selesai tanpa exception', false, String(e).split('\n').slice(0, 3).join(' '));

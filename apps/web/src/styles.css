@@ -262,6 +262,9 @@ table.list tr:hover td { background: #191d29; }
   .body { padding: 14px 12px 30px; }
   .hideNarrow { display: none; }
   table.list th.hideNarrow, table.list td.hideNarrow { display: none; }
+  /* Audit 14 Nov (sukma, 375 px): long emails / project names wrap instead of pushing buttons off. */
+  table.list td { overflow-wrap: anywhere; }
+  select.smallbtn, .body select { max-width: 100%; min-width: 0; }
 }
 
 /* ---------- timeline editing (W06) ---------- */

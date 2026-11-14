@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
 import { readyJobShown } from '../lib';
-import { ErrorNotice } from '../ui';
+import { ErrorNotice, useSessionState } from '../ui';
 import { LineBreakdown, PisahPanel, batchLabel, useEngineBatches } from './BatchLibrary';
 import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
 
@@ -23,21 +23,24 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [brands, setBrands] = useState<BrandKit[]>([]);
   const [brandId, setBrandId] = useState('');
-  const [batchName, setBatchName] = useState('');
-  const [jumlah, setJumlah] = useState(10);
-  const [tujuan, setTujuan] = useState('konversi');
-  const [hak, setHak] = useState(false);
-  const [akun, setAkun] = useState('');
-  const [voBatch, setVoBatch] = useState('');
-  const [musikUji, setMusikUji] = useState(false);
-  const [buang, setBuang] = useState<string[]>([]);
+  // The form and the job shown survive switching menus (this tab only).
+  const [batchName, setBatchName] = useSessionState('batch.nama', '');
+  const [jumlah, setJumlah] = useSessionState('batch.jumlah', 10);
+  const [tujuan, setTujuan] = useSessionState('batch.tujuan', 'konversi');
+  const [hak, setHak] = useSessionState('batch.hak', false);
+  const [akun, setAkun] = useSessionState('batch.akun', '');
+  const [voBatch, setVoBatch] = useSessionState('batch.vo', '');
+  const [musikUji, setMusikUji] = useSessionState('batch.musikUji', false);
+  const [buang, setBuang] = useSessionState<string[]>('batch.buang', []);
+  /** What was sent with the job on screen, shown on its card (sukma: was "Hak pakai" sent?). */
+  const [sent, setSent] = useSessionState<{ job_id: string; text: string } | null>('batch.terkirim', null);
   const [excluded, setExcluded] = useState<number | null>(null);
   const [library, setLibrary] = useState<ShotLibrary | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [preset, setPreset] = useState('');
+  const [preset, setPreset] = useSessionState('batch.preset', '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [current, setCurrent] = useState<{ project_id: string; job_id: string } | null>(null);
+  const [current, setCurrent] = useSessionState<{ project_id: string; job_id: string } | null>('batch.job', null);
   const [table, setTable] = useState<BatchTable | null>(null);
   const [saved, setSaved] = useState<Record<string, { status: BatchRowStatus; project_id: string | null }>>({});
   const [draft, setDraft] = useState<Record<string, BatchRowStatus>>({});
@@ -162,6 +165,21 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
         },
       });
       unstarted.current = null;
+      setSent({
+        job_id: j.job_id,
+        text: [
+          `batch ${batchName.trim()}`,
+          voBatch.trim() && voBatch.trim() !== batchName.trim() ? `VO dari ${voBatch.trim()}` : null,
+          `${jumlah} varian`,
+          `tujuan ${tujuan}`,
+          `hak pakai jelas: ${hak ? 'ya (blur watermark / teks bawaan boleh)' : 'tidak'}`,
+          `musik tanpa lisensi (uji): ${musikUji ? 'ya' : 'tidak'}`,
+          `buang otomatis: ${buang.length ? buang.join(', ') : 'tidak ada'}`,
+          akunList.length ? `akun sendiri: ${akunList.join(', ')}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
       onProjectsChanged();
       setCurrent({ project_id: p.project_id, job_id: j.job_id });
     } catch (e) {
@@ -330,6 +348,11 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
           <section className="card" aria-label="Proses mesin">
             <h2>2 · Proses mesin</h2>
             <EngineProgress job={job} log={log} onCancel={() => void api.engineCancel(current.project_id, current.job_id).catch(setError)} />
+            {sent?.job_id === current.job_id && (
+              <p className="muted small" aria-label="Pilihan yang dikirim">
+                Dikirim ke mesin: {sent.text}
+              </p>
+            )}
           </section>
         )}
 

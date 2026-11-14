@@ -49,6 +49,14 @@ export const defaultStateDir = () => path.join(os.homedir(), '.motion-studio');
 /** MOTION_GC: "on" (default, PRD: Auto Trash runs while the app runs), "scan-only", "off" (recovery only). */
 type GcMode = 'on' | 'scan-only' | 'off';
 
+/**
+ * Start-up line for Google login. The team can change later from the Tim page, so this counts the
+ * list AT START and says where the live list is (audit 14 Nov: "1 email diizinkan" with 3 members).
+ */
+export function loginBanner(members: number, url: string): string {
+  return `Login Google aktif: ${members} email di daftar tim saat server mulai (daftar terbaru di halaman Tim). Buka: ${url}`;
+}
+
 export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: string) => void = (s) => process.stdout.write(`${s}\n`)) {
   const root = env.MOTION_WORKSPACE;
   if (!root) throw new Error('MOTION_WORKSPACE belum di-set (folder workspace yang sudah di-init)');
@@ -151,7 +159,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   }
   out(`Motion Studio server jalan di http://${HOST}:${bound} (GC: ${gc})`);
   if (auth) {
-    out(`Login Google aktif (${team?.size() ?? 0} email diizinkan). Buka: ${publicUrl ?? `http://${HOST}:${bound}`}/`);
+    out(loginBanner(team?.size() ?? 0, `${publicUrl ?? `http://${HOST}:${bound}`}/`));
   } else {
     out(`Mode lokal (tanpa login Google, hanya untuk komputer ini). Buka: http://${HOST}:${bound}/#token=${app.token}`);
   }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Api, Media, ProjectSummary, Role } from '../api';
-import { errorText, formatBytes, formatDate } from '../lib';
+import { type MediaKind, errorText, formatBytes, formatDate, mediaKind } from '../lib';
 import { ErrorNotice, StatusBadges } from '../ui';
 
 interface UploadItem {
@@ -44,6 +44,8 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
   const finished = useSyncExternalStore(subscribeUploads, () => uploadStore.finished);
   const [over, setOver] = useState(false);
   const [filter, setFilter] = useState<'all' | 'shared' | string>('all');
+  /** Audit 14 Nov (sukma): the library is mostly SFX — filter by what the file is. */
+  const [kind, setKind] = useState<'' | MediaKind>('');
   const input = useRef<HTMLInputElement>(null);
   const usable = projects.filter((p) => !p.error);
 
@@ -86,7 +88,11 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
     }
   };
 
-  const shown = (media ?? []).filter((m) => filter === 'all' || (filter === 'shared' ? m.scope.kind === 'shared' : m.scope.kind === 'project' && `project:${m.scope.project_id}` === filter));
+  const shown = (media ?? []).filter(
+    (m) =>
+      (filter === 'all' || (filter === 'shared' ? m.scope.kind === 'shared' : m.scope.kind === 'project' && `project:${m.scope.project_id}` === filter)) &&
+      (!kind || mediaKind(m.versions.find((v) => v.version_id === m.current_version_id)?.probe) === kind),
+  );
   const projectName = (id: string) => projects.find((p) => p.project_id === id)?.name ?? id;
 
   return (
@@ -176,6 +182,12 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
             <h2 style={{ margin: 0 }}>Library</h2>
             <div className="spacer" />
+            <select className="smallbtn" value={kind} onChange={(e) => setKind(e.target.value as '' | MediaKind)} aria-label="Jenis media">
+              <option value="">Semua jenis</option>
+              <option value="video">Video</option>
+              <option value="audio">Audio (musik, SFX, suara)</option>
+              <option value="lain">Gambar &amp; lainnya</option>
+            </select>
             <select className="smallbtn" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter media">
               <option value="all">Semua</option>
               <option value="shared">Media bersama</option>

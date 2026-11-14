@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { type FakeGoogle, startFakeGoogle } from '../../../scripts/fake-google.mjs';
 import { HOST } from '../src/app.js';
 import { initWorkspace, openWorkspace, readAudit } from '../src/core.js';
-import { start } from '../src/main.js';
+import { loginBanner, start } from '../src/main.js';
 import { allowedRoles } from '../src/roles.js';
 import { TEAM_FILE, envMembers, openTeamStore } from '../src/team.js';
 
@@ -221,5 +221,12 @@ describe('Halaman Tim: allowlist + peran dikelola owner dari web', () => {
     expect(raw).toContain('cut@example.com');
     expect(raw).not.toContain(CLIENT_SECRET);
     expect(raw).not.toContain('rev@example.com'); // env accounts are not copied into the file
+  });
+
+  it('audit 14 Nov: the start-up line counts the team list and points to the Tim page', () => {
+    const line = loginBanner(3, 'https://motion.contoh.com/');
+    expect(line).toContain('3 email di daftar tim saat server mulai');
+    expect(line).toContain('halaman Tim');
+    expect(line).not.toMatch(/diizinkan\)/);
   });
 });

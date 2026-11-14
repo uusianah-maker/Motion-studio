@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Api, BatchRow, BrandKit, EngineBatchInfo, LibraryShot, PisahResult, Role, ShotLibrary } from '../api';
-import { readyJobShown } from '../lib';
+import { readyJobShown, shotWord } from '../lib';
 import { ErrorNotice } from '../ui';
 import { EngineProgress, useEngineJob } from './GenerateView';
 
@@ -64,7 +64,7 @@ function ShotThumb({ src, id, small }: { src: string | undefined; id: string; sm
 function labelBadges(s: LibraryShot): string[] {
   return Object.entries(s.label)
     .filter(([, v]) => v === true || (typeof v === 'string' && v.length <= 20))
-    .map(([k, v]) => (v === true ? k : `${k}: ${v}`));
+    .map(([k, v]) => (v === true ? shotWord(k) : `${shotWord(k)}: ${shotWord(String(v))}`));
 }
 
 // ------------------------------------------------------------------ batch list
@@ -366,6 +366,8 @@ export function ShotLibraryView({ api, role = 'owner' }: { api: Api; role?: Role
         <ErrorNotice error={error ?? listError} />
         {installed === false && <div className="notice warn">Mesin belum dipasang di server ini. Set <code>MOTION_ENGINE_ROOT</code> ke folder repo mesin lalu jalankan ulang server.</div>}
         {list && !list.tersedia && <div className="notice warn small">Daftar batch belum bisa dibaca dari mesin: {list.alasan}</div>}
+        {installed === null || (installed && !list && !listError) ? <div className="muted" role="status">Memuat daftar batch…</div> : null}
+        {batch && !lib && !error && withLib.length > 0 && <div className="muted" role="status">Memuat Shot Library {batch}…</div>}
         {list?.tersedia && !withLib.length && <div className="notice small">Belum ada batch dengan Shot Library. Upload &amp; pisahkan footage dulu di halaman Batch.</div>}
         {withLib.length > 0 && (
           <section className="card" aria-label="Pilih batch">
@@ -398,7 +400,7 @@ export function ShotLibraryView({ api, role = 'owner' }: { api: Api; role?: Role
                   <option value="">Semua label</option>
                   {labelKeys.map((k) => (
                     <option key={k} value={k}>
-                      {k}
+                      {shotWord(k)}
                     </option>
                   ))}
                 </select>
@@ -454,7 +456,8 @@ export function ShotLibraryView({ api, role = 'owner' }: { api: Api; role?: Role
                         </span>
                       ))}
                     </div>
-                    {(s.ucapan || s.teks.length > 0) && <div className="muted small shotText">{s.ucapan ? `“${s.ucapan}”` : `Teks: ${s.teks.join(' · ')}`}</div>}
+                    {/* Raw OCR text ("PTIlcIous VOGUI") means nothing to an editor: only that there is text. */}
+                    {(s.ucapan || s.teks.length > 0) && <div className="muted small shotText">{s.ucapan ? `“${s.ucapan}”` : 'ada teks di gambar'}</div>}
                     {!readOnly && (
                       <button className={`btn small${out ? ' sel' : ''}`} aria-pressed={out} onClick={() => toggle(s.id)}>
                         {out ? '↺ Pakai lagi' : '✕ Kecualikan'}

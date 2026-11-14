@@ -235,3 +235,22 @@ export function pollDelay(failures: number): number {
 export function readyJobShown(job: { job_id: string; state: string } | null | undefined, shown: { job_id: string } | null | undefined): boolean {
   return !!job && !!shown && job.state === 'siap' && job.job_id === shown.job_id;
 }
+
+export type MediaKind = 'video' | 'audio' | 'lain';
+/** What a media file is, from its probe: video (has a picture), audio only, or other (image, font…). */
+export function mediaKind(probe: { video_codec: string | null; audio_codec: string | null; duration_ms: number } | null | undefined): MediaKind {
+  if (!probe) return 'lain';
+  if (probe.video_codec && probe.duration_ms > 0) return 'video';
+  if (probe.audio_codec) return 'audio';
+  return 'lain';
+}
+
+/** Shot Library labels from the engine (snake_case English-ish) in plain Indonesian (audit 14 Nov). */
+const SHOT_WORDS: Record<string, string> = {
+  framing: 'bingkai', full_body: 'seluruh badan', medium: 'setengah badan', dekat: 'dekat', closeup: 'close-up', closeup_produk: 'close-up produk',
+  wajah_bicara: 'wajah bicara', wajah_dekat: 'wajah dekat', kosong: 'kosong', teks_bawaan: 'ada teks di gambar', buram: 'buram', ada_orang: 'ada orang',
+  produk: 'produk', bahan: 'bahan',
+};
+export function shotWord(key: string): string {
+  return SHOT_WORDS[key] ?? key.replace(/_/g, ' ');
+}

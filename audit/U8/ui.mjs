@@ -94,7 +94,7 @@ try {
   const thumbsOk = await until(async () => (await grid.locator('img.shotThumb').count()) === 4);
   const srcs = await grid.locator('img.shotThumb').evaluateAll((els) => els.map((e) => e.getAttribute('src') ?? ''));
   const decoded = await until(async () => (await grid.locator('img.shotThumb').evaluateAll((els) => els.every((e) => e.complete && e.naturalWidth > 0))));
-  check('U8-04 Grid shot per batch: 5 shot, thumbnail mesin (4; path di luar batch tidak dilayani), label tampil', (await cards.count()) === 5 && thumbsOk && srcs.every((s) => s.startsWith('data:image/jpeg;base64,')) && decoded && (await grid.locator('[data-shot="IN1#00"]').innerText()).includes('wajah_bicara') && (await grid.locator('[data-shot="IN1#01"]').innerText()).includes('dikoreksi tim'));
+  check('U8-04 Grid shot per batch: 5 shot, thumbnail mesin (4; path di luar batch tidak dilayani), label tampil', (await cards.count()) === 5 && thumbsOk && srcs.every((s) => s.startsWith('data:image/jpeg;base64,')) && decoded && (await grid.locator('[data-shot="IN1#00"]').innerText()).includes('wajah bicara') && !(await grid.innerText()).includes('Loosepants') && (await grid.locator('[data-shot="IN1#01"]').innerText()).includes('dikoreksi tim'));
   await page.getByLabel('Filter label').selectOption('teks_bawaan');
   check('U8-05 Filter label (teks_bawaan) → 2 shot', await until(async () => (await cards.count()) === 2));
   await page.getByLabel('Filter label').selectOption('');
@@ -127,6 +127,8 @@ try {
       if (x.mode === 'batch') job = x;
     }
   }
+  const sentText = await page.getByLabel('Pilihan yang dikirim').innerText().catch(() => '');
+  check('U8-09b Kartu job menyebut pilihan yang dikirim (hak pakai, musik uji, buang otomatis)', sentText.includes('hak pakai jelas: tidak') && sentText.includes('musik tanpa lisensi (uji): ya') && sentText.includes('buang otomatis: urgensi'), sentText);
   check(
     'U8-09 job.json batch: kecualikan_shot dari app, izinkan musik tanpa lisensi, buang_otomatis',
     job && job.batch === BATCH && job.kecualikan_shot?.join(',') === 'IN1#00,IN2#01' && job.izinkan_musik_tanpa_lisensi === true && job.buang_otomatis?.join(',') === 'urgensi' && job.vo_batch === undefined,
