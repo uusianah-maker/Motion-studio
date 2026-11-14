@@ -15,15 +15,20 @@ if ($Remove) {
 }
 if (-not $Vps) { throw 'Isi -Vps <IP atau nama VPS>' }
 $ps = (Get-Command powershell.exe).Source
+# Jalankan lewat `conhost --headless`: di Windows 11, PowerShell yang dijalankan task bisa "menumpang" di Windows Terminal
+# (terminal bawaan) — begitu jendela terminal itu ditutup, penjaga + server ikut mati (0xC000013A, CTRL_CLOSE).
+# Situs mati 14 Nov 18.41, 19.49, 20.17 karena ini. conhost --headless memberi konsol sendiri tanpa jendela.
+$con = Join-Path $env:SystemRoot 'System32\conhost.exe'
+function Aksi([string]$argumen) { New-ScheduledTaskAction -Execute $con -Argument "--headless `"$ps`" -NoProfile -ExecutionPolicy Bypass $argumen" }
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-$server = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSScriptRoot\start-motion.ps1`""
-$tunnel = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSScriptRoot\start-tunnel.ps1`" -Vps $Vps"
+$server = Aksi "-File `"$PSScriptRoot\start-motion.ps1`""
+$tunnel = Aksi "-File `"$PSScriptRoot\start-tunnel.ps1`" -Vps $Vps"
 Register-ScheduledTask -TaskName $names[0] -Action $server -Trigger $trigger -Settings $settings -Description 'Motion Studio server (PC owner)' -Force | Out-Null
 Register-ScheduledTask -TaskName $names[1] -Action $tunnel -Trigger $trigger -Settings $settings -Description 'Motion Studio terowongan SSH ke VPS' -Force | Out-Null
 # Watchdog: tiap 5 menit menyalakan lagi server/terowongan kalau penjaganya ikut hilang (lihat watchdog.ps1).
 $wdTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
 $wdSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
-$wd = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSScriptRoot\watchdog.ps1`""
+$wd = Aksi "-File `"$PSScriptRoot\watchdog.ps1`""
 Register-ScheduledTask -TaskName $names[2] -Action $wd -Trigger @($wdTrigger, $trigger) -Settings $wdSettings -Description 'Motion Studio watchdog (tiap 5 menit)' -Force | Out-Null
 Write-Output "Autostart dipasang: $($names -join ', '). Mulai sekarang tanpa logout: Start-ScheduledTask -TaskName MotionStudio-Server; Start-ScheduledTask -TaskName MotionStudio-Tunnel"

@@ -13,6 +13,8 @@ Catatan ada di `%LOCALAPPDATA%\MotionStudio\logs`:
 - `server-YYYYMMDD-HHMMSS.out/err.log`, `tunnel-…`: output program per jalan.
 - File yang lebih dari 7 hari dihapus otomatis.
 
+Ketiga task dijalankan lewat `conhost.exe --headless`, bukan langsung `powershell`. Di Windows 11, PowerShell bisa menumpang di Windows Terminal, dan menutup jendela terminal ikut mematikan server. Situs mati 14 Nov jam 18.41, 19.49, dan 20.17 karena ini.
+
 Restart server online hanya lewat task (`Stop-ScheduledTask` / `Start-ScheduledTask MotionStudio-Server`), setelah dicek tidak ada job atau render yang sedang jalan. Sesi login tersimpan di disk, jadi tim tidak ter-logout.
 
 ## Jalur B (cadangan, belum dipakai): semua di VPS
