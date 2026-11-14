@@ -66,7 +66,7 @@ def vo_sintetis():
     ks = kalimat(kata("Bahannya adem banget dan jatuh. " * 3 + "Modelnya high waist rapi sekali deh. "
                       "Kalau mau langsung cek keranjang kuning ya.", step=0.45))
     for i, k in enumerate(ks):
-        k["id"], k["saran_buang"], k["teknis"] = i, None, None
+        k["id"], k["saran_buang"], k["teknis"], k["brand_lain"] = i, None, None, None
     return {"id": "A", "kalimat": ks, "durasi": 30.0}
 
 
@@ -164,6 +164,138 @@ class DaftarBatch(unittest.TestCase):
         self.assertFalse(r["baru"]["siap_batch"])
         self.assertEqual((r["lama"]["footage"], r["lama"]["vo"], r["lama"]["jumlah_shot"], r["lama"]["thumb"]), (1, 1, 2, 1))
         self.assertTrue(r["lama"]["siap_batch"])
+
+
+class JalurPortabel(unittest.TestCase):
+    def test_venv_py_windows_dan_linux(self):
+        import tempfile
+        import jalur
+        with tempfile.TemporaryDirectory() as tmp:
+            lin = Path(tmp) / "lin"
+            (lin / "bin").mkdir(parents=True)
+            (lin / "bin" / "python").write_text("")
+            win = Path(tmp) / "win"
+            (win / "Scripts").mkdir(parents=True)
+            (win / "Scripts" / "python.exe").write_text("")
+            self.assertEqual(jalur.venv_py(lin), lin / "bin" / "python")
+            self.assertEqual(jalur.venv_py(win), win / "Scripts" / "python.exe")
+
+    def test_relatif_ke_root_pakai_garis_miring(self):
+        import jalur
+        r = jalur.relatif(jalur.KONTEN / "2-dipisah" / "b" / "thumb" / "x__00.jpg")
+        self.assertEqual(r, "konten/2-dipisah/b/thumb/x__00.jpg")
+
+    def test_nama_aman_diterima_app(self):
+        import re
+        import jalur
+        pola = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
+        for n in ("uji klip", "Video (1) #final", "...", "a" * 90, "dji_0017", "ÆØÅ ñ"):
+            self.assertRegex(jalur.nama_aman(n), pola)
+        self.assertEqual(jalur.nama_aman("dji_0017"), "dji_0017")
+        self.assertEqual(jalur.nama_aman("uji klip"), "uji_klip")
+
+    def test_nama_unik_tidak_saling_menimpa(self):
+        import re
+        import jalur
+        pola = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
+        panjang = "x" * 45
+        stems = [panjang, panjang + "-2", "uji klip", "uji_klip", "Uji Klip", "dji_0017", "a" * 40, "a" * 40 + " b"]
+        m = jalur.nama_unik(stems)
+        self.assertEqual(len(set(v.lower() for v in m.values())), len(stems))
+        for v in m.values():
+            self.assertRegex(v, pola)
+        self.assertEqual(m["dji_0017"], "dji_0017")  # nama yang sudah aman tidak berubah
+        self.assertEqual(m["uji_klip"], "uji_klip")
+        self.assertEqual(m["a" * 40], "a" * 40)
+
+    def test_akhiran_tidak_terpotong(self):
+        import jalur
+        base = jalur.nama_aman("x" * 45)
+        self.assertEqual(len(jalur.dengan_akhiran(base, 2)), 40)
+        self.assertTrue(jalur.dengan_akhiran(base, 12).endswith("-12"))
+        # Kasus temuan Jenius: hasil salinan kedua di jalankan_job tetap beda sesudah nama_aman.
+        self.assertNotEqual(jalur.nama_aman(jalur.dengan_akhiran(base, 2)), base)
+
+
+class BrandLain(unittest.TestCase):
+    def setUp(self):
+        import brand_lain
+        self.bl = brand_lain
+        # Nama brand diambil dari data (brand kit job + akun watermark), bukan dari kode.
+        self.d = brand_lain.Pendeteksi(["Aysilla Factory", "@aysillafactoryid"],
+                                       ["@aln_store.id", "@aysilla_factory", "@vionaputri_17", "Toko Kain Jaya"])
+
+    def test_ejaan_whisper_nama_toko_lain(self):
+        for t in ("Ini Loose Pants dari ALN Store, warnanya", "dari ILN Store. Aku mulai dari celana",
+                  "Kenalin Loose Pants dari A .L .N. Store dengan", "Udah pasti, hanya di ILM Store.",
+                  "celana dari A .L .A. Store ini", "Island Store. Aku udah taruh di keranjang.",
+                  "Nama brandnya ALN Store. Nah", "beli di aln aja", "kain jaya juga bagus"):
+            self.assertIsNotNone(self.d.cek(t), t)
+
+    def test_brand_sendiri_dan_kata_umum_lolos(self):
+        for t in ("Loose Pants dari Aysilla Factory adem banget", "cek di Aisila Factory ya",
+                  "Langsung checkout di TikTok Shop", "ada di official store kami", "cek keranjang kuning sekarang",
+                  "bahannya adem, jatuh, dan nggak nerawang", "beli di Play Store", "follow @aysillafactoryid",
+                  "ini fashion store terbaik", "outfit shop murah", "cari di hijab store langganan",
+                  "beli di distro shop dekat rumah", "grosir outlet tanah abang"):
+            self.assertIsNone(self.d.cek(t), t)
+
+    def test_akun_watermark_sendiri_tidak_dianggap_lain(self):
+        self.assertNotIn(("aysilla",), self.d.lain)
+        self.assertIn(("aln",), self.d.lain)
+
+    def test_dari_job_baca_brandkit_lain(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            k = Path(tmp)
+            (k / "a.json").write_text(json.dumps({"nama": "Aysilla Factory"}))
+            (k / "b.json").write_text(json.dumps({"schema": "brand-kit-export/1", "brand": {"nama": "Kain Kita", "kode": "KK",
+                                                                                         "handle": {"tiktok": "@kainkita.id"}}}))
+            raw = {"schema": "brand-kit-export/1", "brand": {"nama": "Aysilla Factory", "kode": "AYS", "handle": {"tiktok": "@aysillafactoryid"}}}
+            d = self.bl.dari_job(raw, {}, [], ["@aln_store.id"], brandkit_dir=k)
+        self.assertIsNotNone(d.cek("celana dari Kain Kita"))
+        self.assertIsNotNone(d.cek("dari ALN Store"))
+        self.assertIsNone(d.cek("dari Aysilla Factory"))
+
+    def test_nama_terpecah_di_batas_kalimat(self):
+        # "dari A.L.A." | "Store ini sejak 2023" : Whisper memecah di titik singkatan.
+        self.assertIsNone(self.d.cek("Nggak nyangka aku beli celana dari A.L.A."))
+        self.assertIsNotNone(self.d.cek("Nggak nyangka aku beli celana dari A.L.A. Store ini sejak 2023"))
+
+    def test_qc_gagal_kalau_brand_lain_lolos(self):
+        import perencana
+        v = {"durasi": 10.0, "hook": {"teks": "Celana adem", "dari": 0.0, "sampai": 2.0},
+             "rv": {"kalimat": [{"teks": "Ini Loose Pants dari ALN Store"}]}}
+        ops = [{"op": "add_clip", "track_kind": "text", "start_ms": 0, "duration_ms": 2000, "text": "Celana adem"}]
+        q = perencana.qc(v, ops, None, {}, [], {}, self.d)
+        cek = {c["cek"]: c for c in q["cek"]}
+        self.assertFalse(cek["brand_lain"]["lulus"])
+        self.assertFalse(q["lulus"])
+        v["rv"]["kalimat"][0]["teks"] = "Loose Pants dari Aysilla Factory"
+        self.assertTrue({c["cek"]: c for c in perencana.qc(v, ops, None, {}, [], {}, self.d)["cek"]}["brand_lain"]["lulus"])
+
+    def test_kalimat_brand_lain_dibuang_dari_varian(self):
+        v = vo_sintetis()
+        v["kalimat"][1]["brand_lain"] = "brand lain: aln store"
+        rv = vo.susun(v, random.Random(1))
+        self.assertNotIn(v["kalimat"][1]["id"], [k["id"] for k in rv["kalimat"]])
+        self.assertTrue(any(d["jenis"].startswith("brand lain") for d in rv["dibuang"]))
+
+
+class TeksLatar(unittest.TestCase):
+    def test_teks_kecil_atau_diam_satu_take_bukan_teks_bawaan(self):
+        import importlib.util
+        if importlib.util.find_spec("cv2") is None:
+            self.skipTest("shotlib butuh OpenCV (Python Batch Remix)")
+        import shotlib
+        buku = {"teks": "VOGUE", "kotak": [0.77, 0.33, 0.07, 0.02]}
+        caption = {"teks": "REVIEW JUJUR", "kotak": [0.1, 0.7, 0.8, 0.05]}
+        poster = {"teks": "SALE", "kotak": [0.1, 0.2, 0.3, 0.05], "statis": True}
+        self.assertTrue(shotlib.is_latar(buku, False))
+        self.assertFalse(shotlib.is_latar(caption, True))
+        self.assertTrue(shotlib.is_latar(poster, True))
+        self.assertFalse(shotlib.is_latar(poster, False))
 
 
 def vo_dengan_saran():

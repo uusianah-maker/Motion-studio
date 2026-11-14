@@ -277,3 +277,6 @@ Di mode ini caption per frasa memakai `font: "caption"`, hook & CTA `font: "bran
 
 **Progres `engine batch` sejak v0.3.2:** progres JSON-lines dari `perencana.py` sekarang benar-benar sampai di stdout. Sebelumnya ikut terbelokkan ke stderr. Runner sebaiknya mengabaikan baris stdout yang bukan JSON.
 
+**Keputusan owner 14 Nov 2026 (Batch Remix): satu-satunya pengecualian dari "kalimat VO tidak dibuang otomatis".**
+- Kalimat VO yang menyebut brand atau toko lain **selalu dibuang otomatis** dan dicatat di QC `brand_lain` (yuki, 4e1073b + aba89de). Kata owner: "Ya, buang otomatis".
+- Kalimat superlatif, urgensi, live, musiman, dan soal durasi tetap mengikuti `buang_otomatis`. Defaultnya tidak dibuang dan hanya diberi peringatan.
