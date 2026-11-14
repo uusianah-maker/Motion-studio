@@ -279,15 +279,23 @@ def jalankan(job_dir: Path) -> int:
         cmd = [str(BATCH_PY), str(PIPELINE / "batch" / "shotlib.py"), batch] + (["--tiktok"] if job.get("shot_tiktok") else [])
         subprocess.run(cmd, check=True, stdout=sys.stderr)
     lib = json.loads(lib_path.read_text(encoding="utf-8"))
+    shot_footage = set(lib["footage"])
+    # Jalur VO: gambar dari batch ini, voice over dari batch lain (vo_batch). Default: batch yang sama.
+    vo_batch = job.get("vo_batch") or batch
+    vo_dir = KONTEN / "2-dipisah" / vo_batch
+    vo_lib = lib
+    if vo_batch != batch:
+        vo_lib = json.loads((vo_dir / "shots.json").read_text(encoding="utf-8"))
+        lib = {"footage": {**vo_lib["footage"], **lib["footage"]}, "shots": lib["shots"]}
 
     progres("rencana", 20, "memilih voice over")
     produk = brief.get("produk", "")
     produk_kata = [x for x in re.split(r"\s+", produk.lower()) if x] + ["celana"] if produk else []
-    vos, vo_tolak = vo_mod.kandidat(batch_dir, lib, brand, produk_kata)
+    vos, vo_tolak = vo_mod.kandidat(vo_dir, vo_lib, brand, produk_kata)
     tolak_ids = {t["id"] for t in vo_tolak}
     # Footage boleh jadi broll: semua, kecuali yang ucapannya tentang produk lain.
     produk_lain = {t["id"] for t in vo_tolak if t["alasan"].startswith("tidak menyebut produk")}
-    footage_boleh = set(lib["footage"]) - produk_lain
+    footage_boleh = shot_footage - produk_lain
     # Hak pakai: kalau job menyebut akun sendiri, footage ber-watermark akun lain tidak dipakai sama sekali.
     akun_sendiri = {a.lower().lstrip("@") for a in job.get("akun_sendiri", [])}
     akun_footage = {f: m["watermark"].get("akun", []) for f, m in lib["footage"].items()}
@@ -299,7 +307,7 @@ def jalankan(job_dir: Path) -> int:
         vo_tolak += [{"id": f, "alasan": "watermark akun lain: " + ", ".join(akun_footage[f])} for f in sorted(milik_lain)]
 
     progres("rencana", 30, "menganalisis musik")
-    mlib = musik_mod.library(brand_raw, batch_dir, izin_tanpa, tolak_ids)
+    mlib = musik_mod.library(brand_raw, vo_dir, izin_tanpa, tolak_ids)
 
     n = int(job.get("jumlah", 10))
     varian, alasan_kurang = [], ""
@@ -316,7 +324,8 @@ def jalankan(job_dir: Path) -> int:
                              f"{target[0]:.0f}-{target[1]:.0f} (kalimat terlalu panjang/pendek)"})
             continue
         m = musik_mod.pilih(mlib, tujuan, rv["durasi_ucapan"] + TAHAN, rng, m_pakai)
-        sus = matcher.susun_shot(rv, lib, footage_boleh, rng, m["ketukan"] if m else None, Counter(g_pakai))
+        sus = matcher.susun_shot(rv, lib, footage_boleh, rng, m["ketukan"] if m else None, Counter(g_pakai),
+                                 boleh_teks=hak_jelas)
         # Shot tidak boleh melewati ujung file sumber.
         for p in sus["potongan"]:
             dmax = lib["footage"][p["footage"]]["durasi"]

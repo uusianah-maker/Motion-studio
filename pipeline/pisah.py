@@ -35,6 +35,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("batch", help="nama folder di konten/1-upload/")
     ap.add_argument("--cpu", action="store_true", help="paksa Demucs pakai CPU")
+    ap.add_argument("--video-saja", action="store_true",
+                    help="hanya buat video bisu; audio tidak dipisah (audionya tidak akan dipakai)")
     args = ap.parse_args()
 
     src_dir = KONTEN / "1-upload" / args.batch
@@ -53,8 +55,9 @@ def main() -> None:
         asli = dirs["audio-asli"] / f"{name}.wav"
         if not bisu.exists():
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(v), "-map", "0:v:0", "-c", "copy", "-an", str(bisu)], check=True)
-        if not has_audio(v):
-            print(f"  ! {v.name}: tidak ada audio, hanya video bisu")
+        if args.video_saja or not has_audio(v):
+            # --video-saja: audio footage tidak dipakai (mis. arahan dari belakang kamera); VO dari batch lain.
+            print(f"  ! {v.name}: {'audio tidak dipakai' if args.video_saja else 'tidak ada audio'}, hanya video bisu")
             continue
         if not asli.exists():
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(v), "-map", "0:a:0", "-c:a", "pcm_s16le", "-ar", "44100", str(asli)], check=True)

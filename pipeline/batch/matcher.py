@@ -50,8 +50,13 @@ def _snap(t: float, beats: list[float], batas: tuple[float, float]) -> float:
 
 
 def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random.Random,
-               beats: list[float] | None = None, global_pakai: Counter | None = None) -> dict:
-    """Return {"potongan": [...], "durasi": detik timeline, "vo_klip": [...], "rasio_sinkron": x}."""
+               beats: list[float] | None = None, global_pakai: Counter | None = None,
+               boleh_teks: bool = False) -> dict:
+    """Return {"potongan": [...], "durasi": detik timeline, "vo_klip": [...], "rasio_sinkron": x}.
+
+    boleh_teks: shot ber-teks bawaan boleh jadi b-roll karena teksnya ikut di-blur (hak pakai jelas).
+    Kalau footage VO tidak ada di Shot Library (jalur VO: gambar dari batch lain), semua potongan b-roll.
+    """
     global_pakai = global_pakai if global_pakai is not None else Counter()
     fid = rencana_vo["vo"]
     shots = lib["shots"]
@@ -59,8 +64,10 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
         if "_teks" not in meta:
             meta["_teks"] = [(x["dari"], x["sampai"], t["kotak"]) for x in shots if x["footage"] == f
                              for t in x.get("teks", [])]
+    # Wajah dekat dari footage lain tidak dipakai: bibirnya terbaca, padahal suaranya VO orang lain.
     broll_pool = [s for s in shots if s["footage"] != fid and s["footage"] in footage_boleh
-                  and not s["wajah_bicara"] and not s["teks_bawaan"] and not s["buram"]
+                  and not s["wajah_bicara"] and s["framing"] != "wajah_dekat"
+                  and (boleh_teks or not s["teks_bawaan"]) and not s["buram"] and not s.get("kosong")
                   and s["sampai"] - s["dari"] >= MIN_POTONG]
     own = [s for s in shots if s["footage"] == fid and not s["buram"]]
     dipakai = Counter()
@@ -104,10 +111,17 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
                     skor.append((sk, s))
                 if skor:
                     pilihan = max(skor, key=lambda x: x[0])[1]
+                elif not sinkron_ok and broll_pool:
+                    # Jalur VO tanpa gambar kreator: pakai ulang shot / sambung ke shot berikutnya di file yang sama.
+                    pilihan = max(broll_pool, key=lambda x: (x["sampai"] - x["dari"] >= (b - a)) * 2
+                                  - dipakai[x["id"]] + rng.random())
             dur = b - a
             if pilihan is not None:
-                dur = min(dur, pilihan["sampai"] - pilihan["dari"])
-                in_s = pilihan["dari"]
+                dmax = lib["footage"][pilihan["footage"]]["durasi"]
+                if pilihan["sampai"] - pilihan["dari"] < dur:  # cadangan: lanjut ke shot sesudahnya di file sama
+                    in_s = max(0.0, min(pilihan["dari"], dmax - dur - 0.05))
+                else:
+                    in_s = pilihan["dari"]
                 if pilihan["sampai"] - pilihan["dari"] > dur:  # ambil bagian acak dari shot panjang
                     in_s += rng.uniform(0, pilihan["sampai"] - pilihan["dari"] - dur)
                 p = {"jenis": "broll", "footage": pilihan["footage"], "shot": pilihan["id"],
