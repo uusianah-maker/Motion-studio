@@ -460,8 +460,13 @@ def main() -> None:
         print(f"{name}: {dur:.1f}s, {len(shots)} shot, {n_wb} wajah bicara, {n_tx} teks bawaan, "
               f"watermark={wmi['tiktok']} akun={','.join(wmi['akun']) or '-'}", flush=True)
     lib["shots"].sort(key=lambda s: (len(s["footage"]), s["footage"], s["dari"]))
+    # Shot yang gambarnya diam/beku (venus, 14 Nov): ditandai `beku`, matcher tidak memakainya.
+    from beku import tandai as tandai_beku
+    video_fid = {fid: (Path(f["video"]) if Path(f["video"]).is_absolute() else ROOT / f["video"])
+                 for fid, f in lib["footage"].items() if isinstance(f, dict) and f.get("video")}
+    n_beku = tandai_beku(lib, video_fid)
     lib_path.write_text(json.dumps(lib, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"-> {lib_path} ({len(lib['shots'])} shot)")
+    print(f"-> {lib_path} ({len(lib['shots'])} shot, {n_beku} beku)")
 
 
 if __name__ == "__main__":
