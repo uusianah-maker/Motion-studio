@@ -100,7 +100,7 @@ export interface EngineJobInput {
   ai: boolean;
   mode_ops?: 'kompat' | 'u3';
   /** Batch Remix extras (contract §3 + v0.3.1), passed through after validation. */
-  batch?: { batch: string; jumlah: number; tujuan: string; seed?: number; izinkan_musik_tanpa_lisensi?: boolean; akun_sendiri?: string[]; hak_pakai_jelas?: boolean; shot_tiktok?: boolean };
+  batch?: { batch: string; jumlah: number; tujuan: string; seed?: number; izinkan_musik_tanpa_lisensi?: boolean; akun_sendiri?: string[]; hak_pakai_jelas?: boolean; shot_tiktok?: boolean; vo_batch?: string; buang_otomatis?: string[]; batas_durasi?: [number, number] | null };
 }
 
 const bad = (msg: string, details: Record<string, unknown> = {}): never => {
@@ -151,7 +151,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   let batch: EngineJobInput['batch'];
   if (o.mode === 'batch') {
     const bo = (o.batch ?? {}) as Record<string, unknown>;
-    const ok = ['batch', 'jumlah', 'tujuan', 'seed', 'izinkan_musik_tanpa_lisensi', 'akun_sendiri', 'hak_pakai_jelas', 'shot_tiktok'];
+    const ok = ['batch', 'jumlah', 'tujuan', 'seed', 'izinkan_musik_tanpa_lisensi', 'akun_sendiri', 'hak_pakai_jelas', 'shot_tiktok', 'vo_batch', 'buang_otomatis', 'batas_durasi'];
     const be = Object.keys(bo).filter((k) => !ok.includes(k));
     if (be.length) bad(`batch: field tidak dikenal ${be.join(', ')}`);
     const name = str(bo.batch, 'nama batch', 80, false);
@@ -162,6 +162,15 @@ export function validateEngineJob(x: unknown): EngineJobInput {
     const bool = (k: string) => (bo[k] === undefined ? undefined : typeof bo[k] === 'boolean' ? (bo[k] as boolean) : bad(`batch.${k} harus true/false`));
     const akun = bo.akun_sendiri;
     if (akun !== undefined && (!Array.isArray(akun) || akun.length > 20 || !akun.every((a) => typeof a === 'string' && /^@?[A-Za-z0-9_.]{1,40}$/.test(a)))) bad('akun_sendiri harus daftar @akun');
+    // Contract §8: VO taken from another batch (pictures stay from `batch`).
+    const voBatch = bo.vo_batch === undefined || bo.vo_batch === '' ? undefined : str(bo.vo_batch, 'vo_batch', 80, false);
+    if (voBatch !== undefined && (!/^[A-Za-z0-9_.-]+$/.test(voBatch) || voBatch.includes('..'))) bad('vo_batch hanya huruf, angka, _ . -');
+    // Kinds of VO sentence the engine may drop by itself (superlatif, urgensi, live, musiman, …). Default [] = none.
+    const buang = bo.buang_otomatis;
+    if (buang !== undefined && (!Array.isArray(buang) || buang.length > 20 || !buang.every((a) => typeof a === 'string' && a.trim().length > 0 && a.length <= 60))) bad('buang_otomatis harus daftar alasan (maks 20, tiap alasan maks 60 karakter)');
+    // [min, maks] seconds, or null = no limit (owner's decision; default).
+    const batas = bo.batas_durasi;
+    if (batas !== undefined && batas !== null && (!Array.isArray(batas) || batas.length !== 2 || !batas.every((n) => typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= 600) || (batas[0] as number) > (batas[1] as number))) bad('batas_durasi harus [min, maks] detik (0–600, min ≤ maks) atau null');
     if (bo.seed !== undefined && (typeof bo.seed !== 'number' || !Number.isInteger(bo.seed) || bo.seed < 0)) bad('seed harus bilangan bulat ≥ 0');
     batch = {
       batch: name,
@@ -172,6 +181,9 @@ export function validateEngineJob(x: unknown): EngineJobInput {
       ...(akun !== undefined ? { akun_sendiri: akun as string[] } : {}),
       ...(bool('hak_pakai_jelas') !== undefined ? { hak_pakai_jelas: bool('hak_pakai_jelas')! } : {}),
       ...(bool('shot_tiktok') !== undefined ? { shot_tiktok: bool('shot_tiktok')! } : {}),
+      ...(voBatch !== undefined && voBatch !== name ? { vo_batch: voBatch } : {}),
+      ...(buang !== undefined ? { buang_otomatis: [...new Set((buang as string[]).map((a) => a.trim()))] } : {}),
+      ...(batas !== undefined ? { batas_durasi: batas === null ? null : ([(batas as number[])[0], (batas as number[])[1]] as [number, number]) } : {}),
     };
   } else if (o.batch !== undefined) bad('batch hanya untuk mode batch');
   return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}) };

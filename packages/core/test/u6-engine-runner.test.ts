@@ -75,9 +75,21 @@ describe('U6 engine runner', () => {
       { project_id: 'g', mode: 'batch', sources: S, preset: 'p', brief: {}, batch: { batch: '../x', jumlah: 3 } },
       { project_id: 'g', mode: 'batch', sources: S, preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 99 } },
       { project_id: '../g', mode: 'generate', sources: S, preset: 'p', brief: {} },
+      { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, vo_batch: '../vo' } },
+      { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, buang_otomatis: 'urgensi' } },
+      { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, buang_otomatis: [''] } },
+      { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, batas_durasi: [30, 15] } },
+      { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, batas_durasi: [15] } },
+      { project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 3, batas_durasi: [0, 30] } },
     ])
       expect(() => validateEngineJob(bad), JSON.stringify(bad)).toThrow();
     expect(validateEngineJob({ project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: '2026-11-13_winning', jumlah: 20, tujuan: 'konversi', hak_pakai_jelas: true } }).batch).toMatchObject({ jumlah: 20, hak_pakai_jelas: true });
+    // Contract §8 (v0.3.x): VO from another batch, auto-drop reasons, optional duration limit (default none).
+    const full = validateEngineJob({ project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'gambar', jumlah: 2, vo_batch: 'vo-lain', buang_otomatis: ['urgensi', ' urgensi', 'superlatif'], batas_durasi: [15, 30], izinkan_musik_tanpa_lisensi: true } }).batch;
+    expect(full).toMatchObject({ vo_batch: 'vo-lain', buang_otomatis: ['urgensi', 'superlatif'], batas_durasi: [15, 30], izinkan_musik_tanpa_lisensi: true });
+    const plain = validateEngineJob({ project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'gambar', jumlah: 2, vo_batch: 'gambar', buang_otomatis: [], batas_durasi: null } }).batch!;
+    expect(plain.vo_batch).toBeUndefined(); // same batch = default, not written
+    expect(plain).toMatchObject({ buang_otomatis: [], batas_durasi: null });
     expect(engineConfigFromEnv({})).toBeNull();
     expect(engineConfigFromEnv({ MOTION_ENGINE_ROOT: 'D:/remotion' })!.script).toMatch(/pipeline[\\/]engine\.py$/);
   });
