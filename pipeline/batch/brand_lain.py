@@ -23,7 +23,13 @@ SUFIKS = {"store", "shop", "olshop", "boutique", "butik", "outlet"}
 UMUM_DEPAN = {"di", "ke", "dari", "online", "offline", "official", "ini", "itu", "the", "our", "my", "toko", "flagship",
               "mall", "fisik", "marketplace", "yang", "dan", "atau", "app", "play", "google", "apple", "tiktok",
               "shopee", "tokopedia", "lazada", "blibli", "bukalapak", "instagram", "ig", "online", "nya", "kita",
-              "kami", "aku", "kamu", "brand", "brandnya", "nama", "namanya", "langsung", "cek"}
+              "kami", "aku", "kamu", "brand", "brandnya", "nama", "namanya", "langsung", "cek",
+              # kategori/kata sifat: "fashion store", "outfit shop murah" = deskripsi, bukan nama toko
+              "fashion", "outfit", "baju", "pakaian", "busana", "hijab", "jilbab", "muslim", "muslimah", "gamis",
+              "celana", "sepatu", "sandal", "tas", "aksesoris", "kosmetik", "skincare", "makeup", "beauty",
+              "grosir", "reseller", "distro", "butik", "boutique", "local", "lokal", "brandlokal", "kids", "anak",
+              "pria", "wanita", "cewek", "cowok", "men", "women", "best", "terbaik", "favorit", "langganan",
+              "murah", "second", "preloved", "thrift", "vintage", "kain", "tekstil", "konveksi", "olshop", "e"}
 
 
 def lev(a: str, b: str) -> int:

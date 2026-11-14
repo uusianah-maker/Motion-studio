@@ -235,7 +235,9 @@ class BrandLain(unittest.TestCase):
     def test_brand_sendiri_dan_kata_umum_lolos(self):
         for t in ("Loose Pants dari Aysilla Factory adem banget", "cek di Aisila Factory ya",
                   "Langsung checkout di TikTok Shop", "ada di official store kami", "cek keranjang kuning sekarang",
-                  "bahannya adem, jatuh, dan nggak nerawang", "beli di Play Store", "follow @aysillafactoryid"):
+                  "bahannya adem, jatuh, dan nggak nerawang", "beli di Play Store", "follow @aysillafactoryid",
+                  "ini fashion store terbaik", "outfit shop murah", "cari di hijab store langganan",
+                  "beli di distro shop dekat rumah", "grosir outlet tanah abang"):
             self.assertIsNone(self.d.cek(t), t)
 
     def test_akun_watermark_sendiri_tidak_dianggap_lain(self):
