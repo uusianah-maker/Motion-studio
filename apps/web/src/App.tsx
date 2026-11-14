@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import type { Api, Project, ProjectSummary, Role, VariantTag } from './api';
 import { AiView } from './views/AiView';
 import { BatchView } from './views/BatchView';
@@ -49,6 +49,13 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
   const [error, setError] = useState<unknown>(null);
   const narrow = useMediaQuery('(max-width: 900px)');
   const [leaving, setLeaving] = useState(false);
+  // Halaman kerja panjang (upload, job mesin, tabel batch) tidak dibongkar saat pindah menu: cukup disembunyikan,
+  // supaya antrean upload, pilihan file, dan job yang sedang dipantau tidak hilang (bug owner 14 Nov).
+  const [visited, setVisited] = useState<ReadonlySet<View>>(() => new Set<View>(['editor']));
+  useEffect(() => {
+    setVisited((v) => (v.has(view) ? v : new Set([...v, view])));
+  }, [view]);
+  const keep = (id: View, node: ReactNode) => (visited.has(id) || view === id ? <div style={view === id ? undefined : { display: 'none' }} aria-hidden={view !== id}>{node}</div> : null);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -131,10 +138,10 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
       <div className="page">
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
         {view === 'editor' && <EditorView api={api} role={role} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} />}
-        {view === 'generate' && <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />}
-        {view === 'batch' && <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />}
-        {view === 'shots' && <ShotLibraryView api={api} role={role} />}
-        {view === 'media' && <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />}
+        {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />)}
+        {keep('batch', <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} active={view === 'batch'} />)}
+        {keep('shots', <ShotLibraryView api={api} role={role} active={view === 'shots'} />)}
+        {keep('media', <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />)}
         {view === 'brand' && <BrandView api={api} readOnly={role !== 'owner'} />}
         {view === 'trash' && <TrashView api={api} role={role} />}
         {view === 'storage' && <StorageView api={api} />}

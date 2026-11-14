@@ -19,7 +19,7 @@ const BUANG = [
   { id: 'musiman', label: 'Musiman (lebaran, ramadan …)' },
 ];
 
-export function BatchView({ api, role = 'owner', projects, onOpenProject, onProjectsChanged }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void; onProjectsChanged: () => void }) {
+export function BatchView({ api, role = 'owner', projects, onOpenProject, onProjectsChanged, active = true }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void; onProjectsChanged: () => void; active?: boolean }) {
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [brands, setBrands] = useState<BrandKit[]>([]);
   const [brandId, setBrandId] = useState('');
@@ -58,6 +58,17 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const brand = brands.find((b) => b.brand_id === brandId) ?? null;
   const { list: batchList, error: listError, reload: reloadBatches } = useEngineBatches(api, installed === true);
   const pickable = (batchList?.batches ?? []).filter((b) => b.siap_batch);
+  // Halaman ini tetap hidup saat pindah menu: setiap kali dibuka lagi, muat ulang daftar batch
+  // (batch baru dari Pisah Audio) dan jumlah shot dikecualikan (diubah di menu Shot).
+  const [shown, setShown] = useState(0);
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current) {
+      void reloadBatches();
+      setShown((n) => n + 1);
+    }
+    wasActive.current = active;
+  }, [active, reloadBatches]);
   useEffect(() => {
     const pk = (batchList?.batches ?? []).filter((b) => b.siap_batch);
     if (batchList?.tersedia) setBatchName((n) => (pk.some((b) => b.batch === n) ? n : (pk[0]?.batch ?? '')));
@@ -74,7 +85,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     return () => {
       stale = true;
     };
-  }, [api, batchName, batchList]);
+  }, [api, batchName, batchList, shown]);
   useEffect(() => {
     setPreset((p) => (brand?.presets.some((x) => x.id === p) ? p : (brand?.presets[0]?.id ?? 'standar')));
   }, [brand]);

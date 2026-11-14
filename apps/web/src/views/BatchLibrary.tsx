@@ -273,9 +273,15 @@ export function LineBreakdown({ api, batch, row, library }: { api: Api; batch: s
 
 const PAGE = 60;
 
-export function ShotLibraryView({ api, role = 'owner' }: { api: Api; role?: Role }) {
+export function ShotLibraryView({ api, role = 'owner', active = true }: { api: Api; role?: Role; active?: boolean }) {
   const [installed, setInstalled] = useState<boolean | null>(null);
-  const { list, error: listError } = useEngineBatches(api, installed === true);
+  const { list, error: listError, reload: reloadList } = useEngineBatches(api, installed === true);
+  // Tetap hidup saat pindah menu: batch baru (dari Pisah Audio di menu Batch) muncul saat dibuka lagi.
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current) void reloadList();
+    wasActive.current = active;
+  }, [active, reloadList]);
   const [batch, setBatch] = useState('');
   const [lib, setLib] = useState<ShotLibrary | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
