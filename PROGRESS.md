@@ -47,7 +47,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 - ~~PC-R5 draf belum dirender~~ → owner: "ikuti saran" — antrean PIC hanya video yang sudah dirender (tanpa perubahan). Dulu:: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
 - ~~PC-R6 catatan belajar~~ → owner 15 Nov: "Catat semua koreksi". R9b selesai (19617c1), audit lulus.
 - ~~PC-R7 Beat Spot~~ → owner 15 Nov: opsi A, wajah tidak perlu di-blur. AI ganti pakaian hanya untuk footage kreator/model sendiri; orang asing hanya kalau memang memakai produk kita.
-- ~~PC-R3 terowongan~~ → owner: "gas perbaiki". Dikerjakan sukma (aditif, tanpa restart VPS, tanpa sentuh Affiliate).
+- ~~PC-R3 terowongan~~ → SELESAI (sukma e77cd56, audit lulus). Penyebab: CPU PC 100% oleh analisa Hanagaki, ssh/node BelowNormal. Perbaikan: ssh AboveNormal, node Normal, watchdog. Ukur ulang 0 macet (CPU normal & 100%). Saran owner: kabel LAN; kerja berat di PC server = BelowNormal.
 
 ## Log task
 | # | Task | Status | DoD & bukti verifikasi | Keputusan mandiri | Commit |
