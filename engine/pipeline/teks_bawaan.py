@@ -116,7 +116,24 @@ def _main() -> None:
     angka = [float(x) for x in sys.argv[2:]]
     rentang = list(zip(angka[::2], angka[1::2]))
     sys.path.insert(0, str(HERE / "batch"))
-    from shotlib import ocr_frame, pilah_teks  # noqa: E402  (modul yuki, hanya diimpor)
+    from shotlib import pilah_teks  # noqa: E402  (modul yuki, hanya diimpor)
+    from rapidocr_onnxruntime import RapidOCR
+
+    # OCR sendiri, bukan shotlib.ocr_frame: setelan Shot Library (sisi minimal 1600) memperbesar frame
+    # 540x960 jadi raksasa -> 84 dtk per Generate (audit E2E 15 Nov). Batas sisi MAKS 960: teks sama, ±1 dtk/frame.
+    ocr = RapidOCR(det_limit_side_len=960, det_limit_type="max")
+
+    def ocr_frame(frame):
+        h, w = frame.shape[:2]
+        res, _ = ocr(frame, use_det=True, use_cls=False, use_rec=True)
+        out = []
+        for box, teks, conf in res or []:
+            if float(conf) < 0.6:
+                continue
+            xs, ys = [q[0] for q in box], [q[1] for q in box]
+            out.append({"teks": teks, "kotak": [round(min(xs) / w, 3), round(min(ys) / h, 3),
+                                                round((max(xs) - min(xs)) / w, 3), round((max(ys) - min(ys)) / h, 3)]})
+        return out
 
     total = sum(b - a for a, b in rentang) or 1
     titik = []
