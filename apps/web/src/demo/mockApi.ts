@@ -389,6 +389,7 @@ export function createDemoApi(): Api {
       brandStore.set(id, b);
       return clone(b);
     },
+    duplicateBrand: async () => fail(409, 'DEMO', 'Duplikat brand tidak tersedia di demo browser'),
     setDefaultBrand: async (id) => {
       if (!brandStore.has(id)) fail(404, 'NOT_FOUND', 'Brand tidak ditemukan');
       defaultBrand = id;

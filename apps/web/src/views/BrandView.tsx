@@ -110,6 +110,8 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
   const [media, setMedia] = useState<Media[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** R13: the "Duplikat brand" form (new name + optional code). */
+  const [dup, setDup] = useState<{ name: string; kode: string } | null>(null);
   const [saved, setSaved] = useState(false);
   const [reload, setReload] = useState(0);
   const loaded = useBrand(api, { brandId: kit?.brand_id ?? null, reload });
@@ -722,6 +724,35 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
               {saved && kit && (
                 <span className="badge ok" role="status">
                   Tersimpan (revisi {kit.revision})
+                </span>
+              )}
+              {kit && !dup && (
+                <button className="btn small" disabled={!!busy} onClick={() => setDup({ name: '', kode: '' })} title="Brand baru dari Brand Kit ini (warna, font, teks, aturan, aset, preset)">
+                  ⧉ Duplikat brand
+                </button>
+              )}
+              {kit && dup && (
+                <span className="row wrap" style={{ gap: 6, alignItems: 'center' }} role="group" aria-label="Duplikat brand">
+                  <input aria-label="Nama brand baru" placeholder="Nama brand baru" maxLength={60} value={dup.name} onChange={(e) => setDup({ ...dup, name: e.target.value })} />
+                  <input aria-label="Kode brand baru" placeholder="Kode (2–5, boleh kosong)" maxLength={5} style={{ width: 150 }} value={dup.kode} onChange={(e) => setDup({ ...dup, kode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
+                  <button
+                    className="btn small primary"
+                    disabled={!!busy || !dup.name.trim()}
+                    onClick={() =>
+                      leaveOk() &&
+                      void act('duplicate', async () => {
+                        const made = await api.duplicateBrand(kit.brand_id, dup.name.trim(), dup.kode || undefined);
+                        setDup(null);
+                        await load(made.brand_id);
+                      })
+                    }
+                  >
+                    Buat
+                  </button>
+                  <button className="btn small" onClick={() => setDup(null)}>
+                    Batal
+                  </button>
+                  {dirty && <span className="muted small">Yang disalin: Brand Kit yang sudah disimpan.</span>}
                 </span>
               )}
               {kit && kit.brand_id !== defaultId && (

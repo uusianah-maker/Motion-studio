@@ -634,6 +634,21 @@ export async function createBrand(ws: Workspace, input: { kit: unknown; actor: A
 }
 
 /**
+ * R13: a new brand fast — a copy of an existing Brand Kit (identity, visuals, text, rules, assets,
+ * presets) under a new name and code. Files (fonts, logo, assets) are shared, not copied; the
+ * source brand's learning notes stay with it.
+ */
+export async function duplicateBrand(ws: Workspace, input: { brand_id: string; name: unknown; kode?: unknown; actor: Actor; newId: () => string }): Promise<BrandKit> {
+  const src = await readBrand(ws, input.brand_id);
+  const copy: Record<string, unknown> = {};
+  for (const k of INPUT_KEYS) if ((src as unknown as Record<string, unknown>)[k] !== undefined) copy[k] = (src as unknown as Record<string, unknown>)[k];
+  if (typeof input.name !== 'string' || !input.name.trim()) bad('Nama brand baru wajib diisi');
+  if ((input.name as string).trim().toLowerCase() === src.name.trim().toLowerCase()) bad('Nama brand baru harus beda dari brand asalnya');
+  // No code given: one is made from the new name (a clash with an existing brand is refused).
+  return createBrand(ws, { kit: { ...copy, name: (input.name as string).trim(), kode: input.kode === undefined || input.kode === '' ? null : input.kode }, actor: input.actor, newId: input.newId });
+}
+
+/**
  * Save a brand (user only, optimistic revision). Without `brand_id` this is the default brand —
  * the X06 single-kit API — and saving revision 0 creates it.
  */

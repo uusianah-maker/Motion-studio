@@ -166,6 +166,10 @@ export class StorageService {
     return brand.readBrandFor(this.ws, brandId);
   }
 
+  duplicateBrand(input: { brand_id: string; name: unknown; kode?: unknown; actor: Actor }) {
+    return mutate(this.ws, 'svc.duplicateBrand', input.actor, () => brand.duplicateBrand(this.ws, { ...input, newId: () => `b-${newId('c').slice(2, 14)}` }));
+  }
+
   createBrand(input: { kit: unknown; actor: Actor }) {
     return mutate(this.ws, 'svc.createBrand', input.actor, () => brand.createBrand(this.ws, { ...input, newId: () => `b-${newId('c').slice(2, 14)}` }));
   }

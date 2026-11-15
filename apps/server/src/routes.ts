@@ -449,6 +449,17 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       },
     },
     {
+      // R13: a new brand from an existing Brand Kit (owner only — brands rule in roles.ts).
+      method: 'POST',
+      path: '/api/brands/:brand_id/duplicate',
+      handle: async ({ req, svc, params, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['name', 'kode']);
+        const r = await svc.duplicateBrand({ brand_id: params.brand_id!, name: body.name, ...(body.kode !== undefined ? { kode: body.kode } : {}), actor });
+        return { brand: r.result };
+      },
+    },
+    {
       method: 'POST',
       path: '/api/brands/:brand_id/default',
       handle: async ({ req, svc, params, actor }) => {

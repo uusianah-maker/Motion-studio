@@ -710,6 +710,9 @@ export function createApi(token: string | null, base = '') {
     brandById: (id: string) => call<{ brand: BrandKit }>('GET', `/api/brands/${encodeURIComponent(id)}`).then((r) => r.brand),
     createBrand: (kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', '/api/brands', { json: { kit } }).then((r) => r.brand),
     saveBrandById: (id: string, expected_revision: number, kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', `/api/brands/${encodeURIComponent(id)}`, { json: { expected_revision, kit } }).then((r) => r.brand),
+    /** R13: copy a Brand Kit (with presets) as a new brand. */
+    duplicateBrand: (id: string, name: string, kode?: string) =>
+      call<{ brand: BrandKit }>('POST', `/api/brands/${encodeURIComponent(id)}/duplicate`, { json: { name, ...(kode ? { kode } : {}) } }).then((r) => r.brand),
     setDefaultBrand: (id: string) => call<{ default_id: string }>('POST', `/api/brands/${encodeURIComponent(id)}/default`, { json: {} }),
     deleteBrand: (id: string) => call<{ deleted: string }>('POST', `/api/brands/${encodeURIComponent(id)}/delete`, { json: {} }),
     exportBrand: (id: string) => call<{ export: Record<string, unknown> }>('GET', `/api/brands/${encodeURIComponent(id)}/export`).then((r) => r.export),
