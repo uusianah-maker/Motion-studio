@@ -59,7 +59,9 @@ describe('Checkpoint D (server)', () => {
     expect(await fsp.readdir(s.uploadTmp)).toEqual([]);
   });
 
-  it('F4: a second upload while one is running is refused (BUSY); the first completes', async () => {
+  // Owner request (upload queue): a second upload no longer gets 409 BUSY — it WAITS its turn, so the
+  // free-space checks still run one at a time (what F4 protects).
+  it('F4: a second upload while one is running waits its turn, then completes; the first completes', async () => {
     const s = await server();
     const total = 200_000;
     // Upload A: send half the body and keep the request open.
@@ -75,12 +77,18 @@ describe('Checkpoint D (server)', () => {
     a.write(Buffer.alloc(total / 2, 1));
     // Wait until the server has started receiving A (its temp folder exists).
     for (let i = 0; i < 100 && (await fsp.readdir(s.uploadTmp)).length === 0; i++) await new Promise((r) => setTimeout(r, 20));
-    const b = await s.send('POST', '/api/media/import?scope=shared', Buffer.from('other bytes'), { 'content-type': 'application/octet-stream', 'x-file-name': 'b.mp4' });
-    expect([b.status, b.body.error.code]).toEqual([409, 'BUSY']);
+    const bDone = s.send('POST', '/api/media/import?scope=shared', Buffer.from('other bytes'), { 'content-type': 'application/octet-stream', 'x-file-name': 'b.mp4' });
+    // B is queued, not received: still only A's temp folder, and the queue shows one waiting.
+    for (let i = 0; i < 100 && (await s.send('GET', '/api/media/import/antrean')).body.menunggu !== 1; i++) await new Promise((r) => setTimeout(r, 20));
+    expect((await s.send('GET', '/api/media/import/antrean')).body).toEqual({ berjalan: true, menunggu: 1 });
+    expect((await fsp.readdir(s.uploadTmp)).length).toBe(1);
     a.end(Buffer.alloc(total / 2, 2));
     const ra = await aDone;
     expect(ra.status).toBe(200);
     expect(ra.body.version.size).toBe(total);
+    const rb = await bDone;
+    expect([rb.status, rb.body.version?.size]).toEqual([200, 11]);
+    expect((await s.send('GET', '/api/media/import/antrean')).body).toEqual({ berjalan: false, menunggu: 0 });
     // And after A finished, uploads work again.
     expect((await s.send('POST', '/api/media/import?scope=shared', Buffer.from('third'), { 'content-type': 'application/octet-stream' })).status).toBe(200);
   });

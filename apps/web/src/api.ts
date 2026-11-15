@@ -824,6 +824,8 @@ export function createApi(token: string | null, base = '') {
       return call<{ media: Media[] }>('GET', `/api/media?${p}`).then((r) => r.media);
     },
     /** Upload with progress (XHR: fetch has no upload progress). Bytes go raw; the server hashes them. */
+    /** Upload queue on the server (all pages / team members): one running, how many waiting. */
+    importQueue: () => call<{ berjalan: boolean; menunggu: number }>('GET', '/api/media/import/antrean'),
     importFile: (file: File, scope: { kind: 'shared' } | { kind: 'project'; project_id: string }, onProgress?: (fraction: number) => void) => {
       const p = new URLSearchParams({ scope: scope.kind });
       if (scope.kind === 'project') p.set('project_id', scope.project_id);

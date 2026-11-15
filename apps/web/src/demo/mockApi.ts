@@ -454,6 +454,7 @@ export function createDemoApi(): Api {
       return view(s);
     },
     media: async (q = {}) => clone(media.filter((m) => q.scope !== 'shared' || m.scope.kind === 'shared')),
+    importQueue: async () => ({ berjalan: false, menunggu: 0 }),
     importFile: async (file, scope, onProgress) => {
       for (let i = 1; i <= 10; i++) {
         await wait(60);

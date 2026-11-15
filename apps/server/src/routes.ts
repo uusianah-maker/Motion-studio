@@ -37,6 +37,7 @@ import {
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
+import { createImportQueue } from './importQueue.js';
 import { type ProxyQueue, createProxyQueue } from './proxy.js';
 import { type RenderJobView, type RenderJobs, createRenderJobs } from './render.js';
 import { type StreamSigner, createStreamSigner, mimeFor, sendBytes } from './stream.js';
@@ -296,8 +297,9 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
   const uploadOpts: UploadOptions = { tmpDir: upload.tmpDir ?? os.tmpdir(), maxBytes: upload.maxBytes ?? 50 * 1024 ** 3 };
   let jobs = render;
   const jobsFor = (ws: Workspace) => (jobs ??= createRenderJobs(ws, { tmpRoot: os.tmpdir() }));
-  // One import at a time per server: parallel uploads would each pass the free-space check (Checkpoint D F4).
-  let importing = false;
+  // One import at a time per server: parallel uploads would each pass the free-space check
+  // (Checkpoint D F4). The others wait in a queue instead of being refused (owner request).
+  const imports = createImportQueue();
   return [
     // Projects
     {
@@ -562,13 +564,12 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
     {
       method: 'POST',
       path: '/api/media/import',
-      handle: async ({ req, url, ws, svc, actor }) => {
+      handle: async ({ req, res, url, ws, svc, actor }) => {
         const scope = scopeFrom(url);
         const display_name = url.searchParams.get('display_name') ?? undefined;
         if (display_name !== undefined && (!display_name.trim() || display_name.length > 200)) throw bad('display_name tidak valid');
         if (scope.kind === 'project') await readProject(ws, scope.project_id); // 404 before receiving any bytes
-        if (importing) throw new ApiError(409, 'BUSY', 'Upload lain sedang berjalan; tunggu sampai selesai');
-        importing = true;
+        const release = await imports.acquire(req, res);
         try {
           const up = await receiveUpload(ws, req, uploadOpts);
           try {
@@ -580,9 +581,15 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
             await fsp.rm(up.dir, { recursive: true, force: true });
           }
         } finally {
-          importing = false;
+          release();
         }
       },
+    },
+    {
+      // The upload queue for the Media page: one running, how many waiting (any page / team member).
+      method: 'GET',
+      path: '/api/media/import/antrean',
+      handle: async () => imports.status(),
     },
 
     // Preview playback (W07): token-authenticated URL issue, then signed byte-range streaming.

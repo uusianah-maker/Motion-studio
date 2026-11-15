@@ -4,6 +4,7 @@ import { type StorageErrorCode, isStorageError } from './core.js';
 export type HttpErrorCode =
   | StorageErrorCode
   | 'UNAUTHORIZED'
+  | 'CLIENT_CLOSED'
   | 'HOST_REJECTED'
   | 'ORIGIN_REJECTED'
   | 'ACTOR_NOT_ALLOWED'

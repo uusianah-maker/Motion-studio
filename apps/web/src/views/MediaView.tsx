@@ -97,6 +97,29 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
     }
   };
 
+  // Upload queue on the server: other pages / team members may be uploading too — this file then
+  // waits its turn there (no longer refused). Checked while something of ours is uploading.
+  const [serverQueue, setServerQueue] = useState<{ berjalan: boolean; menunggu: number } | null>(null);
+  const ours = uploads.some((u) => u.state === 'uploading');
+  useEffect(() => {
+    if (!ours) {
+      setServerQueue(null);
+      return;
+    }
+    let stop = false;
+    const tick = () =>
+      void api.importQueue().then(
+        (q) => !stop && setServerQueue(q),
+        () => undefined,
+      );
+    tick();
+    const t = setInterval(tick, 3000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
+  }, [api, ours]);
+
   const shown = (media ?? []).filter(
     (m) =>
       (filter === 'all' || (filter === 'shared' ? m.scope.kind === 'shared' : m.scope.kind === 'project' && `project:${m.scope.project_id}` === filter)) &&
@@ -163,6 +186,11 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
               e.target.value = '';
             }}
           />
+          {serverQueue && serverQueue.menunggu > 0 && (
+            <div className="notice small" role="status" aria-label="Antrean upload server">
+              Server sedang menerima upload lain (halaman lain / anggota tim). Antrean: 1 berjalan, {serverQueue.menunggu} menunggu giliran — upload lo lanjut otomatis.
+            </div>
+          )}
           {uploads.length > 0 && (
             <div className="uploads" aria-live="polite">
               {uploads.map((u) => (
@@ -175,6 +203,7 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
                         <span style={{ width: `${Math.round(u.progress * 100)}%` }} />
                       </div>
                       {u.state === 'uploading' && u.progress >= 1 && <small className="muted">Memproses di server…</small>}
+                      {u.state === 'waiting' && <small className="muted">Menunggu giliran</small>}
                     </span>
                   ) : (
                     <span className={`badge ${u.state === 'error' ? 'bad' : u.state === 'duplicate' ? 'warn' : 'ok'}`} title={u.message}>
