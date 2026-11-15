@@ -32,6 +32,7 @@ import matcher  # noqa: E402
 import musik as musik_mod  # noqa: E402
 import vo as vo_mod  # noqa: E402
 import brand_lain  # noqa: E402
+import riwayat as riwayat_mod  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, efek_video, kata_klip  # noqa: E402  (milik venus, konvensi sama)
 from efek_otomatis import efek_batch, pilih_sfx, saring_sfx  # noqa: E402  (venus: SFX + efek otomatis, sama dengan Generate)
@@ -392,14 +393,26 @@ def jalankan(job_dir: Path) -> int:
         vos = [v for v in vos if v["id"] not in milik_lain]
         vo_tolak += [{"id": f, "alasan": "watermark akun lain: " + ", ".join(akun_footage[f])} for f in sorted(milik_lain)]
 
+    # R6 riwayat pakai lintas batch per brand (owner 15 Nov no. 16). Hybrid: job.abaikan_riwayat mematikannya.
+    abaikan_riwayat = bool(job.get("abaikan_riwayat", False))
+    brand_key = riwayat_mod.kunci_brand(brand_raw, brand)
+    riw = None if abaikan_riwayat else riwayat_mod.Riwayat(riwayat_mod.muat(brand_key), batch, vo_batch, job.get("job_id"))
+    ditolak_riwayat = Counter()
+
     progres("rencana", 30, "menganalisis musik")
     mlib = musik_mod.library(brand_raw, vo_dir, izin_tanpa, tolak_ids)
 
     n = int(job.get("jumlah", 10))
     varian, alasan_kurang = [], ""
     g_pakai, m_pakai, vo_pakai = Counter(), Counter(), Counter()
+    if riw:
+        g_pakai.update(riw.shot_terpakai())  # shot yang pernah dipakai batch lain dipilih paling akhir
     maks_per_vo = int(job.get("maks_per_vo", MAKS_PER_VO))
     urutan_vo, vo_habis, gagal_vo = defaultdict(set), set(), Counter()
+    if riw:
+        for x in vos:  # susunan kalimat VO yang pernah dipakai (batch mana pun) tidak diulang
+            urutan_vo[x["id"]] |= riw.urutan(x["id"])
+    hindari_pembuka = frozenset(riw.pembuka()) if riw else frozenset()
     percobaan = 0
     while len(varian) < n and vos and percobaan < n * 15:
         percobaan += 1
@@ -422,7 +435,7 @@ def jalankan(job_dir: Path) -> int:
             continue
         m = musik_mod.pilih(mlib, tujuan, rv["durasi_ucapan"] + TAHAN, rng, m_pakai)
         sus = matcher.susun_shot(rv, lib, footage_boleh, rng, m["ketukan"] if m else None, Counter(g_pakai),
-                                 boleh_teks=hak_jelas, kecuali=kecuali)
+                                 boleh_teks=hak_jelas, kecuali=kecuali, hindari_pembuka=hindari_pembuka)
         # Shot tidak boleh melewati ujung file sumber.
         for p in sus["potongan"]:
             dmax = lib["footage"][p["footage"]]["durasi"]
@@ -436,7 +449,24 @@ def jalankan(job_dir: Path) -> int:
             jaccard(shots, x["_shots"]) > MAKS_MIRIP or (pembuka and pembuka == x["_pembuka"])
             or sama_posisi(per_kalimat, x["_per_kalimat"]) > MAKS_SAMA_POSISI)]
         terlalu_asli = sus["rasio_sinkron"] > matcher.MAKS_SINKRON + 0.1
-        if mirip or terlalu_asli:
+        mirip_riwayat = False
+        if riw and not (mirip or terlalu_asli):
+            # Riwayat: pembuka tidak boleh sama dengan pembuka batch sebelumnya; varian VO sama diukur dengan aturan §11.
+            kx = lambda p: riwayat_mod.kunci_shot(batch, vo_batch, p)  # noqa: E731
+            lokal = {p["shot"] or f"{p['footage']}@{p['in']:.0f}": kx(p) for p in sus["potongan"]}
+            shots_x = {kx(p) for p in sus["potongan"]}
+            pembuka_x = kx(sus["potongan"][0]) if sus["potongan"] else None
+            per_x = {i: tuple(lokal.get(s, s) for s in t) for i, t in per_kalimat.items()}
+            if pembuka in hindari_pembuka:
+                mirip_riwayat = "pembuka"
+            else:
+                for x in riw.sebanding(vo_c["id"]):
+                    if jaccard(shots_x, x["_shots"]) > MAKS_MIRIP or (pembuka_x and pembuka_x == x["_pembuka"])                             or sama_posisi(per_x, x["_per_kalimat"]) > MAKS_SAMA_POSISI:
+                        mirip_riwayat = "mirip"
+                        break
+            if mirip_riwayat:
+                ditolak_riwayat[mirip_riwayat] += 1
+        if mirip or terlalu_asli or mirip_riwayat:
             if m:  # batch tanpa musik: m = None (dulu crash: "NoneType not subscriptable")
                 m_pakai[m["kunci"]] -= 1
             gagal_vo[vo_c["id"]] += 1
@@ -466,6 +496,11 @@ def jalankan(job_dir: Path) -> int:
         alasan_kurang = (f"hanya {len(varian)} varian unik dari {len(vos)} VO layak (maks {maks_per_vo} varian per VO "
                          "supaya suara tidak berulang); tambah footage/VO baru untuk jumlah lebih banyak tanpa "
                          "risiko konten tidak orisinal")
+        if riw and riw.entri:
+            alasan_kurang += (f"; riwayat brand {brand_key}: {len(riw.entri)} varian batch sebelumnya dihitung "
+                              f"({len(hindari_pembuka)} pembuka & susunan VO lama tidak diulang"
+                              + (f", {sum(ditolak_riwayat.values())} calon ditolak karena mirip riwayat" if ditolak_riwayat else "")
+                              + "); job.abaikan_riwayat=true untuk mengabaikan")
 
     media = {}
     tabel = []
@@ -605,6 +640,17 @@ def jalankan(job_dir: Path) -> int:
         "vo_ditolak": vo_tolak, "musik_tersedia": len(mlib), "media": media,
         "akun_watermark": akun_footage, "footage_milik_lain": sorted(milik_lain), "varian": tabel,
     }
+    # R6: catat varian batch ini ke riwayat brand (status "direncanakan"; mesin belum tahu keputusan tim).
+    # Varian "rusak" tidak dicatat (tidak bisa dirender). Jalan ulang job yang sama mengganti entrinya sendiri.
+    if abaikan_riwayat:
+        batch_json["riwayat"] = {"aktif": False, "brand": brand_key, "alasan": "job.abaikan_riwayat"}
+    else:
+        rusak = {t["id"] for t in tabel if t.get("rusak")}
+        entri = [riwayat_mod.entri_varian(job.get("job_id"), batch, vo_batch, v, v["susunan"], v["rv"], v["_per_kalimat"])
+                 for v in varian if v["id"] not in rusak]
+        riwayat_mod.catat(brand_key, job.get("job_id"), entri)
+        batch_json["riwayat"] = {**riw.ringkas(), "brand": brand_key, "dicatat": len(entri),
+                                 "ditolak_karena_riwayat": dict(ditolak_riwayat)}
     (out_dir / "batch.json").write_text(json.dumps(batch_json, ensure_ascii=False, indent=1), encoding="utf-8")
     if not tabel:
         return tolak(out_dir, "tidak ada varian: " + (alasan_kurang or "tidak ada VO layak")

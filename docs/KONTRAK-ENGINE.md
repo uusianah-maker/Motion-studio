@@ -349,3 +349,22 @@ Zoom-through tetap memakai efek lama (`effect: {type: "zoom_through"}` di track 
 - Operasi baru: `{ "op": "set_keyframes", "clip_id": "...", "keyframes": [...] }` (`[]` = hapus semua).
 - Batas: keyframe di teks **tidak bisa** digabung dengan caption kata per kata (`words`), animasi `pop`/`fade`, atau sorot kata. Ops seperti itu ditolak dengan alasan jelas.
 - Split/trim/potong jeda menjaga gerakan yang sama di tiap potongan.
+
+## 13. Riwayat pakai lintas batch (R6, v0.3.6, 15 Nov 2026, yuki — keputusan owner no. 16)
+
+Aditif. App tidak wajib berubah; semua field opsional.
+
+- Konten yang sudah dipakai tidak dipakai berulang, **termasuk antar batch**. Mesin menyimpan riwayat **per brand** (kode Brand Kit, mis. `AYS`) di `konten/riwayat/<kode>.json` (atau folder env `MOTION_RIWAYAT_DIR`). File ini data mesin, di luar folder job, tidak di-commit.
+- Isi per varian: `job_id`, `varian`, batch gambar & batch VO, footage VO, `urutan` kalimat VO, `pembuka`, semua shot, shot per kalimat, `status`.
+- Saat menyusun batch baru:
+  - shot yang pernah jadi **pembuka** (batch gambar sama) tidak dipakai lagi sebagai pembuka;
+  - **susunan kalimat VO** yang pernah dipakai tidak diulang;
+  - varian dengan VO sama dibandingkan juga dengan riwayat memakai aturan mirip §11;
+  - shot yang pernah dipakai dipilih paling akhir (penalti Matcher).
+  Kalau stok habis, varian berkurang dan `alasan_kurang` menyebut riwayat.
+- Job yang dijalankan ulang (job_id sama) **mengganti** entrinya sendiri, jadi tidak membatasi dirinya sendiri.
+- Status entri: `direncanakan` (dicatat saat batch selesai; default sampai app mengirim keputusan) · `disetujui` · `dirender` · `dicoret` (tidak dihitung). Status dari tim bertahan saat job dijalankan ulang.
+- `job.json` batch, field opsional baru: `abaikan_riwayat: true` → riwayat tidak dibaca **dan** job ini tidak dicatat (hybrid, prinsip owner).
+- `batch.json`, field baru: `riwayat: {aktif, brand, entri_dihitung, pembuka_dihindari, dicatat, ditolak_karena_riwayat}` atau `{aktif: false, alasan}`.
+- Perintah (read/write data mesin, dari root repo): `python pipeline/batch/riwayat.py lihat|reset <brand>` · `tandai <brand> <job_id> <status> [varian...]` · `lepas <brand> <job_id> [varian...]`. `reset` menyimpan cadangan `<kode>.reset-<waktu>.json`.
+- Disarankan untuk app (belum wajib): saat tim mencoret varian, panggil `lepas`; saat render selesai, `tandai ... dirender`. Jalurnya lewat `engine.py` (milik venus).
