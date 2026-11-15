@@ -47,6 +47,9 @@ while ($true) {
         $p = Start-Process -FilePath $ssh -ArgumentList $argSsh -NoNewWindow -PassThru `
             -RedirectStandardOutput "$jalan.out.log" -RedirectStandardError "$jalan.err.log"
         Tulis-Catatan $log "menyambung ke $Vps (pid $($p.Id))"
+        # PC-R3: ssh.exe hampir tidak memakai CPU, tapi di BelowNormal ia tertahan 4–15 dtk per permintaan saat CPU
+        # penuh (mis. analisa batch). AboveNormal = setiap permintaan langsung diteruskan.
+        try { $p.PriorityClass = 'AboveNormal' } catch { }
         $null = $p.Handle  # PowerShell 5.1: tanpa ini ExitCode kosong
         $p.WaitForExit()
         $code = $p.ExitCode

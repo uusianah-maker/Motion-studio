@@ -41,6 +41,9 @@ while ($true) {
         $p = Start-Process -FilePath $node -ArgumentList "`"$main`"" -WorkingDirectory $Repo -NoNewWindow -PassThru `
             -RedirectStandardOutput "$jalan.out.log" -RedirectStandardError "$jalan.err.log"
         Tulis-Catatan $log "server mulai (pid $($p.Id); output: $(Split-Path -Leaf $jalan).*.log)"
+        # PC-R3: task jalan di prioritas BelowNormal; saat CPU penuh oleh kerja lain di PC ini, server tertahan
+        # belasan detik per permintaan. Normal = berbagi CPU adil (proses mesin anak ikut Normal).
+        try { $p.PriorityClass = 'Normal' } catch { }
         $null = $p.Handle  # PowerShell 5.1: tanpa ini ExitCode kosong
         $p.WaitForExit()
         $code = $p.ExitCode

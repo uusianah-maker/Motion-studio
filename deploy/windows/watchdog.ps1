@@ -27,3 +27,15 @@ if (-not $serverHidup) { Nyalakan 'MotionStudio-Server' "port $Port kosong" }
 
 $ssh = Get-CimInstance Win32_Process -Filter "Name='ssh.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'motiontunnel@' }
 if (-not $ssh) { Nyalakan 'MotionStudio-Tunnel' 'terowongan SSH tidak jalan' }
+
+# PC-R3: jaga prioritas (penjaga yang sudah jalan memakai kode lama; ssh/node baru bisa lahir BelowNormal).
+# Terowongan AboveNormal, server Normal. Hanya mencatat kalau mengubah.
+function Prioritas([int]$ProcId, [string]$Mau, [string]$Nama) {
+    try {
+        $pr = Get-Process -Id $ProcId -ErrorAction Stop
+        if ($pr.PriorityClass -ne $Mau) { $lama = $pr.PriorityClass; $pr.PriorityClass = $Mau; Catat "prioritas $Nama (pid $ProcId) $lama -> $Mau" }
+    } catch { }
+}
+foreach ($s in @($ssh)) { if ($s) { Prioritas $s.ProcessId 'AboveNormal' 'terowongan' } }
+$srv = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($srv) { Prioritas $srv.OwningProcess 'Normal' 'server' }
