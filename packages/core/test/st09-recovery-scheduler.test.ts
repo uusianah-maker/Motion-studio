@@ -196,7 +196,9 @@ describe('ST-09 scheduler', () => {
     await fsp.writeFile(path.join(ws.root, '.motionstudio', 'registry.json'), 'broken');
     const c = await s.runCycle();
     expect(c.status).toBe('blocked');
-  });
+    // The locked-workspace step waits out the 5 s lock timeout itself: the default 5 s test limit
+    // was always on the edge (venus/ucok 15 Nov). Assertions unchanged.
+  }, 15_000);
 
   it('busy provider protects the live player/project; autoTrash:false only scans', async () => {
     const fx = await fixtureWorkspace();

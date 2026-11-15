@@ -7,6 +7,7 @@
  * source, never in a project, and it can always be made again.
  */
 import { spawn } from 'node:child_process';
+import { lowerPriority } from './priority.js';
 import { randomBytes } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -65,11 +66,14 @@ export async function makeProxy(ws: Workspace, versionId: string, opts: { signal
       '-force_key_frames', 'expr:gte(t,n_forced*1)',
       '-c:a', 'aac', '-b:a', `${PROXY_AUDIO_KBPS}k`, '-ac', '2',
       '-map_metadata', '-1', '-movflags', '+faststart',
+      // A background job: two threads at below-normal priority leave the PC usable.
+      '-threads', '2',
       tmp,
     ];
     try {
       await new Promise<void>((resolve, reject) => {
         const child = spawn(ffmpegBin(), args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+        lowerPriority(child);
         let err = '';
         child.stderr.on('data', (b: Buffer) => {
           if (err.length < 2000) err += b.toString();

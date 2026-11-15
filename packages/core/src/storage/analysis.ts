@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { lowerPriority } from './priority.js';
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { StorageError } from './errors.js';
@@ -104,6 +105,7 @@ function runDetect(file: string, p: AnalysisParams, hasAudio: boolean, hasVideo:
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new StorageError('CANCELLED', 'Analisis dibatalkan'));
     const child = spawn(ffmpegBin(), args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    lowerPriority(child);
     let log = '';
     const onAbort = () => child.kill('SIGKILL');
     signal?.addEventListener('abort', onAbort, { once: true });

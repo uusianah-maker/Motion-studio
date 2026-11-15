@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import { lowerPriority } from './priority.js';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { StorageError } from './errors.js';
@@ -108,6 +109,7 @@ export function runFfmpeg(args: string[], opts: { cwd: string; signal?: AbortSig
   return new Promise((resolve, reject) => {
     if (opts.signal?.aborted) return reject(new StorageError('CANCELLED', 'Render dibatalkan'));
     const child = spawn(opts.bin ?? ffmpegBin(), args, { cwd: opts.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    lowerPriority(child);
     let stderr = '';
     let buf = '';
     let cancelled = false;
@@ -272,6 +274,7 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function measureLoudness(file: string, target: number): Promise<{ input_i: string; input_tp: string; input_lra: string; input_thresh: string; target_offset: string } | null> {
   return new Promise((resolve) => {
     const child = spawn(ffmpegBin(), ['-hide_banner', '-nostdin', '-nostats', '-i', file, '-map', '0:a:0', '-af', `loudnorm=I=${target}:TP=-1.5:LRA=11:print_format=json`, '-f', 'null', '-'], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    lowerPriority(child);
     let err = '';
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (d: string) => {

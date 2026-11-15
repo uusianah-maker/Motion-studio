@@ -22,6 +22,7 @@ import { createLease, releaseLease, setLeaseStatus } from './deps.js';
 import { StorageError } from './errors.js';
 import { isSafeId } from './ids.js';
 import { isInside } from './paths.js';
+import { lowerPriority } from './priority.js';
 import { MEDIA_AREAS } from './permissions.js';
 import type { MediaRef, Timeline, VariantInfo } from './project.js';
 import { MAX_PROJECT_NAME, createWithTimeline } from './projectAdmin.js';
@@ -584,6 +585,7 @@ export async function runEngineJob(
     let child: ReturnType<Spawner>;
     try {
       child = (opts.spawnImpl ?? spawn)(cfg.command, [cfg.script, mode, jdir], { cwd: cfg.root, windowsHide: true, env: engineEnv() });
+      lowerPriority(child); // Whisper / Demucs / FFmpeg children inherit it
     } catch (e) {
       log += `tidak bisa menjalankan mesin: ${String(e)}`;
       resolve(1);

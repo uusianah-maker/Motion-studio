@@ -10,6 +10,7 @@
  * Nothing here returns a local path to the browser.
  */
 import fsp from 'node:fs/promises';
+import { lowerPriority } from './priority.js';
 import path from 'node:path';
 import { audit } from './audit.js';
 import { type EngineConfig, type Spawner, engineEnv, isBatchName, killTree, scrubPaths } from './engine.js';
@@ -99,6 +100,7 @@ export async function runEngineQuery(cfg: EngineConfig, command: 'daftar_batch',
     let child: ReturnType<Spawner>;
     try {
       child = (opts.spawnImpl ?? spawn)(cfg.command, [cfg.script, command], { cwd: cfg.root, windowsHide: true, env: engineEnv() });
+      lowerPriority(child);
     } catch (e) {
       reject(new StorageError('PRECONDITION', `Mesin tidak bisa dijalankan: ${scrubPaths(String(e)).slice(0, 200)}`));
       return;
