@@ -6,7 +6,7 @@ Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 14/15 sel
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
 
 ## Putaran R (`docs/TUJUAN-PROYEK.md`, 15 Nov 2026, perintah owner "kerjain hasil diskusi", prinsip hybrid)
-Progres: 12/15 selesai · 3 dikerjakan ucok (R9, R13, proxy R14 + halaman Motion Transfer) · 2 menunggu keputusan owner (R12, jadwal R15). Commit mesin di repo remotion (lokal, belum sync ke `engine/`).
+Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Transfer) · 2 menunggu keputusan owner (R12, jadwal R15). Commit mesin di repo remotion (lokal, belum sync ke `engine/`).
 
 | # | Task | Status | Bukti | Pemilik | Commit |
 |---|---|---|---|---|---|
@@ -18,7 +18,7 @@ Progres: 12/15 selesai · 3 dikerjakan ucok (R9, R13, proxy R14 + halaman Motion
 | R6 | Riwayat pakai lintas batch | DONE (audit venus lulus; revisi temuan reviewer cfbe866 lulus) | 2 batch berturut: pembuka sama 7/20 → 0/20, audio identik 17 → 0; 50/50 tes | yuki | aa02cd4 |
 | R7 | Potong presisi (snap ke jeda) | DONE | 23 video: potongan sama 184, titik di tengah suara 11 % → 10 %, durasi +0,08 dtk/video | venus | dfa4e3a |
 | R8 | Fade sambungan, fade musik, ducking otomatis | DONE | validator asli Motion Studio lulus; filter bawaan brand sudah otomatis di app | venus | 6465d90 |
-| R9 | Catatan belajar koreksi editor + alasan PIC | BERJALAN (app) | — | ucok | — |
+| R9 | Catatan belajar koreksi editor + alasan PIC | DONE app (audit venus lulus); dipakai mesin nanti | core r9 2/2, server r9; `.motionstudio/brands/<id>/belajar.jsonl` | ucok | e194c2d |
 | R10 | Layar persetujuan PIC | DONE (audit venus lulus) | core r10 + audit/R10 UI 9/9 | ucok | 84db32e |
 | R11 | Motion Transfer tahap 1 (mesin) | DONE (mesin) · halaman app: ucok | klip uji 24 dtk → 7 adegan + gambar + prompt | venus | 120b286 |
 | R12 | Motion Transfer tahap 2 (API AI gambar) | BLOCKED (PC-R2) | — | — | — |
@@ -36,6 +36,7 @@ Progres: 12/15 selesai · 3 dikerjakan ucok (R9, R13, proxy R14 + halaman Motion
 - **PC-R2 AI gambar Motion Transfer tahap 2**: akun/API mana dan batas biaya per bulan. Sampai diputuskan, prompt disalin manual.
 - **PC-R4 Setujui varian**: "Setujui" di layar PIC = review Lulus. Untuk proyek varian Batch, apakah Lulus otomatis menyetujui varian untuk render massal? (sekarang terpisah)
 - **PC-R5 draf belum dirender**: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
+- **PC-R6 catatan belajar**: koreksi lain di draf mesin (musik, gaya caption, zoom, posisi) ikut dicatat, atau cukup kata/hook/potongan dulu?
 - **PC-R3 terowongan**: macet sesekali (1 dari 6–20 unduhan) di jalur VPS → PC. Opsi: 2 terowongan paralel atau WireGuard/Tailscale. Butuh izin ubah jalur (VPS dipakai bersama Affiliate).
 
 ## Log task
