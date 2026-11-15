@@ -271,3 +271,8 @@ export function keepSelection(before: TL, after: TL, sel: string | null): string
   const fresh = after.timeline.tracks.find((t) => t.track_id === track.track_id)?.clips.filter((c) => !known.has(c.clip_id) && c.start_ms === old.start_ms) ?? [];
   return fresh.length === 1 ? fresh[0]!.clip_id : null;
 }
+
+/** R1: the engine refused a Generate job only because its audio sounded like a song (team may override). */
+export function canContinueRefused(job: { mode: string; state: string; alasan: string | null } | null | undefined): boolean {
+  return !!job && job.mode === 'generate' && job.state === 'ditolak' && /tetap lanjut/i.test(job.alasan ?? '');
+}

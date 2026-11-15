@@ -375,6 +375,21 @@ try {
   const recovered = await until(async () => failed === 1 && (await page.getByRole('region', { name: 'Rencana edit' }).isVisible()), 30000);
   check('A14-12 Progres mesin: satu cek status gagal (koneksi putus) → tetap lanjut sampai rencana siap', failed === 1 && recovered, `gagal=${failed}`);
 
+  // ---- R1 (hybrid): a job refused because the audio sounds like a song can "Tetap lanjut".
+  {
+    await page.unroute(/\/api\/projects\/[^/]+\/engine\/jobs\/AYS-\d{8}-\d{3}$/);
+    await form.getByLabel('Video bicara').setInputFiles(talk);
+    await form.getByLabel('Catatan').fill('lagu'); // fake engine: refuses as lyrics unless abaikan_cek_ucapan
+    await form.getByRole('button', { name: /Susun draf otomatis/ }).click();
+    const lagu = page.getByLabel('Ditolak karena lagu');
+    const refused = await until(() => lagu.isVisible(), 30000);
+    await lagu.getByRole('button', { name: /Tetap lanjut/ }).click();
+    const gone = await until(async () => !(await lagu.isVisible()));
+    const planned = await until(() => page.getByRole('region', { name: 'Rencana edit' }).isVisible(), 30000);
+    check('A14-26 Generate ditolak karena lagu → "Tetap lanjut" menjalankan ulang tanpa cek lagu → rencana siap', refused && gone && planned);
+    await form.getByLabel('Catatan').fill('');
+  }
+
   // Generate: while the brand list loads, "Memuat brand…" — not "Buat brand dulu".
   {
     const slow = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();

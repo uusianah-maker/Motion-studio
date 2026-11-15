@@ -6,6 +6,7 @@ import {
   type EngineStatus,
   type Workspace,
   audit,
+  continueRefusedJob,
   isBatchName,
   isJobId,
   listEngineBatches,
@@ -93,6 +94,22 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
     }
     return n;
   };
+  /** Prepare a job (counted as "preparing" for the orphan check) and put it in the queue. */
+  const enqueue = async (projectId: string, prepare: () => Promise<EngineStatus>): Promise<EngineStatus> => {
+    if (queue.length >= 20) throw new ApiError(429, 'BUSY', 'Antrean mesin penuh (20); tunggu dulu');
+    if (stopping) throw new ApiError(409, 'BUSY', 'Server sedang dihentikan; coba lagi sebentar lagi');
+    preparing.set(projectId, (preparing.get(projectId) ?? 0) + 1);
+    try {
+      const status = await prepare();
+      queue.push({ project_id: status.project_id, job_id: status.job_id, mode: status.mode });
+      pump();
+      return status;
+    } finally {
+      const left = (preparing.get(projectId) ?? 1) - 1;
+      if (left > 0) preparing.set(projectId, left);
+      else preparing.delete(projectId);
+    }
+  };
   const stopAll = async () => {
     stopping = true;
     for (const q of queue.splice(0)) {
@@ -147,19 +164,19 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
           const kecuali = await readShotExclusions(ws, input.batch.batch);
           if (kecuali.length) input.batch.kecualikan_shot = kecuali;
         }
-        if (queue.length >= 20) throw new ApiError(429, 'BUSY', 'Antrean mesin penuh (20); tunggu dulu');
-        if (stopping) throw new ApiError(409, 'BUSY', 'Server sedang dihentikan; coba lagi sebentar lagi');
-        preparing.set(input.project_id, (preparing.get(input.project_id) ?? 0) + 1);
-        try {
-          const status = await prepareEngineJob(ws, input);
-          queue.push({ project_id: status.project_id, job_id: status.job_id, mode: status.mode });
-          pump();
-          return { job: status };
-        } finally {
-          const left = (preparing.get(input.project_id) ?? 1) - 1;
-          if (left > 0) preparing.set(input.project_id, left);
-          else preparing.delete(input.project_id);
-        }
+        return { job: await enqueue(input.project_id, () => prepareEngineJob(ws, input)) };
+      },
+    },
+    {
+      // R1 (hybrid): "Tetap lanjut" after a refusal because the audio sounded like a song — a new
+      // Generate job with the same inputs and the engine's song check skipped.
+      method: 'POST',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/lanjut',
+      handle: async ({ params, actor }) => {
+        needEngine();
+        if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh menjalankan mesin');
+        const job = jobParam(params.job_id);
+        return { job: await enqueue(params.project_id!, () => continueRefusedJob(ws, params.project_id!, job)) };
       },
     },
     {

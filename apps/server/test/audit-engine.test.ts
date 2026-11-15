@@ -106,4 +106,26 @@ describe('audit Jenius: engine runner', () => {
     expect(await readEngineStatus(s.ws, 'g', left.job_id)).toMatchObject({ state: 'gagal', lease_id: null });
     expect(await fresh.sweepOrphans()).toBe(0);
   }, 60_000);
+
+  it.skipIf(!hasFfmpeg)('R1: POST …/lanjut on a song refusal starts a new job that skips the check; anything else is refused', async () => {
+    const s = await setup();
+    const until = async (id: string) => {
+      for (let i = 0; i < 200; i++) {
+        const st = (await readEngineStatus(s.ws, 'g', id)).state;
+        if (st !== 'menunggu' && st !== 'berjalan') return st;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return 'timeout';
+    };
+    const a = (await s.call('/api/projects/g/engine/jobs', s.job('lagu'))).json.job.job_id as string;
+    expect(await until(a)).toBe('ditolak');
+    const r = await s.call(`/api/projects/g/engine/jobs/${a}/lanjut`, {});
+    expect(r.status).toBe(200);
+    expect(r.json.job.job_id).not.toBe(a);
+    expect(await until(r.json.job.job_id)).toBe('siap');
+    const b = (await s.call('/api/projects/g/engine/jobs', s.job('tolak'))).json.job.job_id as string;
+    expect(await until(b)).toBe('ditolak');
+    expect((await s.call(`/api/projects/g/engine/jobs/${b}/lanjut`, {})).status).toBe(422);
+    await s.engine.stopAll();
+  }, 90_000);
 });

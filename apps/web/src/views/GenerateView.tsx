@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, ProjectSummary, Role } from '../api';
-import { pollDelay, readyJobShown } from '../lib';
+import { canContinueRefused, pollDelay, readyJobShown } from '../lib';
 import { ErrorNotice } from '../ui';
 
 /**
@@ -402,6 +402,33 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
           <section className="card" aria-label="Proses mesin">
             <h2>2 · Proses mesin</h2>
             <EngineProgress job={job} log={log} onCancel={() => void api.engineCancel(current.project_id, current.job_id).catch(setError)} />
+            {canContinueRefused(job) && role !== 'reviewer' && (
+              <div className="notice warn small" aria-label="Ditolak karena lagu">
+                Mesin menolak karena audionya terdengar seperti lagu. Kalau lo yakin ini orang bicara, jalankan ulang tanpa cek itu.{' '}
+                <button
+                  className="btn small"
+                  disabled={busy}
+                  onClick={() =>
+                    void (async () => {
+                      setBusy(true);
+                      setError(null);
+                      try {
+                        const j = await api.engineContinue(current.project_id, current.job_id);
+                        setPlan(null);
+                        setApplied(null);
+                        setCurrent({ project_id: current.project_id, job_id: j.job_id });
+                      } catch (e) {
+                        setError(e);
+                      } finally {
+                        setBusy(false);
+                      }
+                    })()
+                  }
+                >
+                  ▶ Tetap lanjut
+                </button>
+              </div>
+            )}
           </section>
         )}
         {role === 'reviewer' && <div className="notice info">Peran Reviewer: bisa melihat status job mesin. Rencana edit dibuka dan diterapkan oleh Editor / Owner; setelah itu Reviewer menilainya di Editor (Lulus / Revisi).</div>}

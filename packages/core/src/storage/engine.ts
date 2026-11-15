@@ -101,6 +101,11 @@ export interface EngineJobInput {
   brief: EngineBrief;
   ai: boolean;
   mode_ops?: 'kompat' | 'u3';
+  /**
+   * R1 (G1, hybrid): the team's "tetap lanjut" after the engine refused the audio as a song
+   * (lyrics). Generate only; written to job.json as `abaikan_cek_ucapan: true`.
+   */
+  abaikan_cek_ucapan?: true;
   /** Batch Remix extras (contract §3 + v0.3.1), passed through after validation. */
   batch?: { batch: string; jumlah: number; tujuan: string; seed?: number; izinkan_musik_tanpa_lisensi?: boolean; akun_sendiri?: string[]; hak_pakai_jelas?: boolean; shot_tiktok?: boolean; vo_batch?: string; buang_otomatis?: string[]; batas_durasi?: [number, number] | null; kecualikan_shot?: string[] };
   /**
@@ -136,7 +141,7 @@ const PLACEMENTS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
 export function validateEngineJob(x: unknown): EngineJobInput {
   const o = (x ?? {}) as Record<string, unknown>;
   if (o.mode === 'pisah') return validatePisahJob(o);
-  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
   if (o.mode !== 'generate' && o.mode !== 'batch') bad('mode harus generate | batch');
@@ -168,6 +173,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   };
   if (typeof (o.ai ?? false) !== 'boolean') bad('ai harus true/false');
   if (o.mode_ops !== undefined && o.mode_ops !== 'kompat' && o.mode_ops !== 'u3') bad('mode_ops harus kompat | u3');
+  if (o.abaikan_cek_ucapan !== undefined && (o.abaikan_cek_ucapan !== true || o.mode !== 'generate')) bad('abaikan_cek_ucapan hanya true, dan hanya untuk Generate');
   let batch: EngineJobInput['batch'];
   if (o.mode === 'batch') {
     const bo = (o.batch ?? {}) as Record<string, unknown>;
@@ -206,7 +212,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
       ...(batas !== undefined ? { batas_durasi: batas === null ? null : ([(batas as number[])[0], (batas as number[])[1]] as [number, number]) } : {}),
     };
   } else if (o.batch !== undefined) bad('batch hanya untuk mode batch');
-  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}) };
+  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}) };
 }
 
 const PISAH_SRC = /^\$sumber:([A-Za-z0-9_-]{1,40})$/;
@@ -381,6 +387,7 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       brief: input.brief,
       ai: input.ai,
       ...(input.mode_ops ? { mode_ops: input.mode_ops } : {}),
+      ...(input.abaikan_cek_ucapan ? { abaikan_cek_ucapan: true } : {}),
       ...(input.batch ?? {}),
       ...(input.pisah ?? {}),
     };
@@ -543,6 +550,36 @@ export async function runEngineJob(
   await audit(ws, { op: 'engine.run', actor: 'user', outcome: s.state === 'siap' ? 'ok' : s.state === 'ditolak' ? 'blocked' : 'error', project_id: projectId, job_id: jobId, mode, exit_code: code });
   opts.onProgress?.(s);
   return s;
+}
+
+/** R1: the engine refused this Generate job only because the audio sounded like a song. */
+export function lyricRefusal(s: Pick<EngineStatus, 'mode' | 'state' | 'alasan'>): boolean {
+  return s.mode === 'generate' && s.state === 'ditolak' && /tetap lanjut/i.test(s.alasan ?? '');
+}
+
+/**
+ * R1 (hybrid): "Tetap lanjut" — a NEW Generate job with the same video, preset and brief as the
+ * refused one, telling the engine to skip its song check (`abaikan_cek_ucapan`). The refused job
+ * stays as it was (its history).
+ */
+export async function continueRefusedJob(ws: Workspace, projectId: string, jobId: string, opts: { now?: number; actor?: 'user' } = {}): Promise<EngineStatus> {
+  const s = await readEngineStatus(ws, projectId, jobId);
+  if (!lyricRefusal(s)) bad('"Tetap lanjut" hanya untuk Generate yang ditolak karena audio terdengar seperti lagu');
+  const jdir = jobAbs(ws, projectId, jobId);
+  const job = await readJson<{ preset?: unknown; brief?: unknown; ai?: unknown; mode_ops?: unknown; sumber?: { kunci?: unknown }[] }>(path.join(jdir, 'job.json'));
+  const refs = (await readJson<{ refs?: Record<string, MediaRef> }>(path.join(jdir, 'refs.json')))?.refs ?? {};
+  if (!job || !refs.$sumber) throw new StorageError('PRECONDITION', 'Job lama tidak lengkap; jalankan Generate baru dari awal');
+  const input = validateEngineJob({
+    project_id: projectId,
+    mode: 'generate',
+    sources: [{ kunci: '$sumber', ref: refs.$sumber }],
+    preset: job.preset,
+    brief: job.brief,
+    ai: job.ai === true,
+    ...(job.mode_ops === 'kompat' || job.mode_ops === 'u3' ? { mode_ops: job.mode_ops } : {}),
+    abaikan_cek_ucapan: true,
+  });
+  return prepareEngineJob(ws, input, opts);
 }
 
 /** A job left `berjalan` / `menunggu` by a server that stopped: mark it failed, free its lease. */

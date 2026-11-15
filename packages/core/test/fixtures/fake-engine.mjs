@@ -120,6 +120,11 @@ if (what === 'tolak0') {
   fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'ditolak', alasan: 'durasi di luar target' }));
   process.exit(0);
 }
+if (what === 'lagu' && !job.abaikan_cek_ucapan) {
+  // R1 (engine 5f91dfb): audio that sounds like a song is refused unless the team says "tetap lanjut".
+  fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'ditolak', alasan: 'Audio terdengar seperti lirik lagu (78% kata Inggris). Generate butuh orang bicara. Kalau yakin ini ucapan, jalankan ulang dengan "tetap lanjut".' }));
+  process.exit(2);
+}
 if (what === 'gagal') {
   process.stderr.write('Traceback: whisper model tidak ada\n');
   process.exit(1);

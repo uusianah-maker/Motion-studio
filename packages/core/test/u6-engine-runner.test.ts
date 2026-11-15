@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { checkPlan } from '../src/storage/copilot.js';
 import { loadLeases } from '../src/storage/deps.js';
-import { type EngineConfig, decideBatch, engineConfigFromEnv, engineEnv, readBatchDecisions, readEngineBatch, listEngineJobs, loadEnginePlan, prepareEngineJob, readEngineLog, readEngineStatus, runEngineJob, settleOrphanJob, validateEngineJob } from '../src/storage/engine.js';
+import { type EngineConfig, continueRefusedJob, lyricRefusal, decideBatch, engineConfigFromEnv, engineEnv, readBatchDecisions, readEngineBatch, listEngineJobs, loadEnginePlan, prepareEngineJob, readEngineLog, readEngineStatus, runEngineJob, settleOrphanJob, validateEngineJob } from '../src/storage/engine.js';
 import { isStorageError } from '../src/storage/errors.js';
 import { areaOf } from '../src/storage/permissions.js';
 import { loadRegistry } from '../src/storage/registry.js';
@@ -283,5 +283,24 @@ describe('U6 engine runner', () => {
     await createProject(ws, { project_id: 'p4', name: 'Brand lain' });
     await svc.updateProjectMeta({ project_id: 'p4', expected_revision: (await readProject(ws, 'p4')).revision, brand_id: other.brand_id, actor: 'user' });
     expect((await prepareEngineJob(ws, job('p4'))).job_id).toMatch(/^BLN-\d{8}-001$/);
+  }, 90_000);
+
+  it.skipIf(!hasFfmpeg)('R1 (hybrid): a job refused as a song can "tetap lanjut" — a new job with the same inputs skips the song check', async () => {
+    const { ws, cfg, video } = await setup();
+    const s1 = await prepareEngineJob(ws, validateEngineJob({ project_id: 'g', mode: 'generate', sources: [{ kunci: '$sumber', ref: video }], preset: 'aysilla-konversi', brief: brief('lagu'), ai: false }));
+    const refused = await runEngineJob(ws, cfg, 'g', s1.job_id);
+    expect(refused).toMatchObject({ state: 'ditolak' });
+    expect(lyricRefusal(refused)).toBe(true);
+    const s2 = await continueRefusedJob(ws, 'g', s1.job_id);
+    expect(s2.job_id).not.toBe(s1.job_id);
+    const job2 = JSON.parse(await fsp.readFile(path.join(ws.root, 'PROJECTS', 'g', '06_ENGINE', s2.job_id, 'job.json'), 'utf8'));
+    expect(job2).toMatchObject({ mode: 'generate', preset: 'aysilla-konversi', abaikan_cek_ucapan: true, brief: { catatan: 'lagu', produk: 'Loose Pants' } });
+    expect((await runEngineJob(ws, cfg, 'g', s2.job_id)).state).toBe('siap');
+    expect((await readEngineStatus(ws, 'g', s1.job_id)).state).toBe('ditolak'); // the refused job stays as history
+    // Only for a song refusal of a Generate job.
+    const s3 = await prepareEngineJob(ws, validateEngineJob({ project_id: 'g', mode: 'generate', sources: [{ kunci: '$sumber', ref: video }], preset: 'p', brief: brief('tolak'), ai: false }));
+    expect((await runEngineJob(ws, cfg, 'g', s3.job_id)).state).toBe('ditolak');
+    expect(await code(() => continueRefusedJob(ws, 'g', s3.job_id))).toBe('EDIT_INVALID');
+    expect(() => validateEngineJob({ project_id: 'g', mode: 'batch', sources: [], preset: 'p', brief: {}, batch: { batch: 'b', jumlah: 2 }, abaikan_cek_ucapan: true })).toThrow();
   }, 90_000);
 });

@@ -826,6 +826,8 @@ export function createApi(token: string | null, base = '') {
     engineJobs: (id: string) => call<{ jobs: EngineJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs`).then((r) => r.jobs),
     engineStart: (id: string, body: EngineStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
     engineJob: (id: string, jobId: string) => call<{ job: EngineJob; log: string | null }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}`),
+    /** R1: "Tetap lanjut" — a new Generate job that skips the engine's song check. */
+    engineContinue: (id: string, jobId: string) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/lanjut`, { json: {} }).then((r) => r.job),
     engineCancel: (id: string, jobId: string) => call<{ ok?: true; job?: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }),
     enginePlan: (id: string, jobId: string, variant?: string) =>
       call<PlanReply & { rencana: EngineRencana; qc: EngineQc | null }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/plan`, { json: variant ? { variant } : {} }),

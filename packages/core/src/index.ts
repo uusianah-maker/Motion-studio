@@ -54,6 +54,8 @@ export {
   type BatchDecision,
   readEngineBatch,
   readEngineBatchView,
+  continueRefusedJob,
+  lyricRefusal,
   readPisahResult,
   type PisahFile,
   type BatchLine,

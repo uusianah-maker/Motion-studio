@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TIMELINE_ZOOM, aspectCss, errorText, keepSelection, mediaKind, shotWord, readyJobShown, nextPresetId, parseDecimal, pollDelay, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
+import { TIMELINE_ZOOM, aspectCss, canContinueRefused, errorText, keepSelection, mediaKind, shotWord, readyJobShown, nextPresetId, parseDecimal, pollDelay, blockerText, clampScroll, clipAt, dragSpan, zoomAround, safeInsets, sourceSeconds, ellipsize, formatBytes, formatDuration, relativeDays, rulerTicks, snap, takeAuthError, takeTokenFromHash, visibleDuration } from '../src/lib';
 
 const TOKEN = 'a'.repeat(64);
 
@@ -151,5 +151,13 @@ describe('W09 auth error fragment', () => {
     expect(keepSelection(tl([{ clip_id: 'z1', start_ms: 1000 }]), tl([]), 'z1')).toBeNull(); // really deleted
     expect(keepSelection(tl([{ clip_id: 'z1', start_ms: 1000 }]), tl([{ clip_id: 'z1', start_ms: 1500 }]), 'z1')).toBe('z1');
     expect(keepSelection(tl([]), tl([]), null)).toBeNull();
+  });
+
+  it('R1: "Tetap lanjut" only for a Generate job refused as a song', () => {
+    const alasan = 'Audio terdengar seperti lirik lagu. Kalau yakin ini ucapan, jalankan ulang dengan "tetap lanjut".';
+    expect(canContinueRefused({ mode: 'generate', state: 'ditolak', alasan })).toBe(true);
+    expect(canContinueRefused({ mode: 'generate', state: 'ditolak', alasan: 'tidak ada ucapan terdeteksi' })).toBe(false);
+    expect(canContinueRefused({ mode: 'batch', state: 'ditolak', alasan })).toBe(false);
+    expect(canContinueRefused({ mode: 'generate', state: 'siap', alasan })).toBe(false);
   });
 });
