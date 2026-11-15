@@ -24,7 +24,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 | R12 | Motion Transfer tahap 2 (API AI gambar) | BLOCKED (PC-R2) | — | — | — |
 | R13 | Duplikat brand | BERJALAN | — | ucok | — |
 | R14 | Ukur + pratinjau kecil | ukur DONE (sukma) · proxy: ucok | terowongan macet 1/20 unduhan; preview pakai file 4K 21 Mbps | sukma + ucok | 6bcf6c0 |
-| R15 | Backup mingguan | skrip DONE, jadwal BLOCKED (PC-R1) | backup 1,84 GB 64 dtk, pulih 74/74 proyek | sukma | 6bcf6c0 |
+| R15 | Backup mingguan | skrip DONE; jadwal TIDAK dipasang (keputusan owner) | backup 1,84 GB 64 dtk, pulih 74/74 proyek | sukma | 6bcf6c0 |
 
 ### Audit checkpoint putaran R (R1–R7)
 - Reviewer independen (hanya diberi persyaratan + diff) menemukan 8 hal. Diperbaiki venus di f23f981: jalan.py crash saat hook dilewati; whoosh tersisa; OCR hanya potongan pertama; sys.path; kontrak hook_top; klaim CTA saat tidak muat.
@@ -32,7 +32,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 - Tes: pipeline/tests 63 OK, test_batch 50 OK, jaga_ops + efek_otomatis OK. Risiko: tes core u6 R1 / r10 lambat (16–24 dtk), sekali gagal saat dijalankan bersamaan.
 
 ### Pending Confirmation putaran R
-- **PC-R1 lokasi backup**: A disk C (penuh 1–2 bulan) · B HDD eksternal kedua · C Google Drive · **D (saran): B untuk media + C untuk data saja**. Workspace sekarang hanya di 1 SSD USB, 0 backup.
+- ~~PC-R1 lokasi backup~~ → owner 15 Nov: "ga usah ada lokasi backup". Skrip backup sukma tetap ada di `deploy/backup/`, tidak dijadwalkan. Risiko tercatat: workspace hanya di 1 SSD USB.
 - **PC-R2 AI gambar Motion Transfer tahap 2**: akun/API mana dan batas biaya per bulan. Sampai diputuskan, prompt disalin manual.
 - **PC-R4 Setujui varian**: "Setujui" di layar PIC = review Lulus. Untuk proyek varian Batch, apakah Lulus otomatis menyetujui varian untuk render massal? (sekarang terpisah)
 - **PC-R5 draf belum dirender**: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
