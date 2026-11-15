@@ -38,8 +38,9 @@ def siapkan(brand: dict, brand_raw: dict, job: dict) -> tuple[dict, dict]:
     g = {"preset": pr, "audio_pilihan": ap, "caption": pr.get("caption") or {}, "hook": pr.get("hook") or {},
          "shot": pr.get("shot") or {}, "transisi": (pr.get("transisi") or {}).get("ganti_orang"),
          "end_card": bool((pr.get("penutup") or {}).get("end_card")), "beat": pr.get("beat") or {},
-         "tagline": ((brand_raw.get("teks") or {}).get("tagline") or brand.get("tagline") or "").strip() or None,
-         "watermark": (brand_raw.get("visual") or {}).get("watermark") or None}
+         # brandkit.py (venus) sudah mengeluarkan bk["tagline"] & bk["watermark"]; JSON mentah hanya cadangan.
+         "tagline": (brand.get("tagline") or (brand_raw.get("teks") or {}).get("tagline") or "").strip() or None,
+         "watermark": brand.get("watermark") or (brand_raw.get("visual") or {}).get("watermark") or None}
     if ap is not None and ap not in AUDIO_PILIHAN:
         g["salah"] = f"audio_pilihan harus salah satu dari {', '.join(AUDIO_PILIHAN)}"
     pen = brand.get("penutup") or {}
@@ -197,14 +198,15 @@ def watermark(ops: list[dict], wm: dict | None) -> int:
         t = max(t, b)
     if akhir - t >= MIN_CLIP_MS:
         sela.append((t, akhir))
-    y = wm.get("y") if isinstance(wm.get("y"), (int, float)) else 0.06
-    lebar = wm.get("lebar") if isinstance(wm.get("lebar"), (int, float)) else 0.5
+    # Bawaan sama dengan Video iklan (ops.py venus): y 0,07, lebar 0,3, tanpa outline.
+    y = wm.get("y") if isinstance(wm.get("y"), (int, float)) else 0.07
+    lebar = wm.get("lebar") if isinstance(wm.get("lebar"), (int, float)) else 0.3
     for a, b in sela:
         ops.append({"op": "add_clip", "track_kind": "text", "text": str(wm["teks"]).strip()[:80], "start_ms": a,
                     "duration_ms": b - a,
                     "style": {"x": 0.5, "y": round(min(0.97, max(0.02, float(y))), 3), "size": 2.6,
                               "width": round(min(1.0, max(0.2, float(lebar))), 3), "color": "#ffffff", "bg": None,
-                              "bold": False, "outline": True, "align": "center", "font": "brand"}})
+                              "bold": False, "outline": False, "align": "center", "font": "brand"}})
     return len(sela)
 
 
