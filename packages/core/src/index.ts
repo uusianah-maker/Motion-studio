@@ -23,7 +23,9 @@ export {
 export { HASIL_DIR, namaAman, salinKeHasil } from './storage/hasilRender.js';
 export { loadLeases, releaseOrphanLeases } from './storage/deps.js';
 export type { PreflightProblem, PreflightResult } from './storage/preflight.js';
-export type { Clip, ProjectManifest, Track } from './storage/project.js';
+export type { Clip, ProjectFitur, ProjectManifest, Track } from './storage/project.js';
+export { PROJECT_FITUR, isProjectFitur } from './storage/project.js';
+export { type FiturHints, guessFitur, resolveFitur } from './storage/fitur.js';
 export { PURGE_PHRASE, type PurgePlan, type PurgeResult } from './storage/purge.js';
 export { type Dashboard, diskSpace, estimateSpace, getDashboard } from './storage/quota.js';
 export { type ImportResult, type MediaRecord, type MediaScope, type Registry, type VersionRecord, loadRegistry } from './storage/registry.js';

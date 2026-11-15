@@ -131,7 +131,7 @@ export function PisahPanel({ api, role, brand, installed, onDone }: { api: Api; 
     setResult(null);
     try {
       // A project made for a start that then failed is reused by the retry (audit 14 Nov).
-      const p = unstarted.current ? { project_id: unstarted.current } : await api.createProject(`Footage ${batch}`.slice(0, 120));
+      const p = unstarted.current ? { project_id: unstarted.current } : await api.createProject(`Footage ${batch}`.slice(0, 120), 'batch');
       unstarted.current = p.project_id;
       const full = await api.project(p.project_id);
       if (full.brand_id !== brand.brand_id) await api.updateProject(p.project_id, full.revision, { brand_id: brand.brand_id });

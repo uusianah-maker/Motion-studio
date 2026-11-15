@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { pantauDanUnduh } from '../autoUnduh';
+import { fiturOf } from '../fitur';
 import type { Api, BatchDecision, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
@@ -98,9 +99,9 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     setPreset((p) => (brand?.presets.some((x) => x.id === p) ? p : (brand?.presets[0]?.id ?? 'standar')));
   }, [brand]);
 
-  // Earlier batches: every non-variant project's batch jobs.
+  // Earlier batches: the batch jobs of every non-variant Batch project (R22: other features' projects are skipped).
   const masterIds = projects
-    .filter((p) => !p.error && !p.variant && p.status !== 'archived')
+    .filter((p) => !p.error && !p.variant && p.status !== 'archived' && fiturOf(p) === 'batch')
     .slice(0, 40)
     .map((p) => p.project_id)
     .join(',');
@@ -157,7 +158,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     setBusy(true);
     setError(null);
     try {
-      const p = unstarted.current ? { project_id: unstarted.current } : await api.createProject(`Batch ${batchName} · ${today()} ${jamSusun()}`.slice(0, 120));
+      const p = unstarted.current ? { project_id: unstarted.current } : await api.createProject(`Batch ${batchName} · ${today()} ${jamSusun()}`.slice(0, 120), 'batch');
       unstarted.current = p.project_id;
       const full = await api.project(p.project_id);
       if (full.brand_id !== brand.brand_id) await api.updateProject(p.project_id, full.revision, { brand_id: brand.brand_id });

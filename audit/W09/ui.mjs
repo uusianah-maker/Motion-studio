@@ -79,7 +79,9 @@ try {
   await page.getByRole('button', { name: /Promo Lebaran/ }).first().waitFor({ timeout: 15_000 });
   const href = page.url();
   const sawGoogle = g.state.authRequests.length === 1 && g.state.tokenRequests.length === 1;
-  check('LG-02 Klik → Google → kembali ke app; alamat bersih (tanpa code/state)', sawGoogle && href === `${base}/`, href);
+  // R17: the app shows its page in the hash (#/edit); "clean" = no OAuth code/state left anywhere.
+  const u = new URL(href);
+  check('LG-02 Klik → Google → kembali ke app; alamat bersih (tanpa code/state)', sawGoogle && `${u.origin}${u.pathname}` === `${base}/` && !u.search && /^(#\/[a-z-/]*)?$/.test(u.hash) && !/code=|state=/.test(href), href);
 
   const cookies = await ctx.cookies(base);
   const sid = cookies.find((c) => c.name === 'motion_sid');

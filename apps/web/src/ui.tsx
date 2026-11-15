@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { ProjectSummary } from './api';
+import type { ProjectFitur, ProjectSummary } from './api';
+import { FITUR_LABEL, fiturOf } from './fitur';
 import { INTEGRITY_LABEL, LIFECYCLE_LABEL, errorText, formatDate } from './lib';
 
 /** Live media query (one layout rendered at a time, so no duplicated controls in the DOM). */
@@ -87,6 +88,8 @@ export function Modal({ title, onClose, busy, children }: { title: string; onClo
   );
 }
 
+const FITUR_CHIPS: [ProjectFitur | 'semua', string][] = [['semua', 'Semua'], ['iklan', FITUR_LABEL.iklan], ['batch', FITUR_LABEL.batch], ['beatspot', FITUR_LABEL.beatspot], ['transfer', FITUR_LABEL.transfer]];
+
 export function ProjectList({
   projects,
   selected,
@@ -105,7 +108,9 @@ export function ProjectList({
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const matching = (projects ?? []).filter((p) => !q || (p.name ?? p.project_id).toLowerCase().includes(q.toLowerCase()));
+  // R22 hybrid: Edit still lists every project; chips narrow it down to one feature's projects.
+  const [fitur, setFitur] = useState<ProjectFitur | 'semua'>('semua');
+  const matching = (projects ?? []).filter((p) => (!q || (p.name ?? p.project_id).toLowerCase().includes(q.toLowerCase())) && (fitur === 'semua' || (!p.error && fiturOf(p) === fitur)));
   const shown = matching.filter((p) => p.status !== 'archived');
   const archived = matching.filter((p) => p.status === 'archived');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -130,7 +135,7 @@ export function ProjectList({
         <small>
           {p.error
             ? 'Manifest rusak — tidak bisa dibuka'
-            : `${p.variant ? `V${p.variant.number}${p.variant.state === 'approved' ? ' ✓' : ''} · ` : ''}${p.status === 'archived' ? 'Arsip · ' : ''}Revisi ${p.revision} · ${formatDate(p.updated_at)}`}
+            : `${FITUR_LABEL[fiturOf(p)]} · ${p.variant ? `V${p.variant.number}${p.variant.state === 'approved' ? ' ✓' : ''} · ` : ''}${p.status === 'archived' ? 'Arsip · ' : ''}Revisi ${p.revision} · ${formatDate(p.updated_at)}`}
         </small>
       </span>
     </button>
@@ -173,9 +178,17 @@ export function ProjectList({
         </div>
       )}
       {error ? <div style={{ padding: '0 15px 10px' }}><ErrorNotice error={error} /></div> : null}
-      <div className="sideh">SEMUA PROYEK</div>
+      <div className="fiturChips" role="group" aria-label="Saring fitur">
+        {FITUR_CHIPS.map(([id, label]) => (
+          <button key={id} className={`chip${fitur === id ? ' on' : ''}`} aria-pressed={fitur === id} onClick={() => setFitur(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="sideh">{fitur === 'semua' ? 'SEMUA PROYEK' : `PROYEK ${FITUR_LABEL[fitur].toUpperCase()}`}</div>
       {projects === null && <div className="sectionNote">Memuat…</div>}
       {projects?.length === 0 && <div className="sectionNote">Belum ada proyek. Ketik nama di atas lalu tekan ＋.</div>}
+      {!!projects?.length && fitur !== 'semua' && !matching.length && <div className="sectionNote">Belum ada proyek {FITUR_LABEL[fitur]}.</div>}
       {shown.map(row)}
       {archived.length > 0 && (
         <details className="archived" open={archived.some((p) => p.project_id === selected) || undefined}>

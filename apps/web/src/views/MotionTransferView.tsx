@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { proyekFitur } from '../fitur';
 import type { Api, BrandKit, EngineJob, ProjectSummary, Role, TransferScene, TransferView } from '../api';
 import { ErrorNotice, useSessionState } from '../ui';
 import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
@@ -74,13 +75,15 @@ function SceneCard({ s, index, total, img, jobId, readOnly, busy, onCopy, onDele
   );
 }
 
-export function MotionTransferView({ api, role = 'owner', projects, active = true }: { api: Api; role?: Role; projects: ProjectSummary[]; active?: boolean }) {
+export function MotionTransferView({ api, role = 'owner', projects, active = true, onProjectsChanged }: { api: Api; role?: Role; projects: ProjectSummary[]; active?: boolean; onProjectsChanged?: () => void }) {
   const readOnly = role === 'reviewer';
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [brands, setBrands] = useState<BrandKit[]>([]);
   const [brandsLoaded, setBrandsLoaded] = useState(false);
   const [brandId, setBrandId] = useState('');
   // The project and the job open stay after a reload (the scenes themselves live on the server).
+  // R22: projects without a brand use the workspace default brand.
+  const [defaultBrand, setDefaultBrand] = useState<string | null>(null);
   const [target, setTarget] = useSessionState('transfer.proyek', 'new');
   const [name, setName] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -103,6 +106,7 @@ export function MotionTransferView({ api, role = 'owner', projects, active = tru
       setBrands(r.brands);
       setBrandsLoaded(true);
       setBrandId((cur) => cur || r.default_id || r.brands[0]?.brand_id || '');
+      setDefaultBrand(r.default_id ?? null);
     }, setError);
   }, [api, active]);
   const brand = brands.find((b) => b.brand_id === brandId) ?? null;
@@ -185,8 +189,10 @@ export function MotionTransferView({ api, role = 'owner', projects, active = tru
     try {
       let projectId = target;
       if (target === 'new') {
-        projectId = unstarted.current ?? (await api.createProject(name.trim() || `Motion Transfer ${produk || brand.name} ${today()}`)).project_id;
+        projectId = unstarted.current ?? (await api.createProject(name.trim() || `Motion Transfer ${produk || brand.name} ${today()}`, 'transfer')).project_id;
         unstarted.current = projectId;
+        // R22: the new project shows in this page's list (and in Edit) right away.
+        onProjectsChanged?.();
       }
       const p = await api.project(projectId);
       if (p.brand_id !== brand.brand_id) await api.updateProject(projectId, p.revision, { brand_id: brand.brand_id });
@@ -257,13 +263,11 @@ export function MotionTransferView({ api, role = 'owner', projects, active = tru
                 Proyek
                 <select aria-label="Proyek tujuan" value={target} onChange={(e) => setTarget(e.target.value)}>
                   <option value="new">＋ Proyek baru</option>
-                  {projects
-                    .filter((p) => !p.error && p.status !== 'archived' && !p.variant)
-                    .map((p) => (
-                      <option key={p.project_id} value={p.project_id}>
-                        {p.name}
-                      </option>
-                    ))}
+                  {proyekFitur(projects, 'transfer', brandId, defaultBrand, target).map((p) => (
+                    <option key={p.project_id} value={p.project_id}>
+                      {p.name}
+                    </option>
+                  ))}
                 </select>
               </label>
               {target === 'new' && (

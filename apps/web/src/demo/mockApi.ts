@@ -312,15 +312,16 @@ export function createDemoApi(): Api {
   const api: Api = {
     session: async () => ({ actor: 'user', workspace_id: 'ws_demo', storage_backend: 'local-fs', auth: 'google', user: { email: 'owner@contoh.com', name: 'Owner' } }),
     logout: async () => ({ ok: true }),
-    projects: async () => [...projects.values()].map((s) => ({ project_id: s.p.project_id, name: s.p.name, status: s.p.status, revision: s.p.revision, created_at: s.p.created_at, updated_at: s.p.updated_at }) satisfies ProjectSummary),
-    createProject: async (name) => {
+    projects: async () => [...projects.values()].map((s) => ({ project_id: s.p.project_id, name: s.p.name, status: s.p.status, revision: s.p.revision, created_at: s.p.created_at, updated_at: s.p.updated_at, fitur: s.p.fitur ?? 'editor', ...(s.p.brand_id ? { brand_id: s.p.brand_id } : {}) }) satisfies ProjectSummary),
+    createProject: async (name, fitur) => {
       const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || nid('p');
       if (projects.has(id)) fail(409, 'CONFLICT', 'Proyek dengan nama itu sudah ada');
       addProject(id, name, [], 0);
       const s = projects.get(id)!;
       s.p.revision = 0;
       s.p.created_at = s.p.updated_at = now();
-      return { project_id: id, name, status: 'active', revision: 0, created_at: s.p.created_at, updated_at: s.p.updated_at };
+      s.p.fitur = fitur ?? 'editor';
+      return { project_id: id, name, status: 'active', revision: 0, created_at: s.p.created_at, updated_at: s.p.updated_at, fitur: s.p.fitur };
     },
     project: async (id) => view(get(id)),
     // X09 demo variants (same rules as the server, simplified): clone master, set ratio/hook/CTA.
@@ -410,6 +411,7 @@ export function createDemoApi(): Api {
       if (s.p.revision !== rev) fail(409, 'CONFLICT', 'Revisi proyek sudah berubah');
       if (patch.name !== undefined) s.p.name = patch.name.trim() || fail(422, 'EDIT_INVALID', 'Nama proyek tidak boleh kosong');
       if (patch.status) s.p.status = patch.status;
+      if (patch.fitur) s.p.fitur = patch.fitur;
       if (patch.brand_id !== undefined) {
         if (patch.brand_id === null) delete s.p.brand_id;
         else s.p.brand_id = (brandStore.get(patch.brand_id) ?? fail(404, 'NOT_FOUND', 'Brand tidak ditemukan')).brand_id;

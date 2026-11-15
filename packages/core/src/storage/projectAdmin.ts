@@ -5,7 +5,7 @@ import { StorageError } from './errors.js';
 import { guard } from './guard.js';
 import { isSafeId } from './ids.js';
 import type { Actor } from './permissions.js';
-import { type MediaRef, type ProjectManifest, type Timeline, type VariantInfo, PROJECT_SCHEMA_VERSION, validateProjectManifest } from './project.js';
+import { type MediaRef, type ProjectFitur, type ProjectManifest, type Timeline, type VariantInfo, PROJECT_SCHEMA_VERSION, isProjectFitur, validateProjectManifest } from './project.js';
 import { loadRegistry } from './registry.js';
 import { resolveInside } from './paths.js';
 import { type Workspace, createProject, projectRel, readProject } from './workspace.js';
@@ -45,9 +45,11 @@ export function cleanName(x: unknown): string {
 const clipRefs = (t: Timeline): MediaRef[] => t.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.media ? [c.media] : [])));
 
 /** Rename and/or archive/activate. History (undo/redo) is kept; the revision moves on. */
-export async function updateProjectMeta(ws: Workspace, input: { project_id: string; expected_revision: number; name?: unknown; status?: unknown; brand_id?: unknown; actor: Actor }): Promise<ProjectManifest> {
+export async function updateProjectMeta(ws: Workspace, input: { project_id: string; expected_revision: number; name?: unknown; status?: unknown; brand_id?: unknown; fitur?: unknown; actor: Actor }): Promise<ProjectManifest> {
   await guard(ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'meta' });
-  if (input.name === undefined && input.status === undefined && input.brand_id === undefined) bad('Tidak ada yang diubah');
+  if (input.name === undefined && input.status === undefined && input.brand_id === undefined && input.fitur === undefined) bad('Tidak ada yang diubah');
+  // R22 hybrid: the guessed feature of an old project can be set by hand.
+  if (input.fitur !== undefined && !isProjectFitur(input.fitur)) bad('Fitur proyek tidak dikenal');
   // U1: brand per project (null = back to the workspace default brand).
   if (input.brand_id !== undefined && input.brand_id !== null) await readBrand(ws, typeof input.brand_id === 'string' ? input.brand_id : '');
   if (input.status !== undefined && input.status !== 'active' && input.status !== 'archived') bad('Status harus active atau archived');
@@ -57,6 +59,7 @@ export async function updateProjectMeta(ws: Workspace, input: { project_id: stri
     ...current,
     ...(input.name !== undefined ? { name: cleanName(input.name) } : {}),
     ...(input.status !== undefined ? { status: input.status as ProjectManifest['status'] } : {}),
+    ...(isProjectFitur(input.fitur) ? { fitur: input.fitur } : {}),
   };
   if (input.brand_id === null) delete next.brand_id;
   else if (input.brand_id !== undefined) next.brand_id = input.brand_id as string;
@@ -68,8 +71,8 @@ export async function updateProjectMeta(ws: Workspace, input: { project_id: stri
  * If the commit is refused (e.g. a media version is in Trash) the half-made project is removed,
  * so a failed duplicate/import leaves nothing behind.
  */
-export async function createWithTimeline(ws: Workspace, input: { project_id: string; name: string; timeline: Timeline; actor: Actor; variant?: VariantInfo; brand_id?: string }): Promise<ProjectManifest> {
-  const fresh = await createProject(ws, { project_id: input.project_id, name: input.name });
+export async function createWithTimeline(ws: Workspace, input: { project_id: string; name: string; timeline: Timeline; actor: Actor; variant?: VariantInfo; brand_id?: string; fitur?: ProjectFitur }): Promise<ProjectManifest> {
+  const fresh = await createProject(ws, { project_id: input.project_id, name: input.name, ...(input.fitur ? { fitur: input.fitur } : {}) });
   try {
     return await commitProject(ws, { manifest: { ...fresh, timeline: input.timeline, ...(input.variant ? { variant: input.variant } : {}), ...(input.brand_id ? { brand_id: input.brand_id } : {}) }, expected_revision: 0, actor: input.actor });
   } catch (e) {
@@ -85,7 +88,7 @@ export async function duplicateProject(ws: Workspace, input: { project_id: strin
   await guard(ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'duplicate' });
   const src = await readProject(ws, input.project_id);
   const name = input.name === undefined ? cleanName(`${src.name} (salinan)`.slice(0, MAX_PROJECT_NAME)) : cleanName(input.name);
-  return createWithTimeline(ws, { project_id: input.new_project_id, name, timeline: structuredClone(src.timeline), actor: input.actor, ...(src.brand_id ? { brand_id: src.brand_id } : {}) });
+  return createWithTimeline(ws, { project_id: input.new_project_id, name, timeline: structuredClone(src.timeline), actor: input.actor, ...(src.brand_id ? { brand_id: src.brand_id } : {}), ...(src.fitur ? { fitur: src.fitur } : {}) });
 }
 
 export async function exportProject(ws: Workspace, projectId: string, now: number): Promise<ProjectExport> {

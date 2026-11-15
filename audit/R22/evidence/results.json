@@ -1,0 +1,52 @@
+[
+  {
+    "id": "R22-01 Beat Spot: hanya proyek Beat Spot brand terpilih (＋ Proyek baru paling atas; lama tanpa brand ikut brand bawaan)",
+    "ok": true,
+    "detail": "＋ Proyek baru|Beat Spot lama|Sore di mall"
+  },
+  {
+    "id": "R22-02 Ganti brand → daftar ikut brand itu",
+    "ok": true,
+    "detail": "＋ Proyek baru|Kedua beat"
+  },
+  {
+    "id": "R22-03 Video iklan: hanya proyek iklan (proyek lama \"Generate …\" ditebak iklan)",
+    "ok": true,
+    "detail": "＋ Proyek baru|Generate Gamis 14 Nov|Iklan gamis"
+  },
+  {
+    "id": "R22-04 Motion Transfer: hanya proyek Motion Transfer",
+    "ok": true,
+    "detail": "＋ Proyek baru|Transfer jilbab"
+  },
+  {
+    "id": "R22-05 Proyek baru dari Beat Spot tercatat fitur beatspot + brand terpilih",
+    "ok": true,
+    "detail": "[[\"Beat Spot Aysilla Factory 2026-11-15\",\"beatspot\",\"b-5daa5cbf13eb\"]]"
+  },
+  {
+    "id": "R22-06 Edit: semua proyek tampil + chip Semua · Video iklan · Batch · Beat Spot · Motion Transfer",
+    "ok": true,
+    "detail": "Semua|Video iklan|Batch|Beat Spot|Motion Transfer · 9 proyek"
+  },
+  {
+    "id": "R22-07 Chip \"Beat Spot\" → hanya proyek Beat Spot (semua brand), tiap baris berlabel fitur",
+    "ok": true,
+    "detail": "Beat Spot Aysilla Factory 2026-11-15 Beat Spot · Revisi 0 · 15 Nov 2026, 22.27 | Beat Spot lama Beat Spot · Revisi 0 · 15 Nov 2026, 22.27 | Kedua beat Beat Spot · Revisi 1 · 15 Nov 2026, 22.27 | Sore di mall Beat Spot · Revisi 1 · 15 Nov 2026, 22.27"
+  },
+  {
+    "id": "R22-08 Chip \"Batch\" → proyek lama \"Batch …\" ditebak Batch",
+    "ok": true,
+    "detail": "Batch Sore · 14 Nov 10.00 Batch · Revisi 1 · 15 Nov 2026, 22.27"
+  },
+  {
+    "id": "R22-09 Proyek dibuat di Edit = fitur Edit (tidak muncul di halaman fitur)",
+    "ok": true,
+    "detail": "editor"
+  },
+  {
+    "id": "R22-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

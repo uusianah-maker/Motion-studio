@@ -122,7 +122,7 @@ try {
   await page.getByRole('link', { name: /Masuk dengan Google/ }).click();
   await page.getByRole('button', { name: 'Keluar (owner@example.com)' }).waitFor({ timeout: 20_000 });
   const sid = (await ctx.cookies(base)).find((c) => c.name === '__Host-motion_sid');
-  check('EJ-02 Login Google lewat domain: cookie __Host- + Secure + HttpOnly + Strict', sid?.secure && sid.httpOnly && sid.sameSite === 'Strict' && page.url() === `${base}/`, page.url());
+  check('EJ-02 Login Google lewat domain: cookie __Host- + Secure + HttpOnly + Strict', sid?.secure && sid.httpOnly && sid.sameSite === 'Strict' && /^\/(#\/[a-z-/]*)?$/.test(page.url().slice(base.length)), page.url()); // R17: page shown in the hash (#/edit)
 
   // Project + upload through the proxy (raw body streamed).
   await page.getByPlaceholder('Nama proyek baru').fill('Promo Online');
@@ -138,7 +138,7 @@ try {
   }
   check('EJ-03 Upload lewat proxy: tersimpan di workspace PC, ukuran & durasi terbaca', v && v.size === (await fsp.stat(upload)).size && v.probe?.duration_ms > 7000, v ? `${v.size} B, ${v.probe?.duration_ms} ms` : 'tidak ada');
 
-  await page.getByRole('button', { name: 'Editor', exact: true }).click();
+  await page.getByRole('button', { name: /^2. Edit$/ }).click();
   await page.getByRole('button', { name: 'Tambah Talk.mp4 ke linimasa' }).click();
   await page.locator('.track .clip', { hasText: 'Talk.mp4' }).waitFor();
   const projectId = (await core.listProjectIds(await core.openWorkspace(wsRoot)))[0];
@@ -176,7 +176,7 @@ try {
   await conns.getByLabel('Harga per menit audio').fill('0.006');
   await conns.getByRole('button', { name: 'Simpan koneksi' }).click();
   await conns.getByText(/^1\. Whisper$/).waitFor();
-  await page.getByRole('button', { name: 'Editor', exact: true }).click();
+  await page.getByRole('button', { name: /^2. Edit$/ }).click();
   await page.getByRole('button', { name: 'Transkrip Talk.mp4' }).click();
   const dlg = page.getByRole('dialog', { name: 'Transkrip: Talk.mp4' });
   await dlg.getByRole('button', { name: /Transkripsi \(≈/ }).click();

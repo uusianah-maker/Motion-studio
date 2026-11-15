@@ -217,10 +217,10 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {view === 'editor' && <EditorView api={api} role={role} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} />}
         {view === 'buat' && <BuatVideoView onOpen={(f: BuatFitur) => setView(f)} />}
         {BUAT.includes(view) && <BuatTabs current={view as BuatFitur} onOpen={(f) => setView(f)} onHub={() => setView('buat')} />}
-        {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />)}
+        {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
         {keep('batch', <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} active={view === 'batch'} />)}
-        {keep('beatspot', <BeatSpotView api={api} role={role} projects={projects ?? []} active={view === 'beatspot'} onOpenProject={(id) => void openNew(id)} />)}
-        {keep('transfer', <MotionTransferView api={api} role={role} projects={projects ?? []} active={view === 'transfer'} />)}
+        {keep('beatspot', <BeatSpotView api={api} role={role} projects={projects ?? []} active={view === 'beatspot'} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
+        {keep('transfer', <MotionTransferView api={api} role={role} projects={projects ?? []} active={view === 'transfer'} onProjectsChanged={() => void loadProjects()} />)}
         {keep('shots', <ShotLibraryView api={api} role={role} active={view === 'shots'} />)}
         {keep('hasil', <HasilView api={api} active={view === 'hasil'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('media', <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />)}

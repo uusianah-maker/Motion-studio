@@ -52,7 +52,7 @@ try {
   check('BG-02 Batas disimpan dari UI', saved.per_request_usd === 0.005, JSON.stringify(saved));
 
   const toEditor = async () => {
-    await page.getByRole('button', { name: 'Editor' }).click();
+    await page.getByRole('button', { name: /^2. Edit$/ }).click();
     await page.getByRole('heading', { name: 'Promo Lebaran' }).waitFor();
   };
   const panel = page.getByRole('region', { name: 'Motion Copilot' });

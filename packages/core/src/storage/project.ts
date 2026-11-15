@@ -9,6 +9,14 @@ import { type Keyframe, validateKeyframes } from './keyframes.js';
 
 export const PROJECT_SCHEMA_VERSION = 1;
 
+/**
+ * R22: which page made the project, so each feature's "Proyek" list only shows its own.
+ * `editor` = made in Edit (or unknown). Old projects have no field; it is guessed when read.
+ */
+export const PROJECT_FITUR = ['iklan', 'batch', 'beatspot', 'transfer', 'editor'] as const;
+export type ProjectFitur = (typeof PROJECT_FITUR)[number];
+export const isProjectFitur = (x: unknown): x is ProjectFitur => typeof x === 'string' && (PROJECT_FITUR as readonly string[]).includes(x);
+
 /** Exact media version a project depends on (`shared://media_id/version_id` in PRD terms). */
 export interface MediaRef {
   media_id: string;
@@ -100,6 +108,8 @@ export interface ProjectManifest {
   variant?: VariantInfo;
   /** U1: the brand whose Brand Kit this project uses (missing = workspace default brand). */
   brand_id?: string;
+  /** R22: the feature that made the project (missing on old projects → guessed). */
+  fitur?: ProjectFitur;
 }
 
 export interface VariantBrief {
@@ -190,6 +200,7 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
     snapshots,
     ...(o.variant !== undefined ? { variant: validateVariantInfo(o.variant) } : {}),
     ...(o.brand_id !== undefined ? { brand_id: id(o.brand_id, 'brand_id') } : {}),
+    ...(o.fitur !== undefined ? { fitur: isProjectFitur(o.fitur) ? o.fitur : fail('fitur', 'fitur tidak dikenal') } : {}),
   };
 }
 

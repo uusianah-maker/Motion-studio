@@ -1018,7 +1018,7 @@ export async function decideBatch(
   let number = Math.max(0, ...(await listVariants(ws, master.project_id)).map((p) => p.variant!.number));
   for (const c of toCreate) {
     const variant: VariantInfo = { master_id: master.project_id, number: ++number, label: c.label, brief: c.hook ? { hook: c.hook } : {}, approved_revision: null, ...(c.test ? { bukan_iklan: true as const } : {}) };
-    const made = await createWithTimeline(ws, { project_id: input.newId(), name: `${master.name} · ${c.label}`.slice(0, MAX_PROJECT_NAME), timeline: c.timeline, actor: input.actor, variant, ...(master.brand_id ? { brand_id: master.brand_id } : {}) });
+    const made = await createWithTimeline(ws, { project_id: input.newId(), name: `${master.name} · ${c.label}`.slice(0, MAX_PROJECT_NAME), timeline: c.timeline, actor: input.actor, variant, ...(master.brand_id ? { brand_id: master.brand_id } : {}), fitur: 'batch' });
     // R9: an engine draft — the editor's later changes to it are recorded as lessons.
     await markEngineOrigin(ws, made.project_id, { kind: 'batch', job_id: input.job_id, varian: c.varian }).catch(() => undefined);
     await setVariantApproval(ws, { project_id: made.project_id, expected_revision: made.revision, approved: true, actor: input.actor });

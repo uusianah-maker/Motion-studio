@@ -6,7 +6,7 @@ import { StorageError } from './errors.js';
 import { assertSafeId, newId } from './ids.js';
 import { readJson, withLock, writeJsonAtomic } from './jsonStore.js';
 import { LocalFsBackend } from './localfs.js';
-import { PROJECT_SCHEMA_VERSION, type ProjectManifest, validateProjectManifest } from './project.js';
+import { PROJECT_SCHEMA_VERSION, type ProjectFitur, type ProjectManifest, isProjectFitur, validateProjectManifest } from './project.js';
 import { canonicalRoot, resolveInside } from './paths.js';
 
 export const WORKSPACE_SCHEMA_VERSION = 1;
@@ -184,8 +184,9 @@ export const projectRel = (projectId: string, sub?: (typeof PROJECT_DIRS)[number
 
 export const manifestRel = (projectId: string): string => `${projectRel(projectId, '03_PROJECT')}/project.json`;
 
-export async function createProject(ws: Workspace, input: { project_id: string; name: string }): Promise<ProjectManifest> {
+export async function createProject(ws: Workspace, input: { project_id: string; name: string; fitur?: ProjectFitur }): Promise<ProjectManifest> {
   const id = assertSafeId(input.project_id, 'Project ID');
+  if (input.fitur !== undefined && !isProjectFitur(input.fitur)) throw new StorageError('EDIT_INVALID', 'Fitur proyek tidak dikenal', { fitur: String(input.fitur) });
   return withWorkspaceLock(ws, 'createProject', async () => {
     const dir = await resolveInside(ws.root, projectRel(id), { allowMissing: true });
     try {
@@ -206,6 +207,7 @@ export async function createProject(ws: Workspace, input: { project_id: string; 
       updated_at: now,
       timeline: { tracks: [] },
       snapshots: [],
+      ...(input.fitur ? { fitur: input.fitur } : {}),
     };
     await writeJsonAtomic(await resolveInside(ws.root, manifestRel(id), { allowMissing: true }), manifest);
     return manifest;

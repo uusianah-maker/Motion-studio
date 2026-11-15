@@ -158,6 +158,9 @@ export interface ProjectExport {
   media: { media_id: string; version_id: string; content_hash: string; display_name: string; duration_ms: number | null }[];
 }
 
+/** R22: which feature page made the project (old projects: guessed by the server). */
+export type ProjectFitur = 'iklan' | 'batch' | 'beatspot' | 'transfer' | 'editor';
+
 export interface ProjectSummary {
   project_id: string;
   name?: string;
@@ -166,6 +169,8 @@ export interface ProjectSummary {
   variant?: VariantTag;
   /** U1: the project's brand (missing = workspace default brand). */
   brand_id?: string;
+  /** R22. */
+  fitur?: ProjectFitur;
   revision?: number;
   created_at?: number;
   updated_at?: number;
@@ -227,8 +232,9 @@ export interface Track {
   /** Malam 15 Nov: music track ducking level under speech. */
   duck?: number;
 }
-export interface Project extends Required<Omit<ProjectSummary, 'error' | 'variant' | 'brand_id'>> {
+export interface Project extends Required<Omit<ProjectSummary, 'error' | 'variant' | 'brand_id' | 'fitur'>> {
   brand_id?: string;
+  fitur?: ProjectFitur;
   variant?: VariantTag;
   timeline: { tracks: Track[]; canvas?: { ratio: '9:16' | '3:4' | '1:1' | '16:9' }; brand_logo?: boolean; loudness_lufs?: number };
   history: { undo: number; redo: number; undo_label: string | null; redo_label: string | null };
@@ -796,7 +802,7 @@ export function createApi(token: string | null, base = '') {
     session: () => call<Session>('GET', '/api/session'),
     logout: () => call<{ ok: true }>('POST', '/api/auth/logout', { json: {} }),
     projects: () => call<{ projects: ProjectSummary[] }>('GET', '/api/projects').then((r) => r.projects),
-    createProject: (name: string) => call<{ project: ProjectSummary }>('POST', '/api/projects', { json: { name } }).then((r) => r.project),
+    createProject: (name: string, fitur?: ProjectFitur) => call<{ project: ProjectSummary }>('POST', '/api/projects', { json: fitur ? { name, fitur } : { name } }).then((r) => r.project),
     project: (id: string) => call<{ project: Project }>('GET', `/api/projects/${encodeURIComponent(id)}`).then((r) => r.project),
     brand: () => call<{ brand: BrandKit }>('GET', '/api/brand').then((r) => r.brand),
     saveBrand: (expected_revision: number, kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', '/api/brand', { json: { expected_revision, kit } }).then((r) => r.brand),
@@ -812,7 +818,7 @@ export function createApi(token: string | null, base = '') {
     deleteBrand: (id: string) => call<{ deleted: string }>('POST', `/api/brands/${encodeURIComponent(id)}/delete`, { json: {} }),
     exportBrand: (id: string) => call<{ export: Record<string, unknown> }>('GET', `/api/brands/${encodeURIComponent(id)}/export`).then((r) => r.export),
     /** X05: rename and/or archive (read-only) / activate. */
-    updateProject: (id: string, expected_revision: number, patch: { name?: string; status?: 'active' | 'archived'; brand_id?: string | null }) =>
+    updateProject: (id: string, expected_revision: number, patch: { name?: string; status?: 'active' | 'archived'; brand_id?: string | null; fitur?: ProjectFitur }) =>
       call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/meta`, { json: { expected_revision, ...patch } }).then((r) => r.project),
     duplicateProject: (id: string, name?: string) =>
       call<{ project: ProjectSummary }>('POST', `/api/projects/${encodeURIComponent(id)}/duplicate`, { json: name ? { name } : {} }).then((r) => r.project),

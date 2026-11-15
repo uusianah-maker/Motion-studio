@@ -77,7 +77,7 @@ try {
   await page.screenshot({ path: path.join(EVID, 'ai-page.png'), fullPage: true });
 
   // Editor: plan from AI.
-  await page.getByRole('button', { name: 'Editor' }).click();
+  await page.getByRole('button', { name: /^2. Edit$/ }).click();
   await page.getByRole('heading', { name: 'Promo Lebaran' }).waitFor();
   const panel = page.getByRole('region', { name: 'Motion Copilot' });
   await panel.locator('.badge', { hasText: /^AI$/ }).waitFor();

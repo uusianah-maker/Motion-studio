@@ -353,7 +353,7 @@ try {
     const nFailed = await count();
     await f.getByRole('button', { name: /Susun draf otomatis/ }).click();
     const ran = await until(() => page.getByRole('region', { name: 'Rencana edit' }).isVisible(), 30000);
-    check('A14-11b Generate: gagal mulai (antrean penuh) lalu diulang → hanya satu proyek baru, bukan satu per percobaan', told && ran && nFailed === nBefore + 1 && (await count()) === nBefore + 1, `${nBefore} → ${nFailed} → ${await count()}`);
+    check('A14-11b Generate: gagal mulai (antrean penuh) lalu diulang → hanya satu proyek baru, bukan satu per percobaan', told && ran && nFailed === nBefore + 1 && (await count()) === nBefore + 1, `told=${told} ran=${ran} ${nBefore} → ${nFailed} → ${await count()}`);
   }
 
   // ---- Engine progress survives one failed status check (a second run on the same page).

@@ -34,6 +34,9 @@ import {
   engineOrigin,
   proxyPath,
   proxyReady,
+  isProjectFitur,
+  resolveFitur,
+  type ProjectFitur,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
@@ -164,7 +167,14 @@ interface OutputItem {
   variant?: { master_id: string; number: number; uji: boolean };
 }
 
-const projectSummary = (m: ProjectManifest) => ({
+/** R22: summary with the project's feature (stored, or guessed for an old project). */
+async function summariesOf(ws: Workspace, list: ProjectManifest[]) {
+  const fitur = await resolveFitur(ws, list);
+  return list.map((m) => projectSummary(m, fitur.get(m.project_id) ?? 'editor'));
+}
+const summaryOf = async (ws: Workspace, m: ProjectManifest) => (await summariesOf(ws, [m]))[0]!;
+
+const projectSummary = (m: ProjectManifest, fitur: ProjectFitur) => ({
   project_id: m.project_id,
   name: m.name,
   status: m.status,
@@ -173,6 +183,7 @@ const projectSummary = (m: ProjectManifest) => ({
   updated_at: m.updated_at,
   ...(m.variant ? { variant: { master_id: m.variant.master_id, number: m.variant.number, state: variantState(m) } } : {}),
   ...(m.brand_id ? { brand_id: m.brand_id } : {}),
+  fitur,
 });
 
 // ------------------------------------------------------------------ upload
@@ -307,11 +318,11 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       method: 'GET',
       path: '/api/projects',
       handle: async ({ ws }) => {
-        const out = [];
-        for (const id of await listProjectIds(ws)) {
-          out.push(await readProject(ws, id).then(projectSummary, () => ({ project_id: id, error: 'PROJECT_INVALID' })));
-        }
-        return { projects: out };
+        const read: (ProjectManifest | { project_id: string; error: string })[] = [];
+        for (const id of await listProjectIds(ws)) read.push(await readProject(ws, id).catch(() => ({ project_id: id, error: 'PROJECT_INVALID' })));
+        const ok = read.filter((m): m is ProjectManifest => !('error' in m));
+        const sums = new Map((await summariesOf(ws, ok)).map((s) => [s.project_id, s]));
+        return { projects: read.map((m) => sums.get(m.project_id) ?? m) };
       },
     },
     {
@@ -319,10 +330,13 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       path: '/api/projects',
       handle: async ({ req, ws }) => {
         const body = await readJsonBody(req);
-        onlyKeys(body, ['name', 'project_id']);
+        onlyKeys(body, ['name', 'project_id', 'fitur']);
         const name = str(body, 'name', { max: 120 })!.trim();
         const project_id = str(body, 'project_id', { optional: true, max: 64 }) ?? `p-${randomBytes(6).toString('hex')}`;
-        return { project: projectSummary(await createProject(ws, { project_id, name })) };
+        // R22: the page that makes the project says which feature it is for (Edit: none → editor).
+        if (body.fitur !== undefined && !isProjectFitur(body.fitur)) throw bad('Fitur proyek tidak dikenal');
+        const fitur = (body.fitur as ProjectFitur | undefined) ?? 'editor';
+        return { project: projectSummary(await createProject(ws, { project_id, name, fitur }), fitur) };
       },
     },
     { method: 'GET', path: '/api/projects/:project_id', handle: async ({ ws, params }) => ({ project: projectView(await readProject(ws, params.project_id!)) }) },
@@ -511,30 +525,30 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       path: '/api/projects/:project_id/meta',
       handle: async ({ req, params, svc, actor }) => {
         const body = await readJsonBody(req);
-        onlyKeys(body, ['expected_revision', 'name', 'status', 'brand_id']);
-        const r = await svc.updateProjectMeta({ project_id: params.project_id!, expected_revision: revision(body), name: body.name, status: body.status, brand_id: body.brand_id, actor });
+        onlyKeys(body, ['expected_revision', 'name', 'status', 'brand_id', 'fitur']);
+        const r = await svc.updateProjectMeta({ project_id: params.project_id!, expected_revision: revision(body), name: body.name, status: body.status, brand_id: body.brand_id, fitur: body.fitur, actor });
         return { project: projectView(r.result), clocks_ok: r.clocks.ok };
       },
     },
     {
       method: 'POST',
       path: '/api/projects/:project_id/duplicate',
-      handle: async ({ req, params, svc, actor }) => {
+      handle: async ({ req, ws, params, svc, actor }) => {
         const body = await readJsonBody(req);
         onlyKeys(body, ['name']);
         const r = await svc.duplicateProject({ project_id: params.project_id!, ...(body.name !== undefined ? { name: body.name } : {}), actor });
-        return { project: projectSummary(r.result) };
+        return { project: await summaryOf(ws, r.result) };
       },
     },
     { method: 'GET', path: '/api/projects/:project_id/export', handle: async ({ params, svc }) => ({ export: await svc.exportProject(params.project_id!) }) },
     {
       method: 'POST',
       path: '/api/projects/import',
-      handle: async ({ req, svc, actor }) => {
+      handle: async ({ req, ws, svc, actor }) => {
         const body = await readJsonBody(req);
         onlyKeys(body, ['data', 'name']);
         const r = await svc.importProject({ data: body.data, ...(body.name !== undefined ? { name: body.name } : {}), actor });
-        return { project: projectSummary(r.result.project), remapped: r.result.remapped };
+        return { project: await summaryOf(ws, r.result.project), remapped: r.result.remapped };
       },
     },
 
