@@ -31,7 +31,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 | R14b/R15b/R6b | Antrean upload, Verifikasi backup, sinyal riwayat dari app | DONE (audit venus lulus) | ANTREAN 4/4, BACKUP 6/6, server r6 3/3 | ucok | f5ab1f9, d5cbb70, 2a8fa43 |
 | R14c | Prioritas rendah semua proses berat (mesin, render, pratinjau -threads 2, analisis) | DONE (audit venus lulus; R14 ikut lulus) | prio 2/2, regresi 64 tes | ucok | f66f8e7 |
 | R19 | Tombol "Kirim ke PIC" di Editor + arahan setelah render + ganti nama tombol tabel Batch (Pilih untuk render / Buang) | DONE (audit venus lulus) | server r19 2/2, R19 UI 7/7 | ucok | c93fa20 |
-| R20 | Rilis terpisah untuk mesin (engine) | BERJALAN (owner: "Ya, pisahkan"); rancangan sukma disetujui; kode DONE: venus da0fb99, yuki 9c5259a, ucok dc897a6 (semua lulus audit); skrip rilis sukma berjalan | — | sukma | — |
+| R20 | Rilis terpisah untuk mesin (engine) | DONE + LIVE (kode venus da0fb99, yuki 9c5259a, ucok dc897a6, skrip sukma 95b7bf2; semua lulus audit) | — | sukma | — |
 | R21 | Hapus fitur Setujui PIC dari UI (menu, Kirim ke PIC, arahan); menu jadi Buat video · Edit · Hasil | DONE (audit venus lulus) | 479 tes unit, R21 UI 8/8 | ucok | b1f9ee3 |
 | R15 | Backup mingguan | skrip DONE; jadwal TIDAK dipasang (keputusan owner) | backup 1,84 GB 64 dtk, pulih 74/74 proyek | sukma | 6bcf6c0 |
 
@@ -55,6 +55,10 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 ilis61115-201433_d6eb1ff`. Cek luar: motionproject.online 200 (0,12–0,36 dtk), bundle memuat Buat video / Kirim ke PIC / Pilih untuk render / Isi contoh preset.
 
 - 15 Nov: 51 proyek uji (nama UJI / "hapus saja") diarsipkan venus lewat core updateProjectMeta (status archived, bisa dipulihkan), atas permintaan owner "hapus video uji proyek lama".
+
+### Rilis 2 ke situs live (15 Nov 2026 20.45–20.49)
+- Push GitHub main a1d21d0 (11 commit, scan bersih; engine/ sinkron remotion 9c5259a). Rilis mesin 20261115-204500_9c5259a (smoke: cek, daftar_batch 5 batch, generate uji 28 operasi) lalu rilis app 20261115-204633_a1d21d0 (smoke lulus), 2 restart ±30 dtk. Log penjaga: "rilis 20261115-204633_a1d21d0; mesin 20261115-204500_9c5259a". Situs 200; bundle memuat "3. Hasil"/"Terapkan ke timeline", tanpa "Kirim ke PIC"/"3. Setujui".
+- Mulai sekarang perubahan mesin di folder kerja tidak langsung aktif; perlu `rilis.ps1 -Mesin`.
 
 ### Pending Confirmation putaran R
 - ~~PC-R1 lokasi backup~~ → owner 15 Nov: "ga usah ada lokasi backup". Skrip backup sukma tetap ada di `deploy/backup/`, tidak dijadwalkan. Risiko tercatat: workspace hanya di 1 SSD USB.
