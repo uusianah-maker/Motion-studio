@@ -6,7 +6,7 @@ Progres v2.0 (`docs/IMPLEMENTATION_PLAN_v2.0.md`, urutan B disetujui): 14/15 sel
 Sumber task: `docs/IMPLEMENTATION_PLAN_v1.0.md` (T01–T15, checkpoint A/B/C). Source of truth: `docs/PRD_MASTER_v1.0.md`.
 
 ## Putaran R (`docs/TUJUAN-PROYEK.md`, 15 Nov 2026, perintah owner "kerjain hasil diskusi", prinsip hybrid)
-Progres: 11/15 selesai · 4 dikerjakan ucok (R9, R10, R13, proxy R14 + halaman Motion Transfer) · 2 menunggu keputusan owner (R12, jadwal R15). Commit mesin di repo remotion (lokal, belum sync ke `engine/`).
+Progres: 12/15 selesai · 3 dikerjakan ucok (R9, R13, proxy R14 + halaman Motion Transfer) · 2 menunggu keputusan owner (R12, jadwal R15). Commit mesin di repo remotion (lokal, belum sync ke `engine/`).
 
 | # | Task | Status | Bukti | Pemilik | Commit |
 |---|---|---|---|---|---|
@@ -15,11 +15,11 @@ Progres: 11/15 selesai · 4 dikerjakan ucok (R9, R10, R13, proxy R14 + halaman M
 | R3 | Peringatan CTA kosong (G6) | DONE | tes ops | venus | b6d8b0c |
 | R4 | Nomor job unik global (G4) | DONE (audit venus lulus) | tes core R4 (2 proyek, mulai bersamaan, brand lain); U4 19/19 | ucok | 70083bd |
 | R5 | Undo setelah ubah gaya | DONE (audit venus lulus) | A14-25, A14 28/28 | ucok | a1d9015 |
-| R6 | Riwayat pakai lintas batch | DONE (audit venus lulus) | 2 batch berturut: pembuka sama 7/20 → 0/20, audio identik 17 → 0; 50/50 tes | yuki | aa02cd4 |
+| R6 | Riwayat pakai lintas batch | DONE (audit venus lulus; revisi temuan reviewer cfbe866 lulus) | 2 batch berturut: pembuka sama 7/20 → 0/20, audio identik 17 → 0; 50/50 tes | yuki | aa02cd4 |
 | R7 | Potong presisi (snap ke jeda) | DONE | 23 video: potongan sama 184, titik di tengah suara 11 % → 10 %, durasi +0,08 dtk/video | venus | dfa4e3a |
 | R8 | Fade sambungan, fade musik, ducking otomatis | DONE | validator asli Motion Studio lulus; filter bawaan brand sudah otomatis di app | venus | 6465d90 |
 | R9 | Catatan belajar koreksi editor + alasan PIC | BERJALAN (app) | — | ucok | — |
-| R10 | Layar persetujuan PIC | BERJALAN | — | ucok | — |
+| R10 | Layar persetujuan PIC | DONE (audit venus lulus) | core r10 + audit/R10 UI 9/9 | ucok | 84db32e |
 | R11 | Motion Transfer tahap 1 (mesin) | DONE (mesin) · halaman app: ucok | klip uji 24 dtk → 7 adegan + gambar + prompt | venus | 120b286 |
 | R12 | Motion Transfer tahap 2 (API AI gambar) | BLOCKED (PC-R2) | — | — | — |
 | R13 | Duplikat brand | BERJALAN | — | ucok | — |
@@ -28,12 +28,14 @@ Progres: 11/15 selesai · 4 dikerjakan ucok (R9, R10, R13, proxy R14 + halaman M
 
 ### Audit checkpoint putaran R (R1–R7)
 - Reviewer independen (hanya diberi persyaratan + diff) menemukan 8 hal. Diperbaiki venus di f23f981: jalan.py crash saat hook dilewati; whoosh tersisa; OCR hanya potongan pertama; sys.path; kontrak hook_top; klaim CTA saat tidak muat.
-- 2 temuan di riwayat.py (jalan ulang menghapus jejak varian yang sudah dirender; JSON riwayat rusak menggagalkan batch) dikembalikan ke yuki.
+- 2 temuan di riwayat.py dikembalikan ke yuki, diperbaiki di cfbe866 (test_batch 55/55), audit lulus.
 - Tes: pipeline/tests 63 OK, test_batch 50 OK, jaga_ops + efek_otomatis OK. Risiko: tes core u6 R1 / r10 lambat (16–24 dtk), sekali gagal saat dijalankan bersamaan.
 
 ### Pending Confirmation putaran R
 - **PC-R1 lokasi backup**: A disk C (penuh 1–2 bulan) · B HDD eksternal kedua · C Google Drive · **D (saran): B untuk media + C untuk data saja**. Workspace sekarang hanya di 1 SSD USB, 0 backup.
 - **PC-R2 AI gambar Motion Transfer tahap 2**: akun/API mana dan batas biaya per bulan. Sampai diputuskan, prompt disalin manual.
+- **PC-R4 Setujui varian**: "Setujui" di layar PIC = review Lulus. Untuk proyek varian Batch, apakah Lulus otomatis menyetujui varian untuk render massal? (sekarang terpisah)
+- **PC-R5 draf belum dirender**: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
 - **PC-R3 terowongan**: macet sesekali (1 dari 6–20 unduhan) di jalur VPS → PC. Opsi: 2 terowongan paralel atau WireGuard/Tailscale. Butuh izin ubah jalur (VPS dipakai bersama Affiliate).
 
 ## Log task
