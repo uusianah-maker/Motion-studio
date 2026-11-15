@@ -7,6 +7,7 @@ import { BrandView } from './views/BrandView';
 import { EditorView } from './views/EditorView';
 import { GenerateView } from './views/GenerateView';
 import { HasilView } from './views/HasilView';
+import { PersetujuanView } from './views/PersetujuanView';
 import { MediaView } from './views/MediaView';
 import { StorageView } from './views/StorageView';
 import { TeamView } from './views/TeamView';
@@ -14,7 +15,7 @@ import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 import { Logo } from './Logo';
 
-export type View = 'generate' | 'batch' | 'shots' | 'editor' | 'hasil' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
+export type View = 'generate' | 'batch' | 'shots' | 'editor' | 'hasil' | 'persetujuan' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
 
 // PC-16: one app — Generate Otomatis, Batch Remix, Editor (+ library / admin pages).
 const NAV: { id: View; sym: string; label: string }[] = [
@@ -23,6 +24,7 @@ const NAV: { id: View; sym: string; label: string }[] = [
   { id: 'shots', sym: '▣', label: 'Shot' },
   { id: 'editor', sym: '▤', label: 'Editor' },
   { id: 'hasil', sym: '⤓', label: 'Hasil' },
+  { id: 'persetujuan', sym: '✓', label: 'Setujui' },
   { id: 'media', sym: '◇', label: 'Media' },
   { id: 'brand', sym: '◆', label: 'Brand' },
   { id: 'trash', sym: '♲', label: 'Trash' },
@@ -143,6 +145,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />)}
         {keep('batch', <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} active={view === 'batch'} />)}
         {keep('shots', <ShotLibraryView api={api} role={role} active={view === 'shots'} />)}
+        {keep('persetujuan', <PersetujuanView api={api} role={role} active={view === 'persetujuan'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('hasil', <HasilView api={api} active={view === 'hasil'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('media', <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />)}
         {view === 'brand' && <BrandView api={api} readOnly={role !== 'owner'} />}

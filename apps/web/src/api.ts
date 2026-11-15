@@ -314,6 +314,21 @@ export interface RenderOutputFile {
 }
 
 /** Halaman Hasil: satu file render beserta proyeknya. */
+/** R10: a rendered video waiting for the PIC (GET /api/review/antrean). */
+export interface ApprovalItem {
+  project_id: string;
+  name: string;
+  brand_id: string | null;
+  brand_name: string | null;
+  revision: number;
+  state: 'belum' | 'lulus' | 'revisi' | 'berubah';
+  output: { name: string; size: number; mtime_ms: number };
+  outputs: number;
+  variant?: { master_id: string; number: number; uji: boolean };
+  open_comments: number;
+  last: { status: 'lulus' | 'revisi'; note: string; by: string | null } | null;
+}
+
 export interface OutputItem {
   project_id: string;
   project_name: string;
@@ -814,6 +829,8 @@ export function createApi(token: string | null, base = '') {
     renderJob: (jobId: string) => call<{ job: RenderJob }>('GET', `/api/render/jobs/${encodeURIComponent(jobId)}`).then((r) => r.job),
     cancelRender: (jobId: string) => call<{ job: RenderJob }>('POST', `/api/render/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }).then((r) => r.job),
     /** Short-lived signed link to play (or download) one finished output. */
+    // R10: the PIC's queue (one brand, or all)
+    approvalQueue: (brandId?: string) => call<{ items: ApprovalItem[] }>('GET', `/api/review/antrean${brandId ? `?brand_id=${encodeURIComponent(brandId)}` : ''}`).then((r) => r.items),
     // U7 review
     review: (id: string) => call<{ review: ReviewInfo }>('GET', `/api/projects/${encodeURIComponent(id)}/review`).then((r) => r.review),
     addComment: (id: string, at_ms: number, text: string) => call<{ comment: ReviewComment }>('POST', `/api/projects/${encodeURIComponent(id)}/comments`, { json: { at_ms, text } }).then((r) => r.comment),
