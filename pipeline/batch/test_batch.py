@@ -436,6 +436,109 @@ class RiwayatLintasBatch(unittest.TestCase):
         self.assertNotEqual(tuple(r2["urutan"]), tuple(rv["urutan"]))
 
 
+def shots_bs(n_footage=4, per=4, dur=3.0):
+    out = []
+    for f in range(n_footage):
+        for i in range(per):
+            out.append({"id": f"f{f}#{i:02d}", "footage": f"f{f}", "dari": i * dur, "sampai": (i + 1) * dur,
+                        "orang": 0.9, "framing": "full_body", "buram": False, "beku": False, "skor": 3.0 - 0.1 * i})
+    return out
+
+
+class BeatSpot(unittest.TestCase):
+    """R16 Beat Spot tahap 1: pergantian orang tepat di ketukan sound."""
+
+    def setUp(self):
+        import beatspot
+        self.bs = beatspot
+
+    def test_langkah_auto_1_sampai_4_detik(self):
+        for bpm in (70, 90, 120, 128, 150, 175):
+            k = self.bs.langkah(bpm, "auto")
+            self.assertTrue(0.9 <= k * 60 / bpm <= 4.0, (bpm, k))
+        self.assertEqual(self.bs.langkah(120, 2), 2)
+        self.assertEqual(self.bs.langkah(128, "auto"), 4)  # 0,47 dtk/ketukan -> 4 ketukan = 1,9 dtk
+
+    def test_titik_potong_di_ketukan_dan_batas(self):
+        ket = self.bs.ketukan_bpm(120, 30, mulai=0.37)
+        pts = self.bs.titik_potong(ket, 4, 17.5)
+        self.assertEqual(pts[0], 0)
+        self.assertLessEqual(pts[-1], 17.5)
+        for t in pts:  # tiap titik = ketukan asli (digeser ke 0)
+            self.assertTrue(any(abs(t - (b - 0.37)) < 1e-6 for b in ket))
+
+    def test_susun_orang_berganti_dan_shot_tidak_berulang(self):
+        pts = self.bs.titik_potong(self.bs.ketukan_bpm(120, 30), 4, 16)
+        pot, cat = self.bs.susun(pts, shots_bs(), {f"f{i}": 12.0 for i in range(4)}, random.Random(1))
+        self.assertEqual(len(pot), len(pts) - 1)
+        self.assertEqual(len({p["shot"] for p in pot}), len(pot))
+        self.assertTrue(all(a["footage"] != b["footage"] for a, b in zip(pot, pot[1:])))
+        for p in pot:
+            self.assertGreaterEqual(p["in"], 0)
+
+    def test_urutan_tim_dipakai_dulu(self):
+        pts = self.bs.titik_potong(self.bs.ketukan_bpm(120, 30), 4, 8)
+        pot, cat = self.bs.susun(pts, shots_bs(), {f"f{i}": 12.0 for i in range(4)}, random.Random(1),
+                                 urutan=["f3#02", "tidak-ada#00", "f1#01"])
+        self.assertEqual([p["shot"] for p in pot[:2]], ["f3#02", "f1#01"])
+        self.assertEqual(pot[0]["alasan"], "urutan tim")
+        self.assertTrue(any("tidak-ada#00" in c for c in cat))
+
+    def test_kandidat_buang_buram_beku_tanpa_orang_wajah_dekat(self):
+        sh = shots_bs(1, 5)
+        sh[0]["buram"] = True
+        sh[1]["beku"] = True
+        sh[2]["orang"] = 0.2
+        sh[3]["framing"] = "wajah_dekat"
+        ok, buang = self.bs.kandidat_layak(sh, {"f0#04"})
+        self.assertEqual(ok, [])
+        self.assertEqual([b["alasan"] for b in buang], ["buram", "beku", "tanpa orang", "wajah dekat (orang lewat)",
+                                                         "dikecualikan tim"])
+
+    def _job(self, tmp, sumber, beatspot, brand=None):
+        import json as _json
+        j = Path(tmp)
+        kit = brand or _json.loads((Path(__file__).resolve().parents[2] / "brandkit" / "aysilla.export.json").read_text(encoding="utf-8"))
+        (j / "brand_kit.json").write_text(_json.dumps(kit))
+        (j / "job.json").write_text(_json.dumps({"mode": "beatspot", "job_id": "T", "brand_kit": "brand_kit.json",
+                                                 "sumber": sumber, "beatspot": beatspot}))
+        return j
+
+    def test_jalankan_tanpa_sound_pakai_bpm(self):
+        import json as _json
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            vids = []
+            for i in range(4):
+                v = Path(tmp) / f"v{i}.mp4"
+                v.write_bytes(b"x")
+                vids.append({"kunci": f"$sumber:f{i}", "path": str(v)})
+            j = self._job(tmp, vids, {"bpm": 120, "tagline": "Tagline uji",
+                                      "sumber_orang": {"f1": "kreator", "f2#00": "kreator", "f3": "salah"}})
+            palsu = lambda footage, t: {"footage": {f: {"durasi": 12.0} for f in footage}, "shots": shots_bs()}  # noqa: E731
+            kode = self.bs.jalankan(j, analisis=palsu)
+            self.assertEqual(kode, 0)
+            ops = _json.loads((j / "out" / "ops.json").read_text())["ops"]
+            q = _json.loads((j / "out" / "qc_rencana.json").read_text())
+            lap = _json.loads((j / "out" / "beatspot.json").read_text())
+        self.assertTrue(q["lulus"], q)
+        self.assertFalse(any(o.get("track_kind") == "music" for o in ops))  # sound tren dipasang tim di TikTok
+        self.assertTrue(any(o.get("text") == "Tagline uji" for o in ops))
+        self.assertEqual(lap["ketukan_per_potong"], 4)
+        self.assertTrue(15 - 0.5 <= lap["durasi"] <= 20)
+        # Tahap 2 nanti hanya memproses shot "kreator"; default "umum", nilai asing dianggap "umum".
+        so = {k["id"]: k["sumber_orang"] for k in lap["kandidat"]}
+        self.assertEqual((so["f1#00"], so["f2#00"], so["f2#01"], so["f3#00"], so["f0#00"]),
+                         ("kreator", "kreator", "umum", "umum", "umum"))
+        self.assertTrue(all(p["sumber_orang"] in ("kreator", "umum") for p in lap["potongan"]))
+
+    def test_tolak_tanpa_footage(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            j = self._job(tmp, [], {"bpm": 120})
+            self.assertEqual(self.bs.jalankan(j, analisis=lambda f, t: {}), 2)
+
+
 def vo_dengan_saran():
     v = vo_sintetis()
     v["kalimat"][1]["saran_buang"] = "urgensi"

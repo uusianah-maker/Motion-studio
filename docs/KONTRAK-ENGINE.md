@@ -379,3 +379,25 @@ Aditif. App tidak wajib berubah; semua field opsional.
 - Perintah baru: `engine transfer <job_dir>`. `job.json`: `mode: "transfer"`, `sumber` `$sumber` = video referensi (boleh tanpa suara, rasio apa pun), `brief.produk` dan `brief.deskripsi_produk` opsional (default produk pertama Brand Kit).
 - Hasil: `out/transfer.json` (schema `engine-transfer/1`: `referensi`, `durasi`, `produk`, `adegan[]` = `{no, dari, sampai, durasi, detik_gambar, gambar, prompt_gambar, prompt_gerak, sumber}`) + `out/adegan/NN.jpg` (lebar 1080, frame paling tajam di tengah adegan). Adegan < 0,8 dtk digabung, > 4 dtk dipecah, tanpa celah.
 - Tahap 2–3 belum memanggil API AI: prompt disalin manual oleh tim (hybrid, tanpa biaya). Kode keluar 0 siap · 2 ditolak (`rencana.json` status ditolak) · 1 gagal.
+
+## 14. Beat Spot tahap 1 (R16, v0.3.7, 15 Nov 2026, yuki — nama dari owner)
+
+Video **awareness**: footage orang jalan (di mall) memakai produk brand dipotong per orang, pergantian **tepat di ketukan** sound, logo brand + end card dari Brand Kit. Tanpa AI ganti pakaian (tahap 2 ditahan menunggu owner). Aditif; mode baru.
+
+- Perintah: `engine beatspot <job_dir>` → `pipeline/batch/beatspot.py`. Progres JSON-lines (`cek_input` → `ketukan` → `shot` per footage → `susun` → `tulis` → `selesai` / `ditolak`). Kode keluar 0 / 2 (alasan di `rencana.json`) / 1.
+- `job.json`: `mode: "beatspot"`, `sumber: [{kunci: "$sumber:<id>", path}]` (footage video + 1 file sound milik tim, video atau audio), `brand_kit`, dan
+  ```json
+  "beatspot": { "sound": "$sumber:<id>" | null, "bpm": 120 | null, "ketukan_per_potong": "auto" | 1 | 2 | 4,
+                "durasi": [15, 20], "tagline": "..." | null, "urutan_shot": ["<id>#NN"], "kecualikan_shot": [],
+                "sumber_orang": { "<id footage>": "kreator", "<id shot>": "umum" }, "seed": 1 }
+  ```
+  - `sound` null: kalau ada tepat satu file audio di `sumber`, itu dipakai; kalau tidak ada sound sama sekali, pola ketukan dari `bpm` (default 120 + peringatan) dan **tidak ada** klip musik (sound tren dipasang tim di TikTok).
+  - Sound tim, bukan musik berlisensi; dipasang di track `music` (`media: $sumber:<id>`, `in_ms` = ketukan pertama, volume 1).
+  - `ketukan_per_potong: auto`: 1/2/4 ketukan yang paling dekat ±1,8 dtk per orang dan masih 0,9–4 dtk.
+  - `durasi` termasuk end card. Video dipotong di ketukan terakhir yang masih muat.
+  - `sumber_orang` (keputusan owner PC-R7 opsi A, 15 Nov): per footage atau per shot, `"kreator"` (kreator/model sendiri yang setuju) atau `"umum"` (default, diisi tim). Orang umum hanya dipakai kalau memang memakai produk brand; **tanpa blur wajah**. Tahap 2 (AI ganti pakaian, belum dikerjakan) hanya akan memproses shot `"kreator"`. Field ini ikut di `beatspot.json` per potongan dan per kandidat.
+  - Hybrid: `urutan_shot` dipakai lebih dulu sesuai urutan (sisanya otomatis), `kecualikan_shot` tidak dipakai; penggeseran potongan dilakukan di editor.
+- Shot: footage dipotong per adegan + saat orang masuk/keluar bingkai, maks 4 dtk. Dipakai hanya shot dengan orang (≥ 50% sampel), tidak buram, tidak beku, bukan wajah dekat orang lewat. Potongan berganti footage (orang beda) kalau bisa; satu shot tidak dipakai dua kali; diambil bagian tengah shot.
+- Output: `out/ops.json` (ms-ops/1, `set_canvas` 9:16, `set_brand_logo` (logo kecil sesuai Brand Kit `visual.logo`), `set_loudness`, klip `video` volume 0, `music` sound, end card = klip `broll` aset `visual.penutup` + teks tagline di atasnya; tanpa aset penutup: tagline di 2 dtk terakhir video + `menunggu_u3`), `out/rencana.json` (`beatspot: {bpm, sumber_ketukan, ketukan_per_potong, potongan, end_card_dtk}`), `out/qc_rencana.json` (durasi, potong_di_ketukan ±1 frame, lama_per_orang_1_4_dtk, shot_tidak_berulang, orang_berganti, video_tanpa_celah, klip_min_100ms).
+- `out/beatspot.json` (schema `beatspot/1`): `bpm`, `ketukan` (detik timeline), `ketukan_per_potong`, `potongan: [{no, mulai, durasi, shot, footage, in, skor, alasan, sumber_orang}]`, `kandidat: [{id, footage, dari, sampai, orang, framing, skor, dipakai, sumber_orang}]` (untuk tim memilih/mengurutkan lewat `urutan_shot`), `dibuang: [{id, alasan}]`.
+- Motion Studio (ucok) perlu: validasi mode `beatspot` di runner U6 + halaman/kartu Beat Spot. Belum ada di app.

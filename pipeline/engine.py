@@ -6,6 +6,8 @@
   engine pisah    <job_dir>   Batch Remix: unggahan <job_dir>/masuk/ -> konten/, pisah audio + Shot Library
                               (pipeline/pisah.py --job); hasil di <job_dir>/out/pisah.json (schema pisah/1)
   engine transfer <job_dir>   Motion Transfer tahap 1: video referensi -> adegan + gambar + prompt (pipeline/transfer.py)
+  engine beatspot <job_dir>   Beat Spot tahap 1 (modul yuki): footage orang jalan + sound -> potongan tepat di ketukan,
+                              logo + end card (pipeline/batch/beatspot.py); out/beatspot.json = laporan potongan
   engine daftar_batch         daftar batch untuk dropdown (read-only, tanpa job_dir);
                               stdout satu JSON {"schema":"daftar-batch/1","batch":[...]}
   engine cek                  cek alat (ffmpeg, Whisper, GPU, OpenCV) untuk halaman status
@@ -257,6 +259,13 @@ def pisah(job_dir: Path) -> int:
     return teruskan([PY, "pipeline/pisah.py", "--job", str(job_dir)])
 
 
+def beatspot(job_dir: Path) -> int:
+    if not (job_dir / "job.json").exists():
+        raise FileNotFoundError(f"job.json tidak ada di {job_dir}")
+    # beatspot.py menulis progres JSON-lines sendiri (termasuk progres analisis shot).
+    return teruskan([PY, "pipeline/batch/beatspot.py", str(job_dir)])
+
+
 def daftar_batch() -> int:
     return teruskan([PY, "pipeline/batch/daftar.py"])
 
@@ -291,7 +300,7 @@ def cek_alat() -> int:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
-    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "daftar_batch", "cek"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "beatspot", "daftar_batch", "cek"):
         log(__doc__)
         return 1
     cmd = sys.argv[1]
@@ -304,7 +313,8 @@ def main() -> int:
         return 1
     job_dir = Path(sys.argv[2]).resolve()
     try:
-        return {"generate": generate, "ulang": ulang, "batch": batch, "pisah": pisah, "transfer": transfer}[cmd](job_dir)
+        return {"generate": generate, "ulang": ulang, "batch": batch, "pisah": pisah, "transfer": transfer,
+                "beatspot": beatspot}[cmd](job_dir)
     except Exception as e:  # noqa: BLE001 - gagal teknis: kode 1, pesan ke progres
         log(f"GAGAL: {e!r}")
         progres("gagal", 100, str(e)[:300])
