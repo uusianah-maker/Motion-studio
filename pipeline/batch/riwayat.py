@@ -58,11 +58,24 @@ def path(brand_key: str) -> Path:
 
 
 def muat(brand_key: str) -> dict:
+    """Riwayat brand. File rusak tidak menggagalkan batch: dipindah ke <kode>.rusak-<waktu>.json,
+    lanjut dengan riwayat kosong + `_peringatan` (ditampilkan di batch.json)."""
     p = path(brand_key)
+    kosong = {"schema": SCHEMA, "brand": brand_key, "entri": []}
     if not p.exists():
-        return {"schema": SCHEMA, "brand": brand_key, "entri": []}
-    d = json.loads(p.read_text(encoding="utf-8"))
+        return kosong
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(d, dict) or not isinstance(d.get("entri", []), list) \
+                or not all(isinstance(e, dict) for e in d.get("entri", [])):
+            raise ValueError("struktur riwayat tidak dikenal")
+    except (ValueError, OSError) as e:  # json.JSONDecodeError turunan ValueError
+        rusak = p.with_name(f"{p.stem}.rusak-{time.strftime('%Y%m%d-%H%M%S')}.json")
+        os.replace(p, rusak)
+        return {**kosong, "_peringatan": f"riwayat {brand_key} rusak ({type(e).__name__}); dipindah ke {rusak.name}, "
+                                          "batch ini memakai riwayat kosong"}
     d.setdefault("entri", [])
+    d["brand"] = brand_key
     return d
 
 
@@ -70,6 +83,7 @@ def simpan(d: dict) -> None:
     p = path(d["brand"])
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".json.tmp")
+    d = {k: v for k, v in d.items() if not k.startswith("_")}
     tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, p)
 
@@ -90,8 +104,11 @@ class Riwayat:
     def __init__(self, data: dict, batch: str, vo_batch: str, job_id: str | None):
         self.data = data
         self.batch, self.vo_batch, self.job_id = batch, vo_batch, job_id
+        # Entri job ini sendiri yang masih "direncanakan" akan diganti oleh jalan ulang ini, jadi tidak membatasi.
+        # Yang SUDAH disetujui/dirender tetap dihitung, juga untuk job yang sama (kontennya sudah dipakai).
         self.entri = [e for e in data["entri"] if e.get("status", "direncanakan") in DIHITUNG
-                      and not (job_id and e.get("job_id") == job_id)]
+                      and not (job_id and e.get("job_id") == job_id
+                               and e.get("status", "direncanakan") == "direncanakan")]
 
     def pembuka(self) -> set[str]:
         """Shot pembuka yang pernah dipakai (batch gambar ini), dalam id shot lokal batch ini."""
@@ -119,7 +136,10 @@ class Riwayat:
                 for e in self.entri if e.get("vo") == k]
 
     def ringkas(self) -> dict:
-        return {"aktif": True, "entri_dihitung": len(self.entri), "pembuka_dihindari": len(self.pembuka())}
+        r = {"aktif": True, "entri_dihitung": len(self.entri), "pembuka_dihindari": len(self.pembuka())}
+        if self.data.get("_peringatan"):
+            r["peringatan"] = self.data["_peringatan"]
+        return r
 
 
 def entri_varian(job_id, batch, vo_batch, v: dict, sus: dict, rv: dict, per_kalimat: dict) -> dict:
@@ -138,18 +158,39 @@ def entri_varian(job_id, batch, vo_batch, v: dict, sus: dict, rv: dict, per_kali
     }
 
 
-def catat(brand_key: str, job_id: str | None, entri: list[dict]) -> int:
-    """Ganti entri job ini (jalan ulang tidak menumpuk) lalu tambahkan entri baru."""
+def isi(e: dict) -> tuple:
+    """Identitas isi varian: sama persis = varian yang sama (bukan sekadar nama varian-NNN yang sama)."""
+    return (e.get("vo"), tuple(e.get("urutan", [])), e.get("pembuka"), tuple(sorted(e.get("shots", []))))
+
+
+def catat(brand_key: str, job_id: str, entri: list[dict]) -> int:
+    """Catat varian job ini. Jalan ulang job yang sama:
+    - entri lama "direncanakan" / "dicoret" diganti (tidak menumpuk);
+    - entri lama "disetujui" / "dirender" TIDAK dihapus (kontennya sudah dipakai): tetap dihitung, ditandai
+      `diganti` kalau varian baru isinya beda;
+    - status lama hanya dibawa ke varian baru kalau isinya identik."""
+    if not job_id:
+        raise ValueError("job_id wajib (perencana memakai nama folder job kalau job.json tidak punya job_id)")
     d = muat(brand_key)
-    if job_id:
-        lama = {e["varian"]: e.get("status") for e in d["entri"] if e.get("job_id") == job_id}
-        d["entri"] = [e for e in d["entri"] if e.get("job_id") != job_id]
-        for e in entri:  # keputusan tim (dicoret/disetujui) atas varian bernama sama tidak hilang saat jalan ulang
-            if lama.get(e["varian"]) in STATUS - {"direncanakan"}:
-                e["status"] = lama[e["varian"]]
-    d["entri"].extend(entri)
+    lama = [e for e in d["entri"] if e.get("job_id") == job_id]
+    d["entri"] = [e for e in d["entri"] if e.get("job_id") != job_id]
+    tetap = [e for e in lama if e.get("status") in {"disetujui", "dirender"}]
+    status_lama = {(e.get("varian"), isi(e)): e.get("status") for e in lama}
+    baru = []
+    for e in entri:
+        st = status_lama.get((e["varian"], isi(e)))
+        if st in {"disetujui", "dirender"}:
+            continue  # identik dengan entri terpakai yang dipertahankan: tidak dicatat dobel
+        if st == "dicoret":
+            e["status"], e["sumber_status"] = "dicoret", "tim"
+        baru.append(e)
+    isi_baru = {(e["varian"], isi(e)) for e in entri}
+    for e in tetap:
+        if (e.get("varian"), isi(e)) not in isi_baru:
+            e["diganti"] = True
+    d["entri"].extend(tetap + baru)
     simpan(d)
-    return len(entri)
+    return len(baru)
 
 
 def tandai(brand_key: str, job_id: str, status: str, varian: list[str] | None = None) -> int:

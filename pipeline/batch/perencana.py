@@ -396,7 +396,9 @@ def jalankan(job_dir: Path) -> int:
     # R6 riwayat pakai lintas batch per brand (owner 15 Nov no. 16). Hybrid: job.abaikan_riwayat mematikannya.
     abaikan_riwayat = bool(job.get("abaikan_riwayat", False))
     brand_key = riwayat_mod.kunci_brand(brand_raw, brand)
-    riw = None if abaikan_riwayat else riwayat_mod.Riwayat(riwayat_mod.muat(brand_key), batch, vo_batch, job.get("job_id"))
+    # Job tanpa job_id (CLI) memakai nama folder job, supaya jalan ulang mengganti entrinya, bukan menumpuk.
+    riw_job_id = job.get("job_id") or f"folder:{job_dir.resolve().name}"
+    riw = None if abaikan_riwayat else riwayat_mod.Riwayat(riwayat_mod.muat(brand_key), batch, vo_batch, riw_job_id)
     ditolak_riwayat = Counter()
 
     progres("rencana", 30, "menganalisis musik")
@@ -646,9 +648,9 @@ def jalankan(job_dir: Path) -> int:
         batch_json["riwayat"] = {"aktif": False, "brand": brand_key, "alasan": "job.abaikan_riwayat"}
     else:
         rusak = {t["id"] for t in tabel if t.get("rusak")}
-        entri = [riwayat_mod.entri_varian(job.get("job_id"), batch, vo_batch, v, v["susunan"], v["rv"], v["_per_kalimat"])
+        entri = [riwayat_mod.entri_varian(riw_job_id, batch, vo_batch, v, v["susunan"], v["rv"], v["_per_kalimat"])
                  for v in varian if v["id"] not in rusak]
-        riwayat_mod.catat(brand_key, job.get("job_id"), entri)
+        riwayat_mod.catat(brand_key, riw_job_id, entri)
         batch_json["riwayat"] = {**riw.ringkas(), "brand": brand_key, "dicatat": len(entri),
                                  "ditolak_karena_riwayat": dict(ditolak_riwayat)}
     (out_dir / "batch.json").write_text(json.dumps(batch_json, ensure_ascii=False, indent=1), encoding="utf-8")

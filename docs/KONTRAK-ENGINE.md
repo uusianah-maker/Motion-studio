@@ -363,7 +363,8 @@ Aditif. App tidak wajib berubah; semua field opsional.
   - shot yang pernah dipakai dipilih paling akhir (penalti Matcher).
   Kalau stok habis, varian berkurang dan `alasan_kurang` menyebut riwayat.
 - Job yang dijalankan ulang (job_id sama) **mengganti** entrinya sendiri, jadi tidak membatasi dirinya sendiri.
-- Status entri: `direncanakan` (dicatat saat batch selesai; default sampai app mengirim keputusan) · `disetujui` · `dirender` · `dicoret` (tidak dihitung). Status dari tim bertahan saat job dijalankan ulang.
+- Status entri: `direncanakan` (dicatat saat batch selesai; default sampai app mengirim keputusan) · `disetujui` · `dirender` · `dicoret` (tidak dihitung). Jalan ulang job yang sama: entri `disetujui`/`dirender` **tidak pernah dihapus** (tetap dihitung, ditandai `diganti` bila varian baru isinya beda); status lama hanya dibawa ke varian baru yang isinya identik. Job tanpa `job_id` memakai nama folder job.
+- File riwayat rusak tidak menggagalkan batch: dipindah ke `<kode>.rusak-<waktu>.json`, batch memakai riwayat kosong dan `batch.json.riwayat.peringatan` menjelaskannya.
 - `job.json` batch, field opsional baru: `abaikan_riwayat: true` → riwayat tidak dibaca **dan** job ini tidak dicatat (hybrid, prinsip owner).
 - `batch.json`, field baru: `riwayat: {aktif, brand, entri_dihitung, pembuka_dihindari, dicatat, ditolak_karena_riwayat}` atau `{aktif: false, alasan}`.
 - Perintah (read/write data mesin, dari root repo): `python pipeline/batch/riwayat.py lihat|reset <brand>` · `tandai <brand> <job_id> <status> [varian...]` · `lepas <brand> <job_id> [varian...]`. `reset` menyimpan cadangan `<kode>.reset-<waktu>.json`.
