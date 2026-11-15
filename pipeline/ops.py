@@ -21,6 +21,10 @@ MAX_OPS = 1000
 CTA_MS = 2500
 CAPTION_SIZE = 5.6  # % sisi pendek kanvas
 HOOK_SIZE = 7.0
+FADE_SAMBUNG_MS = 20  # R8: anti klik di sambungan potongan video
+FADE_MUSIK_MASUK_MS = 300
+FADE_MUSIK_KELUAR_MS = 800
+DUCKING_LEVEL = 0.3  # kontrak 12.2 (default app)
 
 
 def _ms_frame(f: int) -> int:
@@ -177,6 +181,14 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         ops.append({"op": "add_clip", "track_kind": "video", "media": "$sumber", "start_ms": t, "duration_ms": dur, "in_ms": a})
         t += dur
     video_ms = t
+    # R8: fade suara sangat pendek di tiap sambungan potongan supaya tidak ada bunyi "klik" di jump cut.
+    # Hybrid: nilainya tetap bisa diubah/dihapus per klip di Inspector (Suara).
+    klip_video = [o for o in ops if o.get("track_kind") == "video"]
+    for i, o in enumerate(klip_video):
+        if i > 0:
+            o["fade_in_ms"] = FADE_SAMBUNG_MS
+        if i + 1 < len(klip_video):
+            o["fade_out_ms"] = FADE_SAMBUNG_MS
 
     # 2. Caption: satu klip subtitle per halaman (frasa).
     y = props["style"]["captionCenterY"]
@@ -279,8 +291,11 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     musik, alasan_musik = pilih_musik(bk, preset)
     if musik:
         dur_m = min(total_ms, musik.get("durasi_ms") or total_ms)
+        # R8: musik masuk/keluar pelan + turun otomatis saat ada orang bicara (ducking). Bisa diubah di editor.
         ops.append({"op": "add_clip", "track_kind": "music", "media": musik["kunci"], "start_ms": 0, "duration_ms": dur_m,
-                    "in_ms": 0, "volume": VOLUME_MUSIK})
+                    "in_ms": 0, "volume": VOLUME_MUSIK,
+                    "fade_in_ms": min(FADE_MUSIK_MASUK_MS, dur_m // 4), "fade_out_ms": min(FADE_MUSIK_KELUAR_MS, dur_m // 4)})
+        ops.append({"op": "set_ducking", "on": True, "level": DUCKING_LEVEL})
         if dur_m < total_ms:
             alasan_musik = f"musik {dur_m / 1000:.1f} dtk lebih pendek dari video {total_ms / 1000:.1f} dtk (berhenti sebelum akhir)"
 

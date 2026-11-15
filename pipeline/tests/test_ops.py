@@ -137,6 +137,31 @@ class Ops(unittest.TestCase):
         _, doc2, _ = susun(props, laporan, dict(BK, aset=aset[:2]), placement="tiktok", root=ROOT)
         self.assertFalse([o for o in doc2["ops"] if o.get("track_kind") == "music"])
 
+    def test_r8_fade_sambungan_dan_musik_ducking(self):
+        props, laporan = contoh()
+        aset = [{"kunci": "$musik:ceria", "jenis": "musik", "tag": ["pop-ceria"], "lisensi_iklan": True,
+                 "instrumental": True, "durasi_ms": 60000, "nama": "Pop Ceria", "sumber_lisensi": "Artlist"}]
+        _, doc, _ = susun(props, laporan, dict(BK, aset=aset), placement="tiktok", root=ROOT)
+        video = [o for o in doc["ops"] if o.get("track_kind") == "video"]
+        self.assertNotIn("fade_in_ms", video[0])  # awal video tidak di-fade
+        self.assertNotIn("fade_out_ms", video[-1])
+        if len(video) > 1:
+            self.assertEqual(video[1]["fade_in_ms"], 20)
+            self.assertEqual(video[0]["fade_out_ms"], 20)
+        musik = [o for o in doc["ops"] if o.get("track_kind") == "music"][0]
+        self.assertGreater(musik["fade_in_ms"], 0)
+        self.assertGreater(musik["fade_out_ms"], 0)
+        self.assertIn({"op": "set_ducking", "on": True, "level": 0.3}, doc["ops"])
+        _, doc2, _ = susun(props, laporan, BK, placement="tiktok", root=ROOT)
+        self.assertFalse([o for o in doc2["ops"] if o["op"] == "set_ducking"])  # tanpa musik: tanpa ducking
+
+    def test_r3_cta_kosong_diberi_peringatan(self):
+        props, laporan = contoh()
+        props["outroTagline"] = ""
+        rencana, _, _ = susun(props, laporan, BK, placement="tiktok", root=ROOT)
+        self.assertTrue(any(p["jenis"] == "cta" for p in rencana["peringatan"]))
+        self.assertFalse(any("CTA ditampilkan" in m for m in rencana["menunggu_u3"]))
+
     def test_efek_video_tidak_tumpang_tindih(self):
         fr = [{"atMs": 0, "scale": 1.07, "mode": "cut"}, {"atMs": 3000, "scale": 1.0, "mode": "cut"},
               {"atMs": 6000, "scale": 1.1, "mode": "smooth"}]
