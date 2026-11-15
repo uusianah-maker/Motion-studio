@@ -115,6 +115,8 @@ def argumen_edit(job: dict, job_dir: Path, transkrip: Path, video: Path, out: Pa
         cmd += ["--area-produk", brief["area_produk"]]
     if job.get("batas_durasi"):
         cmd += ["--batas-durasi", *map(str, job["batas_durasi"])]
+    if job.get("abaikan_cek_ucapan"):
+        cmd += ["--abaikan-cek-ucapan"]
     return cmd
 
 

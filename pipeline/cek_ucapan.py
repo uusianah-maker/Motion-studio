@@ -35,7 +35,23 @@ INGGRIS = {
     "the", "a", "an", "is", "are", "was", "i", "you", "my", "me", "it", "this", "that", "with",
     "to", "of", "and", "in", "on", "for", "just", "like", "how", "your", "we", "be", "do",
     "don't", "can", "so", "out", "up", "what", "all", "keep", "wanna", "gonna", "here", "night",
+    # Tambahan G1 (audit 14 Nov): lirik campur Indonesia-Inggris lolos di 32 %. Kata fungsi + kata lirik umum.
+    # Sengaja tanpa kata fashion yang biasa dipakai kreator Indonesia (look, size, style, outfit, fit).
+    "i'm", "im", "will", "one", "day", "know", "please", "say", "time", "now", "dont", "love", "hi", "baby",
+    "boy", "girl", "oh", "yeah", "mine", "us", "our", "they", "she", "he", "her", "his", "when", "where", "why",
+    "who", "never", "ever", "always", "want", "need", "feel", "heart", "tonight", "go", "come", "get", "got",
+    "let", "it's", "can't", "won't", "there", "if", "but", "or", "not", "at", "by", "from", "as", "have", "has",
+    "had", "been", "were", "would", "could", "should", "said", "tell", "see", "take", "give", "think", "eyes",
+    "waste", "ask", "am", "cause", "ooh", "la",
 }
+# Kata Indonesia yang hampir pasti muncul kalau orang bicara bahasa Indonesia (lirik bahasa lain: Spanyol, Korea).
+INDONESIA = {
+    "aku", "kamu", "ini", "itu", "yang", "dan", "di", "ke", "ya", "nggak", "gak", "ga", "enggak", "banget", "buat",
+    "dari", "ada", "bisa", "mau", "jadi", "sama", "juga", "udah", "sudah", "kalau", "kalo", "kok", "deh", "sih",
+    "nih", "dong", "aja", "lagi", "pakai", "pake", "punya", "kita", "dia", "untuk", "dengan", "tapi", "karena",
+    "lho", "loh", "kan", "apa", "kalian", "bahannya", "nyaman", "adem", "cek", "keranjang", "harga", "murah",
+}
+MIN_RASIO_INDONESIA = 0.08
 MAKS_RASIO_INGGRIS = 0.35
 PROB_RENDAH = 0.3
 MAKS_RASIO_RAGU = 0.30
@@ -95,11 +111,21 @@ def cek_ucapan(tr: dict) -> dict:
     inggris = sum(1 for w in asli if _norm(w["text"]) in INGGRIS)
     rasio = inggris / len(asli)
     hasil["rasio_inggris"] = round(rasio, 2)
+    indo = sum(1 for w in asli if _norm(w["text"]) in INDONESIA) / len(asli)
+    hasil["rasio_indonesia"] = round(indo, 2)
+    # jenis "lirik": Generate menolaknya kecuali job memilih "tetap lanjut" (hybrid: keputusan manual menang).
     if rasio > MAKS_RASIO_INGGRIS:
         hasil.update(
-            status="peringatan",
+            status="peringatan", jenis="lirik",
             alasan=f"ucapan kebanyakan bukan bahasa Indonesia ({rasio:.0%} kata Inggris umum), "
-            "mungkin lirik lagu. Periksa sebelum dipakai.",
+            "kemungkinan lirik lagu. Periksa sebelum dipakai.",
+        )
+        return hasil
+    if indo < MIN_RASIO_INDONESIA:
+        hasil.update(
+            status="peringatan", jenis="lirik",
+            alasan=f"hampir tidak ada kata bahasa Indonesia ({indo:.0%}), kemungkinan lirik lagu atau bahasa lain. "
+            "Periksa sebelum dipakai.",
         )
         return hasil
     hasil.update(status="ok", alasan="")

@@ -402,6 +402,8 @@ def main() -> None:
         default=[],
         help="detik (waktu sumber) kata yang tidak boleh tampil di caption, mis. salah dengar Whisper",
     )
+    ap.add_argument("--abaikan-cek-ucapan", action="store_true",
+                    help="tetap buat rencana walau audio terdeteksi lirik lagu (pilihan manual tim)")
     args = ap.parse_args()
 
     tr = json.loads(Path(args.transcript).read_text(encoding="utf-8"))
@@ -409,6 +411,11 @@ def main() -> None:
 
     # Video tanpa ucapan (hanya musik): Whisper mengarang teks, jadi jangan buat rencana.
     ucapan = cek_ucapan(tr)
+    # G1: audio lagu (lirik) ditolak; tim tetap bisa memaksa lanjut (--abaikan-cek-ucapan, hybrid).
+    if ucapan.get("jenis") == "lirik" and not args.abaikan_cek_ucapan:
+        ucapan = {**ucapan, "status": "ditolak",
+                  "alasan": ucapan["alasan"].replace(" Periksa sebelum dipakai.", "")
+                  + " Generate butuh orang bicara. Kalau yakin ini ucapan, jalankan ulang dengan \"tetap lanjut\"."}
     if ucapan["status"] == "ditolak":
         out_dir = Path(args.out)
         out_dir.mkdir(parents=True, exist_ok=True)
