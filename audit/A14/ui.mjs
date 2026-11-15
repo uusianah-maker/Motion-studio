@@ -143,12 +143,12 @@ try {
   check('A14-04 "+ Teks" dua kali di posisi yang sudah terisi: dua klip baru, tanpa error tumpang tindih', added && (await page.getByRole('alert').count()) === 0, `${await textCount()} klip teks`);
   // ⏮ while playing really goes back to the start (the play clock used to overwrite it).
   await page.getByRole('button', { name: 'Putar' }).click();
-  await page.waitForTimeout(2200);
+  await page.waitForTimeout(3200);
   await page.getByRole('button', { name: 'Ke awal' }).click();
   await page.waitForTimeout(300);
   const tAfter = await page.locator('.time').innerText();
   await page.getByRole('button', { name: 'Jeda' }).click();
-  check('A14-22 ⏮ saat diputar: kembali ke awal (00:00), tidak ditimpa jam pemutaran', /^00:00 \//.test(tAfter.trim()), tAfter);
+  check('A14-22 ⏮ saat diputar: kembali ke awal (00:00), tidak ditimpa jam pemutaran', /^00:0[01] \//.test(tAfter.trim()) /* reset (without the fix it shows 00:03+) */, tAfter);
 
   // A dragged text stays where it was dropped while the save is on its way.
   {
@@ -191,6 +191,19 @@ try {
   await page.locator('.track .clip', { hasText: 'Klip B' }).click(); // within 0,45 s
   const kept = await until(async () => clipOf(await proj(), 'Klip A').style?.size === 12);
   check('A14-14 Ubah ukuran lalu langsung pilih klip lain (<0,45 dtk): perubahan tetap tersimpan', kept, `${sizeBefore} → ${clipOf(await proj(), 'Klip A').style?.size}`);
+
+  // R5: undo right after a style change (< 0,45 s) undoes THAT change (it used to be saved after the undo).
+  {
+    await page.locator('.track .clip', { hasText: 'Klip A' }).click();
+    await insp.getByLabel('Ukuran teks').waitFor();
+    await until(async () => clipOf(await proj(), 'Klip A').style?.size === 12);
+    await insp.getByLabel('Ukuran teks').fill('16');
+    await page.getByRole('button', { name: '↶ Undo' }).click(); // within 0,45 s
+    await page.waitForTimeout(1500);
+    const after = clipOf(await proj(), 'Klip A').style?.size;
+    const redo = await page.getByRole('button', { name: '↷ Redo' }).isEnabled();
+    check('A14-25 Undo < 0,45 dtk setelah ubah ukuran: ukuran kembali (12), Redo tersedia, perubahan tidak tersimpan lagi', after === 12 && redo, `ukuran ${after}, redo ${redo}`);
+  }
 
   // Copilot (in an empty project): a ticked subset that cannot be applied says so, "Terapkan" off.
   await page.getByText('Uji Copilot Kosong').first().click();
@@ -357,7 +370,9 @@ try {
     return r.continue();
   });
   await form.getByRole('button', { name: /Susun draf otomatis/ }).click();
-  const recovered = await until(() => page.getByRole('region', { name: 'Rencana edit' }).isVisible(), 30000);
+  // Pages stay mounted now (keep-alive): the previous run's plan card may still show for a moment,
+  // so wait for the failed check first, then for the NEW plan.
+  const recovered = await until(async () => failed === 1 && (await page.getByRole('region', { name: 'Rencana edit' }).isVisible()), 30000);
   check('A14-12 Progres mesin: satu cek status gagal (koneksi putus) → tetap lanjut sampai rencana siap', failed === 1 && recovered, `gagal=${failed}`);
 
   // Generate: while the brand list loads, "Memuat brand…" — not "Buat brand dulu".

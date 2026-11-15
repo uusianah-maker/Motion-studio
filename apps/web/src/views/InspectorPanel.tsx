@@ -31,6 +31,7 @@ export function InspectorPanel({
   canvasRatio = 9 / 16,
   duck,
   playhead = 0,
+  flushRef,
 }: {
   clip: SelectedClip;
   name: string;
@@ -38,6 +39,8 @@ export function InspectorPanel({
   busy: boolean;
   onEdit: (ops: EditOp[]) => Promise<void> | void;
   onDraft: (d: { clip_id: string; style: Partial<TextStyle> } | null) => void;
+  /** R5: the editor calls this before undo / redo, so a change still waiting is saved first. */
+  flushRef?: { current: (() => Promise<void>) | null };
   /** X05: archived project — everything is shown but nothing can be changed. */
   readOnly?: boolean;
   /** X06: Brand Kit colours + whether it has a font. */
@@ -97,6 +100,18 @@ export function InspectorPanel({
   const pendingVol = useRef<number | null>(null);
   const onDraftRef = useRef(onDraft);
   onDraftRef.current = onDraft;
+  // R5: save what is still waiting now (undo right after a style change undoes THAT change).
+  const flushPending = async () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (volTimer.current) clearTimeout(volTimer.current);
+    const ops: EditOp[] = [];
+    if (pendingStyle.current) ops.push({ op: 'set_style', clip_id: clip.clip_id, style: pendingStyle.current });
+    if (pendingVol.current !== null) ops.push({ op: 'set_volume', clip_id: clip.clip_id, volume: pendingVol.current });
+    pendingStyle.current = null;
+    pendingVol.current = null;
+    if (ops.length) await onEditRef.current(ops);
+  };
+  if (flushRef) flushRef.current = flushPending;
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);

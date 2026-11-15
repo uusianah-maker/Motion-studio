@@ -132,32 +132,50 @@ export function EditorView({
   }, [load]);
 
   /** Run one server change; on a stale revision reload and tell the user instead of guessing. */
+  // Latest project / busy for edits chained right after another one (R5: flush a pending style
+  // change, then undo — the undo must see the revision that change made).
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const run = useCallback(
     async (fn: (p: Project) => Promise<Project>) => {
-      if (!project || busy) return;
+      const before = projectRef.current;
+      if (!before || busyRef.current) return;
+      busyRef.current = true;
       setBusy(true);
       setError(null);
       setNotice(null);
       try {
-        const next = await fn(project);
+        const next = await fn(before);
         onSavedRef.current?.(next);
         if (openId.current !== next.project_id) return; // saved, but another project is open now
+        projectRef.current = next;
         setProject(next);
-        setSelected((sel) => keepSelection(project, next, sel));
+        setSelected((sel) => keepSelection(before, next, sel));
       } catch (e) {
         if (e instanceof ApiError && e.code === 'CONFLICT') {
           setNotice('Proyek berubah di tempat lain. Data terbaru sudah dimuat ulang; ulangi perubahan lo.');
           await load().catch(setError);
         } else setError(e);
       } finally {
+        busyRef.current = false;
         setBusy(false);
       }
     },
-    [project, busy, load],
+    [load],
   );
 
   const edit = useCallback((ops: EditOp[]) => run((p) => api.editProject(p.project_id, p.revision, ops)), [run, api]);
-  const step = useCallback((dir: 'undo' | 'redo') => run((p) => api.stepHistory(p.project_id, p.revision, dir)), [run, api]);
+  /** R5: a style / volume change still waiting its 0,45 s (Inspector) is saved FIRST, then undo / redo. */
+  const inspectorFlush = useRef<(() => Promise<void>) | null>(null);
+  const step = useCallback(
+    async (dir: 'undo' | 'redo') => {
+      await inspectorFlush.current?.();
+      return run((p) => api.stepHistory(p.project_id, p.revision, dir));
+    },
+    [run, api],
+  );
   /** X05: an archived project is read-only — every edit control is off (the server refuses too). */
   const reviewer = role === 'reviewer';
   const locked = busy || project?.status === 'archived' || reviewer;
@@ -486,6 +504,7 @@ export function EditorView({
               {...(project.status !== 'archived' && !reviewer ? { onCutReview: () => setCutClip(sel) } : {})}
               onEdit={(ops) => edit(ops)}
               onDraft={setStyleDraft}
+              flushRef={inspectorFlush}
             />
           )}
           {project && (
