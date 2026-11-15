@@ -117,7 +117,7 @@ try {
   // Per-project brand: default (AYS) does not ban "termurah", Lucy does.
   const issues = async () => (await (await fetch(`http://127.0.0.1:${server.port}/api/projects/promo/brand-check`, { headers: { authorization: `Bearer ${server.app.token}` } })).json()).issues;
   check('X-U1-06 Proyek tanpa pilihan → brand bawaan (AYS): "termurah" tidak dilarang', (await issues()).length === 0);
-  await page.getByRole('button', { name: /Editor/ }).first().click();
+  await page.getByRole('button', { name: /^2\. Edit$/ }).first().click();
   await page.getByRole('heading', { name: 'Promo Brand' }).waitFor();
   await page.locator('summary[aria-label="Kelola proyek"]').click();
   const menu = page.getByRole('group', { name: 'Kelola proyek' });

@@ -59,7 +59,8 @@ try {
   page.on('console', (m) => m.type() === 'error' && !m.text().includes('status of 4') && errors.push(m.text()));
   await page.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
   const nav = page.getByRole('navigation', { name: 'Navigasi utama' });
-  await nav.getByRole('button', { name: /Beat Spot/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Beat Spot/ }).click();
   await page.getByRole('heading', { name: 'Beat Spot' }).waitFor();
   check('R16-01 Menu "Beat Spot" membuka halamannya', true);
 

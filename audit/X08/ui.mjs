@@ -67,7 +67,7 @@ try {
   check('X8-01 Brand guard tersimpan: 1 harga + tanggal, 2 klaim (baris kosong diabaikan), level blokir', kit.guard.prices.length === 1 && kit.guard.prices[0].valid_until === day(-1) && kit.guard.banned.join('|') === 'paling murah|100% menyembuhkan' && kit.guard.banned_level === 'block', JSON.stringify(kit.guard));
 
   // Render dialog: red list, start disabled.
-  await page.getByRole('button', { name: /Editor/ }).first().click();
+  await page.getByRole('button', { name: /^2\. Edit$/ }).first().click();
   await page.getByRole('heading', { name: 'Uji Guard' }).waitFor();
   await page.getByRole('button', { name: '↧ Render' }).click();
   const dialog = page.getByRole('dialog', { name: 'Render MP4' });
@@ -96,7 +96,7 @@ try {
   await page.getByLabel('Tingkat klaim terlarang').selectOption('warn');
   await page.getByRole('button', { name: 'Simpan Brand Kit' }).click();
   await page.getByText('Tersimpan (revisi 2)').waitFor();
-  await page.getByRole('button', { name: /Editor/ }).first().click();
+  await page.getByRole('button', { name: /^2\. Edit$/ }).first().click();
   await page.getByRole('heading', { name: 'Uji Guard' }).waitFor();
   await page.getByRole('button', { name: '↧ Render' }).click();
   const yellow = dialog.getByRole('note', { name: 'Brand guard memperingatkan' });

@@ -416,9 +416,9 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
         {applied && (
           <section className="card" aria-label="Draf diterapkan">
             <h2>4 · Draf sudah di timeline</h2>
-            <p className="small">Satu langkah undo. Geser potongan, render dan QC di Editor.</p>
+            <p className="small">Satu langkah undo. Geser potongan, render dan QC di Edit.</p>
             <button className="btn primary" onClick={() => onOpenProject(applied)}>
-              Buka di Editor →
+              Buka di Edit →
             </button>
           </section>
         )}

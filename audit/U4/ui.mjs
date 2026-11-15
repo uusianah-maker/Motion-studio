@@ -65,11 +65,14 @@ try {
   page.on('console', (m) => m.type() === 'error' && !m.text().includes('status of 4') && errors.push(m.text()));
   await page.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
   const nav = page.getByRole('navigation', { name: 'Navigasi utama' });
-  await nav.getByRole('button', { name: /Generate/ }).waitFor();
-  check('U4-01 Menu PC-16: Generate, Batch, Editor di navigasi utama', (await nav.getByRole('button', { name: /Generate/ }).isVisible()) && (await nav.getByRole('button', { name: /Batch/ }).isVisible()) && (await nav.getByRole('button', { name: /Editor/ }).isVisible()));
+  await nav.getByRole('button', { name: /Buat video/ }).waitFor();
+  // R17: Generate (Video iklan) and Batch Remix live inside "1. Buat video", next to "2. Edit".
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  check('U4-01 Menu R17: "1. Buat video" berisi Video iklan + Batch Remix; "2. Edit" di navigasi utama', (await page.getByRole('button', { name: /^Buka Video iklan/ }).isVisible()) && (await page.getByRole('button', { name: /^Buka Batch Remix/ }).isVisible()) && (await nav.getByRole('button', { name: /^2\. Edit$/ }).isVisible()));
 
   // ---- U4 Generate Otomatis
-  await nav.getByRole('button', { name: /Generate/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Video iklan/ }).click();
   await page.getByRole('heading', { name: 'Generate Otomatis' }).waitFor();
   const form = page.getByRole('region', { name: 'Video dan brief' });
   await until(async () => (await form.getByLabel('Brand').inputValue()) !== '');
@@ -99,11 +102,12 @@ try {
   const sub = after.timeline.tracks.find((t) => t.kind === 'subtitle').clips[0];
   check('U4-07 Caption per kata + sorot dari mesin terbawa (words + pop + highlight)', sub.words?.length === 2 && sub.style?.anim === 'pop' && sub.style?.highlight?.words?.[0] === 'adem');
   check('U4-08 Riwayat job proyek tampil', await until(() => page.getByRole('region', { name: 'Riwayat job mesin' }).getByRole('cell', { name: /AYS-\d{8}-001/ }).isVisible()));
-  await page.getByRole('button', { name: /Buka di Editor/ }).click();
+  await page.getByRole('button', { name: /Buka di Edit/ }).click();
   check('U4-09 "Buka di Editor" membuka proyek draf untuk render & QC', await until(() => page.getByRole('heading', { name: before.name }).isVisible()));
 
   // ---- U5 Batch Remix
-  await nav.getByRole('button', { name: /Batch/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Batch Remix/ }).click();
   await page.getByRole('heading', { name: 'Batch Remix' }).waitFor();
   const bform = page.getByRole('region', { name: 'Susun batch' });
   await until(async () => (await bform.getByLabel('Brand').inputValue()) !== '');
@@ -152,7 +156,8 @@ try {
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   phone.on('pageerror', (e) => errors.push(String(e)));
   await phone.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
-  await phone.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Generate/ }).click();
+  await phone.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Buat video/ }).click();
+  await phone.getByRole('button', { name: /^Buka Video iklan/ }).click();
   await phone.getByRole('heading', { name: 'Generate Otomatis' }).waitFor();
   const out = await phone.evaluate(() => [...document.querySelectorAll('input, select, textarea, button')].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).length);
   check('U4-10 Layar HP: tidak ada isian yang keluar layar', out === 0, `${out} keluar`);

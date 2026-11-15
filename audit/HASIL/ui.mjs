@@ -49,7 +49,7 @@ try {
   const nav = page.getByRole('navigation', { name: 'Navigasi utama' });
 
   // ---- pratinjau editor dengan judul panjang tetap berukuran layak
-  await nav.getByRole('button', { name: /Editor/ }).click();
+  await nav.getByRole('button', { name: /^2\. Edit$/ }).click();
   await page.getByRole('button', { name: /varian-002/ }).first().click();
   await page.waitForTimeout(800);
   const tinggi = await page.evaluate(() => document.querySelector('.canvas')?.getBoundingClientRect().height ?? 0);
@@ -90,7 +90,7 @@ try {
 
   // ---- tetap hidup saat pindah menu
   await page.getByLabel('Cari hasil').fill('korset-tidak-ada');
-  await nav.getByRole('button', { name: /Editor/ }).click();
+  await nav.getByRole('button', { name: /^2\. Edit$/ }).click();
   await nav.getByRole('button', { name: /Hasil/ }).click();
   check('HASIL-07 Isian tetap saat pindah menu', (await page.getByLabel('Cari hasil').inputValue()) === 'korset-tidak-ada');
 

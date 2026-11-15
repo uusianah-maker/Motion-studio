@@ -61,7 +61,8 @@ try {
   page.on('console', (m) => m.type() === 'error' && !m.text().includes('status of 4') && errors.push(m.text()));
   await page.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
   const nav = page.getByRole('navigation', { name: 'Navigasi utama' });
-  await nav.getByRole('button', { name: /Batch/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Batch Remix/ }).click();
   await page.getByRole('heading', { name: 'Batch Remix' }).waitFor();
 
   // ---- fitur 1: Upload + Pisah Audio from the dashboard
@@ -108,7 +109,8 @@ try {
   await page.screenshot({ path: path.join(EVID, 'shot-library.png') });
 
   // ---- fitur 3 form + exclusions reach the engine
-  await nav.getByRole('button', { name: /Batch/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Batch Remix/ }).click();
   await page.getByRole('heading', { name: 'Batch Remix' }).waitFor();
   await until(async () => (await bform.getByLabel('Nama batch').inputValue()) === BATCH);
   check('U8-08 Form batch menyebut jumlah shot yang dikecualikan', await until(() => bform.getByLabel('Shot dikecualikan').filter({ hasText: '2 shot dikecualikan' }).isVisible()));

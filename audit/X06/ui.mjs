@@ -115,7 +115,7 @@ try {
   await page.screenshot({ path: path.join(EVID, 'brand-kit.png') });
 
   // Editor: Brand preset, brand font in the preview, logo switch.
-  await page.getByRole('button', { name: /Editor/ }).first().click();
+  await page.getByRole('button', { name: /^2\. Edit$/ }).first().click();
   await page.getByRole('heading', { name: 'Uji Brand' }).waitFor();
   await page.getByRole('button', { name: 'Tambah preset Brand' }).click();
   await page.locator('.track .clip', { hasText: 'Toko Aysi' }).waitFor();

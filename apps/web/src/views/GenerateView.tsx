@@ -287,7 +287,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
       <header className="top">
         <h1>Generate Otomatis</h1>
         <div className="spacer" />
-        <span className="muted small hideNarrow">Video bicara + brief → mesin menyusun draf → tim menyetujui → render di Editor</span>
+        <span className="muted small hideNarrow">Video bicara + brief → mesin menyusun draf → tim menyetujui → render di Edit</span>
       </header>
       <div className="body enginePage">
         <ErrorNotice error={error ?? jobError} />
@@ -436,9 +436,9 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
         {applied && (
           <section className="card" aria-label="Draf diterapkan">
             <h2>3 · Draf sudah di timeline</h2>
-            <p className="small">Satu langkah undo. Lanjut finishing, render dan QC di Editor.</p>
+            <p className="small">Satu langkah undo. Lanjut finishing, render dan QC di Edit.</p>
             <button className="btn primary" onClick={() => onOpenProject(applied)}>
-              Buka di Editor →
+              Buka di Edit →
             </button>
           </section>
         )}

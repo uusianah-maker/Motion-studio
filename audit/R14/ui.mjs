@@ -34,7 +34,7 @@ const wsRoot = path.join(work, 'ws');
 const ws = await core.initWorkspace(wsRoot);
 await core.createProject(ws, { project_id: 'p', name: 'Uji Pratinjau Ringan' });
 const heavy = path.join(work, 'berat-1080p.mp4');
-execFileSync(FFMPEG, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=1080x1920:r=30:d=3', '-f', 'lavfi', '-i', 'sine=d=3', '-c:v', 'libx264', '-b:v', '6M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', heavy], { windowsHide: true });
+execFileSync(FFMPEG, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=1080x1920:r=30:d=3,noise=alls=30:allf=t', '-f', 'lavfi', '-i', 'sine=d=3', '-c:v', 'libx264', '-b:v', '6M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', heavy], { windowsHide: true });
 
 const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_RENDER_TMP: work, MOTION_STATE_DIR: path.join(work, 'state') }, () => undefined);
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -57,7 +57,7 @@ try {
   check('R14-02 Pratinjau ringan jauh lebih kecil dari file asli; file asli utuh', proxySize < v.size / 2, `${proxySize} vs ${v.size}`);
 
   // Editor: add it to the timeline; the preview plays the light copy.
-  await nav.getByRole('button', { name: /Editor/ }).click();
+  await nav.getByRole('button', { name: /^2\. Edit$/ }).click();
   await page.getByRole('heading', { name: 'Uji Pratinjau Ringan' }).waitFor();
   await page.getByRole('button', { name: 'Tambah berat-1080p.mp4 ke linimasa' }).click();
   const video = page.getByLabel('Video pratinjau');

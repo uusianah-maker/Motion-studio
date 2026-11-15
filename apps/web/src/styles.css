@@ -32,6 +32,18 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .nav:hover { color: #c9cfdd; }
 .nav.sel { background: #28253e; color: #ae99ff; }
 .grow { flex: 1; }
+/* R17: menu groups (work flow · materials · settings) */
+.rail { overflow-y: auto; }
+.navGroup { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 6px; border-top: 1px solid #232838; }
+.navGroup:first-of-type { border-top: 0; padding-top: 0; }
+.navGroupLabel { font-size: 8px; letter-spacing: 0.04em; text-transform: uppercase; color: #5d6679; text-align: center; max-width: 56px; line-height: 1.1; }
+.nav { text-align: center; line-height: 1.15; }
+.buatGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.buatCard { display: flex; flex-direction: column; gap: 8px; }
+.buatCard .btn { margin-top: auto; align-self: flex-start; }
+.buatBahan { margin: 4px 0 0; padding-left: 18px; }
+.buatTabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 24px 0; }
+@media (max-width: 600px) { .buatTabs { padding: 8px 12px 0; } .buatGrid { grid-template-columns: 1fr; } .navGroupLabel { font-size: 7px; } }
 
 .side { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; }
 .sideTitle { height: 63px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--line); }

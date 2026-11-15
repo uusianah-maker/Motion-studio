@@ -56,7 +56,8 @@ try {
   page.on('console', (m) => m.type() === 'error' && !m.text().includes('status of 4') && errors.push(m.text()));
   await page.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
   const nav = page.getByRole('navigation', { name: 'Navigasi utama' });
-  await nav.getByRole('button', { name: /Transfer/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Motion Transfer/ }).click();
   await page.getByRole('heading', { name: 'Motion Transfer' }).waitFor();
   check('R11-01 Menu "Transfer" membuka halaman Motion Transfer', true);
 
@@ -101,12 +102,14 @@ try {
   check('R11-07 Hapus adegan → hilang dari daftar; jumlah & keterangan "diubah tim" ikut', ids.join(',') === '1,2+3' && (await grid.innerText()).includes('diubah tim (mesin membuat 4 adegan)'), ids.join(','));
   // Survives a reload (stored on the server, not in the page).
   await page.reload();
-  await nav.getByRole('button', { name: /Transfer/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Motion Transfer/ }).click();
   const kept = await until(async () => (await grid.locator('[data-adegan]').count()) === 2, 20000);
   // A fresh tab (no session memory): pick the project, open the job from the history.
   const tab = await ctx.newPage();
   await tab.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
-  await tab.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Transfer/ }).click();
+  await tab.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Buat video/ }).click();
+  await tab.getByRole('button', { name: /^Buka Motion Transfer/ }).click();
   const projectId = await page.evaluate(() => JSON.parse(sessionStorage.getItem('ms:transfer.proyek') ?? '""'));
   await tab.getByRole('region', { name: 'Video referensi dan produk' }).getByLabel('Proyek tujuan').selectOption(projectId);
   await tab.getByRole('region', { name: 'Riwayat Motion Transfer' }).getByRole('button', { name: /^Lihat / }).first().click();

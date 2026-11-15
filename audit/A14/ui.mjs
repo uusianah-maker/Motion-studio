@@ -230,7 +230,7 @@ try {
     await r.continue();
   });
   await page.getByLabel('Pilih file media').setInputFiles([await variant('antri-1'), await variant('antri-2')]);
-  await nav.getByRole('button', { name: /Editor/ }).click();
+  await nav.getByRole('button', { name: /^2\. Edit$/ }).click();
   await page.getByRole('heading', { name: 'Uji Audit Editor' }).waitFor();
   await nav.getByRole('button', { name: /Media/ }).click();
   const rows = page.locator('.uploads .uploadRow');
@@ -240,7 +240,8 @@ try {
   await page.unroute('**/api/media/import**');
 
   // ---- Batch: the form survives switching menus (sukma).
-  await nav.getByRole('button', { name: /Batch/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Batch Remix/ }).click();
   await page.getByRole('heading', { name: 'Batch Remix' }).waitFor();
   {
     const bform = page.getByRole('region', { name: 'Susun batch' });
@@ -249,7 +250,8 @@ try {
     await bform.getByLabel('Buang urgensi').check();
     await nav.getByRole('button', { name: /Media/ }).click();
     await page.getByRole('heading', { name: 'Media' }).waitFor();
-    await nav.getByRole('button', { name: /Batch/ }).click();
+    await nav.getByRole('button', { name: /Buat video/ }).click();
+    await page.getByRole('button', { name: /^Buka Batch Remix/ }).click();
     await page.getByRole('heading', { name: 'Batch Remix' }).waitFor();
     check(
       'A14-19 Batch: isian form tetap setelah pindah menu (jumlah, hak pakai, buang otomatis)',
@@ -334,7 +336,8 @@ try {
   check('A14-11 AI: batas kosong tidak bisa disimpan (bukan jadi 0 yang memblokir AI)', await page.getByRole('button', { name: 'Simpan batas' }).isDisabled());
 
   // ---- Generate: a start refused by the server, then retried, makes ONE project (not one per try).
-  await nav.getByRole('button', { name: /Generate/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Video iklan/ }).click();
   await page.getByRole('heading', { name: 'Generate Otomatis' }).waitFor();
   {
     const f = page.getByRole('region', { name: 'Video dan brief' });
@@ -354,8 +357,10 @@ try {
   }
 
   // ---- Engine progress survives one failed status check (a second run on the same page).
-  await nav.getByRole('button', { name: /Batch/ }).click();
-  await nav.getByRole('button', { name: /Generate/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Batch Remix/ }).click();
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Video iklan/ }).click();
   await page.getByRole('heading', { name: 'Generate Otomatis' }).waitFor();
   const form = page.getByRole('region', { name: 'Video dan brief' });
   await until(async () => (await form.getByLabel('Brand').inputValue()) !== '');
@@ -398,7 +403,8 @@ try {
       await r.continue();
     });
     await slow.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
-    await slow.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Generate/ }).click();
+    await slow.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Buat video/ }).click();
+    await slow.getByRole('button', { name: /^Buka Video iklan/ }).click();
     await slow.getByRole('heading', { name: 'Generate Otomatis' }).waitFor();
     const loading = await slow.getByText('Memuat brand…').isVisible();
     const wrong = await slow.getByText('Buat brand dulu di menu Brand.').count();
@@ -417,7 +423,7 @@ try {
   await phone.keyboard.type('HAPUS', { delay: 30 });
   check('A14-13 HP: frasa diketik per huruf tetap di kotak', (await phone.getByLabel('Frasa konfirmasi').inputValue()) === 'HAPUS');
   await phone.keyboard.press('Escape');
-  await phone.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /Editor/ }).click();
+  await phone.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: /^2\. Edit$/ }).click();
   await phone.getByRole('button', { name: /^Transkrip / }).first().waitFor();
   const cc = phone.getByRole('button', { name: /^Transkrip / }).first();
   await cc.scrollIntoViewIfNeeded();

@@ -75,7 +75,8 @@ try {
 
   await page.goto(`${base}/#token=${server.app.token}`);
   await page.getByRole('heading', { name: 'Lucy — Elegant Look' }).waitFor();
-  check('UI-02 Token dihapus dari address bar', (await page.evaluate(() => location.hash)) === '', await page.evaluate(() => location.href));
+  // R17: the page route lives in the hash now (#/edit); what matters is that the token is gone.
+  check('UI-02 Token dihapus dari address bar', await page.evaluate(() => !location.href.includes('token') && /^(#\/[a-z/-]+)?$/.test(location.hash)), await page.evaluate(() => location.href));
   check('UI-03 Editor memuat proyek + linimasa asli', await page.getByText('1 klip').isVisible());
   await page.screenshot({ path: path.join(EVID, 'w05_editor_desktop.png') });
 
@@ -98,7 +99,7 @@ try {
   await page.screenshot({ path: path.join(EVID, 'w05_media_desktop.png') });
 
   // Editor side panel shows the project's media.
-  await page.getByRole('button', { name: /Editor/ }).click();
+  await page.getByRole('button', { name: /^2\. Edit$/ }).click();
   await page.getByRole('button', { name: /Iklan Payday/ }).click();
   await page.getByText('sample_3s_16x9.mp4').first().waitFor();
   check('UI-08 Panel media proyek di editor', true);
