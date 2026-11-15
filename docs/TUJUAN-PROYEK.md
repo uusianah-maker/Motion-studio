@@ -41,7 +41,7 @@ Rencana: tahap 1–2 diuji dulu bersama Jika. Tahap 3 menyusul dengan batas biay
 ## Beat Spot
 Fitur baru untuk video **awareness** (dinamai owner, 15 Nov 2026). Kreator merekam orang yang jalan di mall memakai produk brand. Video dipotong per orang, dengan pergantian tepat di ketukan sound, lalu diberi logo brand kecil dan end card dari Brand Kit.
 - Tahap 1 (mesin, yuki): footage → potong per orang/adegan → susun mengikuti ketukan sound → logo + end card. Tim tetap bisa memilih, mengurutkan, dan menggeser potongan (hybrid).
-- Tahap 2 (usulan owner): AI mengambil gambar orang yang lewat, lalu mengganti pakaiannya dengan celana/kemeja brand. **Ditahan, menunggu keputusan owner** soal izin orang yang terekam (lihat PROGRESS PC-R7).
+- Tahap 2 (usulan owner): AI mengambil gambar orang yang lewat, lalu mengganti pakaiannya dengan celana/kemeja brand. Keputusan owner: hanya untuk footage kreator/model sendiri; orang asing dipakai hanya kalau memang memakai produk brand, wajah tidak di-blur. Menunggu akun AI.
 
 ## Rencana perbaikan putaran 1 (R)
 Status dicatat di `PROGRESS.md` bagian "Putaran R". Kolom "Isian tim" = hal yang harus diisi atau diputuskan orang, bukan kode.
