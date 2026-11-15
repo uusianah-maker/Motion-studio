@@ -32,6 +32,7 @@ import { importMedia, loadRegistry } from './registry.js';
 import { LAYOUT, type Workspace, listProjectIds, projectRel, readProject } from './workspace.js';
 import { writeJsonAtomic } from './jsonStore.js';
 import { audit } from './audit.js';
+import { markEngineOrigin } from './learning.js';
 
 export const ENGINE_DIR = '06_ENGINE';
 /** `.motionstudio/engine-ids/<job_id>`: one empty-ish file per job id ever handed out (R4). */
@@ -858,6 +859,8 @@ export async function decideBatch(
   for (const c of toCreate) {
     const variant: VariantInfo = { master_id: master.project_id, number: ++number, label: c.label, brief: c.hook ? { hook: c.hook } : {}, approved_revision: null, ...(c.test ? { bukan_iklan: true as const } : {}) };
     const made = await createWithTimeline(ws, { project_id: input.newId(), name: `${master.name} · ${c.label}`.slice(0, MAX_PROJECT_NAME), timeline: c.timeline, actor: input.actor, variant, ...(master.brand_id ? { brand_id: master.brand_id } : {}) });
+    // R9: an engine draft — the editor's later changes to it are recorded as lessons.
+    await markEngineOrigin(ws, made.project_id, { kind: 'batch', job_id: input.job_id, varian: c.varian }).catch(() => undefined);
     await setVariantApproval(ws, { project_id: made.project_id, expected_revision: made.revision, approved: true, actor: input.actor });
     decisions[c.varian] = { status: 'disetujui', project_id: made.project_id };
     // Recorded right away: a failure on a later row never leaves this project unknown (no duplicate on retry).

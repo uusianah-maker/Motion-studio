@@ -22,6 +22,7 @@ import {
   checkBrandGuard,
   localDate,
   type GuardIssue,
+  markEngineOrigin,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
@@ -233,6 +234,11 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
           r.applied_revision = saved.result.revision;
           r.accepted = Array.isArray(body.accept) ? (body.accept as number[]) : r.plan.operations.map((_, i) => i);
           r.decided_at = now();
+          // R9: an engine draft is now on this project — later editor changes are lessons.
+          if (r.plan.source === 'engine') {
+            const job = /([A-Z0-9]{2,5}-\d{8}-\d{3})/.exec(r.plan.prompt)?.[1];
+            await markEngineOrigin(ws, r.plan.project_id, { kind: 'generate', ...(job ? { job_id: job } : {}) }).catch(() => undefined);
+          }
           await audit(ws, { op: 'copilot.apply', actor, outcome: 'ok', project_id: r.plan.project_id, plan_id: r.plan.plan_id, source: r.plan.source, applied: ops.length, of: r.plan.operations.length, revision: saved.result.revision }).catch(() => undefined);
           return { project: projectView(saved.result), ...view(r), already_applied: false };
         } catch (e) {

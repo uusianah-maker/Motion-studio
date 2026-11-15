@@ -29,6 +29,9 @@ import {
   checkBrandGuard,
   localDate,
   variantState,
+  appendLearning,
+  correctionsFrom,
+  engineOrigin,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
@@ -320,11 +323,15 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
     {
       method: 'POST',
       path: '/api/projects/:project_id/edit',
-      handle: async ({ req, params, svc, actor }) => {
+      handle: async ({ req, ws, params, svc, actor }) => {
         const body = await readJsonBody(req);
         onlyKeys(body, ['expected_revision', 'ops', 'label']);
         const label = str(body, 'label', { optional: true, max: 80 });
+        // R9: an editor's change to an engine draft (words, hook, cuts) is a lesson for the brand.
+        const origin = actor === 'user' ? await engineOrigin(ws, params.project_id!) : null;
+        const before = origin ? (await readProject(ws, params.project_id!)).timeline : null;
         const r = await svc.editTimeline({ project_id: params.project_id!, expected_revision: revision(body), ops: body.ops, actor, ...(label ? { label } : {}) });
+        if (origin && before && Array.isArray(body.ops)) for (const n of correctionsFrom(before, body.ops, r.result.timeline, origin)) await appendLearning(ws, params.project_id!, n);
         return { project: projectView(r.result), clocks_ok: r.clocks.ok };
       },
     },

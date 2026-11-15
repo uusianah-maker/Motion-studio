@@ -8,6 +8,7 @@
  * it "berubah" (changed since review), like variant approval (X09). Who may do what is enforced by
  * the server (roles); this module records the author it is given.
  */
+import { appendLearning } from './learning.js';
 import fsp from 'node:fs/promises';
 import { StorageError } from './errors.js';
 import { newId } from './ids.js';
@@ -131,6 +132,8 @@ export async function decideReview(ws: Workspace, input: { project_id: string; e
     }
     f.decision = { status: input.status as ReviewStatus, revision: p.revision, by: cleanAuthor(input.author), at: ws.clock.now(), note: note as string };
     await save(ws, input.project_id, f);
+    // R9: what the PIC asked to change is a lesson for this brand.
+    if (f.decision.status === 'revisi') await appendLearning(ws, input.project_id, { jenis: 'revisi_pic', revision: p.revision, note: f.decision.note, by: f.decision.by.name });
     return { decision: f.decision, state: reviewState(f.decision, p.revision) };
   });
 }

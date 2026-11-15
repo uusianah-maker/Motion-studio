@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HOST, createApp } from '../src/app.js';
 import { createCopilot } from '../src/copilot.js';
-import { type EngineConfig, StorageService, createProject, initWorkspace, readProject } from '../src/core.js';
+import { type EngineConfig, StorageService, createProject, engineOrigin, initWorkspace, readProject } from '../src/core.js';
 import { engineRoutes } from '../src/engine.js';
 import { apiRoutes } from '../src/routes.js';
 
@@ -96,6 +96,8 @@ describe('U6 engine API (Generate Otomatis + Batch Remix)', () => {
     expect(plan.json.rencana).toMatchObject({ status: 'siap' });
     expect((await readProject(s.ws, 'g')).revision).toBe(0); // nothing changes before approval
     const applied = await s.call(`/api/projects/g/copilot/plans/${plan.json.plan.plan_id}/apply`, { expected_revision: 0 });
+    // R9: the project now holds an engine draft (its job id is remembered for the lessons).
+    expect(await engineOrigin(s.ws, 'g')).toMatchObject({ kind: 'generate', job_id: id });
     expect(applied.status).toBe(200);
     const p = await readProject(s.ws, 'g');
     expect(p.revision).toBe(1);

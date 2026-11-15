@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { checkPlan } from '../src/storage/copilot.js';
+import { engineOrigin } from '../src/storage/learning.js';
 import { loadLeases } from '../src/storage/deps.js';
 import { type EngineConfig, continueRefusedJob, lyricRefusal, decideBatch, engineConfigFromEnv, engineEnv, readBatchDecisions, readEngineBatch, listEngineJobs, loadEnginePlan, prepareEngineJob, readEngineLog, readEngineStatus, runEngineJob, settleOrphanJob, validateEngineJob } from '../src/storage/engine.js';
 import { isStorageError } from '../src/storage/errors.js';
@@ -207,6 +208,8 @@ describe('U6 engine runner', () => {
       ['UJI · varian-003 · Hook 3', 'approved'],
     ]);
     const v1 = vs[0]!;
+    // R9: a variant the engine made carries its origin (the editor's later changes are lessons).
+    expect(await engineOrigin(ws, v1.project_id)).toMatchObject({ kind: 'batch', job_id: s.job_id, varian: 'varian-001' });
     const clip = v1.timeline.tracks.find((t) => t.kind === 'video')!.clips[0]!;
     expect(clip).toMatchObject({ volume: 0, crop: { y: 0.1, h: 0.8 }, blur: [{ x: 0.7 }] });
     const reg = await loadRegistry(ws);
