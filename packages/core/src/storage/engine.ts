@@ -29,11 +29,13 @@ import { MAX_SERVER_OPS, applyOps, validateOps } from './timeline.js';
 import { listVariants, setVariantApproval, variantState } from './variants.js';
 import { newId } from './ids.js';
 import { importMedia, loadRegistry } from './registry.js';
-import { type Workspace, projectRel, readProject } from './workspace.js';
+import { LAYOUT, type Workspace, listProjectIds, projectRel, readProject } from './workspace.js';
 import { writeJsonAtomic } from './jsonStore.js';
 import { audit } from './audit.js';
 
 export const ENGINE_DIR = '06_ENGINE';
+/** `.motionstudio/engine-ids/<job_id>`: one empty-ish file per job id ever handed out (R4). */
+export const ENGINE_ID_CLAIMS = 'engine-ids';
 export const MAX_ENGINE_LOG = 64 * 1024;
 
 export interface EngineConfig {
@@ -313,15 +315,31 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
   const day = localDate(now).replace(/-/g, '');
   const dir = jobAbs(ws, input.project_id);
   await fsp.mkdir(dir, { recursive: true });
-  const taken = new Set((await fsp.readdir(dir)).filter(isJobId));
+  // R4 (G4): one number sequence per BRAND per DAY over ALL projects (AYS-20261114-007), not per
+  // project. Taken = every project's job folders + the claims; an exclusive claim file is the lock,
+  // so two projects starting at once never get the same number. Old job ids are left as they are.
+  const prefix = `${kit.kode}-${day}-`;
+  const claims = path.join(ws.root, LAYOUT.meta, ENGINE_ID_CLAIMS);
+  await fsp.mkdir(claims, { recursive: true });
+  const taken = new Set((await fsp.readdir(claims)).filter((n) => n.startsWith(prefix) && isJobId(n)));
+  for (const pid of await listProjectIds(ws).catch(() => [] as string[])) {
+    const names = await fsp.readdir(jobAbs(ws, pid)).catch(() => [] as string[]);
+    for (const n of names) if (n.startsWith(prefix) && isJobId(n)) taken.add(n);
+  }
   let n = 1;
   let job_id = '';
   let jdir = '';
-  // mkdir is the claim: a parallel request that picked the same number moves on to the next one.
   for (;;) {
-    while (taken.has(`${kit.kode}-${day}-${String(n).padStart(3, '0')}`)) n++;
-    if (n > 999) throw new StorageError('PRECONDITION', 'Terlalu banyak job hari ini (maks 999)');
-    job_id = `${kit.kode}-${day}-${String(n).padStart(3, '0')}`;
+    while (taken.has(`${prefix}${String(n).padStart(3, '0')}`)) n++;
+    if (n > 999) throw new StorageError('PRECONDITION', 'Terlalu banyak job hari ini untuk brand ini (maks 999)');
+    job_id = `${prefix}${String(n).padStart(3, '0')}`;
+    try {
+      await fsp.writeFile(path.join(claims, job_id), input.project_id, { flag: 'wx' });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      taken.add(job_id); // another request (any project) took it a moment ago
+      continue;
+    }
     jdir = jobAbs(ws, input.project_id, job_id);
     try {
       await fsp.mkdir(jdir);

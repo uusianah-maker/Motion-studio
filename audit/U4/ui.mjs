@@ -145,7 +145,8 @@ try {
   };
   check('U5-06 Dua varian benar-benar dirender (FFmpeg, crop & blur area, VO terpisah)', await until(async () => (await outputs()) === 2, 120000), `${await outputs()} output`);
   const jobs = page.getByRole('region', { name: 'Batch sebelumnya' });
-  check('U5-07 Batch sebelumnya bisa dibuka lagi', await until(() => jobs.getByRole('cell', { name: /AYS-\d{8}-001/ }).isVisible()));
+  // R4 (G4): one count per brand per day over all projects — the batch is this brand's 2nd job today.
+  check('U5-07 Batch sebelumnya bisa dibuka lagi (nomor job lanjut per brand: -002)', await until(() => jobs.getByRole('cell', { name: /AYS-\d{8}-002/ }).isVisible()));
 
   // Phone width: no field sticks out of the page.
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();

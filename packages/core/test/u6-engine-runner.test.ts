@@ -265,4 +265,23 @@ describe('U6 engine runner', () => {
     expect(r.result['varian-002']).toMatchObject({ status: 'disetujui' });
     expect((await listVariants(ws, 'm')).map((p) => p.variant!.label.split(' · ')[0])).toEqual(['varian-002']);
   }, 90_000);
+
+  it.skipIf(!hasFfmpeg)('R4 (G4): job numbers are unique per brand per day over ALL projects, also when started at once', async () => {
+    const { ws, svc, video } = await setup();
+    await createProject(ws, { project_id: 'p2', name: 'Proyek dua' });
+    await createProject(ws, { project_id: 'p3', name: 'Proyek tiga' });
+    const job = (project_id: string) => validateEngineJob({ project_id, mode: 'generate', sources: [{ kunci: '$sumber', ref: video }], preset: 'p', brief: brief(), ai: false });
+    const a = await prepareEngineJob(ws, job('g'));
+    const b = await prepareEngineJob(ws, job('p2'));
+    expect(a.job_id).toMatch(/^AYS-\d{8}-001$/);
+    expect(b.job_id).toMatch(/^AYS-\d{8}-002$/); // another project of the same brand continues the count
+    const [c, d] = await Promise.all([prepareEngineJob(ws, job('p3')), prepareEngineJob(ws, job('g'))]);
+    expect(new Set([a.job_id, b.job_id, c.job_id, d.job_id]).size).toBe(4);
+    expect([c.job_id, d.job_id].map((x) => x.slice(-3)).sort()).toEqual(['003', '004']);
+    // Another brand has its own count.
+    const other = (await svc.createBrand({ kit: { name: 'Brand Lain', kode: 'BLN' }, actor: 'user' })).result;
+    await createProject(ws, { project_id: 'p4', name: 'Brand lain' });
+    await svc.updateProjectMeta({ project_id: 'p4', expected_revision: (await readProject(ws, 'p4')).revision, brand_id: other.brand_id, actor: 'user' });
+    expect((await prepareEngineJob(ws, job('p4'))).job_id).toMatch(/^BLN-\d{8}-001$/);
+  }, 90_000);
 });
