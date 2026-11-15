@@ -54,6 +54,8 @@ export {
   decideBatch,
   loadBatchPlans,
   engineEnv,
+  killTree,
+  type Spawner,
   type BatchDecision,
   readEngineBatch,
   readEngineBatchView,

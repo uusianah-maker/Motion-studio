@@ -36,6 +36,7 @@ import {
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { onlyKeys } from './routes.js';
+import type { RiwayatSignal } from './riwayat.js';
 import { sendBytes } from './stream.js';
 import { Readable } from 'node:stream';
 
@@ -45,7 +46,7 @@ import { Readable } from 'node:stream';
  * Its plan only reaches the timeline through the normal Copilot path (source `engine`): diff →
  * the team approves → one undo step. Nothing is rendered here.
  */
-export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void }): Route[] {
+export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal }): Route[] {
   return createEngine(ws, opts).routes;
 }
 
@@ -54,7 +55,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
  * engine (and its Whisper / FFmpeg children) and waits for it, so no Python outlives the server
  * and a restarted server never finds a live job it would settle as an orphan (audit Jenius #2).
  */
-export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number> } {
+export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number> } {
   const queue: { project_id: string; job_id: string; mode: EngineMode }[] = [];
   const active = new Map<string, AbortController>();
   /** Requests preparing a job right now, per project: never "orphans" (Checkpoint I H1, audit Jenius #4). */
@@ -229,7 +230,12 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
         if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh menyetujui batch');
         const body = await readJsonBody(req);
         onlyKeys(body, ['rows']);
-        const r = await svc.decideBatch({ project_id: params.project_id!, job_id: jobParam(params.job_id), rows: body.rows, config: opts.config, actor });
+        const job = jobParam(params.job_id);
+        const r = await svc.decideBatch({ project_id: params.project_id!, job_id: job, rows: body.rows, config: opts.config, actor });
+        // R6: the rows decided in THIS request go to the engine's usage history (best effort).
+        const sent = (Array.isArray(body.rows) ? body.rows : []) as { varian?: unknown; status?: unknown }[];
+        const decided = sent.filter((x) => typeof x?.varian === 'string' && r.result[x.varian]?.status === x.status).map((x) => ({ varian: x.varian as string, status: x.status as string }));
+        if (decided.length) void opts.riwayat?.decided(params.project_id!, job, decided);
         return { decisions: r.result };
       },
     },

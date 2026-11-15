@@ -6,6 +6,7 @@
  * which browsers never send to servers or proxies.
  */
 import { backupRoutes } from './backup.js';
+import { createRiwayatSignal } from './riwayat.js';
 import { createProxyQueue } from './proxy.js';
 import { imageAiRoutes, openImageAiStore } from './ai/imageAi.js';
 import { existsSync } from 'node:fs';
@@ -98,7 +99,9 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   const sweptRenders = await sweepUploadTemp(renderTmp, 6 * 3_600_000, Date.now(), RENDER_TMP_PREFIX);
   await sweepUploadTemp(renderTmp, 6 * 3_600_000, Date.now(), STT_TMP_PREFIX);
   const releasedLeases = await releaseOrphanLeases(ws);
-  const jobs = createRenderJobs(ws, { tmpRoot: renderTmp }, (e) => process.stderr.write(`[server] render: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}
+  const engineCfg = engineConfigFromEnv(env);
+  const riwayat = createRiwayatSignal(ws, engineCfg, { onError: (e) => process.stderr.write(`[server] riwayat mesin: ${e instanceof Error ? e.message : String(e)}\n`) });
+  const jobs = createRenderJobs(ws, { tmpRoot: renderTmp, onCompleted: (pid) => void riwayat.rendered(pid) }, (e) => process.stderr.write(`[server] render: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}
 `));
   let auth: GoogleAuth | undefined;
   const stateDir = env.MOTION_STATE_DIR ? path.resolve(env.MOTION_STATE_DIR) : defaultStateDir();
@@ -125,7 +128,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
       ...(tokenEndpoint ? { tokenEndpoint } : {}),
     });
   }
-  const engine = createEngine(ws, { copilot, config: engineConfigFromEnv(env), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
+  const engine = createEngine(ws, { copilot, config: engineCfg, riwayat, onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
   void engine.sweepOrphans().catch((e: unknown) => process.stderr.write(`[server] mesin (job yatim): ${String(e)}\n`));
   const app = createApp({
     ws,

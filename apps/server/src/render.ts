@@ -48,6 +48,8 @@ export interface RenderJobsOptions {
   /** Fixed settings (tests use a tiny size); request settings are merged on top. */
   settings?: Partial<RenderSettings>;
   keep?: number;
+  /** A render finished with an output (R6: the engine's usage history hears about Batch variants). */
+  onCompleted?: (projectId: string) => void;
 }
 
 const ACTIVE: readonly JobStatus[] = ['queued', 'running'];
@@ -106,6 +108,11 @@ export function createRenderJobs(ws: Workspace, opts: RenderJobsOptions, onError
         next.output_name = out.name;
         // Folder "HASIL RENDER/<tanggal>" yang mudah dibaca di Explorer (owner 14 Nov). Salinan; gagal = tidak apa-apa.
         void salinKeHasil(ws, { project_id: next.project_id, rel: r.output.rel, name: out.name }).catch((e: unknown) => onError?.(e));
+        try {
+          opts.onCompleted?.(next.project_id);
+        } catch (e) {
+          onError?.(e);
+        }
       }
     } catch (e) {
       next.status = isStorageError(e, 'CANCELLED') ? 'cancelled' : 'failed';
