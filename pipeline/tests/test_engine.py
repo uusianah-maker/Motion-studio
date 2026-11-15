@@ -40,6 +40,13 @@ class Engine(unittest.TestCase):
             r = json.loads(Path(d, "out", "rencana.json").read_text(encoding="utf-8"))
             self.assertEqual((r["status"], r["alasan"]), ("ditolak", "tidak ada ucapan"))
 
+    def test_r18_audio_pilihan_ke_edit(self):
+        job = {"brand_kit": "brand_kit.json", "brief": {}, "audio_pilihan": "vo"}
+        cmd = engine.argumen_edit(job, Path("J"), Path("J/out/transkrip.json"), Path("D:/v.mp4"), Path("J/out"))
+        self.assertEqual(cmd[cmd.index("--audio") + 1], "vo")
+        job["audio_pilihan"] = "lain"
+        self.assertNotIn("--audio", engine.argumen_edit(job, Path("J"), Path("t"), Path("v"), Path("o")))
+
 
 if __name__ == "__main__":
     unittest.main()

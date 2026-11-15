@@ -50,13 +50,15 @@ def _bentrok(top: float, rentang: list, caption_y: float | None) -> bool:
     return any(y0 < b and y1 > a for y0, y1 in rentang)
 
 
-def pilih_top(kotak: list, caption_y: float | None = None, wajah: list | None = None) -> tuple[float | None, bool]:
+def pilih_top(kotak: list, caption_y: float | None = None, wajah: list | None = None,
+              utama: float | None = None) -> tuple[float | None, bool]:
     """(posisi atas hook, menghindari wajah juga?). Teks bawaan wajib dihindari; wajah diusahakan.
-    None = tidak ada tempat tanpa menimpa teks."""
+    `utama` = posisi pilihan preset (§17.1 hook.y), dicoba paling dulu. None = tidak ada tempat."""
     teks = [(k[1], k[1] + k[3]) for k in teks_penting(kotak)]
     wajah = list(wajah or [])
+    kandidat = ([utama] if utama is not None else []) + [t for t in KANDIDAT_TOP if t != utama]
     for rentang, juga_wajah in ((teks + wajah, True), (teks, False)):
-        for top in KANDIDAT_TOP:
+        for top in kandidat:
             if not _bentrok(top, rentang, caption_y):
                 return top, juga_wajah and bool(wajah)
     return None, False
@@ -67,7 +69,7 @@ def atur_hook(hook: dict, kotak: list, caption_y: float | None,
     """Kembalikan (hook baru atau None kalau dilewati, catatan untuk rencana)."""
     if not teks_penting(kotak) and not wajah:
         return hook, None
-    top, hindari_wajah = pilih_top(kotak, caption_y, wajah)
+    top, hindari_wajah = pilih_top(kotak, caption_y, wajah, hook.get("top"))
     if top is None:
         return None, ("hook dilewati: teks bawaan video memenuhi layar di detik awal; "
                       "tambahkan hook manual di editor kalau tetap perlu")

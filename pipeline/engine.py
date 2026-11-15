@@ -120,6 +120,8 @@ def argumen_edit(job: dict, job_dir: Path, transkrip: Path, video: Path, out: Pa
         cmd += ["--batas-durasi", *map(str, job["batas_durasi"])]
     if job.get("abaikan_cek_ucapan"):
         cmd += ["--abaikan-cek-ucapan"]
+    if job.get("audio_pilihan") in ("vo", "musik", "keduanya"):
+        cmd += ["--audio", job["audio_pilihan"]]
     return cmd
 
 

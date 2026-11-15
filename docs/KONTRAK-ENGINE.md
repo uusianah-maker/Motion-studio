@@ -429,7 +429,8 @@ Sumber angka: laporan Hanagaki (85 video Aysilla, `BELAJAR/hanagaki/LAPORAN-HANA
 
 ### 17.3 Field tambahan Brand Kit
 - `teks.tagline` (teks, mis. "CUCI · JEMUR · LANGSUNG PAKAI") dipakai end card dan Beat Spot.
-- `visual.watermark`: `{ teks, y, lebar, opasitas }` opsional; kalau ada, mesin memasang teks watermark kecil sepanjang video (track `text`).
+- `visual.watermark`: `{ teks, y, lebar, opasitas }` opsional. Motion Studio hanya punya satu track `text`, jadi watermark teks mengisi celah di antara hook/CTA/disclaimer (hilang saat teks lain tampil). Untuk watermark yang selalu tampil, pakai logo Brand Kit (`set_brand_logo`).
+- Video iklan (Generate, venus): `caption.y` jadi posisi pilihan pertama (wajah/produk tetap dihindari), `hook.y` dicoba paling dulu oleh cek §14, `hook.ukuran`/`warna`, `caption.warna`/`kotak`, `shot.maks_dtk` = punch-in 110 % bergantian di klip yang lebih panjang (skala sebelumnya dipulihkan), `penutup.end_card` → peringatan `jenis: "penutup"` kalau aset tidak ada, `audio_pilihan: "vo"` → tanpa musik.
 
 ### 17.4 Preset contoh Aysilla (diisi tim lewat menu Brand)
 `aysilla-interview` (street_interview: caption.y 0.76, warna #F5EFA0, maks_kata 4, hook.y 0.18 ukuran 4.5, shot 1.9/3.5, transisi flash, durasi 40–55) · `aysilla-test-produk` (caption.y 0.45, 2 baris, shot 1.6) · `aysilla-harian` (hook.y 0.54 ukuran 3.4 baris 2 putih, shot 1.2/3.5, durasi 13–18) · `aysilla-beatspot` (beat 4 ketukan, 120 BPM, durasi 15–18, hanya watermark).

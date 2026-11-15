@@ -86,6 +86,34 @@ ZOOM_MIN = 1.02
 ZOOM_THROUGH_MS = 300  # durasi transisi zoom-through di sekitar titik potong
 
 
+def _warna(nilai, bawaan: str) -> str:
+    v = str(nilai or "").strip().lower()
+    return v if re.fullmatch(r"#[0-9a-f]{6}", v) else bawaan.lower()
+
+
+PUNCH_IN = 1.1
+
+
+def punch_in(framing, klip_video, maks_ms: float):
+    """§17.1 shot.maks_dtk: shot lebih panjang dari batas dipecah dengan punch-in 110 % bergantian
+    (aturan 2 laporan Hanagaki). Hanya di rentang klip yang belum punya framing sendiri."""
+    out = list(framing)
+    ada = sorted(f["atMs"] for f in framing)
+    for o in klip_video:
+        a, b = o["start_ms"], o["start_ms"] + o["duration_ms"]
+        if b - a <= maks_ms or any(a <= t < b for t in ada):
+            continue
+        # Skala yang sedang berlaku (framing terakhir sebelum klip) dipulihkan sesudah klip.
+        dasar = next((f["scale"] for f in sorted(framing, key=lambda f: -f["atMs"]) if f["atMs"] <= a), 1.0)
+        n = int((b - a) // maks_ms)
+        for k in range(1, n + 1):
+            t = round(a + (b - a) * k / (n + 1))
+            out.append({"atMs": t, "scale": round(dasar * PUNCH_IN, 3) if k % 2 else dasar, "mode": "cut"})
+        if n % 2:
+            out.append({"atMs": b, "scale": dasar, "mode": "cut"})
+    return sorted(out, key=lambda f: f["atMs"])
+
+
 def efek_video(framing, zoom_throughs, video_ms):
     """Daftar (mulai, akhir, effect) untuk track `effects`, urut dan tidak tumpang tindih.
 
@@ -192,8 +220,12 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
 
     # 2. Caption: satu klip subtitle per halaman (frasa).
     y = props["style"]["captionCenterY"]
-    gaya_caption = {"x": 0.5, "y": round(y, 3), "size": CAPTION_SIZE, "width": 0.8, "color": warna["caption"].lower(),
+    p_cap = preset.get("caption") or {}
+    gaya_caption = {"x": 0.5, "y": round(y, 3), "size": CAPTION_SIZE, "width": 0.8,
+                    "color": _warna(p_cap.get("warna"), warna["caption"]),
                     "bg": None, "bold": True, "outline": True, "align": "center", "font": "caption"}
+    if p_cap.get("kotak"):  # §17.1: kotak latar caption
+        gaya_caption.update(bg=warna["latar_gelap"].lower(), bg_opacity=0.7, outline=False)
     pages = _halaman(props["captions"])
     for i, page in enumerate(pages):
         a = page[0]["startMs"]
@@ -220,9 +252,12 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     hook_end = 0
     if hook and hook.get("text"):
         hook_end = min(hook["endMs"], video_ms)
-        gaya_hook = {"x": 0.5, "y": round(min(0.8, (hook.get("top") or 0.30) + 0.05), 3), "size": HOOK_SIZE, "width": 0.84,
+        p_hook = preset.get("hook") or {}
+        # §17.1 hook.ukuran = % tinggi layar per baris; style.size = % sisi pendek (9:16 -> x 16/9).
+        ukuran = round(min(12.0, float(p_hook["ukuran"]) * 16 / 9), 2) if p_hook.get("ukuran") else HOOK_SIZE
+        gaya_hook = {"x": 0.5, "y": round(min(0.8, (hook.get("top") or 0.30) + 0.05), 3), "size": ukuran, "width": 0.84,
                      # U3c: kotak kaca (efek 17 glass type) = kotak putih tipis + blur di belakang teks.
-                     "color": "#ffffff", "bg": "#ffffff", "bg_opacity": 0.16, "bg_blur": 12, "bold": True, "outline": True,
+                     "color": _warna(p_hook.get("warna"), "#ffffff"), "bg": "#ffffff", "bg_opacity": 0.16, "bg_blur": 12, "bold": True, "outline": True,
                      "align": "center", "font": "brand"}
         if hook_end - hook.get("startMs", 0) >= MIN_CLIP_MS:
             ops.append({"op": "add_clip", "track_kind": "text", "text": hook["text"].upper(), "start_ms": hook.get("startMs", 0),
@@ -302,8 +337,27 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
 
     # 6. Efek video (U3c): digital zoom (ganti framing) + zoom-through di titik potong, satu track `effects`
     #    tanpa tumpang tindih. Zoom-through menang; rentang zoom dipotong di sekitarnya.
-    for e in efek_video(props.get("framing") or [], props.get("zoomThroughs") or [], video_ms):
+    framing = list(props.get("framing") or [])
+    maks_shot = (preset.get("shot") or {}).get("maks_dtk")
+    if maks_shot:
+        framing = punch_in(framing, [o for o in ops if o.get("track_kind") == "video"], float(maks_shot) * 1000)
+    for e in efek_video(framing, props.get("zoomThroughs") or [], video_ms):
         ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": e[0], "duration_ms": e[1] - e[0], "effect": e[2]})
+
+    # §17.3 watermark teks kecil sepanjang video (opsional Brand Kit).
+    # Motion Studio hanya punya SATU track teks: watermark mengisi celah di antara hook/CTA/disclaimer
+    # (hilang sebentar saat teks lain tampil). Watermark yang selalu tampil = logo Brand Kit (set_brand_logo).
+    wm = bk.get("watermark") or {}
+    if wm.get("teks"):
+        gaya_wm = {"x": 0.5, "y": round(float(wm.get("y", 0.07)), 3), "size": 2.6, "width": float(wm.get("lebar", 0.3)),
+                   "color": "#ffffff", "bg": None, "bold": False, "outline": False, "align": "center", "font": "brand"}
+        terpakai = sorted((o["start_ms"], o["start_ms"] + o["duration_ms"]) for o in ops if o.get("track_kind") == "text")
+        t0, akhir_wm = 0, video_ms + penutup_ms
+        for a0, b0 in terpakai + [(akhir_wm, akhir_wm)]:
+            if a0 - t0 >= MIN_CLIP_MS:
+                ops.append({"op": "add_clip", "track_kind": "text", "text": str(wm["teks"])[:60], "start_ms": t0,
+                            "duration_ms": a0 - t0, "style": dict(gaya_wm)})
+            t0 = max(t0, b0)
 
     ops_doc = {"schema": "ms-ops/1", "mode": mode, "aset_lokal": [{"kunci": k, "path": v} for k, v in aset_lokal.items()], "ops": ops}
 
@@ -318,6 +372,10 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     if cta and not cta_tampil:
         peringatan.append({"level": "warn", "jenis": "cta",
                            "teks": "CTA tidak muat (video terlalu pendek setelah hook). Tambahkan CTA manual di editor."})
+    if (preset.get("penutup") or {}).get("end_card") and not penutup_ms:
+        peringatan.append({"level": "warn", "jenis": "penutup",
+                           "teks": "Preset meminta end card, tapi Brand Kit belum punya aset penutup. Isi di menu Brand "
+                                   "(visual penutup + tagline) atau tambahkan manual di editor."})
     if not cta:
         # G6: dulu rencana menyebut "CTA ditampilkan" padahal CTA Brand Kit kosong, tanpa peringatan.
         peringatan.append({"level": "warn", "jenis": "cta",

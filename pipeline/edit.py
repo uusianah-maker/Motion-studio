@@ -274,6 +274,27 @@ def plan_hook(captions, kata_kunci=()):
     return {"text": text, "startMs": 0, "endMs": round(end)}, note
 
 
+KUAT_KATA = {"harga", "harganya", "rating", "diskon", "murah", "promo", "gratis", "ribu", "rb", "k", "persen"}
+
+
+def _kuat(teks: str) -> bool:
+    """Kalimat 'kuat' untuk hook (laporan Hanagaki): ada angka, kata harga/rating/diskon, atau tanda seru."""
+    toks = {norm(t) for t in teks.split()}
+    return bool(re.search(r"\d", teks) or "!" in teks or toks & KUAT_KATA)
+
+
+def kalimat_kuat(captions):
+    """Caption kalimat pertama yang kuat (daftar kata caption), atau None."""
+    sent = []
+    for c in captions:
+        sent.append(c)
+        if re.search(r"[.?!]$", c["text"]):
+            if _kuat(" ".join(x["text"] for x in sent)):
+                return sent
+            sent = []
+    return sent if sent and _kuat(" ".join(x["text"] for x in sent)) else None
+
+
 def detect_scene_cuts(video_path: str):
     res = subprocess.run(
         [
@@ -405,6 +426,8 @@ def main() -> None:
     )
     ap.add_argument("--abaikan-cek-ucapan", action="store_true",
                     help="tetap buat rencana walau audio terdeteksi lirik lagu (pilihan manual tim)")
+    ap.add_argument("--audio", choices=["vo", "musik", "keduanya"],
+                    help="pilihan audio per job (§17.2): vo = tanpa musik")
     args = ap.parse_args()
 
     tr = json.loads(Path(args.transcript).read_text(encoding="utf-8"))
@@ -460,6 +483,8 @@ def main() -> None:
         if i == 0 or re.search(r"[.?!]$", captions[i - 1]["text"]):
             c["text"] = c["text"][:1].upper() + c["text"][1:]
     keywords = plan_captions(captions, words, bk.get("kata_kunci", []), bk.get("kamus_kata", {}).values())
+    preset_awal = bk.get("preset", {}).get(args.preset, {}) if args.preset else {}
+    p_hook = preset_awal.get("hook") or {}
     doubts_hook = []
     hook, hook_note = plan_hook(captions, bk.get("kata_kunci", []) + [p["nama"] for p in bk.get("produk", [])])
     if args.hook_text:
@@ -469,6 +494,17 @@ def main() -> None:
         if missing:
             raise SystemExit(f"--hook-text memuat kata yang tidak diucapkan: {missing}")
         hook["text"], hook_note = args.hook_text, None
+    if p_hook.get("dari_kalimat_kuat") and not args.hook_text:
+        # §17.1: hook dari kalimat terkuat (angka/harga/rating/"!"); tetap kata yang diucapkan.
+        kuat = kalimat_kuat(captions)
+        if kuat and not _kuat(hook["text"]):
+            hk, _ = plan_hook(kuat, bk.get("kata_kunci", []) + [p["nama"] for p in bk.get("produk", [])])
+            hook["text"], hook_note = hk["text"], "hook diambil dari kalimat terkuat (angka/harga/rating), preset"
+        elif not kuat and not _kuat(hook["text"]):
+            doubts_hook.append({"atSec": 0, "word": hook["text"],
+                                "note": "preset meminta hook dari kalimat kuat, tapi tidak ada kalimat dengan angka/harga/rating"})
+    if p_hook.get("y") is not None and not args.hook_top:
+        hook["top"] = float(p_hook["y"])
     if args.hook_top:
         hook["top"] = args.hook_top
     if args.hook_height:
@@ -480,9 +516,11 @@ def main() -> None:
     sfx = plan_sfx(hook, zoom_throughs, keywords)
 
     posisi = {"mode": args.caption_pos}
+    y_preset = (preset_awal.get("caption") or {}).get("y")
     if args.caption_pos == "auto":
         try:
-            caption_y, lap = posisi_otomatis(tr["source"], 0.72, args.area_produk)
+            caption_y, lap = posisi_otomatis(tr["source"], float(y_preset) if y_preset is not None else 0.72,
+                                             args.area_produk)
             posisi.update(lap)
         except Exception as e:  # noqa: BLE001 - deteksi gagal tidak boleh menghentikan rencana
             caption_y = 0.72
@@ -523,6 +561,8 @@ def main() -> None:
 
     music_dir = Path("public/musik")
     music = sorted(p for p in music_dir.glob("*") if p.suffix.lower() in {".mp3", ".wav", ".m4a"}) if music_dir.exists() else []
+    if args.audio == "vo":
+        music = []
 
     video_sec = cut["videoMs"] / 1000
     total = video_sec + args.outro_seconds

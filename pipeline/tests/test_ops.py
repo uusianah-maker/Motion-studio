@@ -162,6 +162,32 @@ class Ops(unittest.TestCase):
         self.assertTrue(any(p["jenis"] == "cta" for p in rencana["peringatan"]))
         self.assertFalse(any("CTA ditampilkan" in m for m in rencana["menunggu_u3"]))
 
+    def test_r18_preset_gaya_caption_hook_watermark_endcard(self):
+        props, laporan = contoh()
+        preset = {"caption": {"warna": "#F5EFA0", "kotak": False}, "hook": {"ukuran": 4.5, "warna": "#111111"},
+                  "penutup": {"end_card": True}}
+        bk = dict(BK, watermark={"teks": "AYSILLA FACTORY", "y": 0.07, "lebar": 0.25})
+        rencana, doc, _ = susun(props, laporan, bk, placement="tiktok", root=ROOT, preset=preset)
+        sub = [o for o in doc["ops"] if o.get("track_kind") == "subtitle"]
+        self.assertTrue(sub and all(o["style"]["color"] == "#f5efa0" for o in sub))
+        teks = [o for o in doc["ops"] if o.get("track_kind") == "text"]
+        hook = [o for o in teks if o["start_ms"] == 0 and o["text"] != "AYSILLA FACTORY"][0]
+        self.assertEqual((hook["style"]["size"], hook["style"]["color"]), (8.0, "#111111"))
+        self.assertTrue(any(o["text"] == "AYSILLA FACTORY" for o in teks))
+        self.assertTrue(any(p["jenis"] == "penutup" for p in rencana["peringatan"]))
+        # Tanpa preset: perilaku lama.
+        rencana2, doc2, _ = susun(props, laporan, BK, placement="tiktok", root=ROOT)
+        self.assertFalse(any(p["jenis"] == "penutup" for p in rencana2["peringatan"]))
+        self.assertFalse(any(o.get("text") == "AYSILLA FACTORY" for o in doc2["ops"]))
+
+    def test_r18_punch_in_memecah_shot_panjang(self):
+        from ops import punch_in
+        klip = [{"start_ms": 0, "duration_ms": 9000}, {"start_ms": 9000, "duration_ms": 2000}]
+        fr = punch_in([], klip, 3500)
+        self.assertEqual([f["scale"] for f in fr], [1.1, 1.0])  # 9 dtk > 3,5 dtk: 2 titik, kembali normal
+        self.assertTrue(all(0 < f["atMs"] < 9000 for f in fr))
+        self.assertEqual(punch_in([{"atMs": 1000, "scale": 1.2}], klip, 3500), [{"atMs": 1000, "scale": 1.2}])
+
     def test_efek_video_tidak_tumpang_tindih(self):
         fr = [{"atMs": 0, "scale": 1.07, "mode": "cut"}, {"atMs": 3000, "scale": 1.0, "mode": "cut"},
               {"atMs": 6000, "scale": 1.1, "mode": "smooth"}]
