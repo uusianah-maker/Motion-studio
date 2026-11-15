@@ -36,7 +36,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 - **PC-R2 AI gambar Motion Transfer tahap 2**: akun/API mana dan batas biaya per bulan. Sampai diputuskan, prompt disalin manual.
 - **PC-R4 Setujui varian**: "Setujui" di layar PIC = review Lulus. Untuk proyek varian Batch, apakah Lulus otomatis menyetujui varian untuk render massal? (sekarang terpisah)
 - **PC-R5 draf belum dirender**: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
-- **PC-R6 catatan belajar**: koreksi lain di draf mesin (musik, gaya caption, zoom, posisi) ikut dicatat, atau cukup kata/hook/potongan dulu?
+- ~~PC-R6 catatan belajar~~ → owner 15 Nov: "Catat semua koreksi". Dikerjakan ucok sebagai R9b setelah R13.
 - **PC-R3 terowongan**: macet sesekali (1 dari 6–20 unduhan) di jalur VPS → PC. Opsi: 2 terowongan paralel atau WireGuard/Tailscale. Butuh izin ubah jalur (VPS dipakai bersama Affiliate).
 
 ## Log task
