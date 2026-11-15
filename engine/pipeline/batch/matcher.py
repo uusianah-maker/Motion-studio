@@ -54,12 +54,14 @@ def _snap(t: float, beats: list[float], batas: tuple[float, float]) -> float:
 
 def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random.Random,
                beats: list[float] | None = None, global_pakai: Counter | None = None,
-               boleh_teks: bool = False, kecuali: set[str] | frozenset = frozenset()) -> dict:
+               boleh_teks: bool = False, kecuali: set[str] | frozenset = frozenset(),
+               hindari_pembuka: set[str] | frozenset = frozenset()) -> dict:
     """Return {"potongan": [...], "durasi": detik timeline, "vo_klip": [...], "rasio_sinkron": x}.
 
     boleh_teks: shot ber-teks bawaan boleh jadi b-roll karena teksnya ikut di-blur (hak pakai jelas).
     Kalau footage VO tidak ada di Shot Library (jalur VO: gambar dari batch lain), semua potongan b-roll.
     kecuali: id shot yang dikecualikan tim (job.kecualikan_shot): tidak dipakai sebagai b-roll maupun sinkron.
+    hindari_pembuka: shot yang sudah pernah jadi pembuka (riwayat lintas batch, R6): tidak dipilih sebagai pembuka.
     """
     global_pakai = global_pakai if global_pakai is not None else Counter()
     fid = rencana_vo["vo"]
@@ -111,6 +113,8 @@ def susun_shot(rencana_vo: dict, lib: dict, footage_boleh: set[str], rng: random
                 for s in broll_pool:
                     # Shot harus cukup panjang untuk seluruh jatah (tanpa potongan pengisi).
                     if dipakai[s["id"]] or s["sampai"] - s["dari"] < (b - a):
+                        continue
+                    if pertama and s["id"] in hindari_pembuka:
                         continue
                     cocok = len(set(s["tag"]) & set(k["topik"]))
                     sk = 3 * cocok + FRAMING_BONUS.get(s["framing"], 0) - 1.5 * global_pakai[s["id"]] \

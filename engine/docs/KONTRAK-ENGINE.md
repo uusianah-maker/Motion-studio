@@ -349,3 +349,33 @@ Zoom-through tetap memakai efek lama (`effect: {type: "zoom_through"}` di track 
 - Operasi baru: `{ "op": "set_keyframes", "clip_id": "...", "keyframes": [...] }` (`[]` = hapus semua).
 - Batas: keyframe di teks **tidak bisa** digabung dengan caption kata per kata (`words`), animasi `pop`/`fade`, atau sorot kata. Ops seperti itu ditolak dengan alasan jelas.
 - Split/trim/potong jeda menjaga gerakan yang sama di tiap potongan.
+
+## 13. Riwayat pakai lintas batch (R6, v0.3.6, 15 Nov 2026, yuki — keputusan owner no. 16)
+
+Aditif. App tidak wajib berubah; semua field opsional.
+
+- Konten yang sudah dipakai tidak dipakai berulang, **termasuk antar batch**. Mesin menyimpan riwayat **per brand** (kode Brand Kit, mis. `AYS`) di `konten/riwayat/<kode>.json` (atau folder env `MOTION_RIWAYAT_DIR`). File ini data mesin, di luar folder job, tidak di-commit.
+- Isi per varian: `job_id`, `varian`, batch gambar & batch VO, footage VO, `urutan` kalimat VO, `pembuka`, semua shot, shot per kalimat, `status`.
+- Saat menyusun batch baru:
+  - shot yang pernah jadi **pembuka** (batch gambar sama) tidak dipakai lagi sebagai pembuka;
+  - **susunan kalimat VO** yang pernah dipakai tidak diulang;
+  - varian dengan VO sama dibandingkan juga dengan riwayat memakai aturan mirip §11;
+  - shot yang pernah dipakai dipilih paling akhir (penalti Matcher).
+  Kalau stok habis, varian berkurang dan `alasan_kurang` menyebut riwayat.
+- Job yang dijalankan ulang (job_id sama) **mengganti** entrinya sendiri, jadi tidak membatasi dirinya sendiri.
+- Status entri: `direncanakan` (dicatat saat batch selesai; default sampai app mengirim keputusan) · `disetujui` · `dirender` · `dicoret` (tidak dihitung). Jalan ulang job yang sama: entri `disetujui`/`dirender` **tidak pernah dihapus** (tetap dihitung, ditandai `diganti` bila varian baru isinya beda); status lama hanya dibawa ke varian baru yang isinya identik. Job tanpa `job_id` memakai nama folder job.
+- File riwayat rusak tidak menggagalkan batch: dipindah ke `<kode>.rusak-<waktu>.json`, batch memakai riwayat kosong dan `batch.json.riwayat.peringatan` menjelaskannya.
+- `job.json` batch, field opsional baru: `abaikan_riwayat: true` → riwayat tidak dibaca **dan** job ini tidak dicatat (hybrid, prinsip owner).
+- `batch.json`, field baru: `riwayat: {aktif, brand, entri_dihitung, pembuka_dihindari, dicatat, ditolak_karena_riwayat}` atau `{aktif: false, alasan}`.
+- Perintah (read/write data mesin, dari root repo): `python pipeline/batch/riwayat.py lihat|reset <brand>` · `tandai <brand> <job_id> <status> [varian...]` · `lepas <brand> <job_id> [varian...]`. `reset` menyimpan cadangan `<kode>.reset-<waktu>.json`.
+- Disarankan untuk app (belum wajib): saat tim mencoret varian, panggil `lepas`; saat render selesai, `tandai ... dirender`. Jalurnya lewat `engine.py` (milik venus).
+
+## 14. Generate: lagu, teks bawaan, CTA kosong (v0.3.7, 15 Nov 2026, venus — R1–R3)
+- **R1 (G1)** Audio yang terdeteksi lirik lagu (kata Inggris > 35 % atau kata Indonesia < 8 %) → `rencana.status: "ditolak"`, kode keluar 2. Field opsional `job.json`: `abaikan_cek_ucapan: true` → tetap dibuat rencana dengan peringatan `jenis: "ucapan"` (tombol "Tetap lanjut" di app; hybrid).
+- **R2 (G2)** Hook tidak menimpa teks bawaan video. Mesin membaca teks (OCR) dan wajah di rentang hook, lalu menggeser `hook.top` ke kandidat 0.30 / 0.18 / 0.10 / 0.48 / 0.56. Teks wajib dihindari, wajah diusahakan. Tidak ada tempat → hook dilewati, peringatan `jenis: "hook"`, butir QC hook tetap lulus dengan `nilai` "dilewati". Catatan geser ada di `rencana.ragu`. `potongan.json.cekTeksBawaan` = `{dicek, kotak, wajah, catatan}` atau `{dicek: false, gagal}` (OCR gagal tidak menghentikan rencana). Posisi pilihan tim selalu menang: `--hook-top`, atau `koreksi.json` field `hook_top` (0..1) lewat `engine ulang`.
+- **R3 (G6)** CTA Brand Kit kosong → peringatan `jenis: "cta"`; teks "CTA ditampilkan di … dtk terakhir" tidak muncul lagi.
+
+## 15. Motion Transfer tahap 1 (R11, v0.3.8, 15 Nov 2026, venus)
+- Perintah baru: `engine transfer <job_dir>`. `job.json`: `mode: "transfer"`, `sumber` `$sumber` = video referensi (boleh tanpa suara, rasio apa pun), `brief.produk` dan `brief.deskripsi_produk` opsional (default produk pertama Brand Kit).
+- Hasil: `out/transfer.json` (schema `engine-transfer/1`: `referensi`, `durasi`, `produk`, `adegan[]` = `{no, dari, sampai, durasi, detik_gambar, gambar, prompt_gambar, prompt_gerak, sumber}`) + `out/adegan/NN.jpg` (lebar 1080, frame paling tajam di tengah adegan). Adegan < 0,8 dtk digabung, > 4 dtk dipecah, tanpa celah.
+- Tahap 2–3 belum memanggil API AI: prompt disalin manual oleh tim (hybrid, tanpa biaya). Kode keluar 0 siap · 2 ditolak (`rencana.json` status ditolak) · 1 gagal.

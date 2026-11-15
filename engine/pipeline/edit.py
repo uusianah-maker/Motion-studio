@@ -22,6 +22,7 @@ from autocut import FPS, merge_split_words, run_cut, strip_internal
 from cek_ucapan import cek_ucapan
 from brandkit import muat as muat_brand_kit
 from posisi_caption import posisi_otomatis
+from teks_bawaan import atur_hook, baca_kotak, wajah_di
 from ops import susun as susun_ops, tulis as tulis_ops
 from jaga_ops import buang_teks_kosong, cek_durasi, jaga_durasi, rapikan_kata, validasi_motion_studio
 
@@ -459,6 +460,7 @@ def main() -> None:
         if i == 0 or re.search(r"[.?!]$", captions[i - 1]["text"]):
             c["text"] = c["text"][:1].upper() + c["text"][1:]
     keywords = plan_captions(captions, words, bk.get("kata_kunci", []), bk.get("kamus_kata", {}).values())
+    doubts_hook = []
     hook, hook_note = plan_hook(captions, bk.get("kata_kunci", []) + [p["nama"] for p in bk.get("produk", [])])
     if args.hook_text:
         # Judul pilihan user tetap harus dari ucapan: semua katanya wajib ada di transkrip.
@@ -488,6 +490,36 @@ def main() -> None:
     else:
         caption_y = 0.72 if args.caption_pos == "bawah" else 0.36
     posisi["y"] = caption_y
+
+    # G2: hook jangan menimpa teks bawaan video. Posisi pilihan tim (--hook-top) selalu menang.
+    cek_teks = {"dicek": False}
+    if hook and not args.hook_top:
+        # Rentang sumber yang tampil di bawah hook (hook bisa melintasi beberapa potongan).
+        rentang, sisa = [], (hook["endMs"] - hook["startMs"]) / 1000
+        for sg in cut["segments"]:
+            if sisa <= 0.05:
+                break
+            a = sg["startFrame"] / FPS
+            b = min(sg["endFrame"] / FPS, a + sisa)
+            rentang.append((a, b))
+            sisa -= b - a
+        rentang = rentang or [(0.0, 3.0)]
+        try:
+            kotak = baca_kotak(tr["source"], 0, 0, rentang=rentang)
+            try:
+                wajah = wajah_di(tr["source"], rentang)
+            except Exception:  # noqa: BLE001 - wajah hanya diusahakan
+                wajah = []
+            hook_baru, catatan = atur_hook(hook, kotak, caption_y, wajah)
+            cek_teks = {"dicek": True, "kotak": len(kotak), "wajah": len(wajah), "catatan": catatan}
+            if catatan:
+                doubts_hook.append({"atSec": 0, "word": hook["text"], "note": catatan})
+            if hook_baru is None:
+                # Hook dilewati: whoosh pembuka hook ikut dibuang (temuan review R2).
+                sfx = [x for x in sfx if not (x["atMs"] <= hook["startMs"] + 100 and "whoosh" in x["src"])]
+            hook = hook_baru
+        except Exception as e:  # noqa: BLE001 - OCR gagal tidak boleh menghentikan rencana
+            cek_teks = {"dicek": False, "gagal": str(e)[:200]}
 
     music_dir = Path("public/musik")
     music = sorted(p for p in music_dir.glob("*") if p.suffix.lower() in {".mp3", ".wav", ".m4a"}) if music_dir.exists() else []
@@ -531,8 +563,9 @@ def main() -> None:
     (out_dir / "props.json").write_text(json.dumps(props, ensure_ascii=False, indent=2), encoding="utf-8")
 
     doubts = list(cut["doubts"])
-    if hook_note:
+    if hook_note and hook:
         doubts.append({"atSec": 0, "word": hook["text"], "note": hook_note})
+    doubts += doubts_hook
     report = {
         "source": tr["source"],
         "status": "peringatan" if ucapan["status"] == "peringatan" else "siap",
@@ -552,11 +585,12 @@ def main() -> None:
         "kataDisembunyikan": hidden_manual,
         "hook": hook,
         "efek": {
-            "17_glass_type": f"judul hook 0-{hook['endMs']/1000:.1f}s",
+            "17_glass_type": f"judul hook 0-{hook['endMs']/1000:.1f}s" if hook else "hook dilewati (teks bawaan)",
             "09_zoom_through": [round(z / 1000, 2) for z in zoom_throughs],
             "05_digital_zoom": f"{len(framing)} pergantian framing",
         },
         "posisiCaption": posisi,
+        "cekTeksBawaan": cek_teks,
         "kataKunci": keywords,
         "sfx": sfx,
         "musik": props["musicSrc"] or "TIDAK ADA (public/musik kosong)",
@@ -599,7 +633,7 @@ def main() -> None:
         print(f"  ~ kamus {f['atSec']}s: '{f['dari']}' -> '{f['jadi']}'")
     for b in banned:
         print(f"  !! superlatif disembunyikan {b['atSec']}s: {b['frasa']}")
-    print(f"Hook: '{hook['text']}' (0-{hook['endMs']/1000:.1f}s)")
+    print(f"Hook: '{hook['text']}' (0-{hook['endMs']/1000:.1f}s)" if hook else "Hook: dilewati (teks bawaan video)")
     print(f"Zoom-through: {report['efek']['09_zoom_through']}  Framing: {len(framing)}x")
     print("Kata kunci: " + ", ".join(f"{k['text']}@{k['atMs']/1000:.1f}" for k in keywords))
     print(f"SFX: {len(sfx)}  Musik: {report['musik']}")

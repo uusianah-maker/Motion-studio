@@ -135,7 +135,9 @@ def build_segments(words, duration_ms):
         is_last = s_i == len(segs) - 1
         start = max(lo, first["startMs"] - PAD_BEFORE_MS)
         end = min(hi, last["endMs"] + (TAIL_MS if is_last else PAD_AFTER_MS))
-        out.append({"srcStartMs": start, "srcEndMs": end, "first": s["first"], "last": s["last"]})
+        # lo/hi + kataAwal/kataAkhir: batas aman untuk snap_ke_jeda (R7).
+        out.append({"srcStartMs": start, "srcEndMs": end, "first": s["first"], "last": s["last"],
+                    "lo": lo, "hi": hi, "kataAwal": first["startMs"], "kataAkhir": last["endMs"]})
     return out
 
 
@@ -173,11 +175,85 @@ def subtract_silences(segs, silences):
                 nxt.append(seg)
                 continue
             if cut_from - a >= MIN_SEG_MS:
-                nxt.append({"srcStartMs": a, "srcEndMs": cut_from, "why": "jeda (audio)"})
+                # Tepi dari jeda audio sudah di dalam hening: tidak di-snap (hi = kataAkhir = titik itu).
+                nxt.append({**seg, "srcStartMs": a, "srcEndMs": cut_from, "why": "jeda (audio)",
+                            "hi": cut_from, "kataAkhir": cut_from})
             if b - cut_to >= MIN_SEG_MS:
-                nxt.append({"srcStartMs": cut_to, "srcEndMs": b, "why": "jeda (audio)"})
+                nxt.append({**seg, "srcStartMs": cut_to, "srcEndMs": b, "why": "jeda (audio)",
+                            "lo": cut_to, "kataAwal": cut_to})
         result = nxt
     return result
+
+
+SNAP_MUNDUR_MS = 120  # cari titik paling sunyi sampai 120 ms sebelum titik potong awal
+SNAP_MAJU_MS = 160  # ... dan sampai 160 ms sesudah titik potong akhir
+SNAP_DALAM_MS = 40  # boleh masuk sedikit ke dalam potongan (waktu Whisper sering melebar)
+LANGKAH_MS = 10
+SUDAH_SUNYI_DB = 6.0
+JARAK_MIN_MS = 100  # dua potongan bertetangga tetap terpisah minimal 100 ms (3 frame)
+
+
+def energi_db(video_path: str):
+    """Volume audio per 10 ms (dB, RMS), mono 16 kHz dari ffmpeg. None kalau gagal."""
+    import numpy as np
+
+    try:
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", video_path, "-vn", "-ac", "1", "-ar", "16000",
+                              "-f", "s16le", "-"], capture_output=True, check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    n = 16000 * LANGKAH_MS // 1000
+    k = len(x) // n
+    if k == 0:
+        return None
+    rms = np.sqrt((x[: k * n].reshape(k, n) ** 2).mean(axis=1) + 1e-12)
+    return 20 * np.log10(rms)
+
+
+def _paling_sunyi(db, dari_ms: float, sampai_ms: float, asal_ms: float) -> float:
+    """Titik (ms) paling sunyi di [dari, sampai]; seri -> yang paling dekat titik asal."""
+    i0, i1 = max(0, int(dari_ms // LANGKAH_MS)), min(len(db) - 1, int(sampai_ms // LANGKAH_MS))
+    if i1 <= i0:
+        return asal_ms
+    seg = db[i0 : i1 + 1]
+    terendah = seg.min()
+    ia = min(max(int(asal_ms // LANGKAH_MS), 0), len(db) - 1)
+    if db[ia] <= terendah + SUDAH_SUNYI_DB:
+        return asal_ms  # titik asal sudah sunyi: jangan digeser (jeda tetap terbuang seperti dulu)
+    calon = [i0 + j for j, v in enumerate(seg) if v <= terendah + 1.5]  # 1,5 dB = sama sunyinya
+    i = min(calon, key=lambda c: abs(c * LANGKAH_MS - asal_ms))
+    return float(i * LANGKAH_MS)
+
+
+def snap_ke_jeda(segs, words, db):
+    """R7 potong presisi: geser tiap titik potong ke titik paling sunyi di dekatnya, tanpa memakan kata
+    tetangga yang dibuang dan tanpa memotong kata yang dipakai lebih dari SNAP_DALAM_MS."""
+    if db is None:
+        return segs
+    out = []
+    for s in segs:
+        a, b = s["srcStartMs"], s["srcEndMs"]
+        if "lo" not in s:
+            out.append(s)
+            continue
+        lo, hi = s["lo"], s["hi"]
+        mulai_kata, akhir_kata = s["kataAwal"], s["kataAkhir"]
+        a2 = _paling_sunyi(db, max(lo, a - SNAP_MUNDUR_MS), min(a + SNAP_DALAM_MS, mulai_kata), a)
+        b2 = _paling_sunyi(db, max(b - SNAP_DALAM_MS, akhir_kata), min(hi, b + SNAP_MAJU_MS), b)
+        if b2 - a2 >= MIN_SEG_MS:
+            s = {**s, "srcStartMs": a2, "srcEndMs": b2, "_asal": (a, b)}
+        out.append(s)
+    # Potongan tetap potongan: kalau dua potongan bertetangga jadi terlalu dekat (jeda ikut terpakai),
+    # kembalikan tepi yang bertemu ke posisi semula.
+    out.sort(key=lambda x: x["srcStartMs"])
+    for x, y in zip(out, out[1:]):
+        if y["srcStartMs"] - x["srcEndMs"] < JARAK_MIN_MS and "_asal" in x and "_asal" in y:
+            x["srcEndMs"] = max(x["srcStartMs"] + MIN_SEG_MS, min(x["srcEndMs"], x["_asal"][1]))
+            y["srcStartMs"] = max(y["srcStartMs"], y["_asal"][0])
+    for x in out:
+        x.pop("_asal", None)
+    return out
 
 
 def run_cut(tr, words=None):
@@ -189,6 +265,7 @@ def run_cut(tr, words=None):
     segs = build_segments(words, tr["durationMs"])
     silences = detect_silences(tr["source"], SILENCE_DB, MAX_GAP_MS)
     segs = subtract_silences(segs, [s for s in silences if s[1] - s[0] > MAX_GAP_MS])
+    segs = snap_ke_jeda(segs, words, energi_db(tr["source"]))
 
     # Snap ke frame (30 fps). Potongan yang bersentuhan digabung.
     segments = []

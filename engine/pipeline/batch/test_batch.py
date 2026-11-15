@@ -1,5 +1,6 @@
 """Uji modul Batch Remix: .venv/Scripts/python -m unittest pipeline/batch/test_batch.py"""
 
+import json
 import random
 import sys
 import unittest
@@ -303,6 +304,136 @@ class TeksLatar(unittest.TestCase):
         self.assertFalse(shotlib.is_latar(caption, True))
         self.assertTrue(shotlib.is_latar(poster, True))
         self.assertFalse(shotlib.is_latar(poster, False))
+
+
+class RiwayatLintasBatch(unittest.TestCase):
+    """R6: konten yang sudah dipakai tidak dipakai berulang, termasuk antar batch (owner 15 Nov no. 16)."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        import riwayat
+        self.r = riwayat
+        self.tmp = tempfile.TemporaryDirectory()
+        self._lama = os.environ.get("MOTION_RIWAYAT_DIR")
+        os.environ["MOTION_RIWAYAT_DIR"] = self.tmp.name
+
+    def tearDown(self):
+        import os
+        if self._lama is None:
+            os.environ.pop("MOTION_RIWAYAT_DIR", None)
+        else:
+            os.environ["MOTION_RIWAYAT_DIR"] = self._lama
+        self.tmp.cleanup()
+
+    def _entri(self, job, varian, pembuka="B#01", urutan=(0, 1, 2), shots=("B#01", "C#02")):
+        sus = {"potongan": [{"jenis": "broll", "shot": s, "footage": s[0], "in": 0.0} for s in shots]}
+        sus["potongan"].insert(0, {"jenis": "broll", "shot": pembuka, "footage": pembuka[0], "in": 0.0})
+        rv = {"vo": "A", "urutan": list(urutan)}
+        return self.r.entri_varian(job, "b1", "b1", {"id": varian}, sus, rv, {0: (pembuka,)})
+
+    def test_kunci_brand_dari_kode(self):
+        self.assertEqual(self.r.kunci_brand({"brand": {"kode": "AYS", "nama": "Aysilla Factory"}}), "AYS")
+        self.assertEqual(self.r.kunci_brand({"nama": "Aysilla Factory"}), "Aysilla_Factory")
+        with self.assertRaises(ValueError):
+            self.r.path("../luar")
+
+    def test_riwayat_dibaca_lintas_batch(self):
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001")])
+        rw = self.r.Riwayat(self.r.muat("AYS"), "b1", "b1", "JOB-2")
+        self.assertEqual(rw.pembuka(), {"B#01"})
+        self.assertEqual(rw.urutan("A"), {(0, 1, 2)})
+        self.assertEqual(rw.shot_terpakai()["B#01"], 1)  # dihitung sekali per varian
+        self.assertEqual(len(rw.sebanding("A")), 1)
+        # Batch gambar lain: pembuka batch b1 tidak membatasi batch b2.
+        self.assertEqual(self.r.Riwayat(self.r.muat("AYS"), "b2", "b1", "JOB-2").pembuka(), set())
+
+    def test_jalan_ulang_job_sama_tidak_membatasi_diri(self):
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001")])
+        self.assertEqual(self.r.Riwayat(self.r.muat("AYS"), "b1", "b1", "JOB-1").pembuka(), set())
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001", pembuka="C#09")])
+        d = self.r.muat("AYS")
+        self.assertEqual(len(d["entri"]), 1)  # diganti, bukan ditumpuk
+        self.assertEqual(d["entri"][0]["pembuka"], "b1|C#09")
+
+    def test_dicoret_tidak_dihitung_dan_bertahan_saat_jalan_ulang(self):
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001"), self._entri("JOB-1", "varian-002", pembuka="C#05")])
+        self.assertEqual(self.r.tandai("AYS", "JOB-1", "dicoret", ["varian-001"]), 1)
+        rw = self.r.Riwayat(self.r.muat("AYS"), "b1", "b1", "JOB-2")
+        self.assertEqual(rw.pembuka(), {"C#05"})
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001")])
+        self.assertEqual([e["status"] for e in self.r.muat("AYS")["entri"]], ["dicoret"])
+
+    def test_jalan_ulang_tidak_menghapus_yang_sudah_dirender(self):
+        # Audit venus: entri dirender/disetujui tidak boleh hilang saat job dijalankan ulang dengan isi lain.
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001", pembuka="B#01")])
+        self.r.tandai("AYS", "JOB-1", "dirender", ["varian-001"])
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001", pembuka="C#09", urutan=(0, 2, 1))])
+        d = self.r.muat("AYS")
+        self.assertEqual(len(d["entri"]), 2)
+        lama = next(e for e in d["entri"] if e["status"] == "dirender")
+        baru = next(e for e in d["entri"] if e["status"] == "direncanakan")
+        self.assertTrue(lama.get("diganti"))
+        self.assertEqual(lama["pembuka"], "b1|B#01")
+        self.assertEqual(baru["pembuka"], "b1|C#09")  # status "dirender" TIDAK ditempel ke isi baru
+        # Jalan ulang berikutnya job yang sama tetap menghindari pembuka & urutan yang sudah dirender.
+        rw = self.r.Riwayat(self.r.muat("AYS"), "b1", "b1", "JOB-1")
+        self.assertIn("B#01", rw.pembuka())
+        self.assertIn((0, 1, 2), rw.urutan("A"))
+        self.assertNotIn("C#09", rw.pembuka())  # entri "direncanakan" job ini sendiri akan diganti
+
+    def test_jalan_ulang_isi_identik_tidak_dobel(self):
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001")])
+        self.r.tandai("AYS", "JOB-1", "disetujui")
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001")])
+        d = self.r.muat("AYS")
+        self.assertEqual([(e["status"], e.get("diganti", False)) for e in d["entri"]], [("disetujui", False)])
+
+    def test_status_dicoret_hanya_dibawa_kalau_isi_identik(self):
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001")])
+        self.r.tandai("AYS", "JOB-1", "dicoret")
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001", pembuka="C#07")])
+        d = self.r.muat("AYS")
+        self.assertEqual([e["status"] for e in d["entri"]], ["direncanakan"])  # varian baru dihitung
+        self.assertIn("C#07", self.r.Riwayat(d, "b1", "b1", "JOB-2").pembuka())
+
+    def test_file_rusak_tidak_menggagalkan_batch(self):
+        p = self.r.path("AYS")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("{rusak", encoding="utf-8")
+        d = self.r.muat("AYS")
+        self.assertEqual(d["entri"], [])
+        self.assertIn("rusak", d["_peringatan"])
+        self.assertFalse(p.exists())
+        self.assertEqual(len(list(p.parent.glob("AYS.rusak-*.json"))), 1)
+        self.assertIn("peringatan", self.r.Riwayat(d, "b1", "b1", "JOB-1").ringkas())
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001")])  # bisa dicatat lagi sesudahnya
+        self.assertNotIn("_peringatan", json.loads(p.read_text(encoding="utf-8")))
+
+    def test_catat_wajib_job_id(self):
+        with self.assertRaises(ValueError):
+            self.r.catat("AYS", None, [])
+
+    def test_reset_per_brand_simpan_cadangan(self):
+        self.r.catat("AYS", "JOB-1", [self._entri("JOB-1", "varian-001")])
+        self.r.catat("KK", "JOB-9", [self._entri("JOB-9", "varian-001")])
+        cadangan = self.r.reset("AYS")
+        self.assertTrue(cadangan.exists())
+        self.assertEqual(self.r.muat("AYS")["entri"], [])
+        self.assertEqual(len(self.r.muat("KK")["entri"]), 1)  # brand lain tidak ikut di-reset
+
+    def test_matcher_tidak_memakai_pembuka_riwayat(self):
+        rv = vo.susun(vo_sintetis(), random.Random(1), (10, 28))
+        awal = matcher.susun_shot(rv, lib_sintetis(), {"A", "B", "C"}, random.Random(3))["potongan"][0]["shot"]
+        h = matcher.susun_shot(rv, lib_sintetis(), {"A", "B", "C"}, random.Random(3), hindari_pembuka={awal})
+        self.assertNotEqual(h["potongan"][0]["shot"], awal)
+
+    def test_susunan_vo_riwayat_tidak_diulang(self):
+        v = vo_sintetis()
+        rv = vo.susun(v, random.Random(1))
+        r2 = vo.ragamkan(rv, v, random.Random(2), {tuple(rv["urutan"])})
+        self.assertIsNotNone(r2)
+        self.assertNotEqual(tuple(r2["urutan"]), tuple(rv["urutan"]))
 
 
 def vo_dengan_saran():

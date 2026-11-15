@@ -135,7 +135,7 @@ def main() -> None:
         print("\n================ RENCANA SIAP ================")
         print(f"Rencana  : {(out_dir / 'potongan.json').relative_to(ROOT)}")
         print(f"Durasi   : {rep['originalSec']}s -> {rep['totalWithOutroSec']}s (termasuk outro)")
-        print(f"Hook     : {rep['hook']['text']}")
+        print(f"Hook     : {rep['hook']['text'] if rep.get('hook') else '(dilewati: teks bawaan video)'}")
         print(f"Dibuang  : {len(rep['removed'])} bagian | kata kunci: {len(rep['kataKunci'])} | SFX: {len(rep['sfx'])}")
         print("Render DITAHAN sampai disetujui. Jalankan lagi dengan --setuju untuk merender.")
         return

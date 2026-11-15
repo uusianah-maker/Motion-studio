@@ -21,6 +21,10 @@ MAX_OPS = 1000
 CTA_MS = 2500
 CAPTION_SIZE = 5.6  # % sisi pendek kanvas
 HOOK_SIZE = 7.0
+FADE_SAMBUNG_MS = 20  # R8: anti klik di sambungan potongan video
+FADE_MUSIK_MASUK_MS = 300
+FADE_MUSIK_KELUAR_MS = 800
+DUCKING_LEVEL = 0.3  # kontrak 12.2 (default app)
 
 
 def _ms_frame(f: int) -> int:
@@ -177,6 +181,14 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         ops.append({"op": "add_clip", "track_kind": "video", "media": "$sumber", "start_ms": t, "duration_ms": dur, "in_ms": a})
         t += dur
     video_ms = t
+    # R8: fade suara sangat pendek di tiap sambungan potongan supaya tidak ada bunyi "klik" di jump cut.
+    # Hybrid: nilainya tetap bisa diubah/dihapus per klip di Inspector (Suara).
+    klip_video = [o for o in ops if o.get("track_kind") == "video"]
+    for i, o in enumerate(klip_video):
+        if i > 0:
+            o["fade_in_ms"] = FADE_SAMBUNG_MS
+        if i + 1 < len(klip_video):
+            o["fade_out_ms"] = FADE_SAMBUNG_MS
 
     # 2. Caption: satu klip subtitle per halaman (frasa).
     y = props["style"]["captionCenterY"]
@@ -234,13 +246,15 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         else:
             penutup_ms = 0
     cta_mulai, cta_akhir = (video_ms, video_ms + penutup_ms) if penutup_ms else (max(hook_end, video_ms - CTA_MS), video_ms)
-    if cta and cta_akhir - cta_mulai >= MIN_CLIP_MS:
+    cta_tampil = bool(cta) and cta_akhir - cta_mulai >= MIN_CLIP_MS
+    if cta_tampil:
         ops.append({"op": "add_clip", "track_kind": "text", "text": cta, "start_ms": cta_mulai,
                     "duration_ms": cta_akhir - cta_mulai,
                     "style": {"x": 0.5, "y": 0.45, "size": 6.0, "width": 0.84, "color": "#ffffff", "bg": warna["latar_gelap"].lower(),
                               "bg_opacity": 0.75, "bold": True, "outline": False, "align": "center", "font": "brand"}})
     if not penutup_ms:
-        menunggu.append(f"penutup logo/video: Brand Kit belum punya aset penutup (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)")
+        menunggu.append("penutup logo/video: Brand Kit belum punya aset penutup"
+                        + (f" (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)" if cta_tampil else ""))
     # Disclaimer (preset teks "disclaimer" ucok): teks kecil di bawah, di sela hook dan CTA
     # (track text tidak boleh tumpang tindih).
     if props.get("disclaimer") and cta_mulai - hook_end >= MIN_CLIP_MS:
@@ -278,8 +292,11 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     musik, alasan_musik = pilih_musik(bk, preset)
     if musik:
         dur_m = min(total_ms, musik.get("durasi_ms") or total_ms)
+        # R8: musik masuk/keluar pelan + turun otomatis saat ada orang bicara (ducking). Bisa diubah di editor.
         ops.append({"op": "add_clip", "track_kind": "music", "media": musik["kunci"], "start_ms": 0, "duration_ms": dur_m,
-                    "in_ms": 0, "volume": VOLUME_MUSIK})
+                    "in_ms": 0, "volume": VOLUME_MUSIK,
+                    "fade_in_ms": min(FADE_MUSIK_MASUK_MS, dur_m // 4), "fade_out_ms": min(FADE_MUSIK_KELUAR_MS, dur_m // 4)})
+        ops.append({"op": "set_ducking", "on": True, "level": DUCKING_LEVEL})
         if dur_m < total_ms:
             alasan_musik = f"musik {dur_m / 1000:.1f} dtk lebih pendek dari video {total_ms / 1000:.1f} dtk (berhenti sebelum akhir)"
 
@@ -298,6 +315,19 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     peringatan = [{"level": "warn", "jenis": "ucapan", "teks": p} for p in laporan.get("peringatan", [])]
     peringatan += [{"level": bk.get("level_pelanggaran", "block"), "jenis": "kata_terlarang", "detik": x["atSec"], "teks": x["frasa"]}
                    for x in laporan.get("superlatifDisembunyikan", [])]
+    if cta and not cta_tampil:
+        peringatan.append({"level": "warn", "jenis": "cta",
+                           "teks": "CTA tidak muat (video terlalu pendek setelah hook). Tambahkan CTA manual di editor."})
+    if not cta:
+        # G6: dulu rencana menyebut "CTA ditampilkan" padahal CTA Brand Kit kosong, tanpa peringatan.
+        peringatan.append({"level": "warn", "jenis": "cta",
+                           "teks": "CTA Brand Kit kosong: video ini tanpa ajakan beli. Isi CTA di menu Brand, "
+                                   "atau tambahkan teks CTA manual di editor."})
+    hook_lewat = str((laporan.get("cekTeksBawaan") or {}).get("catatan") or "").startswith("hook dilewati")
+    if hook_lewat:
+        peringatan.append({"level": "warn", "jenis": "hook",
+                           "teks": "Hook dilewati karena teks bawaan video memenuhi layar di detik awal. "
+                                   "Tambahkan hook manual di editor kalau perlu."})
     status = "siap"
     if target and not (target[0] <= akhir <= target[1]):
         status = "perlu_keputusan"
@@ -337,7 +367,8 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         "butir": [
             {"butir": "durasi sesuai target", "lulus": not target or target[0] <= akhir <= target[1],
              "nilai": akhir if target else f"{akhir} dtk (tanpa batas; saran {saran[0]}-{saran[1]} dtk)"},
-            {"butir": "hook di 3 detik pertama", "lulus": bool(hook) and hook_end <= 3000},
+            {"butir": "hook di 3 detik pertama", "lulus": (bool(hook) and hook_end <= 3000) or hook_lewat,
+             **({"nilai": "dilewati: teks bawaan video (G2)"} if hook_lewat else {})},
             {"butir": "kata terlarang tidak tampil sebagai teks", "lulus": not terlarang, "nilai": terlarang},
             {"butir": "jumlah jenis efek <= batas preset", "lulus": len(jenis_efek) <= maks_efek, "nilai": sorted(jenis_efek)},
             {"butir": "caption tidak di 15% bawah", "lulus": y + 0.07 <= 0.85, "nilai": y},
