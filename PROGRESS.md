@@ -36,7 +36,8 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 - Generate penuh 2 video bicara (a3, vw_in2): siap. Video lagu: ditolak; "tetap lanjut": siap. a3 punya caption bawaan di posisi hook -> hook digeser 0.48. Koreksi `hook_top` lewat `engine ulang` dipatuhi. Batch 2x berturut (riwayat di folder sementara): batch 2 menolak 13 pembuka + 3 mirip riwayat. Motion Transfer: 7 adegan.
 - Temuan: OCR hook 84 dtk per Generate (setelan Shot Library memperbesar frame) -> diperbaiki 6d73c76, ±30 dtk saat CPU dibagi analisis Hanagaki.
 - Catatan terbuka: vw_in2 butir QC "caption tidak menutup wajah" gagal (posisi_caption, tidak diubah putaran ini).
-- Audit E2E aplikasi (salinan 58a03ae, tanpa sentuh server live): berjalan.
+- Audit E2E aplikasi (salinan 58a03ae, tanpa sentuh server live): LULUS. build/typecheck/lint OK; server 115/115; web 18/18; A14 29/29, R10 9/9, U4 19/19, U7 14/14, HASIL 10/10, W08 17/17, E2E 18/18. Core 300/309: 8 timeout 20 dtk saat CPU penuh, lulus dengan batas besar (lingkungan, bukan fungsi). Belum ada satu skenario browser utuh render→unduh→HASIL RENDER→halaman Hasil (bagian-bagiannya terbukti terpisah).
+- Temuan keamanan: skrip audit HASIL/W08 memakai state dir server live (`~/.motion-studio`) kalau tidak di-set -> diserahkan ke ucok.
 - Fitur app baru belum aktif di situs live: server live dibangun dari working tree yang berisi WIP ucok; dinaikkan setelah semua task app lulus.
 
 ### Pending Confirmation putaran R
