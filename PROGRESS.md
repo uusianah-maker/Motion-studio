@@ -42,6 +42,8 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 - Temuan keamanan: skrip audit HASIL/W08 memakai state dir server live (`~/.motion-studio`) kalau tidak di-set -> diserahkan ke ucok.
 - Fitur app baru belum aktif di situs live: server live dibangun dari working tree yang berisi WIP ucok; dinaikkan setelah semua task app lulus.
 
+- Owner 15 Nov: "Boleh, saat siap" — restart server live ±1 menit untuk memasang versi baru, setelah R17 + R18 app lulus audit dan di-push.
+
 ### Pending Confirmation putaran R
 - ~~PC-R1 lokasi backup~~ → owner 15 Nov: "ga usah ada lokasi backup". Skrip backup sukma tetap ada di `deploy/backup/`, tidak dijadwalkan. Risiko tercatat: workspace hanya di 1 SSD USB.
 - PC-R2 AI gambar: owner masih mencari akun. Disiapkan kolom API (ucok R12a).
