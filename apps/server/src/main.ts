@@ -5,6 +5,7 @@
  * 127.0.0.1 and print the one-time session URL. The token travels in the URL *fragment*,
  * which browsers never send to servers or proxies.
  */
+import { imageAiRoutes, openImageAiStore } from './ai/imageAi.js';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -101,6 +102,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   const stateDir = env.MOTION_STATE_DIR ? path.resolve(env.MOTION_STATE_DIR) : defaultStateDir();
   // AI (W12): provider keys sealed in the state folder; the key file is only created on first use.
   const aiStore = await openAiStore(stateDir, env.MOTION_SECRET_KEY);
+  const imageAi = await openImageAiStore(stateDir, env.MOTION_SECRET_KEY);
   const ledger = await openSpendGate({ ws, store: aiStore, stateDir });
   const aiRouter = createRouter({ ws, store: aiStore, gate: ledger.gate });
   const copilot = createCopilot(ws, { ai: createAiPlanner(aiStore, aiRouter), mode: () => aiStore.settings().mode });
@@ -129,7 +131,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...engine.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...imageAiRoutes(imageAi, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...engine.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
     roleOf: team ? teamRoleResolver(team.roleOf) : roleResolver(roleLists),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });

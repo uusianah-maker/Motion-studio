@@ -590,6 +590,10 @@ export function createDemoApi(): Api {
       team.splice(i, 1);
       return { removed: email, members: clone(team) };
     },
+    imageAi: async () => ({ provider: null, endpoint: null, model: null, budget: { amount: null, currency: 'IDR' as const }, key_saved: false, key_hint: null, last_test: null, providers: [] }),
+    saveImageAi: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
+    setImageAiKey: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
+    testImageAi: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
     aiSettings: async (patch) => {
       Object.assign(settings, { ...patch, budget: { ...settings.budget, ...patch.budget } });
       return clone(settings);

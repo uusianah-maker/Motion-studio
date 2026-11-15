@@ -314,6 +314,18 @@ export interface RenderOutputFile {
 }
 
 /** Halaman Hasil: satu file render beserta proyeknya. */
+/** R12a: AI gambar settings as the browser sees them (no key). */
+export interface ImageAiView {
+  provider: 'openai' | 'gemini' | 'lainnya' | null;
+  endpoint: string | null;
+  model: string | null;
+  budget: { amount: number | null; currency: 'IDR' | 'USD' };
+  key_saved: boolean;
+  key_hint: string | null;
+  last_test: { at: number; ok: boolean; message: string } | null;
+  providers: { id: 'openai' | 'gemini' | 'lainnya'; label: string; model_hint: string; needs_endpoint: boolean }[];
+}
+
 /** R10: a rendered video waiting for the PIC (GET /api/review/antrean). */
 export interface ApprovalItem {
   project_id: string;
@@ -793,6 +805,12 @@ export function createApi(token: string | null, base = '') {
     teamAdd: (email: string, role: Role) => call<{ member: TeamMember; members: TeamMember[] }>('POST', '/api/team', { json: { email, role } }),
     teamSetRole: (email: string, role: Role) => call<{ member: TeamMember; members: TeamMember[] }>('PUT', '/api/team', { json: { email, role } }),
     teamRemove: (email: string) => call<{ removed: string; members: TeamMember[] }>('DELETE', '/api/team', { json: { email } }),
+    // R12a: AI gambar (Motion Transfer stage 2) — owner only; the key is never returned.
+    imageAi: () => call<{ gambar: ImageAiView }>('GET', '/api/ai/gambar').then((r) => r.gambar),
+    saveImageAi: (cfg: { provider: string | null; endpoint?: string | null; model?: string | null; budget?: { amount: number | null; currency: 'IDR' | 'USD' } }) =>
+      call<{ gambar: ImageAiView }>('POST', '/api/ai/gambar', { json: cfg }).then((r) => r.gambar),
+    setImageAiKey: (api_key: string | null) => call<{ gambar: ImageAiView }>('POST', '/api/ai/gambar/key', { json: { api_key } }).then((r) => r.gambar),
+    testImageAi: () => call<{ gambar: ImageAiView }>('POST', '/api/ai/gambar/tes', { json: {} }).then((r) => r.gambar),
     aiSettings: (patch: Partial<Omit<AiSettings, 'budget'>> & { budget?: Partial<AiSettings['budget']> }) => call<{ settings: AiSettings }>('POST', '/api/ai/settings', { json: patch }).then((r) => r.settings),
     aiUsage: () => call<{ usage: AiUsage }>('GET', '/api/ai/usage').then((r) => r.usage),
     aiLog: () => call<{ entries: AiLogEntry[] }>('GET', '/api/ai/log').then((r) => r.entries),

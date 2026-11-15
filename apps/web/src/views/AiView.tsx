@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AiCatalogItem, AiConnection, AiLogEntry, AiSettings, AiUsage, Api, Capability, ProviderId } from '../api';
+import type { AiCatalogItem, AiConnection, AiLogEntry, AiSettings, AiUsage, Api, Capability, ImageAiView, ProviderId } from '../api';
 import { formatDate, parseDecimal } from '../lib';
 import { ErrorNotice } from '../ui';
 
@@ -161,6 +161,7 @@ export function AiView({ api }: { api: Api }) {
         <AddConnection catalog={catalog} busy={busy} onAdd={(body) => act(() => api.aiAdd(body), 'Koneksi ditambahkan. Klik "Tes koneksi" untuk mengecek key-nya.')} />
       </section>
 
+      <ImageAiSection api={api} />
       {settings && usage && <BudgetSection settings={settings} usage={usage} busy={busy} onSave={(b) => act(() => api.aiSettings({ budget: b }), 'Batas anggaran disimpan.')} />}
 
       <section className="card aiSection" aria-label="Log routing AI">
@@ -415,5 +416,151 @@ function AddConnection({ catalog, busy, onAdd }: { catalog: AiCatalogItem[]; bus
         Simpan koneksi
       </button>
     </details>
+  );
+}
+
+/**
+ * R12a: "AI gambar" for Motion Transfer stage 2 (owner fills in the account later). The key goes
+ * to the server only and is never shown again (just "tersimpan ••••abcd"). Not used yet.
+ */
+function ImageAiSection({ api }: { api: Api }) {
+  const [v, setV] = useState<ImageAiView | null>(null);
+  const [provider, setProvider] = useState<'' | 'openai' | 'gemini' | 'lainnya'>('');
+  const [endpoint, setEndpoint] = useState('');
+  const [model, setModel] = useState('');
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<'IDR' | 'USD'>('IDR');
+  const [key, setKey] = useState('');
+  const [changingKey, setChangingKey] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const fill = (g: ImageAiView) => {
+    setV(g);
+    setProvider(g.provider ?? '');
+    setEndpoint(g.endpoint ?? '');
+    setModel(g.model ?? '');
+    setAmount(g.budget.amount === null ? '' : String(g.budget.amount));
+    setCurrency(g.budget.currency);
+  };
+  useEffect(() => {
+    void api.imageAi().then(fill, setError);
+  }, [api]);
+  const run = async (fn: () => Promise<ImageAiView>, ok: string) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      fill(await fn());
+      setNotice(ok);
+      return true;
+    } catch (e) {
+      setError(e);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const p = v?.providers.find((x) => x.id === provider);
+  const amountNum = parseDecimal(amount);
+  const amountOk = amount.trim() === '' || (amountNum !== null && amountNum >= 0);
+  return (
+    <section className="card aiSection" aria-label="AI gambar">
+      <h3>AI gambar (Motion Transfer)</h3>
+      <p className="muted small">Untuk tahap 2 Motion Transfer (ganti produk di gambar). Belum dipakai sekarang; isi kalau akunnya sudah ada. API key disimpan terenkripsi di server dan tidak pernah ditampilkan lagi.</p>
+      <ErrorNotice error={error} />
+      {notice && (
+        <div className="notice ok small" role="status">
+          {notice}
+        </div>
+      )}
+      <div className="formGrid">
+        <label>
+          Penyedia
+          <select aria-label="Penyedia AI gambar" value={provider} disabled={busy} onChange={(e) => setProvider(e.target.value as typeof provider)}>
+            <option value="">— Belum dipilih —</option>
+            {(v?.providers ?? []).map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {p?.needs_endpoint && (
+          <label>
+            URL endpoint
+            <input aria-label="URL endpoint AI gambar" value={endpoint} placeholder="https://…" onChange={(e) => setEndpoint(e.target.value)} />
+          </label>
+        )}
+        <label>
+          Model (opsional)
+          <input aria-label="Model AI gambar" value={model} maxLength={100} placeholder={p?.model_hint || ''} onChange={(e) => setModel(e.target.value)} />
+        </label>
+        <label>
+          Batas biaya per bulan (opsional)
+          <span className="row" style={{ gap: 4 }}>
+            <input aria-label="Batas biaya AI gambar" inputMode="decimal" value={amount} placeholder="kosong = tanpa batas" onChange={(e) => setAmount(e.target.value)} />
+            <select aria-label="Mata uang batas AI gambar" value={currency} onChange={(e) => setCurrency(e.target.value as 'IDR' | 'USD')}>
+              <option value="IDR">Rp</option>
+              <option value="USD">USD</option>
+            </select>
+          </span>
+        </label>
+      </div>
+      <button
+        className="btn primary"
+        disabled={busy || !amountOk}
+        onClick={() =>
+          void run(
+            () => api.saveImageAi({ provider: provider || null, endpoint: p?.needs_endpoint ? endpoint.trim() || null : null, model: model.trim() || null, budget: { amount: amount.trim() ? amountNum : null, currency } }),
+            'Pengaturan AI gambar disimpan.',
+          )
+        }
+      >
+        Simpan pengaturan
+      </button>
+      <div className="row wrap" style={{ gap: 8, alignItems: 'center', marginTop: 10 }}>
+        <b className="small">API key:</b>
+        {v?.key_saved && !changingKey ? (
+          <>
+            <span className="badge ok" aria-label="Status API key AI gambar">
+              tersimpan ••••{v.key_hint}
+            </span>
+            <button className="btn small" disabled={busy} onClick={() => setChangingKey(true)}>
+              Ganti
+            </button>
+            <button className="btn small danger" disabled={busy} onClick={() => window.confirm('Hapus API key AI gambar dari server?') && void run(() => api.setImageAiKey(null), 'API key dihapus.')}>
+              Hapus
+            </button>
+          </>
+        ) : (
+          <>
+            <input type="password" autoComplete="off" aria-label="API key AI gambar" value={key} placeholder="Tempel API key" onChange={(e) => setKey(e.target.value)} />
+            <button
+              className="btn small primary"
+              disabled={busy || key.length < 8}
+              onClick={() =>
+                void run(() => api.setImageAiKey(key), 'API key disimpan (terenkripsi).').then((ok) => {
+                  if (!ok) return;
+                  setKey('');
+                  setChangingKey(false);
+                })
+              }
+            >
+              Simpan key
+            </button>
+            {changingKey && (
+              <button className="btn small" onClick={() => (setChangingKey(false), setKey(''))}>
+                Batal
+              </button>
+            )}
+          </>
+        )}
+        <button className="btn small" disabled={busy || !v?.key_saved || !v.provider} onClick={() => void run(() => api.testImageAi(), 'Tes selesai.')} title="Hanya membaca daftar model (gratis), tidak membuat gambar">
+          Tes koneksi
+        </button>
+        {v?.last_test && <span className={`badge ${v.last_test.ok ? 'ok' : 'bad'}`}>{v.last_test.message}</span>}
+      </div>
+    </section>
   );
 }

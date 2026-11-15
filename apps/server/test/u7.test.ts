@@ -53,6 +53,8 @@ describe('U7 roles enforced on the server', () => {
     expect(can('GET', '/api/ai/usage')).toBe('owner'); // AI spending + prompt log: owner only
     expect(can('GET', '/api/ai/log')).toBe('owner');
     expect(can('GET', '/api/ai/providers')).toBe('owner,editor,reviewer'); // Copilot reads the mode
+    expect(can('GET', '/api/ai/gambar')).toBe('owner'); // R12a: AI gambar settings, reading too
+    expect(can('POST', '/api/ai/gambar/key')).toBe('owner');
     expect(can('POST', '/api/projects/:project_id/comments')).toBe('owner,editor,reviewer');
     expect(can('POST', '/api/projects/:project_id/review')).toBe('owner,reviewer');
     expect(can('POST', '/api/projects/:project_id/variant-approval')).toBe('owner,reviewer');

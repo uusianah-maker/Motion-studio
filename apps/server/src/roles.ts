@@ -23,6 +23,8 @@ const OWNER: readonly Role[] = ['owner'];
 const RULES: { method: RegExp; path: RegExp; roles: readonly Role[] }[] = [
   // AI spending and prompts are the owner's (the editor's Copilot only needs the mode in /providers).
   { method: /./, path: /^\/api\/ai\/(usage|log)$/, roles: OWNER },
+  // R12a: AI gambar settings (provider, key hint, budget) are the owner's, reading them too.
+  { method: /./, path: /^\/api\/ai\/gambar(\/|$)/, roles: OWNER },
   // Halaman Tim: who may sign in, and with which role, is the owner's (reading it too).
   { method: /./, path: /^\/api\/team(\/|$)/, roles: OWNER },
   { method: /^(GET|HEAD)$/, path: /./, roles: ALL },
