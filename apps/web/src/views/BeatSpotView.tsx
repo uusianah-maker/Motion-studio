@@ -1,0 +1,466 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Api, BeatspotSettings, BeatspotView, BrandKit, DiffItem, EditPlan, EngineJob, EngineQc, EngineRencana, ProjectSummary, Role } from '../api';
+import { readyJobShown } from '../lib';
+import { ErrorNotice, useSessionState } from '../ui';
+import { ENGINE_STATE, EngineProgress, PlanCard, useEngineJob } from './GenerateView';
+
+/**
+ * R16 Beat Spot tahap 1 (KONTRAK-ENGINE §16): awareness video from footage of people (in a mall)
+ * wearing the brand's product, cut exactly on the beat of the team's sound, + logo and end card from
+ * the Brand Kit. No face blur, no AI outfit change (owner PC-R7). Hybrid: the team picks the shot
+ * order, drops shots and marks creator / public people, then runs it again; the plan reaches the
+ * timeline only after approval (one undo step), like Generate.
+ */
+const sec = (n: number) => n.toFixed(2).replace('.', ',');
+const today = () => new Date().toISOString().slice(0, 10);
+const AUDIO = /\.(wav|mp3|m4a|aac|ogg|flac)$/i;
+
+/** File name → a source id the engine accepts (`$sumber:<id>`), unique in this job. */
+export function sourceIds(names: string[]): string[] {
+  const used = new Set<string>();
+  return names.map((n) => {
+    const base = (n.replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'footage').slice(0, 34);
+    let id = base;
+    for (let i = 2; used.has(id.toLowerCase()); i++) id = `${base}-${i}`;
+    used.add(id.toLowerCase());
+    return id;
+  });
+}
+
+export function BeatSpotView({ api, role = 'owner', projects, active = true, onOpenProject }: { api: Api; role?: Role; projects: ProjectSummary[]; active?: boolean; onOpenProject: (id: string) => void }) {
+  const readOnly = role === 'reviewer';
+  const [installed, setInstalled] = useState<boolean | null>(null);
+  const [brands, setBrands] = useState<BrandKit[]>([]);
+  const [brandsLoaded, setBrandsLoaded] = useState(false);
+  const [brandId, setBrandId] = useState('');
+  const [target, setTarget] = useSessionState('beatspot.proyek', 'new');
+  const [name, setName] = useState('');
+  const [footage, setFootage] = useState<File[]>([]);
+  const [sound, setSound] = useState<File | null>(null);
+  const [bpm, setBpm] = useState('');
+  const [kpp, setKpp] = useState<BeatspotSettings['ketukan_per_potong']>('auto');
+  const [durMin, setDurMin] = useState(15);
+  const [durMax, setDurMax] = useState(20);
+  const [tagline, setTagline] = useState('');
+  const [upload, setUpload] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [current, setCurrent] = useSessionState<{ project_id: string; job_id: string } | null>('beatspot.job', null);
+  const [history, setHistory] = useState<EngineJob[]>([]);
+  const [view, setView] = useState<BeatspotView | null>(null);
+  /** The team's choices for the next run (start from what the job ran with). */
+  const [pilih, setPilih] = useState<BeatspotSettings | null>(null);
+  const [plan, setPlan] = useState<{ plan: EditPlan; diff: DiffItem[]; rencana: EngineRencana; qc: EngineQc | null } | null>(null);
+  const [applied, setApplied] = useState<string | null>(null);
+  const { job, log, error: jobError } = useEngineJob(api, current?.project_id ?? null, current?.job_id ?? null);
+
+  useEffect(() => {
+    if (!active) return;
+    void api.engineInfo().then((r) => setInstalled(r.installed), setError);
+    void api.brands().then((r) => {
+      setBrands(r.brands);
+      setBrandsLoaded(true);
+      setBrandId((cur) => cur || r.default_id || r.brands[0]?.brand_id || '');
+    }, setError);
+  }, [api, active]);
+  const brand = brands.find((b) => b.brand_id === brandId) ?? null;
+
+  const loadHistory = useCallback(
+    async (projectId: string) => {
+      try {
+        setHistory((await api.engineJobs(projectId)).filter((j) => j.mode === 'beatspot'));
+      } catch (e) {
+        setError(e);
+      }
+    },
+    [api],
+  );
+  useEffect(() => {
+    if (target !== 'new') void loadHistory(target);
+    else setHistory([]);
+  }, [target, loadHistory]);
+  const final = !!job && job.state !== 'menunggu' && job.state !== 'berjalan';
+  useEffect(() => {
+    if (final && current) void loadHistory(current.project_id);
+  }, [final, current, loadHistory]);
+
+  // Report + settings once the job has ended (a refused job still shows its files / settings).
+  useEffect(() => {
+    setView(null);
+    setPilih(null);
+    if (!final || !current || job?.job_id !== current.job_id) return;
+    let stale = false;
+    void api.beatspot(current.project_id, current.job_id).then(
+      (v) => {
+        if (stale) return;
+        setView(v);
+        setPilih(v.pengaturan);
+      },
+      (e) => !stale && setError(e),
+    );
+    return () => {
+      stale = true;
+    };
+  }, [api, final, current, job?.job_id]);
+  // The edit plan (opening it imports nothing new here, but it is a write: Owner / Editor only).
+  useEffect(() => {
+    setPlan(null);
+    if (readOnly || !current || !readyJobShown(job, current) || applied) return;
+    let stale = false;
+    void api.enginePlan(current.project_id, current.job_id).then(
+      (r) => {
+        if (!stale && r.plan) setPlan({ plan: r.plan, diff: r.diff, rencana: r.rencana, qc: r.qc });
+      },
+      (e) => !stale && setError(e),
+    );
+    return () => {
+      stale = true;
+    };
+  }, [api, readOnly, current, job?.state, job?.job_id, applied]);
+
+  const unstarted = useRef<string | null>(null);
+  const start = async () => {
+    if (!footage.length || !brand) return;
+    if (!brand.kode) return setError(new Error('Brand ini belum punya kode (Brand Kit → A). Isi dulu, baru jalankan mesin.'));
+    if (durMin < 5 || durMax > 60 || durMin > durMax) return setError(new Error('Durasi: min ≤ maks, antara 5 dan 60 detik.'));
+    setBusy(true);
+    setError(null);
+    setApplied(null);
+    try {
+      let projectId = target;
+      if (target === 'new') {
+        projectId = unstarted.current ?? (await api.createProject(name.trim() || `Beat Spot ${brand.name} ${today()}`)).project_id;
+        unstarted.current = projectId;
+      }
+      const p = await api.project(projectId);
+      if (p.brand_id !== brand.brand_id) await api.updateProject(projectId, p.revision, { brand_id: brand.brand_id });
+      const files = [...footage, ...(sound ? [sound] : [])];
+      const ids = sourceIds(files.map((f) => f.name));
+      const sources = [];
+      for (const [i, f] of files.entries()) {
+        setUpload(`${i + 1}/${files.length} ${f.name}`);
+        const up = await api.importFile(f, { kind: 'project', project_id: projectId });
+        sources.push({ kunci: `$sumber:${ids[i]}`, ref: { media_id: up.media_id, version_id: up.version.version_id } });
+      }
+      setUpload(null);
+      const b = Number(bpm);
+      const j = await api.engineBeatspot(projectId, {
+        mode: 'beatspot',
+        sources,
+        beatspot: { sound: sound ? `$sumber:${ids[ids.length - 1]}` : null, bpm: !sound && b ? b : null, ketukan_per_potong: kpp, durasi: [durMin, durMax], tagline: tagline.trim() || null },
+      });
+      unstarted.current = null;
+      setTarget(projectId);
+      setCurrent({ project_id: projectId, job_id: j.job_id });
+    } catch (e) {
+      setError(e);
+      setUpload(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rerun = async () => {
+    if (!current || !pilih) return;
+    setBusy(true);
+    setError(null);
+    setApplied(null);
+    try {
+      const j = await api.beatspotRerun(current.project_id, current.job_id, pilih);
+      setCurrent({ project_id: current.project_id, job_id: j.job_id });
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const approve = async () => {
+    if (!plan || !current) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const p = await api.project(current.project_id);
+      await api.copilotApply(current.project_id, plan.plan.plan_id, p.revision);
+      setApplied(current.project_id);
+      setPlan(null);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reject = async () => {
+    if (!plan || !current) return;
+    await api.copilotReject(current.project_id, plan.plan.plan_id).catch(() => undefined);
+    setPlan(null);
+  };
+
+  const nameOf = (id: string) => view?.sumber.find((s) => s.id === id)?.nama ?? id;
+  const toggleExclude = (id: string) => setPilih((p) => p && { ...p, kecualikan_shot: p.kecualikan_shot.includes(id) ? p.kecualikan_shot.filter((x) => x !== id) : [...p.kecualikan_shot, id], urutan_shot: p.urutan_shot.filter((x) => x !== id) });
+  const toggleFirst = (id: string) => setPilih((p) => p && { ...p, urutan_shot: p.urutan_shot.includes(id) ? p.urutan_shot.filter((x) => x !== id) : [...p.urutan_shot, id] });
+  const setPerson = (key: string, v: 'kreator' | 'umum') => setPilih((p) => p && { ...p, sumber_orang: { ...p.sumber_orang, [key]: v } });
+  const changed = !!view?.pengaturan && !!pilih && JSON.stringify(view.pengaturan) !== JSON.stringify(pilih);
+  const lap = view?.laporan ?? null;
+
+  return (
+    <>
+      <header className="top">
+        <h1>Beat Spot</h1>
+        <div className="spacer" />
+        <span className="muted small hideNarrow">Footage orang pakai produk + sound → potong tepat di ketukan, logo + end card (awareness)</span>
+      </header>
+      <div className="body enginePage">
+        <ErrorNotice error={error ?? jobError} />
+        {installed === false && <div className="notice warn">Mesin belum dipasang di server ini. Set <code>MOTION_ENGINE_ROOT</code> ke folder repo mesin lalu jalankan ulang server.</div>}
+        {!readOnly && (
+          <section className="card" aria-label="Footage dan sound">
+            <h2>1 · Footage &amp; sound</h2>
+            <div className="inspGrid">
+              <label>
+                Brand
+                <select aria-label="Brand" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
+                  {brands.map((b) => (
+                    <option key={b.brand_id} value={b.brand_id}>
+                      {b.name} ({b.kode})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Proyek
+                <select aria-label="Proyek tujuan" value={target} onChange={(e) => setTarget(e.target.value)}>
+                  <option value="new">＋ Proyek baru</option>
+                  {projects
+                    .filter((p) => !p.error && p.status !== 'archived' && !p.variant)
+                    .map((p) => (
+                      <option key={p.project_id} value={p.project_id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {target === 'new' && (
+                <label>
+                  Nama proyek
+                  <input aria-label="Nama proyek baru" value={name} maxLength={120} placeholder={`Beat Spot ${brand?.name ?? ''} ${today()}`} onChange={(e) => setName(e.target.value)} />
+                </label>
+              )}
+              <label>
+                Footage orang (bisa banyak video)
+                <input aria-label="Footage orang" type="file" accept="video/*" multiple onChange={(e) => setFootage([...(e.target.files ?? [])].filter((f) => !AUDIO.test(f.name)).slice(0, 39))} />
+              </label>
+              <label>
+                Sound tim (opsional, video atau audio)
+                <input aria-label="Sound tim" type="file" accept="audio/*,video/*" onChange={(e) => setSound(e.target.files?.[0] ?? null)} />
+              </label>
+              {!sound && (
+                <label>
+                  BPM (tanpa sound; kosong = 120)
+                  <input aria-label="BPM" type="number" min={60} max={200} value={bpm} onChange={(e) => setBpm(e.target.value)} />
+                </label>
+              )}
+              <label>
+                Ketukan per potong
+                <select aria-label="Ketukan per potong" value={String(kpp)} onChange={(e) => setKpp(e.target.value === 'auto' ? 'auto' : (Number(e.target.value) as 1 | 2 | 4))}>
+                  <option value="auto">Otomatis (±1,8 dtk per orang)</option>
+                  <option value="1">1 ketukan</option>
+                  <option value="2">2 ketukan</option>
+                  <option value="4">4 ketukan</option>
+                </select>
+              </label>
+              <label>
+                Durasi (dtk, termasuk end card)
+                <span className="row" style={{ gap: 6 }}>
+                  <input aria-label="Durasi minimal" type="number" min={5} max={60} value={durMin} onChange={(e) => setDurMin(Number(e.target.value))} style={{ width: 70 }} />
+                  –
+                  <input aria-label="Durasi maksimal" type="number" min={5} max={60} value={durMax} onChange={(e) => setDurMax(Number(e.target.value))} style={{ width: 70 }} />
+                </span>
+              </label>
+              <label className="inspFull">
+                Tagline end card (kosong = dari Brand Kit)
+                <input aria-label="Tagline" value={tagline} maxLength={120} onChange={(e) => setTagline(e.target.value)} />
+              </label>
+            </div>
+            <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+              <button className="btn primary" disabled={!installed || !footage.length || !brand || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
+                ♪ Susun Beat Spot
+              </button>
+              {upload !== null && <span className="muted small">Mengunggah {upload}…</span>}
+              {!brand && <span className="muted small">{brandsLoaded ? 'Buat brand dulu di menu Brand.' : 'Memuat brand…'}</span>}
+              <span className="muted small">Tanpa blur wajah; orang umum hanya dipakai kalau memang memakai produk brand.</span>
+            </div>
+          </section>
+        )}
+        {readOnly && <div className="notice info">Peran Reviewer: bisa melihat hasil Beat Spot. Menjalankan, memilih shot dan menerapkan ke timeline dilakukan Editor / Owner.</div>}
+
+        {job && current && (
+          <section className="card" aria-label="Proses mesin">
+            <h2>2 · Proses mesin</h2>
+            <EngineProgress job={job} log={log} onCancel={readOnly ? undefined : () => void api.engineCancel(current.project_id, current.job_id).catch(setError)} />
+          </section>
+        )}
+
+        {lap && view && (
+          <section className="card" aria-label="Hasil Beat Spot">
+            <h2>3 · Potongan di ketukan</h2>
+            <div className="statGrid">
+              <div className="stat">
+                <small>Tempo</small>
+                <b>{Math.round(lap.bpm)} BPM</b>
+                <span className="muted small">{lap.sumber_ketukan === 'sound' ? 'dari sound tim' : 'pola BPM (tanpa sound)'}</span>
+              </div>
+              <div className="stat">
+                <small>Potong tiap</small>
+                <b>{lap.ketukan_per_potong} ketukan</b>
+              </div>
+              <div className="stat">
+                <small>Durasi</small>
+                <b>{sec(lap.durasi)} dtk</b>
+                {lap.end_card_dtk > 0 && <span className="muted small">end card {sec(lap.end_card_dtk)} dtk</span>}
+              </div>
+              <div className="stat">
+                <small>Potongan</small>
+                <b>{lap.potongan.length} orang</b>
+              </div>
+            </div>
+            <table className="list" aria-label="Daftar potongan">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Mulai</th>
+                  <th>Durasi</th>
+                  <th>Shot</th>
+                  <th>Footage</th>
+                  <th>Orang</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lap.potongan.map((p) => (
+                  <tr key={p.no}>
+                    <td>{p.no}</td>
+                    <td>{sec(p.mulai)}</td>
+                    <td>{sec(p.durasi)}</td>
+                    <td>{p.shot}</td>
+                    <td>{nameOf(p.footage)}</td>
+                    <td>{p.sumber_orang === 'kreator' ? 'Kreator' : 'Umum'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {pilih && !readOnly && (
+              <details open={changed} aria-label="Pilihan tim">
+                <summary>Atur ulang: urutan, kecualikan shot, kreator / umum ({lap.kandidat.length} shot layak)</summary>
+                <div className="small muted">Klik "Pakai duluan" sesuai urutan yang diinginkan; sisanya diisi otomatis.</div>
+                <table className="list small" aria-label="Kandidat shot">
+                  <thead>
+                    <tr>
+                      <th>Shot</th>
+                      <th>Footage</th>
+                      <th>Rentang</th>
+                      <th>Skor</th>
+                      <th>Orang</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lap.kandidat.map((k) => {
+                      const out = pilih.kecualikan_shot.includes(k.id);
+                      const order = pilih.urutan_shot.indexOf(k.id);
+                      const who = pilih.sumber_orang[k.id] ?? pilih.sumber_orang[k.footage] ?? 'umum';
+                      return (
+                        <tr key={k.id} data-shot={k.id} className={out ? 'muted' : undefined}>
+                          <td>
+                            {k.id}
+                            {k.dipakai && <span className="badge ok">dipakai</span>}
+                          </td>
+                          <td>{nameOf(k.footage)}</td>
+                          <td>
+                            {sec(k.dari)}–{sec(k.sampai)}
+                          </td>
+                          <td>{k.skor === null ? '–' : k.skor.toFixed(2)}</td>
+                          <td>
+                            <select aria-label={`Orang di ${k.id}`} value={who} onChange={(e) => setPerson(k.id, e.target.value as 'kreator' | 'umum')}>
+                              <option value="umum">Umum</option>
+                              <option value="kreator">Kreator</option>
+                            </select>
+                          </td>
+                          <td className="row" style={{ gap: 4 }}>
+                            <button className={`btn small${order >= 0 ? ' sel' : ''}`} disabled={out} aria-pressed={order >= 0} aria-label={`Pakai ${k.id} duluan`} onClick={() => toggleFirst(k.id)}>
+                              {order >= 0 ? `#${order + 1}` : '▲ Pakai duluan'}
+                            </button>
+                            <button className={`btn small${out ? ' sel' : ''}`} aria-pressed={out} aria-label={`Kecualikan ${k.id}`} onClick={() => toggleExclude(k.id)}>
+                              {out ? '↺ Pakai lagi' : '✕ Kecualikan'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {lap.dibuang.length > 0 && (
+                  <div className="small muted">
+                    Tidak dipakai mesin: {lap.dibuang.slice(0, 30).map((d) => `${d.id} (${d.alasan})`).join(', ')}
+                    {lap.dibuang.length > 30 ? ` … +${lap.dibuang.length - 30}` : ''}
+                  </div>
+                )}
+                <button className="btn primary" disabled={busy || !changed} onClick={() => void rerun()}>
+                  ↻ Susun ulang dengan pilihan tim
+                </button>
+              </details>
+            )}
+          </section>
+        )}
+
+        {plan && <PlanCard rencana={plan.rencana} qc={plan.qc} plan={plan.plan} diff={plan.diff} busy={busy} onApprove={() => void approve()} onReject={() => void reject()} />}
+        {applied && (
+          <section className="card" aria-label="Draf diterapkan">
+            <h2>4 · Draf sudah di timeline</h2>
+            <p className="small">Satu langkah undo. Geser potongan, render dan QC di Editor.</p>
+            <button className="btn primary" onClick={() => onOpenProject(applied)}>
+              Buka di Editor →
+            </button>
+          </section>
+        )}
+
+        {history.length > 0 && (
+          <section className="card" aria-label="Riwayat Beat Spot">
+            <h2>Riwayat Beat Spot proyek ini</h2>
+            <table className="list">
+              <thead>
+                <tr>
+                  <th>Job</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.job_id}>
+                    <td>{h.job_id}</td>
+                    <td>
+                      {ENGINE_STATE[h.state]}
+                      {h.alasan ? ` · ${h.alasan}` : ''}
+                    </td>
+                    <td>
+                      <button
+                        className="btn small"
+                        aria-label={`Lihat ${h.job_id}`}
+                        onClick={() => {
+                          setApplied(null);
+                          setCurrent({ project_id: h.project_id, job_id: h.job_id });
+                        }}
+                      >
+                        Lihat
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </div>
+    </>
+  );
+}

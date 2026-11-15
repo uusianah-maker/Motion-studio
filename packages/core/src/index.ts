@@ -67,6 +67,8 @@ export {
   runEngineJob,
   settleOrphanJob,
   validateEngineJob,
+  type BeatspotSettings,
+  validateBeatspotSettings,
 } from './storage/engine.js';
 export {
   type EngineBatchInfo,
@@ -155,3 +157,4 @@ export {
 } from './storage/copilot.js';
 export { type Workspace, type WorkspaceOptions, createProject, initWorkspace, listProjectIds, openWorkspace, readProject } from './storage/workspace.js';
 export { MAX_TRANSFER_SCENES, type TransferScene, type TransferView, editTransfer, readTransferImage, readTransferView } from './storage/transfer.js';
+export { type BeatspotCandidate, type BeatspotCut, type BeatspotView, readBeatspotView, rerunBeatspot } from './storage/beatspot.js';

@@ -556,7 +556,7 @@ export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal'
 export interface EngineJob {
   job_id: string;
   project_id: string;
-  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer';
+  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot';
   state: EngineState;
   tahap: string;
   persen: number;
@@ -582,6 +582,51 @@ export interface EngineStart {
   ai: boolean;
   mode_ops?: 'kompat' | 'u3';
   batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[]; vo_batch?: string; izinkan_musik_tanpa_lisensi?: boolean; buang_otomatis?: string[] };
+}
+/** R16 Beat Spot settings (contract §16), the team's choices included. */
+export interface BeatspotSettings {
+  sound: string | null;
+  bpm: number | null;
+  ketukan_per_potong: 'auto' | 1 | 2 | 4;
+  durasi: [number, number];
+  tagline: string | null;
+  urutan_shot: string[];
+  kecualikan_shot: string[];
+  sumber_orang: Record<string, 'kreator' | 'umum'>;
+  seed: number;
+}
+export interface EngineBeatspotStart {
+  mode: 'beatspot';
+  sources: { kunci: string; ref: { media_id: string; version_id: string } }[];
+  beatspot: Partial<BeatspotSettings>;
+}
+export interface BeatspotCut {
+  no: number;
+  mulai: number;
+  durasi: number;
+  shot: string;
+  footage: string;
+  in: number;
+  skor: number | null;
+  alasan: string;
+  sumber_orang: 'kreator' | 'umum';
+}
+export interface BeatspotCandidate {
+  id: string;
+  footage: string;
+  dari: number;
+  sampai: number;
+  orang: number | null;
+  framing: string;
+  skor: number | null;
+  dipakai: boolean;
+  sumber_orang: 'kreator' | 'umum';
+}
+export interface BeatspotView {
+  job_id: string;
+  laporan: { bpm: number; sumber_ketukan: string; ketukan_per_potong: number; durasi: number; end_card_dtk: number; potongan: BeatspotCut[]; kandidat: BeatspotCandidate[]; dibuang: { id: string; alasan: string }[] } | null;
+  pengaturan: BeatspotSettings | null;
+  sumber: { kunci: string; id: string; nama: string; sound: boolean }[];
 }
 /** R11 Motion Transfer: one reference video + a Brand Kit product → scenes + prompts to copy. */
 export interface EngineTransferStart {
@@ -907,6 +952,11 @@ export function createApi(token: string | null, base = '') {
       call<{ batch: BatchTable; decisions: Record<string, BatchDecision> }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch`),
     engineDecide: (id: string, jobId: string, rows: { varian: string; status: BatchRowStatus }[]) =>
       call<{ decisions: Record<string, BatchDecision> }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch/decide`, { json: { rows } }).then((r) => r.decisions),
+    // R16 Beat Spot
+    engineBeatspot: (id: string, body: EngineBeatspotStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
+    beatspot: (id: string, jobId: string) => call<{ beatspot: BeatspotView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/beatspot`).then((r) => r.beatspot),
+    beatspotRerun: (id: string, jobId: string, beatspot: BeatspotSettings) =>
+      call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/beatspot/ulang`, { json: { beatspot } }).then((r) => r.job),
     // R11 Motion Transfer
     engineTransfer: (id: string, body: EngineTransferStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
     transfer: (id: string, jobId: string) => call<{ transfer: TransferView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/transfer`).then((r) => r.transfer),

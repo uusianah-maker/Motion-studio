@@ -25,6 +25,8 @@ import {
   readShotLibrary,
   readShotThumbs,
   readTransferImage,
+  readBeatspotView,
+  rerunBeatspot,
   readTransferView,
   runEngineJob,
   setShotExclusions,
@@ -256,13 +258,32 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
         const out = await opts.copilot.propose({
           project_id: params.project_id!,
           source: 'engine',
-          prompt: `Draf ${s.mode === 'batch' ? 'Batch Remix' : 'Generate Otomatis'} ${job}${variant ? ` ${variant}` : ''}`,
+          prompt: `Draf ${s.mode === 'batch' ? 'Batch Remix' : s.mode === 'beatspot' ? 'Beat Spot' : 'Generate Otomatis'} ${job}${variant ? ` ${variant}` : ''}`,
           ops: p.ops,
           rationale: `${hook}${dur}. Disusun mesin; render ditahan sampai disetujui.`,
           warnings,
         });
         await audit(ws, { op: 'engine.plan', actor, outcome: 'ok', project_id: params.project_id!, job_id: job, plan_id: out.plan.plan_id, imported: p.imported.length });
         return { ...out, rencana: p.rencana, qc: p.qc };
+      },
+    },
+    {
+      // R16 Beat Spot: the engine's cut report + the settings the job ran with + its files.
+      method: 'GET',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/beatspot',
+      handle: async ({ params }) => ({ beatspot: await readBeatspotView(ws, params.project_id!, jobParam(params.job_id)) }),
+    },
+    {
+      // Hybrid: run Beat Spot again on the same files with the team's order / exclusions / people.
+      method: 'POST',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/beatspot/ulang',
+      handle: async ({ req, params, actor }) => {
+        needEngine();
+        if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh menjalankan mesin');
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['beatspot']);
+        const job = jobParam(params.job_id);
+        return { job: await enqueue(params.project_id!, () => rerunBeatspot(ws, params.project_id!, job, body.beatspot)) };
       },
     },
     {

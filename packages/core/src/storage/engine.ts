@@ -63,7 +63,7 @@ export function engineConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Engin
   };
 }
 
-export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer';
+export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot';
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
 
 export interface EngineStatus {
@@ -97,7 +97,7 @@ export interface EngineBrief {
 
 export interface EngineJobInput {
   project_id: string;
-  mode: 'generate' | 'batch' | 'pisah' | 'transfer';
+  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot';
   /** `$sumber` (one video) or `$sumber:<id>` (several). */
   sources: { kunci: string; ref: MediaRef }[];
   preset: string;
@@ -116,6 +116,21 @@ export interface EngineJobInput {
    * `<job>/masuk/<id>.<ext>`; the engine copies them on to `konten/1-upload/<batch>` itself.
    */
   pisah?: { batch: string; video_saja?: boolean };
+  /** Beat Spot (contract §16): written to job.json as the `beatspot` object. */
+  beatspot?: BeatspotSettings;
+}
+
+/** Beat Spot settings (contract §16); the team's choices (order, exclusions, people) included. */
+export interface BeatspotSettings {
+  sound: string | null;
+  bpm: number | null;
+  ketukan_per_potong: 'auto' | 1 | 2 | 4;
+  durasi: [number, number];
+  tagline: string | null;
+  urutan_shot: string[];
+  kecualikan_shot: string[];
+  sumber_orang: Record<string, 'kreator' | 'umum'>;
+  seed: number;
 }
 
 /** Batch folder name in the engine's konten/ (one rule for batch, vo_batch, pisah and the library). */
@@ -145,6 +160,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   const o = (x ?? {}) as Record<string, unknown>;
   if (o.mode === 'pisah') return validatePisahJob(o);
   if (o.mode === 'transfer') return validateTransferJob(o);
+  if (o.mode === 'beatspot') return validateBeatspotJob(o);
   const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
@@ -277,6 +293,71 @@ function validateTransferJob(o: Record<string, unknown>): EngineJobInput {
     preset: 'transfer',
     brief: { produk, varian: '', harga: '', placement: 'tiktok', catatan: '', ...(deskripsi ? { deskripsi_produk: deskripsi } : {}) },
     ai: false,
+  };
+}
+
+const SHOT_ID = /^[A-Za-z0-9_-]{1,40}#\d{1,4}$/;
+const FOOTAGE_ID = /^[A-Za-z0-9_-]{1,40}$/;
+
+/** Beat Spot settings from the browser (untrusted); `keys` = the job's `$sumber:<id>` keys. */
+export function validateBeatspotSettings(x: unknown, keys: string[]): BeatspotSettings {
+  const o = (x ?? {}) as Record<string, unknown>;
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) bad('beatspot harus objek');
+  const extra = Object.keys(o).filter((k) => !['sound', 'bpm', 'ketukan_per_potong', 'durasi', 'tagline', 'urutan_shot', 'kecualikan_shot', 'sumber_orang', 'seed'].includes(k));
+  if (extra.length) bad(`beatspot: field tidak dikenal ${extra.join(', ')}`);
+  const sound = o.sound === undefined || o.sound === null ? null : typeof o.sound === 'string' && keys.includes(o.sound) ? o.sound : bad('beatspot.sound harus salah satu kunci sumber');
+  const bpm = o.bpm === undefined || o.bpm === null ? null : typeof o.bpm === 'number' && o.bpm >= 60 && o.bpm <= 200 ? o.bpm : bad('beatspot.bpm harus 60–200');
+  const kpp = o.ketukan_per_potong === undefined ? 'auto' : o.ketukan_per_potong === 'auto' || o.ketukan_per_potong === 1 || o.ketukan_per_potong === 2 || o.ketukan_per_potong === 4 ? o.ketukan_per_potong : bad('beatspot.ketukan_per_potong harus auto | 1 | 2 | 4');
+  const dRaw: unknown = o.durasi === undefined ? [15, 20] : o.durasi;
+  const d = (Array.isArray(dRaw) && dRaw.length === 2 && dRaw.every((n) => typeof n === 'number' && Number.isFinite(n)) ? dRaw : [0, 0]) as [number, number];
+  if (!(5 <= d[0] && d[0] <= d[1] && d[1] <= 60)) bad('beatspot.durasi harus [min, maks] detik, 5–60');
+  const tagline = o.tagline === undefined || o.tagline === null || o.tagline === '' ? null : str(o.tagline, 'tagline', 120) || null;
+  const ids = (v: unknown, what: string, max: number): string[] => {
+    if (v === undefined) return [];
+    if (!Array.isArray(v) || v.length > max || !v.every((s) => typeof s === 'string' && SHOT_ID.test(s))) bad(`beatspot.${what} harus daftar id shot (<footage>#NN), maks ${max}`);
+    return [...new Set(v as string[])];
+  };
+  const urutan = ids(o.urutan_shot, 'urutan_shot', 200);
+  const kecuali = ids(o.kecualikan_shot, 'kecualikan_shot', 500);
+  const so = o.sumber_orang === undefined ? {} : o.sumber_orang;
+  if (typeof so !== 'object' || so === null || Array.isArray(so) || Object.keys(so).length > 500) bad('beatspot.sumber_orang harus objek (maks 500)');
+  const orang: Record<string, 'kreator' | 'umum'> = {};
+  for (const [k, v] of Object.entries(so as Record<string, unknown>)) {
+    if (!(SHOT_ID.test(k) || FOOTAGE_ID.test(k)) || (v !== 'kreator' && v !== 'umum')) bad('beatspot.sumber_orang: { "<footage atau shot>": "kreator" | "umum" }');
+    orang[k] = v as 'kreator' | 'umum';
+  }
+  const seed = o.seed === undefined ? 1 : Number.isInteger(o.seed) && (o.seed as number) >= 0 && (o.seed as number) < 2 ** 31 ? (o.seed as number) : bad('beatspot.seed harus bilangan bulat ≥ 0');
+  return { sound, bpm, ketukan_per_potong: kpp as BeatspotSettings['ketukan_per_potong'], durasi: [d[0], d[1]] as [number, number], tagline, urutan_shot: urutan, kecualikan_shot: kecuali, sumber_orang: orang, seed };
+}
+
+/**
+ * `engine beatspot` (contract §16): footage of people walking (several videos, `$sumber:<id>`)
+ * + optionally the team's sound (video or audio) → cuts on the beat, logo + end card.
+ */
+function validateBeatspotJob(o: Record<string, unknown>): EngineJobInput {
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'beatspot'].includes(k));
+  if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
+  if (!isSafeId(o.project_id)) bad('project_id tidak valid');
+  if (!Array.isArray(o.sources) || o.sources.length < 1 || o.sources.length > 40) bad('Beat Spot butuh 1–40 file (footage + sound)');
+  const sources = (o.sources as unknown[]).map((s, i) => {
+    const so = (s ?? {}) as Record<string, unknown>;
+    const r = (so.ref ?? {}) as Record<string, unknown>;
+    if (typeof so.kunci !== 'string' || !PISAH_SRC.test(so.kunci)) bad(`sources[${i}].kunci harus $sumber:<id>`);
+    if (!isSafeId(r.media_id) || !isSafeId(r.version_id)) bad(`sources[${i}].ref tidak valid`);
+    return { kunci: so.kunci as string, ref: { media_id: r.media_id as string, version_id: r.version_id as string } };
+  });
+  if (new Set(sources.map((s) => s.kunci.toLowerCase())).size !== sources.length) bad('id sumber harus unik');
+  if (new Set(sources.map((s) => s.ref.version_id)).size !== sources.length) bad('file yang sama dipilih dua kali');
+  const beatspot = validateBeatspotSettings(o.beatspot ?? {}, sources.map((s) => s.kunci));
+  if (beatspot.sound && sources.length < 2) bad('Beat Spot butuh minimal satu footage selain sound');
+  return {
+    project_id: o.project_id as string,
+    mode: 'beatspot',
+    sources,
+    preset: 'beatspot',
+    brief: { produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' },
+    ai: false,
+    beatspot,
   };
 }
 
@@ -423,6 +504,7 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ...(input.abaikan_cek_ucapan ? { abaikan_cek_ucapan: true } : {}),
       ...(input.batch ?? {}),
       ...(input.pisah ?? {}),
+      ...(input.beatspot ? { beatspot: input.beatspot } : {}),
     };
     await writeJsonAtomic(path.join(jdir, 'job.json'), job);
     const refs: Record<string, MediaRef> = { ...brandPlaceholders(kit) };

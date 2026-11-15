@@ -56,6 +56,40 @@ if (mode === 'transfer') {
   say('selesai', 100, `siap · ${adegan.length} adegan`);
   process.exit(0);
 }
+if (mode === 'beatspot') {
+  // Beat Spot tahap 1 (contract §16): cuts on the beat, the team's order / exclusions / people kept.
+  const bs = job.beatspot ?? {};
+  if (bs.tagline === 'tolak') {
+    fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'ditolak', alasan: 'tidak ada shot orang yang layak (semua buram/beku/tanpa orang)' }));
+    process.exit(2);
+  }
+  const audio = (p) => /\.(wav|mp3|m4a|aac)$/i.test(p);
+  const sound = bs.sound ?? job.sumber.filter((s) => audio(s.path)).map((s) => s.kunci).find((_, i, a) => a.length === 1) ?? null;
+  const footage = job.sumber.filter((s) => s.kunci !== sound && !audio(s.path)).map((s) => s.kunci.slice(8));
+  const bpm = sound ? 128 : (bs.bpm ?? 120);
+  const so = bs.sumber_orang ?? {};
+  const who = (sid, fid) => (so[sid] ?? so[fid]) === 'kreator' ? 'kreator' : 'umum';
+  const shots = footage.flatMap((f, i) => [0, 1].map((n) => ({ id: `${f}#${String(n).padStart(2, '0')}`, footage: f, dari: n * 1.5, sampai: n * 1.5 + 1.5, orang: 1, framing: 'badan', skor: 0.9 - i * 0.1 - n * 0.05 })));
+  const kecuali = new Set(bs.kecualikan_shot ?? []);
+  const layak = shots.filter((s) => !kecuali.has(s.id));
+  const urut = [...(bs.urutan_shot ?? []).map((id) => layak.find((s) => s.id === id)).filter(Boolean), ...layak.filter((s) => !(bs.urutan_shot ?? []).includes(s.id))];
+  const beat = 60 / bpm;
+  const per = 2 * beat;
+  const potongan = urut.slice(0, 4).map((s, i) => ({ no: i + 1, mulai: Math.round(i * per * 1000) / 1000, durasi: Math.round(per * 1000) / 1000, shot: s.id, footage: s.footage, in: s.dari, skor: s.skor, alasan: 'orang berganti', sumber_orang: who(s.id, s.footage) }));
+  const total = potongan.length * per;
+  const ops = [
+    { op: 'set_canvas', ratio: '9:16' },
+    ...potongan.map((p, i) => ({ op: 'add_clip', track_kind: 'video', media: `$sumber:${p.footage}`, start_ms: Math.round(i * per * 1000), duration_ms: Math.round((i + 1) * per * 1000) - Math.round(i * per * 1000), in_ms: Math.round(p.in * 1000), volume: 0 })),
+    ...(sound ? [{ op: 'add_clip', track_kind: 'music', media: sound, start_ms: 0, duration_ms: Math.round(total * 1000), volume: 1 }] : []),
+  ];
+  say('susun', 70, `${bpm} BPM`);
+  fs.writeFileSync(path.join(out, 'ops.json'), JSON.stringify({ schema: 'ms-ops/1', mode: 'u3', aset_lokal: [], ops }));
+  fs.writeFileSync(path.join(out, 'qc_rencana.json'), JSON.stringify({ butir: [{ butir: 'potong_di_ketukan', lulus: true }, { butir: 'durasi', lulus: false, nilai: Math.round(total * 10) / 10 }] }));
+  fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap', durasi: { mentah: footage.length * 3, akhir: Math.round(total * 100) / 100, target: bs.durasi ?? [15, 20] }, hook: null, audio: { sfx: 0, musik: sound, musik_bpm: bpm }, peringatan: sound ? [] : [{ level: 'warn', jenis: 'ketukan', teks: 'tanpa sound: pola BPM' }], ragu: [], menunggu_u3: [], beatspot: { bpm, sumber_ketukan: sound ? 'sound' : 'bpm', ketukan_per_potong: 2, potongan: potongan.length, end_card_dtk: 0 } }));
+  fs.writeFileSync(path.join(out, 'beatspot.json'), JSON.stringify({ schema: 'beatspot/1', job_id: job.job_id, bpm, sumber_ketukan: sound ? 'sound' : 'bpm', ketukan_per_potong: 2, potongan, durasi: Math.round(total * 100) / 100, end_card_dtk: 0, kandidat: layak.map((s) => ({ ...s, dipakai: potongan.some((p) => p.shot === s.id), sumber_orang: who(s.id, s.footage) })), dibuang: [...kecuali].map((id) => ({ id, alasan: 'dikecualikan tim' })) }));
+  say('selesai', 100, `${potongan.length} potongan · ${bpm} BPM`);
+  process.exit(0);
+}
 if (mode === 'pisah') {
   // Pisah Audio + Shot Library: uploads in <job>/masuk/ → konten/1-upload + konten/2-dipisah/<batch>.
   if (job.batch === 'gagal') {
