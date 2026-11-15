@@ -31,8 +31,8 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 | R14b/R15b/R6b | Antrean upload, Verifikasi backup, sinyal riwayat dari app | DONE (audit venus lulus) | ANTREAN 4/4, BACKUP 6/6, server r6 3/3 | ucok | f5ab1f9, d5cbb70, 2a8fa43 |
 | R14c | Prioritas rendah semua proses berat (mesin, render, pratinjau -threads 2, analisis) | DONE (audit venus lulus; R14 ikut lulus) | prio 2/2, regresi 64 tes | ucok | f66f8e7 |
 | R19 | Tombol "Kirim ke PIC" di Editor + arahan setelah render + ganti nama tombol tabel Batch (Pilih untuk render / Buang) | DONE (audit venus lulus) | server r19 2/2, R19 UI 7/7 | ucok | c93fa20 |
-| R20 | Rilis terpisah untuk mesin (engine) | BERJALAN (owner: "Ya, pisahkan"); rancangan sukma disetujui; mesin inti venus DONE da0fb99; batch yuki, app ucok, skrip sukma berjalan | — | sukma | — |
-| R21 | Hapus fitur Setujui PIC dari UI (menu, Kirim ke PIC, arahan); menu jadi Buat video · Edit · Hasil | BERJALAN (owner: "hapus aja broo") | — | ucok | — |
+| R20 | Rilis terpisah untuk mesin (engine) | BERJALAN (owner: "Ya, pisahkan"); rancangan sukma disetujui; kode DONE: venus da0fb99, yuki 9c5259a, ucok dc897a6 (semua lulus audit); skrip rilis sukma berjalan | — | sukma | — |
+| R21 | Hapus fitur Setujui PIC dari UI (menu, Kirim ke PIC, arahan); menu jadi Buat video · Edit · Hasil | DONE (audit venus lulus) | 479 tes unit, R21 UI 8/8 | ucok | b1f9ee3 |
 | R15 | Backup mingguan | skrip DONE; jadwal TIDAK dipasang (keputusan owner) | backup 1,84 GB 64 dtk, pulih 74/74 proyek | sukma | 6bcf6c0 |
 
 ### Audit checkpoint putaran R (R1–R7)
