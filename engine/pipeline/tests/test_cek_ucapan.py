@@ -55,6 +55,22 @@ class CekUcapan(unittest.TestCase):
         t = "Bahannya adem banget nggak nerawang ukurannya lengkap cek keranjang kuning ya terima kasih"
         self.assertEqual(cek_ucapan(tr(t, 6))["status"], "ok")
 
+    def test_lirik_campur_g1_peringatan_lirik(self):
+        # Klip uji audit 14 Nov (lagu campur Indonesia-Inggris), dulu lolos "ok" di 32 %.
+        t = ("Hi, I'm a love, senyum ya, just calling sick to fit, now is your cinta -cinta, I know that one day, "
+             "I will ask you to be mine. Boy, jangan malu -malu, boy, kamu itu lucu, boy, don't waste my time, "
+             "so please say it. Now, kamu mau apa, sebab aku bisa, just look in my eyes.")
+        h = cek_ucapan(tr(t, 24))
+        self.assertEqual((h["status"], h.get("jenis")), ("peringatan", "lirik"))
+
+    def test_lirik_bahasa_lain_peringatan(self):
+        t = "Minuto pa que esta en la casa DJ Angelo Ella conmigo anda toda la noche bailando conmigo"
+        self.assertEqual(cek_ucapan(tr(t, 8)).get("jenis"), "lirik")
+
+    def test_review_fashion_campur_inggris_ok(self):
+        t = "Outfit hari ini look nya simple tapi tetap stylish, size M fit di aku, bahannya adem banget ya"
+        self.assertEqual(cek_ucapan(tr(t, 6))["status"], "ok")
+
 
 if __name__ == "__main__":
     unittest.main()
