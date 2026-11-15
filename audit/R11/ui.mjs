@@ -76,10 +76,10 @@ try {
 
   await first.getByRole('button', { name: /Salin prompt gambar/ }).click();
   await page.getByRole('status').filter({ hasText: 'disalin' }).waitFor();
-  const clip1 = await page.evaluate(() => navigator.clipboard.readText());
+  const clip1 = await page.evaluate(() => window.navigator.clipboard.readText());
   await first.getByRole('button', { name: /Salin prompt gerak/ }).click();
-  await until(async () => (await page.evaluate(() => navigator.clipboard.readText())) !== clip1);
-  const clip2 = await page.evaluate(() => navigator.clipboard.readText());
+  await until(async () => (await page.evaluate(() => window.navigator.clipboard.readText())) !== clip1);
+  const clip2 = await page.evaluate(() => window.navigator.clipboard.readText());
   check('R11-04 "Salin prompt gambar" / "Salin prompt gerak" menyalin prompt (produk Brand Kit + keterangan)', clip1.includes('Celana Korset') && clip1.includes('hitam, high waist') && /Gerakkan gambar ini selama 1\.2 detik/.test(clip2), `${clip1.slice(0, 60)}… | ${clip2.slice(0, 50)}…`);
 
   const dl = page.waitForEvent('download');
