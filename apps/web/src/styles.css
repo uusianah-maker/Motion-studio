@@ -114,6 +114,10 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; 
 .shotGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
 .shotCard { display: grid; gap: 4px; align-content: start; padding: 6px; border: 1px solid var(--line, rgba(127,127,127,0.25)); border-radius: 8px; min-width: 0; }
 .shotCard.excluded { opacity: 0.5; border-style: dashed; }
+.transferGrid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.transferImg { width: 100%; max-height: 420px; object-fit: contain; border-radius: 6px; background: rgba(127,127,127,0.18); display: block; min-height: 120px; }
+a.btn { text-decoration: none; }
+.transferPrompt { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .shotCard .shotText { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .inspGrid .buangSet { border: 0; padding: 0; margin: 0; display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px 14px; }
 .inspGrid .buangSet label.inline { flex-direction: row; align-items: center; }

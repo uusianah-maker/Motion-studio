@@ -37,6 +37,25 @@ const what = job.brief.catatan;
 for (const s of job.sumber) if (!fs.existsSync(s.path)) process.exit(1);
 
 say('cek_input', 5, 'ok');
+if (mode === 'transfer') {
+  // Motion Transfer tahap 1 (contract §15): scenes + best frame + copy-ready prompts.
+  if (job.brief.deskripsi_produk === 'tolak') {
+    fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'ditolak', alasan: 'tidak ada gambar video di file' }));
+    process.exit(2);
+  }
+  fs.mkdirSync(path.join(out, 'adegan'), { recursive: true });
+  const produk = job.brief.produk || brand.produk?.[0]?.nama || 'produk kami';
+  const batas = [[0, 1.2], [1.2, 2.5], [2.5, 4.1], [4.1, 6]];
+  const adegan = batas.map(([a, b], i) => {
+    const nama = `adegan/${String(i + 1).padStart(2, '0')}.jpg`;
+    fs.writeFileSync(path.join(out, nama), JPEG);
+    say('gambar', 20 + Math.round((75 * (i + 1)) / batas.length), `adegan ${i + 1}/${batas.length}`);
+    return { no: i + 1, dari: a, sampai: b, durasi: Math.round((b - a) * 100) / 100, detik_gambar: Math.round((a + (b - a) / 2) * 100) / 100, gambar: nama, prompt_gambar: `Ganti produk di gambar ini dengan ${produk}.${job.brief.deskripsi_produk ? ` Produk: ${job.brief.deskripsi_produk}.` : ''} Rasio 9:16.`, prompt_gerak: `Gerakkan gambar ini selama ${(b - a).toFixed(1)} detik meniru gerakan adegan ${i + 1}/${batas.length} video referensi.`, sumber: 'aturan' };
+  });
+  fs.writeFileSync(path.join(out, 'transfer.json'), JSON.stringify({ schema: 'engine-transfer/1', status: 'siap', referensi: path.basename(job.sumber[0].path), durasi: 6, produk, adegan, catatan: 'Tahap 2-3 masih manual.' }));
+  say('selesai', 100, `siap · ${adegan.length} adegan`);
+  process.exit(0);
+}
 if (mode === 'pisah') {
   // Pisah Audio + Shot Library: uploads in <job>/masuk/ → konten/1-upload + konten/2-dipisah/<batch>.
   if (job.batch === 'gagal') {

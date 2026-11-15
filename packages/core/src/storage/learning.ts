@@ -42,7 +42,9 @@ export async function engineOrigin(ws: Workspace, projectId: string): Promise<En
 
 export type LearningNote =
   | { jenis: 'revisi_pic'; revision: number; note: string; by: string | null }
-  | { jenis: 'koreksi'; bagian: Bagian; op: string; clip_id: string; track: string; sebelum: unknown; sesudah: unknown; asal: EngineOrigin };
+  | { jenis: 'koreksi'; bagian: Bagian; op: string; clip_id: string; track: string; sebelum: unknown; sesudah: unknown; asal: EngineOrigin }
+  /** Motion Transfer: the team deleted / merged the engine's scenes (or went back to them). */
+  | { jenis: 'transfer_tim'; job_id: string; aksi: 'hapus' | 'gabung' | 'pulihkan'; adegan: string | null; sisa: number; dari_mesin: number; by: string | null };
 
 /** What part of the draft an editor changed (PC-R6, owner 15 Nov: "catat semua koreksi"). */
 export type Bagian = 'kata' | 'hook' | 'teks' | 'potongan' | 'posisi' | 'gaya' | 'audio' | 'gambar' | 'tambah' | 'lainnya';

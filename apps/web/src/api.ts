@@ -556,7 +556,7 @@ export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal'
 export interface EngineJob {
   job_id: string;
   project_id: string;
-  mode: 'generate' | 'batch' | 'ulang' | 'pisah';
+  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer';
   state: EngineState;
   tahap: string;
   persen: number;
@@ -582,6 +582,36 @@ export interface EngineStart {
   ai: boolean;
   mode_ops?: 'kompat' | 'u3';
   batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[]; vo_batch?: string; izinkan_musik_tanpa_lisensi?: boolean; buang_otomatis?: string[] };
+}
+/** R11 Motion Transfer: one reference video + a Brand Kit product → scenes + prompts to copy. */
+export interface EngineTransferStart {
+  mode: 'transfer';
+  sources: [{ kunci: '$sumber'; ref: { media_id: string; version_id: string } }];
+  produk?: string;
+  deskripsi_produk?: string;
+}
+export interface TransferScene {
+  /** Engine scene numbers ("3" or "3+4"). */
+  id: string;
+  nos: number[];
+  dari: number;
+  sampai: number;
+  durasi: number;
+  gambar_no: number;
+  prompt_gambar: string;
+  prompt_gerak: string;
+  sumber: 'mesin' | 'tim';
+}
+export interface TransferView {
+  job_id: string;
+  referensi: string;
+  durasi: number;
+  produk: string;
+  catatan: string;
+  adegan: TransferScene[];
+  jumlah_mesin: number;
+  diubah: boolean;
+  versi: number;
 }
 /** Pisah Audio + Shot Library: the project's uploaded videos → one batch in the engine. */
 export interface EnginePisahStart {
@@ -877,6 +907,22 @@ export function createApi(token: string | null, base = '') {
       call<{ batch: BatchTable; decisions: Record<string, BatchDecision> }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch`),
     engineDecide: (id: string, jobId: string, rows: { varian: string; status: BatchRowStatus }[]) =>
       call<{ decisions: Record<string, BatchDecision> }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/batch/decide`, { json: { rows } }).then((r) => r.decisions),
+    // R11 Motion Transfer
+    engineTransfer: (id: string, body: EngineTransferStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
+    transfer: (id: string, jobId: string) => call<{ transfer: TransferView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/transfer`).then((r) => r.transfer),
+    transferEdit: (id: string, jobId: string, aksi: 'hapus' | 'gabung' | 'pulihkan', expected_versi: number, sceneId?: string) =>
+      call<{ transfer: TransferView }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/transfer/edit`, { json: { aksi, expected_versi, ...(sceneId ? { id: sceneId } : {}) } }).then((r) => r.transfer),
+    /** A scene frame as a Blob (an <img> cannot send the session header). */
+    transferImage: async (id: string, jobId: string, no: number): Promise<Blob> => {
+      let res: Response;
+      try {
+        res = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/transfer/gambar/${no}`, { headers: authHeaders() });
+      } catch {
+        throw new ApiError(0, 'NETWORK', 'Server tidak bisa dihubungi. Pastikan server masih jalan.');
+      }
+      if (!res.ok) throw new ApiError(res.status, 'NOT_FOUND', 'Gambar adegan tidak bisa dimuat');
+      return res.blob();
+    },
     // Batch Remix library (Pisah Audio, batch list, Shot Library)
     enginePisah: (id: string, body: EnginePisahStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
     enginePisahResult: (id: string, jobId: string) => call<{ pisah: PisahResult }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/pisah`).then((r) => r.pisah),

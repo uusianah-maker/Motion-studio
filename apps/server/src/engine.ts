@@ -7,6 +7,7 @@ import {
   type Workspace,
   audit,
   continueRefusedJob,
+  editTransfer,
   isBatchName,
   isJobId,
   listEngineBatches,
@@ -23,6 +24,8 @@ import {
   readShotExclusions,
   readShotLibrary,
   readShotThumbs,
+  readTransferImage,
+  readTransferView,
   runEngineJob,
   setShotExclusions,
   settleOrphanJob,
@@ -31,6 +34,8 @@ import {
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { onlyKeys } from './routes.js';
+import { sendBytes } from './stream.js';
+import { Readable } from 'node:stream';
 
 /**
  * U6 engine runner routes (KONTRAK-ENGINE v0.3). The engine (Python, `D:\VIBECODING\remotion`)
@@ -236,6 +241,7 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
         const s = await readEngineStatus(ws, params.project_id!, job);
         if (s.state !== 'siap') throw new ApiError(409, 'NOT_READY', 'Rencana mesin belum siap');
         if (s.mode === 'pisah') throw new ApiError(400, 'BAD_REQUEST', 'Pisah Audio tidak punya rencana edit');
+        if (s.mode === 'transfer') throw new ApiError(400, 'BAD_REQUEST', 'Motion Transfer tidak punya rencana edit');
         const variant = body.variant === undefined ? undefined : typeof body.variant === 'string' ? body.variant : undefined;
         const p = await loadEnginePlan(ws, opts.config, params.project_id!, job, variant);
         const r = p.rencana as { hook?: { teks?: unknown }; durasi?: { akhir?: unknown }; peringatan?: unknown; ragu?: unknown; menunggu_u3?: unknown };
@@ -257,6 +263,34 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
         });
         await audit(ws, { op: 'engine.plan', actor, outcome: 'ok', project_id: params.project_id!, job_id: job, plan_id: out.plan.plan_id, imported: p.imported.length });
         return { ...out, rencana: p.rencana, qc: p.qc };
+      },
+    },
+    {
+      // R11 Motion Transfer: the scenes (engine split + the team's deletes / merges).
+      method: 'GET',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/transfer',
+      handle: async ({ params }) => ({ transfer: await readTransferView(ws, params.project_id!, jobParam(params.job_id)) }),
+    },
+    {
+      // Hybrid: the team deletes / merges scenes or goes back to the engine's split.
+      method: 'POST',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/transfer/edit',
+      handle: async ({ req, params, actor, user }) => {
+        if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh mengubah adegan');
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['aksi', 'id', 'expected_versi']);
+        return { transfer: await editTransfer(ws, { project_id: params.project_id!, job_id: jobParam(params.job_id), aksi: body.aksi, id: body.id, expected_versi: body.expected_versi, by: user?.name ?? null }) };
+      },
+    },
+    {
+      // One scene frame (the page fetches it with the session header, then shows / downloads it).
+      method: 'GET',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/transfer/gambar/:no',
+      handle: async ({ req, res, params }) => {
+        const no = /^\d{1,4}$/.test(params.no ?? '') ? Number(params.no) : -1;
+        const img = await readTransferImage(ws, params.project_id!, jobParam(params.job_id), no);
+        await sendBytes(req, res, { size: img.bytes.length, mime: img.mime, open: async (r) => Readable.from(r ? img.bytes.subarray(r.start, r.end + 1) : img.bytes) });
+        return undefined;
       },
     },
     {

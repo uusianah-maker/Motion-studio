@@ -154,3 +154,4 @@ export {
   type BrandContext,
 } from './storage/copilot.js';
 export { type Workspace, type WorkspaceOptions, createProject, initWorkspace, listProjectIds, openWorkspace, readProject } from './storage/workspace.js';
+export { MAX_TRANSFER_SCENES, type TransferScene, type TransferView, editTransfer, readTransferImage, readTransferView } from './storage/transfer.js';

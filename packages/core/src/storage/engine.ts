@@ -63,7 +63,7 @@ export function engineConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Engin
   };
 }
 
-export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah';
+export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer';
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
 
 export interface EngineStatus {
@@ -91,11 +91,13 @@ export interface EngineBrief {
   placement: 'tiktok' | 'instagram' | 'shopee' | 'youtube';
   catatan: string;
   area_produk?: 'bawah' | 'atas' | 'penuh';
+  /** Motion Transfer (contract §15): extra words about the product for the image prompt. */
+  deskripsi_produk?: string;
 }
 
 export interface EngineJobInput {
   project_id: string;
-  mode: 'generate' | 'batch' | 'pisah';
+  mode: 'generate' | 'batch' | 'pisah' | 'transfer';
   /** `$sumber` (one video) or `$sumber:<id>` (several). */
   sources: { kunci: string; ref: MediaRef }[];
   preset: string;
@@ -142,6 +144,7 @@ const PLACEMENTS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
 export function validateEngineJob(x: unknown): EngineJobInput {
   const o = (x ?? {}) as Record<string, unknown>;
   if (o.mode === 'pisah') return validatePisahJob(o);
+  if (o.mode === 'transfer') return validateTransferJob(o);
   const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
@@ -251,11 +254,40 @@ function validatePisahJob(o: Record<string, unknown>): EngineJobInput {
   };
 }
 
+/**
+ * `engine transfer` (Motion Transfer tahap 1, contract §15): one reference video (any ratio, sound
+ * optional) → scenes + best frame + copy-ready prompts. Product = a Brand Kit product name (the
+ * engine falls back to the kit's first product); no AI API is called.
+ */
+function validateTransferJob(o: Record<string, unknown>): EngineJobInput {
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'produk', 'deskripsi_produk'].includes(k));
+  if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
+  if (!isSafeId(o.project_id)) bad('project_id tidak valid');
+  if (!Array.isArray(o.sources) || o.sources.length !== 1) bad('Motion Transfer butuh tepat satu video referensi');
+  const so = ((o.sources as unknown[])[0] ?? {}) as Record<string, unknown>;
+  const r = (so.ref ?? {}) as Record<string, unknown>;
+  if (so.kunci !== '$sumber') bad('Motion Transfer: kunci sumber harus $sumber');
+  if (!isSafeId(r.media_id) || !isSafeId(r.version_id)) bad('sources[0].ref tidak valid');
+  const produk = o.produk === undefined ? '' : str(o.produk, 'produk', 120);
+  const deskripsi = o.deskripsi_produk === undefined ? '' : str(o.deskripsi_produk, 'deskripsi produk', 500);
+  return {
+    project_id: o.project_id as string,
+    mode: 'transfer',
+    sources: [{ kunci: '$sumber', ref: { media_id: r.media_id as string, version_id: r.version_id as string } }],
+    preset: 'transfer',
+    brief: { produk, varian: '', harga: '', placement: 'tiktok', catatan: '', ...(deskripsi ? { deskripsi_produk: deskripsi } : {}) },
+    ai: false,
+  };
+}
+
 // ------------------------------------------------------------------ job folder
 
 export const engineRel = (projectId: string, jobId?: string) => `${projectRel(projectId)}/${ENGINE_DIR}${jobId ? `/${jobId}` : ''}`;
 const JOB_ID = /^[A-Z0-9]{2,5}-\d{8}-\d{3}$/;
 export const isJobId = (x: unknown): x is string => typeof x === 'string' && JOB_ID.test(x);
+
+/** Absolute folder of one engine job (ids checked, inside the workspace). */
+export const engineJobDir = (ws: Workspace, projectId: string, jobId: string): string => jobAbs(ws, projectId, jobId);
 
 function jobAbs(ws: Workspace, projectId: string, jobId?: string): string {
   if (!isSafeId(projectId)) bad('project_id tidak valid');
@@ -534,7 +566,7 @@ export async function runEngineJob(
   // The log tail can hold local paths (D:\...): never shown to the browser as is.
   const tail = scrubPaths(log.trim().split('\n').slice(-3).join(' · ')).slice(0, 300);
   if (code === 0) {
-    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : 'ops.json';
+    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : 'ops.json';
     const okFiles = await fsp.stat(path.join(jdir, 'out', need)).catch(() => null);
     s = okFiles
       ? { ...s, state: 'siap', tahap: 'selesai', persen: 100, ...(rencana?.status === 'perlu_keputusan' ? { pesan: 'Perlu keputusan tim (lihat kartu rencana)' } : {}) }

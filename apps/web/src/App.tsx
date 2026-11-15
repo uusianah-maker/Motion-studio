@@ -7,6 +7,7 @@ import { BrandView } from './views/BrandView';
 import { EditorView } from './views/EditorView';
 import { GenerateView } from './views/GenerateView';
 import { HasilView } from './views/HasilView';
+import { MotionTransferView } from './views/MotionTransferView';
 import { PersetujuanView } from './views/PersetujuanView';
 import { MediaView } from './views/MediaView';
 import { StorageView } from './views/StorageView';
@@ -15,13 +16,14 @@ import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 import { Logo } from './Logo';
 
-export type View = 'generate' | 'batch' | 'shots' | 'editor' | 'hasil' | 'persetujuan' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
+export type View = 'generate' | 'batch' | 'shots' | 'transfer' | 'editor' | 'hasil' | 'persetujuan' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
 
 // PC-16: one app — Generate Otomatis, Batch Remix, Editor (+ library / admin pages).
 const NAV: { id: View; sym: string; label: string }[] = [
   { id: 'generate', sym: '⚡', label: 'Generate' },
   { id: 'batch', sym: '▦', label: 'Batch' },
   { id: 'shots', sym: '▣', label: 'Shot' },
+  { id: 'transfer', sym: '⇄', label: 'Transfer' },
   { id: 'editor', sym: '▤', label: 'Editor' },
   { id: 'hasil', sym: '⤓', label: 'Hasil' },
   { id: 'persetujuan', sym: '✓', label: 'Setujui' },
@@ -145,6 +147,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} />)}
         {keep('batch', <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} active={view === 'batch'} />)}
         {keep('shots', <ShotLibraryView api={api} role={role} active={view === 'shots'} />)}
+        {keep('transfer', <MotionTransferView api={api} role={role} projects={projects ?? []} active={view === 'transfer'} />)}
         {keep('persetujuan', <PersetujuanView api={api} role={role} active={view === 'persetujuan'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('hasil', <HasilView api={api} active={view === 'hasil'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('media', <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />)}
