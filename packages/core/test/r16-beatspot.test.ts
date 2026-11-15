@@ -96,7 +96,9 @@ describe('R16 Beat Spot', () => {
     const s = await runEngineJob(ws, cfg, 'b', prepared.job_id);
     expect([s.mode, s.state]).toEqual(['beatspot', 'siap']);
     const job = JSON.parse(await fsp.readFile(path.join(engineJobDir(ws, 'b', s.job_id), 'job.json'), 'utf8'));
-    expect(job).toMatchObject({ mode: 'beatspot', beatspot: { sound: '$sumber:sound', durasi: [15, 20], ketukan_per_potong: 'auto' } });
+    expect(job).toMatchObject({ mode: 'beatspot', beatspot: { sound: '$sumber:sound', durasi: [15, 20] } });
+    // R18 §17.5: "auto" is left out of job.json so a chosen preset's beat defaults can apply.
+    expect(job.beatspot).not.toHaveProperty('ketukan_per_potong');
     expect(job.sumber).toHaveLength(3);
 
     const v = await readBeatspotView(ws, 'b', s.job_id);

@@ -97,12 +97,20 @@ export interface BrandPreset {
   turunan: string[];
   babak: { dari: number; sampai: number; isi: string }[];
   ritme: string;
-  caption: { mode: 'per_kata' | 'kalimat'; maks_kata: number; pop_ms: number };
-  hook: { teks: boolean; maks_kata: number; dari_ucapan: boolean };
+  caption: { mode: 'per_kata' | 'kalimat'; maks_kata: number; pop_ms: number; y?: number; warna?: string; outline?: string; kotak?: boolean };
+  hook: { teks: boolean; maks_kata: number; dari_ucapan: boolean; y?: number; ukuran?: number; baris?: number; warna?: string; dari_kalimat_kuat?: boolean };
   efek: { wajib: string[]; boleh: string[]; jangan: string[]; maks: number; jarak_dtk: number };
   audio: { suara_asli: boolean; sfx: string; musik: string; lufs: number };
   qc: string[];
+  // R18 (KONTRAK-ENGINE §17.1, from Hanagaki's study). All optional: absent = behaviour as before.
+  jenis?: (typeof PRESET_JENIS)[number];
+  shot?: { target_dtk?: number; maks_dtk?: number };
+  transisi?: { ganti_orang: 'potong' | 'flash' };
+  penutup?: { end_card: boolean };
+  beat?: { tiap_ketukan?: 1 | 2 | 4; bpm?: number };
 }
+
+export const PRESET_JENIS = ['street_interview', 'test_produk', 'harian_studio', 'beat_spot', 'lain'] as const;
 
 export interface BrandKit {
   schema_version: 2;
@@ -141,6 +149,10 @@ export interface BrandKit {
   cta: Partial<Record<Platform, string>>;
   cta_wajib: string;
   disclaimer: { teks: string; kapan: (typeof DISCLAIMER_WHEN)[number] } | null;
+  /** R18 §17.3: end card / Beat Spot line, e.g. "CUCI · JEMUR · LANGSUNG PAKAI". */
+  tagline: string;
+  /** R18 §17.3: small text watermark (fills the gaps between hook / CTA / disclaimer). */
+  watermark: { teks: string; y: number; lebar: number; opasitas: number } | null;
   kosakata: string[];
   kamus: { salah: string; benar: string }[];
   kata_kunci: string[];
@@ -185,6 +197,8 @@ const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
   cta: {},
   cta_wajib: '',
   disclaimer: null,
+  tagline: '',
+  watermark: null,
   kosakata: [],
   kamus: [],
   kata_kunci: [],
@@ -298,7 +312,7 @@ function validateAsset(x: unknown, i: number): BrandAsset {
 
 function validatePreset(x: unknown, i: number): BrandPreset {
   const w = `preset ${i + 1}`;
-  const o = obj(x, w, ['id', 'nama', 'tujuan', 'placement', 'durasi', 'turunan', 'babak', 'ritme', 'caption', 'hook', 'efek', 'audio', 'qc']);
+  const o = obj(x, w, ['id', 'nama', 'tujuan', 'placement', 'durasi', 'turunan', 'babak', 'ritme', 'caption', 'hook', 'efek', 'audio', 'qc', 'jenis', 'shot', 'transisi', 'penutup', 'beat']);
   const id = typeof o.id === 'string' && SLUG.test(o.id) ? o.id : bad(`${w}: id huruf kecil/angka/strip, mis. "aysilla-konversi"`);
   const d = obj(o.durasi ?? {}, `${w} durasi`, ['min', 'target', 'max']);
   const durasi = { min: num(d.min, `${w} durasi min`, 1, 600, 15), target: num(d.target, `${w} durasi target`, 1, 600, 20), max: num(d.max, `${w} durasi maks`, 1, 600, 30) };
@@ -308,8 +322,30 @@ function validatePreset(x: unknown, i: number): BrandPreset {
   for (const t of turunan) if (t !== 'cover' && !CANVAS_RATIOS.includes(t as never)) bad(`${w}: turunan "${t}" harus ${CANVAS_RATIOS.join(', ')} atau cover`);
   const babak = o.babak === undefined ? [] : Array.isArray(o.babak) ? o.babak : bad(`${w} babak harus daftar`);
   if (babak.length > 12) bad(`${w}: babak maksimal 12`);
-  const c = obj(o.caption ?? {}, `${w} caption`, ['mode', 'maks_kata', 'pop_ms']);
-  const h = obj(o.hook ?? {}, `${w} hook`, ['teks', 'maks_kata', 'dari_ucapan']);
+  const c = obj(o.caption ?? {}, `${w} caption`, ['mode', 'maks_kata', 'pop_ms', 'y', 'warna', 'outline', 'kotak']);
+  const h = obj(o.hook ?? {}, `${w} hook`, ['teks', 'maks_kata', 'dari_ucapan', 'y', 'ukuran', 'baris', 'warna', 'dari_kalimat_kuat']);
+  // R18 §17.1: optional style fields — only written when set (absent = engine behaviour as before).
+  const opt = <T>(v: unknown, f: () => T): T | undefined => (v === undefined || v === null || v === '' ? undefined : f());
+  const some = <T extends object>(x: T): T | undefined => (Object.values(x).some((v) => v !== undefined) ? (Object.fromEntries(Object.entries(x).filter(([, v]) => v !== undefined)) as T) : undefined);
+  const sh = o.shot === undefined || o.shot === null ? {} : obj(o.shot, `${w} shot`, ['target_dtk', 'maks_dtk']);
+  const tr = o.transisi === undefined || o.transisi === null ? {} : obj(o.transisi, `${w} transisi`, ['ganti_orang']);
+  const pe = o.penutup === undefined || o.penutup === null ? {} : obj(o.penutup, `${w} penutup`, ['end_card']);
+  const be = o.beat === undefined || o.beat === null ? {} : obj(o.beat, `${w} beat`, ['tiap_ketukan', 'bpm']);
+  const shot = some({ target_dtk: opt(sh.target_dtk, () => num(sh.target_dtk, `${w} shot target`, 0.3, 30)), maks_dtk: opt(sh.maks_dtk, () => num(sh.maks_dtk, `${w} shot maks`, 0.5, 60)) });
+  const ganti = opt(tr.ganti_orang, () => oneOf(tr.ganti_orang, `${w} transisi ganti orang`, ['potong', 'flash'] as const, 'potong'));
+  const endCard = opt(pe.end_card, () => bool(pe.end_card, `${w} end card`, false));
+  const tiap = opt(be.tiap_ketukan, () => (be.tiap_ketukan === 1 || be.tiap_ketukan === 2 || be.tiap_ketukan === 4 ? be.tiap_ketukan : bad(`${w} beat tiap ketukan harus 1 | 2 | 4`)));
+  const beat = some({ tiap_ketukan: tiap as 1 | 2 | 4 | undefined, bpm: opt(be.bpm, () => num(be.bpm, `${w} BPM`, 60, 200)) });
+  const capX = some({ y: opt(c.y, () => num(c.y, `${w} posisi caption`, 0, 1)), warna: opt(c.warna, () => hex(c.warna, `${w} warna caption`)), outline: opt(c.outline, () => hex(c.outline, `${w} outline caption`)), kotak: opt(c.kotak, () => bool(c.kotak, `${w} kotak caption`, false)) }) ?? {};
+  const hookX =
+    some({
+      y: opt(h.y, () => num(h.y, `${w} posisi hook`, 0, 1)),
+      ukuran: opt(h.ukuran, () => num(h.ukuran, `${w} ukuran hook`, 1, 8)),
+      baris: opt(h.baris, () => (h.baris === 1 || h.baris === 2 || h.baris === 3 ? h.baris : bad(`${w} baris hook harus 1–3`))) as number | undefined,
+      warna: opt(h.warna, () => hex(h.warna, `${w} warna hook`)),
+      dari_kalimat_kuat: opt(h.dari_kalimat_kuat, () => bool(h.dari_kalimat_kuat, `${w} hook dari kalimat kuat`, false)),
+    }) ?? {};
+  const jenis = opt(o.jenis, () => oneOf(o.jenis, `${w} jenis`, PRESET_JENIS, 'lain'));
   const e = obj(o.efek ?? {}, `${w} efek`, ['wajib', 'boleh', 'jangan', 'maks', 'jarak_dtk']);
   const a = obj(o.audio ?? {}, `${w} audio`, ['suara_asli', 'sfx', 'musik', 'lufs']);
   return {
@@ -327,12 +363,31 @@ function validatePreset(x: unknown, i: number): BrandPreset {
       return { dari, sampai, isi: text(bo.isi, `${w} babak ${j + 1} isi`, 80, false) };
     }),
     ritme: text(o.ritme, `${w} ritme`, 300),
-    caption: { mode: oneOf(c.mode, `${w} caption mode`, ['per_kata', 'kalimat'] as const, 'per_kata'), maks_kata: num(c.maks_kata, `${w} caption maks kata`, 1, 12, 3), pop_ms: num(c.pop_ms, `${w} caption pop`, 0, 1000, 100) },
-    hook: { teks: bool(h.teks, `${w} hook teks`, true), maks_kata: num(h.maks_kata, `${w} hook maks kata`, 1, 20, 6), dari_ucapan: bool(h.dari_ucapan, `${w} hook dari ucapan`, true) },
+    caption: { mode: oneOf(c.mode, `${w} caption mode`, ['per_kata', 'kalimat'] as const, 'per_kata'), maks_kata: num(c.maks_kata, `${w} caption maks kata`, 1, 12, 3), pop_ms: num(c.pop_ms, `${w} caption pop`, 0, 1000, 100), ...capX },
+    hook: { teks: bool(h.teks, `${w} hook teks`, true), maks_kata: num(h.maks_kata, `${w} hook maks kata`, 1, 20, 6), dari_ucapan: bool(h.dari_ucapan, `${w} hook dari ucapan`, true), ...hookX },
     efek: { wajib: list(e.wajib, `${w} efek wajib`, 20, 40), boleh: list(e.boleh, `${w} efek boleh`, 20, 40), jangan: list(e.jangan, `${w} efek jangan`, 20, 40), maks: num(e.maks, `${w} efek maks`, 0, 30, 3), jarak_dtk: num(e.jarak_dtk, `${w} jarak efek`, 0, 60, 4) },
     audio: { suara_asli: bool(a.suara_asli, `${w} suara asli`, true), sfx: text(a.sfx, `${w} sfx`, 200), musik: text(a.musik, `${w} musik`, 200), lufs: num(a.lufs, `${w} LUFS`, -30, -6, -14) },
     qc: list(o.qc, `${w} qc`, 30, 120),
+    ...(jenis ? { jenis } : {}),
+    ...(shot ? { shot } : {}),
+    ...(ganti ? { transisi: { ganti_orang: ganti } } : {}),
+    ...(endCard !== undefined ? { penutup: { end_card: endCard } } : {}),
+    ...(beat ? { beat } : {}),
   };
+}
+
+/**
+ * R18 §17.4: the four example presets learnt from Aysilla's winning videos (Hanagaki's study).
+ * "Isi contoh preset Aysilla" adds the ones a brand does not have yet (never overwrites).
+ */
+export function examplePresets(): BrandPreset[] {
+  const raw = [
+    { id: 'aysilla-interview', nama: 'Aysilla · Street interview', tujuan: 'Tanya orang di jalan, potong cepat antar narasumber', jenis: 'street_interview', durasi: { min: 40, target: 48, max: 55 }, caption: { y: 0.76, warna: '#f5efa0', maks_kata: 4 }, hook: { y: 0.18, ukuran: 4.5 }, shot: { target_dtk: 1.9, maks_dtk: 3.5 }, transisi: { ganti_orang: 'flash' } },
+    { id: 'aysilla-test-produk', nama: 'Aysilla · Test produk', tujuan: 'Uji / demo produk di depan kamera', jenis: 'test_produk', durasi: { min: 15, target: 25, max: 35 }, caption: { y: 0.45 }, hook: { baris: 2 }, shot: { target_dtk: 1.6 } },
+    { id: 'aysilla-harian', nama: 'Aysilla · Harian studio', tujuan: 'Konten harian dari studio, pendek', jenis: 'harian_studio', durasi: { min: 13, target: 15, max: 18 }, hook: { y: 0.54, ukuran: 3.4, baris: 2, warna: '#ffffff' }, shot: { target_dtk: 1.2, maks_dtk: 3.5 } },
+    { id: 'aysilla-beatspot', nama: 'Aysilla · Beat Spot', tujuan: 'Awareness: orang memakai produk, potong di ketukan (hanya watermark)', jenis: 'beat_spot', durasi: { min: 15, target: 16, max: 18 }, beat: { tiap_ketukan: 4, bpm: 120 } },
+  ];
+  return raw.map(validatePreset);
 }
 
 const INPUT_KEYS = ['name', 'kode', ...Object.keys(EMPTY_FIELDS)] as const;
@@ -374,6 +429,12 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     const t = text(d.teks, 'disclaimer', 160);
     disclaimer = t ? { teks: t, kapan: oneOf(d.kapan, 'kapan disclaimer', DISCLAIMER_WHEN, 'selalu') } : null;
   }
+  let watermark: BrandKitInput['watermark'] = null;
+  if (o.watermark !== undefined && o.watermark !== null) {
+    const wm = obj(o.watermark, 'watermark', ['teks', 'y', 'lebar', 'opasitas']);
+    const t = text(wm.teks, 'teks watermark', 60);
+    watermark = t ? { teks: t, y: num(wm.y, 'posisi watermark', 0, 1, 0.92), lebar: num(wm.lebar, 'lebar watermark', 0.05, 1, 0.4), opasitas: num(wm.opasitas, 'opasitas watermark', 0.05, 1, 0.6) } : null;
+  }
   const areas = o.area_bebas_teks === undefined ? [] : Array.isArray(o.area_bebas_teks) ? [...new Set(o.area_bebas_teks as unknown[])] : bad('area bebas teks harus daftar');
   const assets = o.aset === undefined ? [] : Array.isArray(o.aset) ? o.aset : bad('aset harus daftar');
   if (assets.length > MAX_BRAND_ASSETS) bad(`aset maksimal ${MAX_BRAND_ASSETS}`);
@@ -412,6 +473,8 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     cta: perPlatform(o.cta, 'CTA', 120),
     cta_wajib: text(o.cta_wajib, 'CTA wajib', 200),
     disclaimer,
+    tagline: text(o.tagline, 'tagline', 120),
+    watermark,
     kosakata: list(o.kosakata, 'kosakata Whisper', 300, 60),
     kamus: kamus.map((k, i) => {
       const ko = obj(k, `kamus ${i + 1}`, ['salah', 'benar']);
@@ -798,11 +861,13 @@ export async function exportBrandKit(ws: Workspace, brandId: string, opts: { pat
       penutup: { aset: outro, detik: k.outro.detik },
       gaya: k.gaya,
       grading: k.grading,
+      ...(k.watermark ? { watermark: k.watermark } : {}),
     },
     teks: {
       cta: k.cta,
       cta_wajib: k.cta_wajib,
       disclaimer: k.disclaimer,
+      ...(k.tagline ? { tagline: k.tagline } : {}),
       kosakata_whisper: k.kosakata,
       kamus: Object.fromEntries(k.kamus.map((x) => [x.salah, x.benar])),
       kata_kunci: k.kata_kunci,

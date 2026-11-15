@@ -73,7 +73,7 @@ async function jobFiles(ws: Workspace, projectId: string, jobId: string) {
   const s = await readEngineStatus(ws, projectId, jobId);
   if (s.mode !== 'beatspot') bad('Job ini bukan Beat Spot');
   const dir = engineJobDir(ws, projectId, jobId);
-  const job = await readJsonFile<{ beatspot?: unknown; sumber?: { kunci?: unknown }[] }>(path.join(dir, 'job.json'));
+  const job = await readJsonFile<{ beatspot?: unknown; sumber?: { kunci?: unknown }[]; preset?: unknown; audio_pilihan?: unknown }>(path.join(dir, 'job.json'));
   const refs = (await readJsonFile<{ refs?: Record<string, MediaRef> }>(path.join(dir, 'refs.json')))?.refs ?? {};
   const keys = (job?.sumber ?? []).map((x) => x?.kunci).filter((k): k is string => typeof k === 'string' && k.startsWith('$sumber:') && !!refs[k]);
   return { s, dir, job, refs, keys };
@@ -111,8 +111,16 @@ export async function readBeatspotView(ws: Workspace, projectId: string, jobId: 
 
 /** Run Beat Spot again on the same files with the team's settings (a new job; the old one stays). */
 export async function rerunBeatspot(ws: Workspace, projectId: string, jobId: string, beatspot: unknown, opts: { now?: number; actor?: 'user' } = {}): Promise<EngineStatus> {
-  const { refs, keys } = await jobFiles(ws, projectId, jobId);
+  const { refs, keys, job } = await jobFiles(ws, projectId, jobId);
   if (!keys.length) throw new StorageError('PRECONDITION', 'Job lama tidak lengkap; jalankan Beat Spot baru dari awal');
-  const input = validateEngineJob({ project_id: projectId, mode: 'beatspot', sources: keys.map((k) => ({ kunci: k, ref: refs[k] })), beatspot });
+  // Same files, same preset and audio choice (R18) — only the team's Beat Spot settings change.
+  const input = validateEngineJob({
+    project_id: projectId,
+    mode: 'beatspot',
+    sources: keys.map((k) => ({ kunci: k, ref: refs[k] })),
+    beatspot,
+    ...(typeof job?.preset === 'string' && job.preset !== 'beatspot' ? { preset: job.preset } : {}),
+    ...(typeof job?.audio_pilihan === 'string' ? { audio_pilihan: job.audio_pilihan } : {}),
+  });
   return prepareEngineJob(ws, input, opts);
 }

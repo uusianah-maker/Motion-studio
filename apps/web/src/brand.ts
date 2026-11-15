@@ -86,6 +86,8 @@ export const emptyKit = (): BrandKitInput => ({
   cta: {},
   cta_wajib: '',
   disclaimer: null,
+  tagline: '',
+  watermark: null,
   kosakata: [],
   kamus: [],
   kata_kunci: [],

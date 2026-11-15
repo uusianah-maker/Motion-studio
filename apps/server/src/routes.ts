@@ -38,6 +38,7 @@ import {
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { createImportQueue } from './importQueue.js';
+import { examplePresets } from './core.js';
 import { type ProxyQueue, createProxyQueue } from './proxy.js';
 import { type RenderJobView, type RenderJobs, createRenderJobs } from './render.js';
 import { type StreamSigner, createStreamSigner, mimeFor, sendBytes } from './stream.js';
@@ -427,6 +428,13 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
     },
 
     // U1 Brand Kits per brand. The export for the browser never contains local paths.
+    {
+      // R18 §17.4: the example presets for "Isi contoh preset Aysilla" (read-only; the page adds the
+      // missing ones to the form, the owner saves).
+      method: 'GET',
+      path: '/api/preset-contoh',
+      handle: async () => ({ presets: examplePresets() }),
+    },
     {
       method: 'GET',
       path: '/api/brands',

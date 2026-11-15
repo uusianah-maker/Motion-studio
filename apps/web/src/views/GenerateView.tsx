@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, ProjectSummary, Role } from '../api';
 import { canContinueRefused, pollDelay, readyJobShown } from '../lib';
 import { ErrorNotice } from '../ui';
+import { AudioPilihanSelect } from './PresetGaya';
 
 /**
  * U4 Generate Otomatis: one talking-head video + brief → the engine plans the edit (cuts, hook,
@@ -168,6 +169,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
   const [brief, setBrief] = useState<EngineBrief>({ produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' });
   const [preset, setPreset] = useState('');
   const [ai, setAi] = useState(false);
+  const [audio, setAudio] = useState<'' | 'vo' | 'musik' | 'keduanya'>('');
   const [upload, setUpload] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -244,7 +246,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
       setUpload(0);
       const up = await api.importFile(file, { kind: 'project', project_id: projectId }, setUpload);
       setUpload(null);
-      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai });
+      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}) });
       unstarted.current = null;
       setTarget(projectId);
       setCurrent({ project_id: projectId, job_id: j.job_id });
@@ -381,6 +383,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject }: {
                 <input aria-label="Preset" value={preset} maxLength={60} onChange={(e) => setPreset(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
               )}
             </label>
+            <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="musik kalau ada yang boleh" />
             <label className="inspFull">
               Catatan untuk mesin
               <textarea aria-label="Catatan" rows={2} maxLength={500} value={brief.catatan} onChange={set('catatan')} />

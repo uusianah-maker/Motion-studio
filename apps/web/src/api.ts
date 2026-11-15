@@ -69,12 +69,21 @@ export interface BrandPreset {
   turunan: string[];
   babak: { dari: number; sampai: number; isi: string }[];
   ritme: string;
-  caption: { mode: 'per_kata' | 'kalimat'; maks_kata: number; pop_ms: number };
-  hook: { teks: boolean; maks_kata: number; dari_ucapan: boolean };
+  caption: { mode: 'per_kata' | 'kalimat'; maks_kata: number; pop_ms: number; y?: number; warna?: string; outline?: string; kotak?: boolean };
+  hook: { teks: boolean; maks_kata: number; dari_ucapan: boolean; y?: number; ukuran?: number; baris?: number; warna?: string; dari_kalimat_kuat?: boolean };
   efek: { wajib: string[]; boleh: string[]; jangan: string[]; maks: number; jarak_dtk: number };
   audio: { suara_asli: boolean; sfx: string; musik: string; lufs: number };
   qc: string[];
+  /** R18 (KONTRAK-ENGINE §17.1): style learnt from winning videos; all optional. */
+  jenis?: PresetJenis;
+  shot?: { target_dtk?: number; maks_dtk?: number };
+  transisi?: { ganti_orang: 'potong' | 'flash' };
+  penutup?: { end_card: boolean };
+  beat?: { tiap_ketukan?: 1 | 2 | 4; bpm?: number };
 }
+export type PresetJenis = 'street_interview' | 'test_produk' | 'harian_studio' | 'beat_spot' | 'lain';
+/** R18 §17.2: voice over / music / both for one job ('' = engine default). */
+export type AudioPilihan = 'vo' | 'musik' | 'keduanya';
 /** X06 → U1: one Brand Kit per brand (sheet A–F). */
 export interface BrandKit {
   schema_version: 2;
@@ -104,6 +113,9 @@ export interface BrandKit {
   cta: Partial<Record<Platform, string>>;
   cta_wajib: string;
   disclaimer: { teks: string; kapan: 'selalu' | 'varian_warna' | 'harga' | 'manual' } | null;
+  /** R18 §17.3 */
+  tagline: string;
+  watermark: { teks: string; y: number; lebar: number; opasitas: number } | null;
   kosakata: string[];
   kamus: { salah: string; benar: string }[];
   kata_kunci: string[];
@@ -581,6 +593,7 @@ export interface EngineStart {
   brief: EngineBrief;
   ai: boolean;
   mode_ops?: 'kompat' | 'u3';
+  audio_pilihan?: AudioPilihan;
   batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[]; vo_batch?: string; izinkan_musik_tanpa_lisensi?: boolean; buang_otomatis?: string[] };
 }
 /** Footage backup folders (Storage) + the background verification. */
@@ -604,6 +617,8 @@ export interface EngineBeatspotStart {
   mode: 'beatspot';
   sources: { kunci: string; ref: { media_id: string; version_id: string } }[];
   beatspot: Partial<BeatspotSettings>;
+  preset?: string;
+  audio_pilihan?: AudioPilihan;
 }
 export interface BeatspotCut {
   no: number;
@@ -829,6 +844,8 @@ export function createApi(token: string | null, base = '') {
       return call<{ media: Media[] }>('GET', `/api/media?${p}`).then((r) => r.media);
     },
     /** Upload with progress (XHR: fetch has no upload progress). Bytes go raw; the server hashes them. */
+    /** R18 §17.4: the example presets ("Isi contoh preset Aysilla"). */
+    presetContoh: () => call<{ presets: BrandPreset[] }>('GET', '/api/preset-contoh').then((r) => r.presets),
     backup: () => call<BackupInfo>('GET', '/api/backup'),
     backupAdd: (folder: string) => call<BackupInfo>('POST', '/api/backup/lokasi', { json: { path: folder } }),
     backupVerify: (locationId: string) => call<BackupInfo>('POST', `/api/backup/lokasi/${encodeURIComponent(locationId)}/verifikasi`, { json: {} }),

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, BeatspotSettings, BeatspotView, BrandKit, DiffItem, EditPlan, EngineJob, EngineQc, EngineRencana, ProjectSummary, Role } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
+import { AudioPilihanSelect } from './PresetGaya';
 import { ENGINE_STATE, EngineProgress, PlanCard, useEngineJob } from './GenerateView';
 
 /**
@@ -42,6 +43,8 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const [durMin, setDurMin] = useState(15);
   const [durMax, setDurMax] = useState(20);
   const [tagline, setTagline] = useState('');
+  const [preset, setPreset] = useState('');
+  const [audio, setAudio] = useState<'' | 'vo' | 'musik' | 'keduanya'>('');
   const [upload, setUpload] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -147,6 +150,8 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
       const j = await api.engineBeatspot(projectId, {
         mode: 'beatspot',
         sources,
+        ...(preset ? { preset } : {}),
+        ...(audio ? { audio_pilihan: audio } : {}),
         beatspot: { sound: sound ? `$sumber:${ids[ids.length - 1]}` : null, bpm: !sound && b ? b : null, ketukan_per_potong: kpp, durasi: [durMin, durMax], tagline: tagline.trim() || null },
       });
       unstarted.current = null;
@@ -276,6 +281,30 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
                   <input aria-label="Durasi maksimal" type="number" min={5} max={60} value={durMax} onChange={(e) => setDurMax(Number(e.target.value))} style={{ width: 70 }} />
                 </span>
               </label>
+              <label>
+                Preset (opsional)
+                <select
+                  aria-label="Preset"
+                  value={preset}
+                  onChange={(e) => {
+                    setPreset(e.target.value);
+                    // The preset's duration fills the form (still editable); its beat defaults apply in the engine.
+                    const pr = brand?.presets.find((x) => x.id === e.target.value);
+                    if (pr && pr.durasi.min >= 5 && pr.durasi.max <= 60) {
+                      setDurMin(pr.durasi.min);
+                      setDurMax(pr.durasi.max);
+                    }
+                  }}
+                >
+                  <option value="">— tanpa preset —</option>
+                  {(brand?.presets ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nama}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="sound tim kalau ada" />
               <label className="inspFull">
                 Tagline end card (kosong = dari Brand Kit)
                 <input aria-label="Tagline" value={tagline} maxLength={120} onChange={(e) => setTagline(e.target.value)} />

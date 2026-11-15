@@ -3,6 +3,7 @@ import { pantauDanUnduh } from '../autoUnduh';
 import type { Api, BatchDecision, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
+import { AudioPilihanSelect } from './PresetGaya';
 import { LineBreakdown, PisahPanel, batchLabel, useEngineBatches } from './BatchLibrary';
 import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
 
@@ -41,6 +42,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const [library, setLibrary] = useState<ShotLibrary | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [preset, setPreset] = useSessionState('batch.preset', '');
+  const [audio, setAudio] = useSessionState<'' | 'vo' | 'musik' | 'keduanya'>('batch.audio', '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [current, setCurrent] = useSessionState<{ project_id: string; job_id: string } | null>('batch.job', null);
@@ -170,6 +172,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
         brief: { produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' },
         ai: false,
         mode_ops: 'u3',
+        ...(audio ? { audio_pilihan: audio } : {}),
         batch: {
           batch: batchName.trim(),
           jumlah,
@@ -349,6 +352,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                 <input aria-label="Preset" value={preset} maxLength={60} onChange={(e) => setPreset(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
               )}
             </label>
+            <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="tanpa musik" />
             <label>
               Akun sendiri (watermark milik brand)
               <input aria-label="Akun sendiri" value={akun} placeholder="@aysillafactoryid" onChange={(e) => setAkun(e.target.value)} />

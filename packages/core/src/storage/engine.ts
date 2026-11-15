@@ -117,9 +117,16 @@ export interface EngineJobInput {
    * `<job>/masuk/<id>.<ext>`; the engine copies them on to `konten/1-upload/<batch>` itself.
    */
   pisah?: { batch: string; video_saja?: boolean };
+  /** R18 §17.2: voice over / music / both for this job (absent = engine behaviour as before). */
+  audio_pilihan?: AudioPilihan;
   /** Beat Spot (contract §16): written to job.json as the `beatspot` object. */
   beatspot?: BeatspotSettings;
 }
+
+export const AUDIO_PILIHAN = ['vo', 'musik', 'keduanya'] as const;
+export type AudioPilihan = (typeof AUDIO_PILIHAN)[number];
+const audioPilihan = (x: unknown): { audio_pilihan?: AudioPilihan } =>
+  x === undefined || x === null || x === '' ? {} : AUDIO_PILIHAN.includes(x as AudioPilihan) ? { audio_pilihan: x as AudioPilihan } : bad('audio_pilihan harus vo | musik | keduanya');
 
 /** Beat Spot settings (contract §16); the team's choices (order, exclusions, people) included. */
 export interface BeatspotSettings {
@@ -162,7 +169,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (o.mode === 'pisah') return validatePisahJob(o);
   if (o.mode === 'transfer') return validateTransferJob(o);
   if (o.mode === 'beatspot') return validateBeatspotJob(o);
-  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
   if (o.mode !== 'generate' && o.mode !== 'batch') bad('mode harus generate | batch');
@@ -233,7 +240,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
       ...(batas !== undefined ? { batas_durasi: batas === null ? null : ([(batas as number[])[0], (batas as number[])[1]] as [number, number]) } : {}),
     };
   } else if (o.batch !== undefined) bad('batch hanya untuk mode batch');
-  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}) };
+  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}), ...audioPilihan(o.audio_pilihan) };
 }
 
 const PISAH_SRC = /^\$sumber:([A-Za-z0-9_-]{1,40})$/;
@@ -336,7 +343,9 @@ export function validateBeatspotSettings(x: unknown, keys: string[]): BeatspotSe
  * + optionally the team's sound (video or audio) → cuts on the beat, logo + end card.
  */
 function validateBeatspotJob(o: Record<string, unknown>): EngineJobInput {
-  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'beatspot'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'beatspot', 'preset', 'audio_pilihan'].includes(k));
+  // R18 §17: an optional Brand Kit preset (its beat defaults apply where the team set nothing).
+  const preset = o.preset === undefined || o.preset === null || o.preset === '' ? 'beatspot' : typeof o.preset === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(o.preset) ? o.preset : bad('preset tidak valid');
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
   if (!Array.isArray(o.sources) || o.sources.length < 1 || o.sources.length > 40) bad('Beat Spot butuh 1–40 file (footage + sound)');
@@ -355,7 +364,8 @@ function validateBeatspotJob(o: Record<string, unknown>): EngineJobInput {
     project_id: o.project_id as string,
     mode: 'beatspot',
     sources,
-    preset: 'beatspot',
+    preset,
+    ...audioPilihan(o.audio_pilihan),
     brief: { produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' },
     ai: false,
     beatspot,
@@ -505,7 +515,9 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ...(input.abaikan_cek_ucapan ? { abaikan_cek_ucapan: true } : {}),
       ...(input.batch ?? {}),
       ...(input.pisah ?? {}),
-      ...(input.beatspot ? { beatspot: input.beatspot } : {}),
+      ...(input.audio_pilihan ? { audio_pilihan: input.audio_pilihan } : {}),
+      // "auto" / empty BPM are left out, so a chosen preset's beat defaults can apply (§17.5).
+      ...(input.beatspot ? { beatspot: Object.fromEntries(Object.entries(input.beatspot).filter(([k, v]) => !((k === 'ketukan_per_potong' && v === 'auto') || (k === 'bpm' && v === null)))) } : {}),
     };
     await writeJsonAtomic(path.join(jdir, 'job.json'), job);
     const refs: Record<string, MediaRef> = { ...brandPlaceholders(kit) };
@@ -683,7 +695,7 @@ export async function continueRefusedJob(ws: Workspace, projectId: string, jobId
   const s = await readEngineStatus(ws, projectId, jobId);
   if (!lyricRefusal(s)) bad('"Tetap lanjut" hanya untuk Generate yang ditolak karena audio terdengar seperti lagu');
   const jdir = jobAbs(ws, projectId, jobId);
-  const job = await readJson<{ preset?: unknown; brief?: unknown; ai?: unknown; mode_ops?: unknown; sumber?: { kunci?: unknown }[] }>(path.join(jdir, 'job.json'));
+  const job = await readJson<{ preset?: unknown; brief?: unknown; ai?: unknown; mode_ops?: unknown; audio_pilihan?: unknown; sumber?: { kunci?: unknown }[] }>(path.join(jdir, 'job.json'));
   const refs = (await readJson<{ refs?: Record<string, MediaRef> }>(path.join(jdir, 'refs.json')))?.refs ?? {};
   if (!job || !refs.$sumber) throw new StorageError('PRECONDITION', 'Job lama tidak lengkap; jalankan Generate baru dari awal');
   const input = validateEngineJob({
@@ -694,6 +706,7 @@ export async function continueRefusedJob(ws: Workspace, projectId: string, jobId
     brief: job.brief,
     ai: job.ai === true,
     ...(job.mode_ops === 'kompat' || job.mode_ops === 'u3' ? { mode_ops: job.mode_ops } : {}),
+    ...(typeof job.audio_pilihan === 'string' ? { audio_pilihan: job.audio_pilihan } : {}),
     abaikan_cek_ucapan: true,
   });
   return prepareEngineJob(ws, input, opts);

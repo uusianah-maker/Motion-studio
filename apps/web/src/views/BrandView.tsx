@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import type { Api, BrandKit, BrandKitInput, BrandPreset, Media, Platform, Ref } from '../api';
 import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY, emptyKit, toInput, useBrand } from '../brand';
+import { PresetGaya } from './PresetGaya';
 import { nextPresetId } from '../lib';
 import { ErrorNotice } from '../ui';
 import { LOOKS, LOOK_IDS } from '../../../../packages/core/dist/storage/clipLook.js';
@@ -73,6 +74,8 @@ function cleaned(d: BrandKitInput): BrandKitInput {
     kamus: d.kamus.filter((k) => k.salah.trim() && k.benar.trim()),
     kata_kunci: clean(d.kata_kunci),
     disclaimer: d.disclaimer && d.disclaimer.teks.trim() ? d.disclaimer : null,
+    tagline: d.tagline.trim(),
+    watermark: d.watermark && d.watermark.teks.trim() ? d.watermark : null,
     guard: { ...d.guard, banned: clean(d.guard.banned) },
     klaim_boleh: clean(d.klaim_boleh),
     visual_dilarang: clean(d.visual_dilarang),
@@ -107,6 +110,7 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
   const [selected, setSelected] = useState<string | 'new' | null>(null);
   const [kit, setKit] = useState<BrandKit | null>(null);
   const [draft, setDraft] = useState<BrandKitInput>(emptyKit());
+  const [contoh, setContoh] = useState<string | null>(null);
   const [media, setMedia] = useState<Media[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -475,6 +479,23 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                   </select>
                 </label>
               </div>
+              <div className="inspGrid">
+                <label>
+                  Tagline (end card &amp; Beat Spot)
+                  <input aria-label="Tagline" maxLength={120} placeholder="mis. CUCI · JEMUR · LANGSUNG PAKAI" value={draft.tagline} onChange={(e) => set({ tagline: e.target.value })} />
+                </label>
+                <label>
+                  Watermark teks (opsional)
+                  <input aria-label="Watermark teks" maxLength={60} placeholder="mis. @aysilla.factory" value={draft.watermark?.teks ?? ''} onChange={(e) => set({ watermark: { teks: e.target.value, y: draft.watermark?.y ?? 0.92, lebar: draft.watermark?.lebar ?? 0.4, opasitas: draft.watermark?.opasitas ?? 0.6 } })} />
+                </label>
+                {draft.watermark && draft.watermark.teks.trim() !== '' && (
+                  <label>
+                    Posisi watermark (0 atas – 1 bawah)
+                    <input type="number" aria-label="Posisi watermark" min={0} max={1} step={0.01} value={draft.watermark.y} onChange={(e) => set({ watermark: { ...draft.watermark!, y: Math.min(1, Math.max(0, Number(e.target.value) || 0)) } })} />
+                  </label>
+                )}
+              </div>
+              <div className="muted small">Watermark teks mengisi sela di antara hook / CTA / disclaimer. Untuk tanda yang selalu tampil, pakai logo (bagian B).</div>
               <label>
                 Kosakata Whisper (satu per baris)
                 <textarea aria-label="Kosakata Whisper" rows={3} value={lines(draft.kosakata)} onChange={(e) => set({ kosakata: fromLines(e.target.value) })} />
@@ -703,6 +724,7 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                       <input type="number" aria-label={`Preset ${i + 1} LUFS`} min={-30} max={-6} value={p.audio.lufs} onChange={(e) => setPreset(i, { audio: { ...p.audio, lufs: Number(e.target.value) || -14 } })} />
                     </label>
                   </div>
+                  <PresetGaya p={p} i={i} onChange={(patch) => setPreset(i, patch)} />
                   <label>
                     Checklist QC (satu per baris)
                     <textarea aria-label={`Preset ${i + 1} QC`} rows={3} value={lines(p.qc)} onChange={(e) => setPreset(i, { qc: fromLines(e.target.value) })} />
@@ -714,7 +736,29 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
               ))}
               <button className="btn small" disabled={draft.presets.length >= 12} onClick={() => set({ presets: [...draft.presets, newPreset(nextPresetId(draft.presets.map((p) => p.id)))] })}>
                 ＋ Preset
+              </button>{' '}
+              <button
+                className="btn small"
+                disabled={!!busy || readOnly}
+                onClick={() =>
+                  void api.presetContoh().then(
+                    (ex) => {
+                      const have = new Set(draft.presets.map((p) => p.id));
+                      const add = ex.filter((p) => !have.has(p.id)).slice(0, Math.max(0, 12 - draft.presets.length));
+                      if (add.length) set({ presets: [...draft.presets, ...add] });
+                      setContoh(add.length ? `${add.length} preset contoh ditambahkan (yang sudah ada tidak ditimpa). Klik Simpan Brand Kit.` : 'Semua preset contoh sudah ada — tidak ada yang ditimpa.');
+                    },
+                    (e) => setContoh(`Gagal memuat preset contoh: ${e instanceof Error ? e.message : String(e)}`),
+                  )
+                }
+              >
+                ✦ Isi contoh preset Aysilla
               </button>
+              {contoh && (
+                <div className="notice small" role="status" aria-label="Preset contoh">
+                  {contoh}
+                </div>
+              )}
             </Section>
 
             <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
