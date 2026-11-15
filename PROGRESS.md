@@ -21,7 +21,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 | R9 | Catatan belajar koreksi editor + alasan PIC | DONE app (audit venus lulus); dipakai mesin nanti | core r9 2/2, server r9; `.motionstudio/brands/<id>/belajar.jsonl` | ucok | e194c2d |
 | R10 | Layar persetujuan PIC | DONE (audit venus lulus) | core r10 + audit/R10 UI 9/9 | ucok | 84db32e |
 | R11 | Motion Transfer tahap 1 (mesin) | DONE (mesin) · halaman app: ucok | klip uji 24 dtk → 7 adegan + gambar + prompt | venus | 120b286 |
-| R12 | Motion Transfer tahap 2 (API AI gambar) | BLOCKED (PC-R2) | — | — | — |
+| R12 | Motion Transfer tahap 2 (API AI gambar) | R12a kolom API DONE (audit lulus, eecb6e2); pemakaian API menunggu akun owner | server r12a 3/3, key tersegel AES-GCM, tidak dikirim ke browser | ucok | eecb6e2 |
 | R13 | Duplikat brand | DONE (audit venus lulus) | core r13, audit/R13 5/5 | ucok | b3ffe00 |
 | R14 | Ukur + pratinjau kecil | ukur DONE (sukma) · proxy: ucok | terowongan macet 1/20 unduhan; preview pakai file 4K 21 Mbps | sukma + ucok | 6bcf6c0 |
 | R16 | Beat Spot tahap 1 (mesin) | DONE (audit venus lulus) · halaman app: ucok | test_batch 62/62, uji nyata 11 potongan 18,4 dtk QC 7/7, validator asli lulus | yuki | 6100e34 |
