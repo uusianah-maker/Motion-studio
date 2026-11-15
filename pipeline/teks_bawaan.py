@@ -24,13 +24,14 @@ BATAS_BAWAH = 0.85  # tombol TikTok/Reels
 TEKS_KECIL = 0.025  # teks latar kecil (judul buku, poster) tidak dihindari, sama dengan Shot Library
 
 
-def wajah_di(video: str, dari: float, sampai: float) -> list:
-    """Rentang vertikal wajah (y0, y1) di rentang hook. OpenCV Haar dari posisi_caption (Python utama)."""
+def wajah_di(video: str, rentang: list) -> list:
+    """Rentang vertikal wajah (y0, y1) di rentang hook (waktu sumber). OpenCV Haar dari posisi_caption."""
     from posisi_caption import deteksi_wajah, sampel_frame
 
-    frames = sampel_frame(video, 0.5, maks=int(sampai * 2) + 1)[int(dari * 2):]
-    hasil = [r for per in deteksi_wajah(frames) for r in per]
-    return hasil
+    akhir = max(b for _, b in rentang)
+    frames = sampel_frame(video, 0.5, maks=int(akhir * 2) + 1)
+    pilih = [f for i, f in enumerate(frames) if any(a - 0.25 <= i / 2 <= b for a, b in rentang)]
+    return [r for per in deteksi_wajah(pilih) for r in per]
 
 
 def teks_penting(kotak: list) -> list:
@@ -77,13 +78,20 @@ def atur_hook(hook: dict, kotak: list, caption_y: float | None,
     return {**hook, "top": top}, f"hook digeser ke posisi {top:.2f} supaya tidak menimpa {alasan}"
 
 
-def baca_kotak(video: str, dari: float, sampai: float, python: str | None = None, timeout: int = 120) -> list:
-    """Kotak teks bawaan di rentang [dari, sampai] detik waktu sumber (proses anak Python Batch Remix)."""
+def baca_kotak(video: str, dari: float, sampai: float, python: str | None = None, timeout: int = 120,
+               rentang: list | None = None) -> list:
+    """Kotak teks bawaan di rentang [dari, sampai] detik waktu sumber (proses anak Python Batch Remix).
+    `rentang` = beberapa [dari, sampai] (hook melintasi beberapa potongan); menggantikan dari/sampai."""
     if python is None:
-        sys.path.insert(0, str(HERE / "batch"))
-        from jalur import BATCH_PY  # noqa: E402
-        python = str(BATCH_PY)
-    r = subprocess.run([python, str(Path(__file__).resolve()), video, f"{dari:.2f}", f"{sampai:.2f}"],
+        # jalur.py dimuat dari path file supaya sys.path proses utama tidak diubah (nama modul batch bentrok).
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("_jalur_batch", HERE / "batch" / "jalur.py")
+        jalur = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(jalur)
+        python = str(jalur.BATCH_PY)
+    args = [f"{x:.2f}" for ab in (rentang or [(dari, sampai)]) for x in ab]
+    r = subprocess.run([python, str(Path(__file__).resolve()), video, *args],
                        capture_output=True, text=True, encoding="utf-8", timeout=timeout)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or "OCR gagal").strip()[-300:])
@@ -104,13 +112,20 @@ def _frame(video: str, detik: float):
 
 def _main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
-    video, dari, sampai = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
+    video = sys.argv[1]
+    angka = [float(x) for x in sys.argv[2:]]
+    rentang = list(zip(angka[::2], angka[1::2]))
     sys.path.insert(0, str(HERE / "batch"))
     from shotlib import ocr_frame, pilah_teks  # noqa: E402  (modul yuki, hanya diimpor)
 
+    total = sum(b - a for a, b in rentang) or 1
+    titik = []
+    for a, b in rentang:  # 3-6 sampel, dibagi sebanding panjang tiap rentang (minimal 1 per rentang)
+        n = max(1, round(4 * (b - a) / total))
+        titik += [a + (b - a) * (i + 0.5) / n for i in range(n)]
     kotak = []
-    for i in range(3):
-        f = _frame(video, dari + (sampai - dari) * (i + 0.5) / 3)
+    for t in titik:
+        f = _frame(video, t)
         if f is None:
             continue
         _, _, lain = pilah_teks(ocr_frame(f))

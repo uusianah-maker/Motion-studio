@@ -494,19 +494,29 @@ def main() -> None:
     # G2: hook jangan menimpa teks bawaan video. Posisi pilihan tim (--hook-top) selalu menang.
     cek_teks = {"dicek": False}
     if hook and not args.hook_top:
-        seg0 = cut["segments"][0] if cut["segments"] else {"startFrame": 0, "endFrame": 0}
-        dari = seg0["startFrame"] / FPS
-        sampai = min(seg0["endFrame"] / FPS, dari + (hook["endMs"] - hook["startMs"]) / 1000) or dari + 3
+        # Rentang sumber yang tampil di bawah hook (hook bisa melintasi beberapa potongan).
+        rentang, sisa = [], (hook["endMs"] - hook["startMs"]) / 1000
+        for sg in cut["segments"]:
+            if sisa <= 0.05:
+                break
+            a = sg["startFrame"] / FPS
+            b = min(sg["endFrame"] / FPS, a + sisa)
+            rentang.append((a, b))
+            sisa -= b - a
+        rentang = rentang or [(0.0, 3.0)]
         try:
-            kotak = baca_kotak(tr["source"], dari, sampai)
+            kotak = baca_kotak(tr["source"], 0, 0, rentang=rentang)
             try:
-                wajah = wajah_di(tr["source"], dari, sampai)
+                wajah = wajah_di(tr["source"], rentang)
             except Exception:  # noqa: BLE001 - wajah hanya diusahakan
                 wajah = []
             hook_baru, catatan = atur_hook(hook, kotak, caption_y, wajah)
             cek_teks = {"dicek": True, "kotak": len(kotak), "wajah": len(wajah), "catatan": catatan}
             if catatan:
                 doubts_hook.append({"atSec": 0, "word": hook["text"], "note": catatan})
+            if hook_baru is None:
+                # Hook dilewati: whoosh pembuka hook ikut dibuang (temuan review R2).
+                sfx = [x for x in sfx if not (x["atMs"] <= hook["startMs"] + 100 and "whoosh" in x["src"])]
             hook = hook_baru
         except Exception as e:  # noqa: BLE001 - OCR gagal tidak boleh menghentikan rencana
             cek_teks = {"dicek": False, "gagal": str(e)[:200]}

@@ -246,14 +246,15 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         else:
             penutup_ms = 0
     cta_mulai, cta_akhir = (video_ms, video_ms + penutup_ms) if penutup_ms else (max(hook_end, video_ms - CTA_MS), video_ms)
-    if cta and cta_akhir - cta_mulai >= MIN_CLIP_MS:
+    cta_tampil = bool(cta) and cta_akhir - cta_mulai >= MIN_CLIP_MS
+    if cta_tampil:
         ops.append({"op": "add_clip", "track_kind": "text", "text": cta, "start_ms": cta_mulai,
                     "duration_ms": cta_akhir - cta_mulai,
                     "style": {"x": 0.5, "y": 0.45, "size": 6.0, "width": 0.84, "color": "#ffffff", "bg": warna["latar_gelap"].lower(),
                               "bg_opacity": 0.75, "bold": True, "outline": False, "align": "center", "font": "brand"}})
     if not penutup_ms:
         menunggu.append("penutup logo/video: Brand Kit belum punya aset penutup"
-                        + (f" (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)" if cta else ""))
+                        + (f" (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)" if cta_tampil else ""))
     # Disclaimer (preset teks "disclaimer" ucok): teks kecil di bawah, di sela hook dan CTA
     # (track text tidak boleh tumpang tindih).
     if props.get("disclaimer") and cta_mulai - hook_end >= MIN_CLIP_MS:
@@ -314,6 +315,9 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     peringatan = [{"level": "warn", "jenis": "ucapan", "teks": p} for p in laporan.get("peringatan", [])]
     peringatan += [{"level": bk.get("level_pelanggaran", "block"), "jenis": "kata_terlarang", "detik": x["atSec"], "teks": x["frasa"]}
                    for x in laporan.get("superlatifDisembunyikan", [])]
+    if cta and not cta_tampil:
+        peringatan.append({"level": "warn", "jenis": "cta",
+                           "teks": "CTA tidak muat (video terlalu pendek setelah hook). Tambahkan CTA manual di editor."})
     if not cta:
         # G6: dulu rencana menyebut "CTA ditampilkan" padahal CTA Brand Kit kosong, tanpa peringatan.
         peringatan.append({"level": "warn", "jenis": "cta",

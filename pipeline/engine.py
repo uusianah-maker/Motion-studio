@@ -184,6 +184,9 @@ def ulang(job_dir: Path) -> int:
         cmd += ["--buang", *[f"{a}-{b}" for a, b in koreksi["buang"]]]
     if koreksi.get("hook"):
         cmd += ["--hook-text", koreksi["hook"]]
+    if koreksi.get("hook_top") is not None:
+        # Posisi hook pilihan tim (0..1) mengunci posisi: cek teks bawaan tidak menggesernya (hybrid).
+        cmd += ["--hook-top", str(float(koreksi["hook_top"]))]
     rc = jalankan(cmd)
     if rc == 2:
         alasan = json.loads((out / "potongan.json").read_text(encoding="utf-8")).get("alasan", "ditolak")
