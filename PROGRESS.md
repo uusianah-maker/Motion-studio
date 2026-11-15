@@ -31,6 +31,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 | R14b/R15b/R6b | Antrean upload, Verifikasi backup, sinyal riwayat dari app | DONE (audit venus lulus) | ANTREAN 4/4, BACKUP 6/6, server r6 3/3 | ucok | f5ab1f9, d5cbb70, 2a8fa43 |
 | R14c | Prioritas rendah semua proses berat (mesin, render, pratinjau -threads 2, analisis) | DONE (audit venus lulus; R14 ikut lulus) | prio 2/2, regresi 64 tes | ucok | f66f8e7 |
 | R19 | Tombol "Kirim ke PIC" di Editor + arahan setelah render + ganti nama tombol tabel Batch (Pilih untuk render / Buang) | DONE (audit venus lulus) | server r19 2/2, R19 UI 7/7 | ucok | c93fa20 |
+| R20 | Rilis terpisah untuk mesin (engine) | BERJALAN (owner: "Ya, pisahkan"); sukma rancang dulu, perubahan kode oleh venus/yuki | — | sukma | — |
 | R15 | Backup mingguan | skrip DONE; jadwal TIDAK dipasang (keputusan owner) | backup 1,84 GB 64 dtk, pulih 74/74 proyek | sukma | 6bcf6c0 |
 
 ### Audit checkpoint putaran R (R1–R7)
@@ -49,7 +50,8 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 - Owner 15 Nov: "Boleh, saat siap" — restart server live ±1 menit untuk memasang versi baru, setelah R17 + R18 app lulus audit dan di-push.
 
 ### Rilis 1 ke situs live (15 Nov 2026 20.17)
-- Push GitHub main d6eb1ff (30 commit, scan bersih). `deploy/windows/rilis.ps1 -Commit main` (sukma d6eb1ff): npm ci + build + smoke lulus, restart ±30 dtk, server live sekarang dari `Motion Studio Releaseilis61115-201433_d6eb1ff`. Cek luar: motionproject.online 200 (0,12–0,36 dtk), bundle memuat Buat video / Kirim ke PIC / Pilih untuk render / Isi contoh preset.
+- Push GitHub main d6eb1ff (30 commit, scan bersih). `deploy/windows/rilis.ps1 -Commit main` (sukma d6eb1ff): npm ci + build + smoke lulus, restart ±30 dtk, server live sekarang dari `Motion Studio Release
+ilis61115-201433_d6eb1ff`. Cek luar: motionproject.online 200 (0,12–0,36 dtk), bundle memuat Buat video / Kirim ke PIC / Pilih untuk render / Isi contoh preset.
 
 ### Pending Confirmation putaran R
 - ~~PC-R1 lokasi backup~~ → owner 15 Nov: "ga usah ada lokasi backup". Skrip backup sukma tetap ada di `deploy/backup/`, tidak dijadwalkan. Risiko tercatat: workspace hanya di 1 SSD USB.
