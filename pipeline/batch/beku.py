@@ -58,11 +58,12 @@ def tandai(lib: dict, video_per_footage: dict[str, Path]) -> int:
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     batch = sys.argv[1]
-    batch_dir = Path(__file__).resolve().parents[2] / "konten" / "2-dipisah" / batch
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from jalur import DATA, KONTEN  # R20: folder data MOTION_ENGINE_DATA, bawaan = repo
+    batch_dir = KONTEN / "2-dipisah" / batch
     lib_path = batch_dir / "shots.json"
     lib = json.loads(lib_path.read_text(encoding="utf-8"))
-    root = Path(__file__).resolve().parents[2]
-    video = {fid: (Path(f["video"]) if Path(f["video"]).is_absolute() else root / f["video"])
+    video = {fid: (Path(f["video"]) if Path(f["video"]).is_absolute() else DATA / f["video"])
              for fid, f in lib.get("footage", {}).items() if isinstance(f, dict) and f.get("video")}
     n = tandai(lib, video)
     lib_path.write_text(json.dumps(lib, ensure_ascii=False, indent=1), encoding="utf-8")

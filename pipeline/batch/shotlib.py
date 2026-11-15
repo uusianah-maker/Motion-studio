@@ -28,7 +28,7 @@ import cv2
 import numpy as np
 
 from common import topik_dari  # noqa: E402
-from jalur import KONTEN, MAIN_PY, ROOT, relatif  # noqa: E402
+from jalur import DATA, KONTEN, MAIN_PY, ROOT, relatif  # noqa: E402  (R20: ROOT = kode, DATA = data)
 SAMPLE_FPS = 5
 MAX_SHOT = 3.0  # detik; shot panjang dipecah supaya label tetap lokal
 MIN_SHOT = 0.6
@@ -363,8 +363,9 @@ def ensure_transcript(batch_dir: Path, name: str) -> Path:
         out.parent.mkdir(exist_ok=True)
         vokal = batch_dir / "vokal" / f"{name}.wav"
         print(f"  transkrip {name} ...", file=sys.stderr)
-        subprocess.run([str(MAIN_PY), "pipeline/transcribe.py", str(vokal), str(out), "--brandkit", "brandkit/aysilla.json"],
-                       check=True, stdout=subprocess.DEVNULL, cwd=ROOT)
+        subprocess.run([str(MAIN_PY), str(ROOT / "pipeline" / "transcribe.py"), str(vokal), str(out),
+                        "--brandkit", str(ROOT / "brandkit" / "aysilla.json")],
+                       check=True, stdout=subprocess.DEVNULL, cwd=DATA)
     return out
 
 
@@ -382,7 +383,7 @@ def main() -> None:
         lib = json.loads(lib_path.read_text(encoding="utf-8"))
         for name, meta in lib["footage"].items():
             mine = [s for s in lib["shots"] if s["footage"] == name]
-            th = tulis_thumbs(ROOT / meta["video"], [(s["id"], s["dari"], s["sampai"]) for s in mine], batch_dir / "thumb")
+            th = tulis_thumbs(DATA / meta["video"], [(s["id"], s["dari"], s["sampai"]) for s in mine], batch_dir / "thumb")
             for s in mine:
                 s["thumb"] = th.get(s["id"])
         lib_path.write_text(json.dumps(lib, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -462,7 +463,7 @@ def main() -> None:
     lib["shots"].sort(key=lambda s: (len(s["footage"]), s["footage"], s["dari"]))
     # Shot yang gambarnya diam/beku (venus, 14 Nov): ditandai `beku`, matcher tidak memakainya.
     from beku import tandai as tandai_beku
-    video_fid = {fid: (Path(f["video"]) if Path(f["video"]).is_absolute() else ROOT / f["video"])
+    video_fid = {fid: (Path(f["video"]) if Path(f["video"]).is_absolute() else DATA / f["video"])
                  for fid, f in lib["footage"].items() if isinstance(f, dict) and f.get("video")}
     n_beku = tandai_beku(lib, video_fid)
     lib_path.write_text(json.dumps(lib, ensure_ascii=False, indent=1), encoding="utf-8")

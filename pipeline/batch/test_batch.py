@@ -673,6 +673,63 @@ class GayaR18(unittest.TestCase):
         self.assertIn({"op": "set_brand_logo", "on": False}, ops)  # beat_spot + watermark = tanpa logo
 
 
+class DataTerpisah(unittest.TestCase):
+    """R20: KODE dari folder rilis, DATA dari MOTION_ENGINE_DATA. Tanpa env = perilaku lama (data = repo)."""
+
+    BATCH = Path(__file__).resolve().parent
+
+    def _py(self, kode: str, env_data: str | None) -> dict:
+        import json as _j
+        import os
+        import subprocess
+        env = {k: v for k, v in os.environ.items() if k != "MOTION_ENGINE_DATA"}
+        if env_data:
+            env["MOTION_ENGINE_DATA"] = env_data
+        r = subprocess.run([sys.executable, "-c", f"import sys; sys.path.insert(0, {str(self.BATCH)!r})\n" + kode],
+                           env=env, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return _j.loads(r.stdout.strip().splitlines()[-1])
+
+    KODE = (
+        "import json, jalur\n"
+        "print(json.dumps({'root': str(jalur.ROOT), 'data': str(jalur.DATA), 'konten': str(jalur.KONTEN),\n"
+        "  'main_py': str(jalur.MAIN_PY), 'rel': jalur.relatif(jalur.KONTEN / '2-dipisah' / 'b' / 'x.mp4')}))"
+    )
+
+    def test_tanpa_env_data_sama_dengan_repo(self):
+        d = self._py(self.KODE, None)
+        root = Path(d["root"])
+        self.assertEqual(Path(d["data"]), root)
+        self.assertEqual(Path(d["konten"]), root / "konten")
+        self.assertTrue(Path(d["main_py"]).is_relative_to(root / ".venv"))
+        self.assertEqual(d["rel"], "konten/2-dipisah/b/x.mp4")
+
+    def test_env_data_folder_lain(self):
+        import json as _j
+        import os
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp).resolve()
+            d = self._py(self.KODE, str(data))
+            self.assertEqual(Path(d["data"]), data)
+            self.assertEqual(Path(d["konten"]), data / "konten")
+            self.assertNotEqual(Path(d["root"]), data)  # kode tetap dari folder repo/rilis
+            self.assertTrue(Path(d["main_py"]).is_relative_to(data / ".venv"))
+            self.assertEqual(d["rel"], "konten/2-dipisah/b/x.mp4")  # relatif ke DATA
+            # daftar.py (CLI) membaca konten dari folder data
+            (data / "konten" / "2-dipisah" / "batch-data" / "video-bisu").mkdir(parents=True)
+            (data / "konten" / "2-dipisah" / "batch-data" / "video-bisu" / "a.mp4").write_bytes(b"x")
+            env = {**os.environ, "MOTION_ENGINE_DATA": str(data)}
+            r = subprocess.run([sys.executable, str(self.BATCH / "daftar.py")], env=env, capture_output=True, text=True,
+                               encoding="utf-8")
+            nama = [x["batch"] for x in _j.loads(r.stdout)["batch"]]
+            self.assertEqual(nama, ["batch-data"])
+            # musik bebas lisensi (public/musik) dan riwayat juga dari folder data
+            m = self._py("import json, riwayat\nprint(json.dumps({'riw': str(riwayat.folder())}))", str(data))
+            self.assertEqual(Path(m["riw"]), data / "konten" / "riwayat")
+
+
 def vo_dengan_saran():
     v = vo_sintetis()
     v["kalimat"][1]["saran_buang"] = "urgensi"

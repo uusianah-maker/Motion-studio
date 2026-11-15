@@ -292,7 +292,8 @@ def qc(v: dict, ops: list[dict], target, media: dict, terlarang: list[str], dura
     return {"schema": "engine-qc-rencana/1", "lulus": all(h["lulus"] for h in hasil), "cek": hasil}
 
 
-ROOT = PIPELINE.parent.resolve()
+# R20: media (konten/, public/) ada di folder DATA (MOTION_ENGINE_DATA, bawaan = repo); kode di ROOT.
+from jalur import DATA as ROOT  # noqa: E402  (nama lama ROOT dipertahankan: aturan runner = di dalam folder mesin/data)
 EKSTENSI_MEDIA = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".wav", ".mp3", ".m4a", ".aac", ".ogg", ".opus",
                   ".flac", ".png", ".jpg", ".webp"}
 
@@ -379,7 +380,7 @@ def jalankan(job_dir: Path) -> int:
     if not lib_path.exists():
         progres("shot_library", 5, "membuat Shot Library (sekali per batch)")
         cmd = [str(BATCH_PY), str(PIPELINE / "batch" / "shotlib.py"), batch] + (["--tiktok"] if job.get("shot_tiktok") else [])
-        subprocess.run(cmd, check=True, stdout=sys.stderr, cwd=PIPELINE.parent)
+        subprocess.run(cmd, check=True, stdout=sys.stderr, cwd=ROOT)  # ROOT di sini = DATA
     lib = json.loads(lib_path.read_text(encoding="utf-8"))
     shot_footage = set(lib["footage"])
     # Jalur VO: gambar dari batch ini, voice over dari batch lain (vo_batch). Default: batch yang sama.
