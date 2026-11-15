@@ -22,9 +22,9 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 | R10 | Layar persetujuan PIC | DONE (audit venus lulus) | core r10 + audit/R10 UI 9/9 | ucok | 84db32e |
 | R11 | Motion Transfer tahap 1 (mesin) | DONE (mesin) · halaman app: ucok | klip uji 24 dtk → 7 adegan + gambar + prompt | venus | 120b286 |
 | R12 | Motion Transfer tahap 2 (API AI gambar) | BLOCKED (PC-R2) | — | — | — |
-| R13 | Duplikat brand | BERJALAN | — | ucok | — |
+| R13 | Duplikat brand | DONE (audit venus lulus) | core r13, audit/R13 5/5 | ucok | b3ffe00 |
 | R14 | Ukur + pratinjau kecil | ukur DONE (sukma) · proxy: ucok | terowongan macet 1/20 unduhan; preview pakai file 4K 21 Mbps | sukma + ucok | 6bcf6c0 |
-| R16 | Beat Spot tahap 1 (susun ikut ketukan) | BERJALAN | — | yuki | — |
+| R16 | Beat Spot tahap 1 (mesin) | DONE (audit venus lulus) · halaman app: ucok | test_batch 62/62, uji nyata 11 potongan 18,4 dtk QC 7/7, validator asli lulus | yuki | 6100e34 |
 | R15 | Backup mingguan | skrip DONE; jadwal TIDAK dipasang (keputusan owner) | backup 1,84 GB 64 dtk, pulih 74/74 proyek | sukma | 6bcf6c0 |
 
 ### Audit checkpoint putaran R (R1–R7)
@@ -32,12 +32,19 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 - 2 temuan di riwayat.py dikembalikan ke yuki, diperbaiki di cfbe866 (test_batch 55/55), audit lulus.
 - Tes: pipeline/tests 63 OK, test_batch 50 OK, jaga_ops + efek_otomatis OK. Risiko: tes core u6 R1 / r10 lambat (16–24 dtk), sekali gagal saat dijalankan bersamaan.
 
+### Audit E2E mesin (15 Nov, sebelum uji Jika)
+- Generate penuh 2 video bicara (a3, vw_in2): siap. Video lagu: ditolak; "tetap lanjut": siap. a3 punya caption bawaan di posisi hook -> hook digeser 0.48. Koreksi `hook_top` lewat `engine ulang` dipatuhi. Batch 2x berturut (riwayat di folder sementara): batch 2 menolak 13 pembuka + 3 mirip riwayat. Motion Transfer: 7 adegan.
+- Temuan: OCR hook 84 dtk per Generate (setelan Shot Library memperbesar frame) -> diperbaiki 6d73c76, ±30 dtk saat CPU dibagi analisis Hanagaki.
+- Catatan terbuka: vw_in2 butir QC "caption tidak menutup wajah" gagal (posisi_caption, tidak diubah putaran ini).
+- Audit E2E aplikasi (salinan 58a03ae, tanpa sentuh server live): berjalan.
+- Fitur app baru belum aktif di situs live: server live dibangun dari working tree yang berisi WIP ucok; dinaikkan setelah semua task app lulus.
+
 ### Pending Confirmation putaran R
 - ~~PC-R1 lokasi backup~~ → owner 15 Nov: "ga usah ada lokasi backup". Skrip backup sukma tetap ada di `deploy/backup/`, tidak dijadwalkan. Risiko tercatat: workspace hanya di 1 SSD USB.
 - PC-R2 AI gambar: owner masih mencari akun. Disiapkan kolom API (ucok R12a).
 - **PC-R4 Setujui varian**: "Setujui" di layar PIC = review Lulus. Untuk proyek varian Batch, apakah Lulus otomatis menyetujui varian untuk render massal? (sekarang terpisah)
 - **PC-R5 draf belum dirender**: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
-- ~~PC-R6 catatan belajar~~ → owner 15 Nov: "Catat semua koreksi". Dikerjakan ucok sebagai R9b setelah R13.
+- ~~PC-R6 catatan belajar~~ → owner 15 Nov: "Catat semua koreksi". R9b selesai (19617c1), audit lulus.
 - ~~PC-R7 Beat Spot~~ → owner 15 Nov: opsi A, wajah tidak perlu di-blur. AI ganti pakaian hanya untuk footage kreator/model sendiri; orang asing hanya kalau memang memakai produk kita.
 - ~~PC-R3 terowongan~~ → owner: "gas perbaiki". Dikerjakan sukma (aditif, tanpa restart VPS, tanpa sentuh Affiliate).
 
