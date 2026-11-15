@@ -434,3 +434,15 @@ Sumber angka: laporan Hanagaki (85 video Aysilla, `BELAJAR/hanagaki/LAPORAN-HANA
 
 ### 17.4 Preset contoh Aysilla (diisi tim lewat menu Brand)
 `aysilla-interview` (street_interview: caption.y 0.76, warna #F5EFA0, maks_kata 4, hook.y 0.18 ukuran 4.5, shot 1.9/3.5, transisi flash, durasi 40–55) · `aysilla-test-produk` (caption.y 0.45, 2 baris, shot 1.6) · `aysilla-harian` (hook.y 0.54 ukuran 3.4 baris 2 putih, shot 1.2/3.5, durasi 13–18) · `aysilla-beatspot` (beat 4 ketukan, 120 BPM, durasi 15–18, hanya watermark).
+
+### 17.5 Catatan implementasi Batch Remix & Beat Spot (yuki, R18)
+- Preset aktif = `brand_kit.json → preset[job.preset]` (`pipeline/batch/gaya.py`). Tanpa `job.preset` atau field = perilaku lama (dites: ops identik).
+- `caption.outline`: Motion Studio hanya punya outline gelap (boolean), jadi warna outline preset belum dipakai. `caption.kotak: true` = latar `latar_gelap` 60 %.
+- `hook.ukuran` (% tinggi per baris) diubah ke `style.size` (% sisi pendek): ×16/9 di 9:16. `hook.baris` membatasi ±3 kata per baris.
+- `shot.maks_dtk`: potongan panjang dipecah (min 1 dtk per pecahan) di ms bulat, waktu sumber tetap sinkron. Pecahan berselang diberi punch-in `zoom` 1,1 (cut) di track `effects`; zoom halus yang bentrok dibuang, zoom-through hanya di potongan asli.
+- `transisi.ganti_orang: "flash"` = `transition: {type: "flash", ms: 300}` (§12.1) di klip video yang footage-nya beda dari klip sebelumnya. Tidak ada flash di pecahan shot yang sama.
+- End card Batch: klip `broll` aset penutup + tagline sesudah video, musik ikut diperpanjang. Tanpa aset: peringatan `jenis: "penutup"` + `menunggu_u3`.
+- `visual.watermark`: track `text` tidak boleh tumpang tindih, jadi watermark mengisi sela di antara hook/CTA/tagline. `opasitas` belum didukung (peringatan `info`).
+- `audio_pilihan` Batch: `"vo"` = tanpa musik; `"musik"` = tanpa klip VO dan tanpa caption ucapan (susunan gambar tetap mengikuti kalimat); `"keduanya"` = musik + VO + `set_ducking` 0,3. `"musik"`/`"keduanya"` tanpa musik yang boleh dipakai = ditolak (kode 2).
+- Beat Spot: bawaan `beat.bpm` / `beat.tiap_ketukan` dari preset kalau `job.beatspot` tidak mengisinya; tagline dari `teks.tagline`; watermark seperti di atas; preset `jenis: "beat_spot"` + watermark = logo tidak dipasang ("hanya watermark", §17.4). `audio_pilihan: "vo"` = sound tidak dipasang (pola BPM).
+- Progres JSON-lines Batch / Pisah / Beat Spot kini ditulis UTF-8 (di Windows sebelumnya cp1252, karakter seperti "·" rusak di app).
