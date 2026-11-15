@@ -1,5 +1,5 @@
 import type { Route } from './app.js';
-import { type Workspace, addComment, approvalQueue, decideReview, readReview, resolveComment } from './core.js';
+import { type Workspace, addComment, approvalQueue, decideReview, precheckReview, readProject, readReview, resolveComment, variantState } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { onlyKeys } from './routes.js';
@@ -51,10 +51,28 @@ export function reviewRoutes(ws: Workspace): Route[] {
     {
       method: 'POST',
       path: '/api/projects/:project_id/review',
-      handle: async ({ req, params, user }) => {
+      handle: async ({ req, params, user, svc, actor }) => {
         const body = await readJsonBody(req);
         onlyKeys(body, ['expected_revision', 'status', 'note']);
-        return decideReview(ws, { project_id: params.project_id!, expected_revision: body.expected_revision, status: body.status, note: body.note, author: author(user) });
+        const project_id = params.project_id!;
+        const input = { project_id, expected_revision: body.expected_revision, status: body.status, note: body.note };
+        // PC-R4: on a variant, Lulus also approves it for mass render and Revisi withdraws that
+        // approval — so the PIC does not have to do it twice. The approval is a commit (new
+        // revision), so it goes first and the decision is recorded on the revision after it.
+        await precheckReview(ws, input);
+        const p = await readProject(ws, project_id);
+        const want = body.status === 'lulus';
+        const change = p.variant && (want ? variantState(p) !== 'approved' : p.variant.approved_revision !== null);
+        if (!change) return decideReview(ws, { ...input, author: author(user) });
+        const approved = await svc.setVariantApproval({ project_id, expected_revision: p.revision, approved: want, actor });
+        try {
+          const r = await decideReview(ws, { ...input, expected_revision: approved.result.revision, author: author(user) });
+          return { ...r, revision: approved.result.revision, variant_approved: want };
+        } catch (e) {
+          // Something changed in between (e.g. a new comment): put the approval back as it was.
+          await svc.setVariantApproval({ project_id, expected_revision: approved.result.revision, approved: !want, actor }).catch(() => undefined);
+          throw e;
+        }
       },
     },
   ];

@@ -862,7 +862,7 @@ export function createApi(token: string | null, base = '') {
     resolveComment: (id: string, commentId: string, resolved: boolean) =>
       call<{ comment: ReviewComment }>('POST', `/api/projects/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}/resolve`, { json: { resolved } }).then((r) => r.comment),
     decideReview: (id: string, expected_revision: number, status: 'lulus' | 'revisi', note?: string) =>
-      call<{ state: ReviewInfo['state'] }>('POST', `/api/projects/${encodeURIComponent(id)}/review`, { json: { expected_revision, status, ...(note ? { note } : {}) } }),
+      call<{ state: ReviewInfo['state']; variant_approved?: boolean }>('POST', `/api/projects/${encodeURIComponent(id)}/review`, { json: { expected_revision, status, ...(note ? { note } : {}) } }),
     // U6 engine runner
     engineInfo: () => call<{ installed: boolean; running: number; waiting: number }>('GET', '/api/engine'),
     engineJobs: (id: string) => call<{ jobs: EngineJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs`).then((r) => r.jobs),

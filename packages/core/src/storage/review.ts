@@ -116,21 +116,41 @@ export async function resolveComment(ws: Workspace, input: { project_id: string;
  * Lulus / Revisi for the project's CURRENT revision. Lulus is refused while a comment is still open
  * and for a test variant (Batch Remix music without an ad licence, contract §3).
  */
-export async function decideReview(ws: Workspace, input: { project_id: string; expected_revision: unknown; status: unknown; note: unknown; author: Author }): Promise<{ decision: ReviewDecision; state: ReviewState }> {
+function decisionInput(input: { status: unknown; note: unknown }): { status: ReviewStatus; note: string } {
   if (input.status !== 'lulus' && input.status !== 'revisi') bad('status harus lulus | revisi');
   const note = input.note === undefined ? '' : typeof input.note === 'string' && input.note.length <= MAX_COMMENT_LEN ? input.note.trim() : bad(`catatan maks ${MAX_COMMENT_LEN} karakter`);
   if (input.status === 'revisi' && !note) bad('Tulis apa yang perlu direvisi');
+  return { status: input.status as ReviewStatus, note: note as string };
+}
+
+async function checkDecision(ws: Workspace, input: { project_id: string; expected_revision: unknown; status: ReviewStatus }) {
+  const p = await readProject(ws, input.project_id);
+  if (p.revision !== input.expected_revision) throw new StorageError('CONFLICT', 'Proyek sudah berubah; muat ulang lalu periksa lagi', { expected: input.expected_revision, actual: p.revision });
+  const f = await load(ws, input.project_id);
+  if (input.status === 'lulus') {
+    if (p.variant?.bukan_iklan) bad('Varian UJI (musik tanpa lisensi iklan) tidak boleh Lulus');
+    const open = f.comments.filter((c) => c.resolved_at === null).length;
+    if (open) bad(`Masih ada ${open} komentar terbuka; selesaikan dulu`);
+    if (!p.timeline.tracks.some((t) => t.clips.length)) bad('Proyek masih kosong');
+  }
+  return { p, f };
+}
+
+/**
+ * PC-R4: would this Lulus / Revisi be accepted right now? Throws the same errors as decideReview,
+ * saves nothing — lets the caller change the variant approval first only when the decision will go
+ * through.
+ */
+export async function precheckReview(ws: Workspace, input: { project_id: string; expected_revision: unknown; status: unknown; note: unknown }): Promise<void> {
+  const d = decisionInput(input);
+  await checkDecision(ws, { ...input, status: d.status });
+}
+
+export async function decideReview(ws: Workspace, input: { project_id: string; expected_revision: unknown; status: unknown; note: unknown; author: Author }): Promise<{ decision: ReviewDecision; state: ReviewState }> {
+  const { status, note } = decisionInput(input);
   return withWorkspaceLock(ws, 'review.decide', async () => {
-    const p = await readProject(ws, input.project_id);
-    if (p.revision !== input.expected_revision) throw new StorageError('CONFLICT', 'Proyek sudah berubah; muat ulang lalu periksa lagi', { expected: input.expected_revision, actual: p.revision });
-    const f = await load(ws, input.project_id);
-    if (input.status === 'lulus') {
-      if (p.variant?.bukan_iklan) bad('Varian UJI (musik tanpa lisensi iklan) tidak boleh Lulus');
-      const open = f.comments.filter((c) => c.resolved_at === null).length;
-      if (open) bad(`Masih ada ${open} komentar terbuka; selesaikan dulu`);
-      if (!p.timeline.tracks.some((t) => t.clips.length)) bad('Proyek masih kosong');
-    }
-    f.decision = { status: input.status as ReviewStatus, revision: p.revision, by: cleanAuthor(input.author), at: ws.clock.now(), note: note as string };
+    const { p, f } = await checkDecision(ws, { ...input, status });
+    f.decision = { status, revision: p.revision, by: cleanAuthor(input.author), at: ws.clock.now(), note };
     await save(ws, input.project_id, f);
     // R9: what the PIC asked to change is a lesson for this brand.
     if (f.decision.status === 'revisi') await appendLearning(ws, input.project_id, { jenis: 'revisi_pic', revision: p.revision, note: f.decision.note, by: f.decision.by.name });

@@ -72,8 +72,10 @@ export function PersetujuanView({ api, role = 'owner', active = true, onOpenProj
     setBusy(true);
     setError(null);
     try {
-      await api.decideReview(item.project_id, item.revision, status, status === 'revisi' ? note.trim() : undefined);
-      setDone(`${item.name}: ${status === 'lulus' ? 'disetujui' : 'dikembalikan untuk revisi'}.`);
+      const r = await api.decideReview(item.project_id, item.revision, status, status === 'revisi' ? note.trim() : undefined);
+      // PC-R4: on a variant the same click also sets / withdraws its approval for mass render.
+      const mass = r.variant_approved === true ? ' Varian ikut disetujui untuk render massal.' : r.variant_approved === false ? ' Persetujuan render massal varian dibatalkan.' : '';
+      setDone(`${item.name}: ${status === 'lulus' ? 'disetujui' : 'dikembalikan untuk revisi'}.${mass}`);
       await load(); // the decided video leaves the list; the next one is shown
     } catch (e) {
       setError(e);
