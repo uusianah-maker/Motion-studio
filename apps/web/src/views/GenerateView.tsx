@@ -147,7 +147,7 @@ export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }:
       </details>
       <div className="row" style={{ gap: 8 }}>
         <button className="btn primary" disabled={busy} onClick={onApprove}>
-          ✓ Setujui &amp; terapkan ke timeline
+          ✓ Terapkan ke timeline
         </button>
         <button className="btn" disabled={busy} onClick={onReject}>
           Tolak

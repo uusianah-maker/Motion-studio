@@ -202,7 +202,7 @@ export function CopilotPanel({
             {plan.operations.map((o, i) => (
               <li key={i}>
                 <label>
-                  <input type="checkbox" checked={checked[i] ?? false} onChange={(e) => setChecked((c) => c.map((x, j) => (j === i ? e.target.checked : x)))} aria-label={`Setujui: ${o.label}`} />
+                  <input type="checkbox" checked={checked[i] ?? false} onChange={(e) => setChecked((c) => c.map((x, j) => (j === i ? e.target.checked : x)))} aria-label={`Terapkan: ${o.label}`} />
                   {o.label}
                 </label>
               </li>

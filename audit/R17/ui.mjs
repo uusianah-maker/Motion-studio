@@ -111,7 +111,7 @@ try {
   await form.getByRole('button', { name: /Susun draf otomatis/ }).click();
   const planCard = page.getByRole('region', { name: 'Rencana edit' });
   await planCard.waitFor({ timeout: 30000 });
-  await planCard.getByRole('button', { name: /Setujui/ }).click();
+  await planCard.getByRole('button', { name: /Terapkan ke timeline/ }).click();
   await page.getByRole('button', { name: /Buka di Edit/ }).click();
   const inEdit = await until(async () => (await page.evaluate(() => location.hash)) === '#/edit' && (await nav.getByRole('button', { name: /^2\. Edit$/ }).getAttribute('aria-current')) === 'page');
   check('R17-07 Setelah draf jadi: tombol "Buka di Edit" membuka 2. Edit', inEdit);

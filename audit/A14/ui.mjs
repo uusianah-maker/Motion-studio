@@ -210,7 +210,7 @@ try {
   await page.getByRole('heading', { name: 'Uji Copilot Kosong' }).waitFor();
   await page.getByLabel('Perintah Copilot').fill('hook "Diskon 50%" 2 detik; subtitle "Cek keranjang" detik 2-5');
   await page.getByRole('button', { name: 'Buat rencana' }).click();
-  const boxes = page.getByRole('checkbox', { name: /^Setujui: / });
+  const boxes = page.getByRole('checkbox', { name: /^Terapkan: / });
   if (await until(async () => (await boxes.count()) >= 2)) {
     await page.route('**/copilot/plans/*/preview', (r) => r.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: { code: 'EDIT_INVALID', message: 'Klip saling tumpang tindih di track yang sama' } }) }), { times: 1 });
     await boxes.first().uncheck();

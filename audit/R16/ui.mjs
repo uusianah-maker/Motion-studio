@@ -107,7 +107,7 @@ try {
 
   // Approve → on the timeline, one undo step.
   await until(() => planCard.isVisible(), 15000);
-  await planCard.getByRole('button', { name: /Setujui/ }).click();
+  await planCard.getByRole('button', { name: /Terapkan ke timeline/ }).click();
   await page.getByRole('region', { name: 'Draf diterapkan' }).waitFor();
   const pid = await page.evaluate(() => JSON.parse(sessionStorage.getItem('ms:beatspot.proyek') ?? '""'));
   const p = await core.readProject(ws, pid);

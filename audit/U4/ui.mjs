@@ -95,7 +95,7 @@ try {
   const before = await core.readProject(ws, pid);
   check('U4-05 Sebelum disetujui timeline tidak berubah (brand proyek = brand terpilih)', before.revision <= 1 && !before.timeline.tracks.some((t) => t.clips.length) && !!before.brand_id);
   await page.screenshot({ path: path.join(EVID, 'generate-plan.png') });
-  await card.getByRole('button', { name: /Setujui/ }).click();
+  await card.getByRole('button', { name: /Terapkan ke timeline/ }).click();
   await page.getByRole('region', { name: 'Draf diterapkan' }).waitFor();
   const after = await core.readProject(ws, pid);
   check('U4-06 Setujui = diterapkan ke timeline sebagai satu langkah (video + subtitle kata + musik mesin)', after.revision === before.revision + 1 && after.timeline.tracks.map((t) => t.kind).join(',') === 'video,subtitle,music', after.timeline.tracks.map((t) => t.kind).join(','));
