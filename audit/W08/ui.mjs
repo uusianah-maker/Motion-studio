@@ -52,7 +52,7 @@ await svc.editTimeline({
 await core.createProject(ws, { project_id: 'kosong', name: 'Proyek Kosong' });
 const sourceHash = (await core.loadRegistry(ws)).versions[ref.version_id].content_hash;
 
-const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_RENDER_TMP: renderTmp }, () => undefined);
+const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_STATE_DIR: path.join(work, 'state'), MOTION_RENDER_TMP: renderTmp }, () => undefined);
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const errors = [];
 const outDir = path.join(wsRoot, 'PROJECTS/lucy/05_OUTPUT');

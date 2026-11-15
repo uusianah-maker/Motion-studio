@@ -36,7 +36,7 @@ await imp('sample_3s_16x9.mp4', 'Musik-3s.mp4');
 check('PV-00 Probe saat import (ffprobe)', eight.version.probe?.duration_ms === 8000, JSON.stringify(eight.version.probe));
 
 const proj = async () => core.readProject(await core.openWorkspace(wsRoot), 'lucy');
-const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work }, () => undefined);
+const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_STATE_DIR: path.join(work, 'state') }, () => undefined);
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
 const errors = [];
 try {

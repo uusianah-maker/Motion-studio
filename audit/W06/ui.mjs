@@ -33,7 +33,7 @@ for (const tag of ['Hook', 'Produk']) {
 const proj = async () => core.readProject(await core.openWorkspace(wsRoot), 'lucy');
 const video = async () => (await proj()).timeline.tracks.find((t) => t.kind === 'video')?.clips ?? [];
 
-const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work }, () => undefined);
+const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_STATE_DIR: path.join(work, 'state') }, () => undefined);
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const errors = [];
 try {

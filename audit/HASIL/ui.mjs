@@ -36,7 +36,7 @@ await out('korset', 'varian-002 · Sekarang aku mau buktiin.mp4');
 await out('korset', 'varian-002 · Sekarang aku mau buktiin_v2.mp4');
 await out('promo', 'Promo Payday.mp4');
 
-const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work }, () => undefined);
+const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_STATE_DIR: path.join(work, 'state') }, () => undefined);
 const base = `http://127.0.0.1:${server.port}`;
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const consoleErrors = [];

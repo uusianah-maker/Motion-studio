@@ -59,7 +59,7 @@ const t = await svc.autoTrash({ actor: 'scheduler' });
 check('SETUP two old versions in Trash', t.moved.length === 2, `moved=${t.moved.length}`);
 
 // ---- Built server (system clock, GC off for a deterministic run).
-const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work }, () => undefined);
+const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_STATE_DIR: path.join(work, 'state') }, () => undefined);
 const base = `http://127.0.0.1:${server.port}`;
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const consoleErrors = [];
