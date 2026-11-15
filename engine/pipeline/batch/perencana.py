@@ -38,7 +38,8 @@ from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, efek_vide
 from efek_otomatis import efek_batch, pilih_sfx, saring_sfx  # noqa: E402  (venus: SFX + efek otomatis, sama dengan Generate)
 from jaga_ops import buang_teks_kosong, cek_durasi, jaga_durasi, rapikan_kata, validasi_motion_studio  # noqa: E402  (pengaman venus: klip <= panjang file sumber)
 
-from jalur import BATCH_PY  # noqa: E402  (Python yang punya OpenCV untuk Shot Library; Windows/Linux)
+from jalur import BATCH_PY  # noqa: E402
+import gaya as gaya_mod  # noqa: E402  (R18: preset hasil belajar Hanagaki, kontrak §17)  (Python yang punya OpenCV untuk Shot Library; Windows/Linux)
 # Saran durasi per tujuan: hanya informasi di rencana. Batas baru berlaku kalau job menulis batas_durasi
 # (keputusan owner: batas diputuskan tim nanti, sekarang tanpa batas).
 SARAN_DURASI = {"konversi": (20.0, 30.0), "awareness": (12.0, 25.0), "branding": (20.0, 45.0)}
@@ -134,7 +135,7 @@ def blur_valid(regions: list[dict]) -> list[dict]:
     return sorted(out, key=lambda r: -r["w"] * r["h"])[:MAKS_AREA_BLUR]
 
 
-def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool) -> tuple[list[dict], list[str]]:
+def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool, gaya: dict | None = None) -> tuple[list[dict], list[str]]:
     """Ops sesuai kontrak 5.2 + v0.3.1, konvensi sama dengan pipeline/ops.py (venus).
 
     kompat: operasi/field yang sudah diterima Motion Studio: U3a (volume, set_loudness), U3b (track music,
@@ -144,19 +145,24 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool) -> tuple[list[di
     """
     u3 = mode == "u3"
     menunggu = []
+    g = gaya or {}  # R18 §17: field preset yang tidak ada = perilaku lama
+    audio_pilihan = g.get("audio_pilihan")
+    potongan, punch = gaya_mod.pecah_shot(v["susunan"]["potongan"], g.get("shot") or {})
     warna = brand["warna"]
     lufs = ((brand.get("preset") or {}).get("audio") or {}).get("lufs", -14)
     ops = [{"op": "set_canvas", "ratio": "9:16"},
            {"op": "set_brand_logo", "on": bool(brand.get("logo") or brand.get("logo_aturan"))},
            {"op": "set_loudness", "lufs": lufs}]  # U3a
-    for p in v["susunan"]["potongan"]:
+    for i, p in enumerate(potongan):
         # volume 0 (U3a): klip video berasal dari video bisu, suara dari stem vokal di track audio.
         op = {"op": "add_clip", "track_kind": "video", "media": f"$sumber:{p['footage']}",
               "start_ms": ms(p["start"]), "duration_ms": ms(p["dur"]), "in_ms": ms(p["in"]), "volume": 0}
         if pakai_blur and p["blur"]:
             op["blur"] = blur_valid(p["blur"])  # Clip.blur U3d
+        if g.get("transisi") == "flash" and i > 0 and p["footage"] != potongan[i - 1]["footage"]:
+            op["transition"] = {"type": "flash", "ms": gaya_mod.FLASH_MS}  # §12.1: flash putih saat ganti orang/footage
         ops.append(op)
-    for vk in v["susunan"]["vo_klip"]:
+    for vk in ([] if audio_pilihan == "musik" else v["susunan"]["vo_klip"]):
         ops.append({"op": "add_clip", "track_kind": "audio", "media": f"$vokal:{v['vo']}",
                     "start_ms": ms(vk["start"]), "duration_ms": ms(vk["dur"]), "in_ms": ms(vk["in"]), "volume": 1.0})
     m = v["musik"]
@@ -173,11 +179,14 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool) -> tuple[list[di
             t += d
     elif m:
         menunggu.append("musik latar di track `music` (menunggu U3b Motion Studio)")
+    if m and audio_pilihan == "keduanya" and (u3 or punya_track_music()):
+        ops.append({"op": "set_ducking", "on": True, "level": 0.3})  # §12.2: musik turun saat VO bicara
     gaya_caption = {"x": 0.5, "y": 0.36, "size": CAPTION_SIZE, "width": 0.8, "color": warna["caption"].lower(),
                     "bg": None, "bold": True, "outline": True, "align": "center", "font": "caption"}
+    gaya_caption.update(gaya_mod.gaya_caption(g.get("caption") or {}, warna))
     kapital = brand.get("kapital", "kata_kunci")
     pop_ms = ((brand.get("preset") or {}).get("caption") or {}).get("pop_ms", 120)
-    for c in v["caption"]:
+    for c in ([] if audio_pilihan == "musik" else v["caption"]):  # §17.2: mode musik tanpa caption ucapan/lirik
         # U3b, bentuk sama dengan Generate Otomatis: words relatif klip (kata_klip) + pop + sorot kata kunci.
         hl = set(sorot(c["teks"], brand.get("kata_kunci", [])))
         a, b = ms(c["dari"]), ms(c["sampai"])
@@ -196,15 +205,17 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool) -> tuple[list[di
     # U3c: kotak kaca (efek 17 glass type) = kotak putih tipis + blur di belakang teks, sama dengan ops.py.
     gaya_hook = {"x": 0.5, "y": 0.2, "size": HOOK_SIZE, "width": 0.84, "color": "#ffffff", "bg": "#ffffff",
                  "bg_opacity": 0.16, "bg_blur": 12, "bold": True, "outline": True, "align": "center", "font": "brand"}
+    gaya_hook.update(gaya_mod.gaya_hook(g.get("hook") or {}))
     ops.append({"op": "add_clip", "track_kind": "text", "text": hook["teks"].upper(), "start_ms": ms(hook["dari"]),
                 "duration_ms": ms(hook["sampai"] - hook["dari"]), "style": gaya_hook})
     total_ms = ms(v["durasi"])
     # Efek + SFX otomatis (venus, 14 Nov; aturan sama dengan Generate): zoom halus di <= 2 kalimat penting,
     # zoom-through di <= 2 titik potong, SFX dari Library brand (durasi pas, bervariasi), jarak >= 2 dtk.
-    potong = [ms(p["start"]) for p in v["susunan"]["potongan"][1:]]
+    potong = [ms(p["start"]) for p in potongan[1:] if not p.get("pecahan")]  # zoom-through hanya di potongan asli
     kalimat = [(ms(vk["start"]), ms(vk["start"] + vk["dur"])) for vk in v["susunan"]["vo_klip"]]
     hook_akhir = ms(hook["sampai"])
     framing, zt = efek_batch(potong, kalimat, hook_akhir, total_ms)
+    framing = gaya_mod.gabung_punch(framing, punch)  # §17.1 shot.maks_dtk: punch-in 110 % di shot yang dipecah
     for a, b, eff in efek_video(framing, zt, total_ms):
         if b - a >= MIN_CLIP_MS:
             ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": a, "duration_ms": b - a, "effect": eff})
@@ -233,6 +244,10 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool) -> tuple[list[di
                 "style": {"x": 0.5, "y": 0.45, "size": 6.0, "width": 0.84, "color": "#ffffff",
                           "bg": warna["latar_gelap"].lower(), "bg_opacity": 0.75, "bold": True, "outline": False,
                           "align": "center", "font": "brand"}})
+    # §17.1 penutup.end_card: aset visual.penutup + teks.tagline sesudah video (musik ikut sampai akhir).
+    menunggu += gaya_mod.end_card(ops, g, total_ms, warna, m)
+    # §17.3 visual.watermark: teks kecil sepanjang video (di sela teks lain; track text tidak boleh tumpang tindih).
+    gaya_mod.watermark(ops, g.get("watermark"))
     return ops, menunggu
 
 
@@ -353,6 +368,10 @@ def jalankan(job_dir: Path) -> int:
     brand = muat_brand_kit(bk_path)
     brand_raw = json.loads(bk_path.read_text(encoding="utf-8"))
     terlarang = list(dict.fromkeys(brand.get("superlatif_dilarang", [])))
+    # R18 §17: preset aktif (job.preset) dari Brand Kit + pilihan audio per job. Tidak ada = perilaku lama.
+    brand, gaya = gaya_mod.siapkan(brand, json.loads(bk_path.read_text(encoding="utf-8")), job)
+    if gaya.get("salah"):
+        raise Ditolak(gaya["salah"])
     if not (batch_dir / "video-bisu").is_dir():
         raise Ditolak(f"batch {batch} belum dipisah (tidak ada video bisu); jalankan Pisah Audio dulu")
 
@@ -435,7 +454,10 @@ def jalankan(job_dir: Path) -> int:
             vo_tolak.append({"id": vo_c["id"], "alasan": f"durasi jadi {total_vo:.1f} dtk di luar target "
                              f"{target[0]:.0f}-{target[1]:.0f} (kalimat terlalu panjang/pendek)"})
             continue
-        m = musik_mod.pilih(mlib, tujuan, rv["durasi_ucapan"] + TAHAN, rng, m_pakai)
+        m = None if gaya.get("audio_pilihan") == "vo" else musik_mod.pilih(mlib, tujuan, rv["durasi_ucapan"] + TAHAN, rng, m_pakai)
+        if m is None and gaya.get("audio_pilihan") in ("musik", "keduanya"):
+            raise Ditolak(f"audio_pilihan \"{gaya['audio_pilihan']}\" butuh musik, tetapi tidak ada musik yang boleh "
+                          "dipakai (aset musik Brand Kit lisensi_iklan / public/musik)")
         sus = matcher.susun_shot(rv, lib, footage_boleh, rng, m["ketukan"] if m else None, Counter(g_pakai),
                                  boleh_teks=hak_jelas, kecuali=kecuali, hindari_pembuka=hindari_pembuka)
         # Shot tidak boleh melewati ujung file sumber.
@@ -488,7 +510,8 @@ def jalankan(job_dir: Path) -> int:
             cta_teks = cta.rstrip(".!")
         idx = len(varian) + 1
         v = {"id": f"varian-{idx:03d}", "vo": rv["vo"], "rv": rv, "susunan": sus, "musik": m,
-             "durasi": sus["durasi"], "hook": {"teks": rv["judul"], "dari": 0.0, "sampai": round(hook_sampai, 2)},
+             "durasi": sus["durasi"], "hook": {"teks": gaya_mod.teks_hook(rv, gaya.get("hook") or {}), "dari": 0.0,
+                                               "sampai": round(hook_sampai, 2)},
              "cta": cta_teks, "_shots": shots,
              "_pembuka": pembuka, "_per_kalimat": per_kalimat}
         v["caption"] = frasa_caption(rv["kalimat"], sus["vo_klip"])
@@ -509,7 +532,7 @@ def jalankan(job_dir: Path) -> int:
     for v in varian:
         rv, sus, m = v["rv"], v["susunan"], v["musik"]
         bukan_iklan = bool(m and not m["lisensi_iklan"])
-        ops, menunggu = buat_ops(v, brand, mode_ops, hak_jelas)
+        ops, menunggu = buat_ops(v, brand, mode_ops, hak_jelas, gaya)
         kunci_brand = {a["kunci"] for a in brand_raw.get("aset", []) if a.get("kunci")}
         aset_lokal = {o["media"] for o in ops if o.get("media") and not o["media"].startswith("$sumber")
                       and o["media"] not in kunci_brand  # aset Brand Kit (SFX, musik) dikenal runner lewat Brand Kit
@@ -567,6 +590,7 @@ def jalankan(job_dir: Path) -> int:
             if kena:
                 peringatan.append({"level": "block", "jenis": "shot_dikecualikan", "detik": p["start"],
                                    "teks": "memakai bagian shot yang dikecualikan: " + ", ".join(kena)})
+        peringatan += gaya_mod.peringatan(v, gaya)
         if bukan_iklan:
             peringatan.append({"level": "block", "jenis": "musik_tanpa_lisensi",
                                "teks": "musik dari stem video lain (uji saja), bukan untuk iklan"})
@@ -662,6 +686,8 @@ def jalankan(job_dir: Path) -> int:
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")  # progres JSON-lines dibaca app sebagai UTF-8 (Windows: cp1252)
+    sys.stderr.reconfigure(encoding="utf-8")
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
     try:

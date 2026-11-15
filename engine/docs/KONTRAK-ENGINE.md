@@ -401,3 +401,48 @@ Video **awareness**: footage orang jalan (di mall) memakai produk brand dipotong
 - Output: `out/ops.json` (ms-ops/1, `set_canvas` 9:16, `set_brand_logo` (logo kecil sesuai Brand Kit `visual.logo`), `set_loudness`, klip `video` volume 0, `music` sound, end card = klip `broll` aset `visual.penutup` + teks tagline di atasnya; tanpa aset penutup: tagline di 2 dtk terakhir video + `menunggu_u3`), `out/rencana.json` (`beatspot: {bpm, sumber_ketukan, ketukan_per_potong, potongan, end_card_dtk}`), `out/qc_rencana.json` (durasi, potong_di_ketukan ±1 frame, lama_per_orang_1_4_dtk, shot_tidak_berulang, orang_berganti, video_tanpa_celah, klip_min_100ms).
 - `out/beatspot.json` (schema `beatspot/1`): `bpm`, `ketukan` (detik timeline), `ketukan_per_potong`, `potongan: [{no, mulai, durasi, shot, footage, in, skor, alasan, sumber_orang}]`, `kandidat: [{id, footage, dari, sampai, orang, framing, skor, dipakai, sumber_orang}]` (untuk tim memilih/mengurutkan lewat `urutan_shot`), `dibuang: [{id, alasan}]`.
 - Motion Studio (ucok) perlu: validasi mode `beatspot` di runner U6 + halaman/kartu Beat Spot. Belum ada di app.
+
+## 17. Preset gaya dari hasil belajar (R18, v0.4.0, 15 Nov 2026, venus — owner: "Ya, pasang")
+Sumber angka: laporan Hanagaki (85 video Aysilla, `BELAJAR/hanagaki/LAPORAN-HANAGAKI.md`). **Semua field opsional dan aditif**: preset/Brand Kit lama tetap valid; field yang tidak ada = perilaku sekarang. Hybrid: semua hasil tetap bisa diubah di editor.
+
+### 17.1 Field tambahan di `preset.<id>` (BrandPreset)
+| Field | Nilai | Dipakai |
+|---|---|---|
+| `jenis` | `"street_interview"` \| `"test_produk"` \| `"harian_studio"` \| `"beat_spot"` \| `"lain"` | label + bawaan di bawah |
+| `caption.y` | 0..1 (pusat caption) | posisi caption kalau tidak bentrok wajah/produk (Generate) |
+| `caption.warna`, `caption.outline` | `#rrggbb` | warna caption (default `visual.warna_teks` / `visual.outline`) |
+| `caption.kotak` | bool | kotak latar caption |
+| `hook.y` | 0..1 (atas panel hook) | posisi awal hook; cek teks bawaan/wajah (§14) tetap boleh menggeser |
+| `hook.ukuran` | % tinggi layar per baris (1–8) | ukuran teks hook |
+| `hook.baris` | 1–3 | maksimum baris hook |
+| `hook.warna` | `#rrggbb` | warna hook |
+| `hook.dari_kalimat_kuat` | bool | hook diambil dari kalimat dengan angka/harga/rating/"!" kalau ada; kalau tidak ada → peringatan `jenis: "hook"` |
+| `shot.target_dtk`, `shot.maks_dtk` | detik | shot lebih panjang dari `maks_dtk` dipecah dengan punch-in 110 % (efek zoom) atau b-roll |
+| `transisi.ganti_orang` | `"potong"` \| `"flash"` | `flash` = transisi flash putih 0,3 dtk saat ganti narasumber/footage |
+| `penutup.end_card` | bool | end card wajib (aset `visual.penutup` + `teks.tagline`); kalau aset tidak ada → peringatan `jenis: "penutup"` |
+| `beat.tiap_ketukan`, `beat.bpm` | 1/2/4, 60–200 | bawaan Beat Spot (§16) |
+
+### 17.2 Musik atau voice over: pilihan per job (owner 15 Nov: "opsional, tergantung kebutuhan")
+- Field `job.json` opsional `audio_pilihan`: `"vo"` (tanpa musik) · `"musik"` (tanpa VO, mis. konten harian studio) · `"keduanya"` (musik di bawah VO, ducking §12.2). Tidak ada = perilaku sekarang (Generate: musik kalau ada aset yang boleh; Batch: tanpa musik).
+- Aturan lisensi musik tetap: hanya aset `lisensi_iklan: true` (atau milik brand). Pilihan ini tidak membuka musik berlisensi pihak lain.
+- `"musik"`: transkrip lirik lagu tidak boleh dijadikan caption (sejalan §14 R1).
+
+### 17.3 Field tambahan Brand Kit
+- `teks.tagline` (teks, mis. "CUCI · JEMUR · LANGSUNG PAKAI") dipakai end card dan Beat Spot.
+- `visual.watermark`: `{ teks, y, lebar, opasitas }` opsional. Motion Studio hanya punya satu track `text`, jadi watermark teks mengisi celah di antara hook/CTA/disclaimer (hilang saat teks lain tampil). Untuk watermark yang selalu tampil, pakai logo Brand Kit (`set_brand_logo`).
+- Video iklan (Generate, venus): `caption.y` jadi posisi pilihan pertama (wajah/produk tetap dihindari), `hook.y` dicoba paling dulu oleh cek §14, `hook.ukuran`/`warna`, `caption.warna`/`kotak`, `shot.maks_dtk` = punch-in 110 % bergantian di klip yang lebih panjang (skala sebelumnya dipulihkan), `penutup.end_card` → peringatan `jenis: "penutup"` kalau aset tidak ada, `audio_pilihan: "vo"` → tanpa musik.
+
+### 17.4 Preset contoh Aysilla (diisi tim lewat menu Brand)
+`aysilla-interview` (street_interview: caption.y 0.76, warna #F5EFA0, maks_kata 4, hook.y 0.18 ukuran 4.5, shot 1.9/3.5, transisi flash, durasi 40–55) · `aysilla-test-produk` (caption.y 0.45, 2 baris, shot 1.6) · `aysilla-harian` (hook.y 0.54 ukuran 3.4 baris 2 putih, shot 1.2/3.5, durasi 13–18) · `aysilla-beatspot` (beat 4 ketukan, 120 BPM, durasi 15–18, hanya watermark).
+
+### 17.5 Catatan implementasi Batch Remix & Beat Spot (yuki, R18)
+- Preset aktif = `brand_kit.json → preset[job.preset]` (`pipeline/batch/gaya.py`). Tanpa `job.preset` atau field = perilaku lama (dites: ops identik).
+- `caption.outline`: Motion Studio hanya punya outline gelap (boolean), jadi warna outline preset belum dipakai. `caption.kotak: true` = latar `latar_gelap` 60 %.
+- `hook.ukuran` (% tinggi per baris) diubah ke `style.size` (% sisi pendek): ×16/9 di 9:16. `hook.baris` membatasi ±3 kata per baris.
+- `shot.maks_dtk`: potongan panjang dipecah (min 1 dtk per pecahan) di ms bulat, waktu sumber tetap sinkron. Pecahan berselang diberi punch-in `zoom` 1,1 (cut) di track `effects`; zoom halus yang bentrok dibuang, zoom-through hanya di potongan asli.
+- `transisi.ganti_orang: "flash"` = `transition: {type: "flash", ms: 300}` (§12.1) di klip video yang footage-nya beda dari klip sebelumnya. Tidak ada flash di pecahan shot yang sama.
+- End card Batch: klip `broll` aset penutup + tagline sesudah video, musik ikut diperpanjang. Tanpa aset: peringatan `jenis: "penutup"` + `menunggu_u3`.
+- `visual.watermark`: track `text` tidak boleh tumpang tindih, jadi watermark mengisi sela di antara hook/CTA/tagline. `opasitas` belum didukung (peringatan `info`).
+- `audio_pilihan` Batch: `"vo"` = tanpa musik; `"musik"` = tanpa klip VO dan tanpa caption ucapan (susunan gambar tetap mengikuti kalimat); `"keduanya"` = musik + VO + `set_ducking` 0,3. `"musik"`/`"keduanya"` tanpa musik yang boleh dipakai = ditolak (kode 2).
+- Beat Spot: bawaan `beat.bpm` / `beat.tiap_ketukan` dari preset kalau `job.beatspot` tidak mengisinya; tagline dari `teks.tagline`; watermark seperti di atas; preset `jenis: "beat_spot"` + watermark = logo tidak dipasang ("hanya watermark", §17.4). `audio_pilihan: "vo"` = sound tidak dipasang (pola BPM).
+- Progres JSON-lines Batch / Pisah / Beat Spot kini ditulis UTF-8 (di Windows sebelumnya cp1252, karakter seperti "·" rusak di app).

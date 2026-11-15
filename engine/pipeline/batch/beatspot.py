@@ -43,6 +43,7 @@ from jalur import BATCH_PY, ROOT  # noqa: E402
 import musik as musik_mod  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import MIN_CLIP_MS  # noqa: E402  (milik venus)
+import gaya as gaya_mod  # noqa: E402  (R18 §17: preset beat, tagline, watermark, audio_pilihan)
 
 EXT_AUDIO = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac"}
 DURASI_DEFAULT = (15.0, 20.0)
@@ -150,12 +151,12 @@ def susun(potong: list[float], shots: list[dict], durasi_footage: dict, rng: ran
 
 # ------------------------------------------------------------------ ops
 
-def buat_ops(potongan, sound, video_akhir, total, brand, tagline) -> tuple[list[dict], list[str], float]:
+def buat_ops(potongan, sound, video_akhir, total, brand, tagline, watermark=None, logo=True) -> tuple[list[dict], list[str], float]:
     """Kembali (ops, menunggu, durasi_penutup)."""
     warna = brand.get("warna", {})
     lufs = ((brand.get("preset") or {}).get("audio") or {}).get("lufs", -14)
     ops = [{"op": "set_canvas", "ratio": "9:16"},
-           {"op": "set_brand_logo", "on": bool(brand.get("logo") or brand.get("logo_aturan"))},
+           {"op": "set_brand_logo", "on": bool(logo and (brand.get("logo") or brand.get("logo_aturan")))},
            {"op": "set_loudness", "lufs": lufs}]
     menunggu = []
     for p in potongan:
@@ -193,6 +194,7 @@ def buat_ops(potongan, sound, video_akhir, total, brand, tagline) -> tuple[list[
                         "duration_ms": dur, "in_ms": ms(sound["mulai"]), "volume": 1.0})
     else:
         menunggu.append("tanpa sound: pasang sound tren di TikTok (potongan sudah mengikuti ketukan BPM pilihan tim)")
+    gaya_mod.watermark(ops, watermark)  # §17.3: teks kecil sepanjang video, di sela teks lain
     return ops, menunggu, pen_ms / 1000
 
 
@@ -248,6 +250,8 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
         return tolak(out_dir, "job.json bukan mode beatspot")
     bs = job.get("beatspot") or {}
     rng = random.Random(bs.get("seed", 1))
+    if job.get("audio_pilihan") not in (None,) + gaya_mod.AUDIO_PILIHAN:
+        return tolak(out_dir, "audio_pilihan harus salah satu dari " + ", ".join(gaya_mod.AUDIO_PILIHAN))
     target = tuple(bs.get("durasi") or DURASI_DEFAULT)
     if len(target) != 2 or not (5 <= target[0] <= target[1] <= 60):
         return tolak(out_dir, "beatspot.durasi harus [min, maks] detik, 5-60")
@@ -272,7 +276,18 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
     brand_path = job_dir / job.get("brand_kit", "brand_kit.json")
     brand = muat_brand_kit(brand_path) if brand_path.exists() else {}
     brand_raw = json.loads(brand_path.read_text(encoding="utf-8")) if brand_path.exists() else {}
-    tagline = bs.get("tagline") or (brand_raw.get("teks") or {}).get("tagline") or brand.get("tagline")
+    # R18 §17: preset aktif (job.preset) memberi bawaan beat; Brand Kit memberi tagline & watermark.
+    brand, g = gaya_mod.siapkan(brand, brand_raw, job) if brand else (brand, {"beat": {}})
+    beat = g.get("beat") or {}
+    tagline = bs.get("tagline") or g.get("tagline")
+    watermark = g.get("watermark")
+    # Beat Spot gaya Hanagaki ("hanya watermark"): preset jenis beat_spot + watermark -> logo tidak dipasang.
+    pakai_logo = not ((g.get("preset") or {}).get("jenis") == "beat_spot" and watermark)
+    if job.get("audio_pilihan") == "vo":
+        # Beat Spot tidak punya voice over: "vo" = tanpa musik; pola ketukan dari BPM, sound dipasang tim.
+        if sound_kunci:
+            peringatan.append({"level": "info", "jenis": "audio", "teks": "audio_pilihan vo: sound tim tidak dipasang"})
+        sound_kunci = None
 
     # Ketukan: dari sound tim, atau pola BPM pilihan tim (sound tren dipasang tim di TikTok).
     progres("ketukan", 5, "membaca ketukan sound" if sound_kunci else "pola ketukan dari BPM")
@@ -284,14 +299,14 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
             sound = {"kunci": sound_kunci, "durasi": a["durasi"], "mulai": ketukan[0], "sisa": a["durasi"] - ketukan[0]}
             sumber_ketukan = "sound"
         else:
-            bpm = float(bs.get("bpm") or 120)
+            bpm = float(bs.get("bpm") or beat.get("bpm") or 120)
             ketukan = ketukan_bpm(bpm, a["durasi"])
             sound = {"kunci": sound_kunci, "durasi": a["durasi"], "mulai": 0.0, "sisa": a["durasi"]}
             sumber_ketukan = "bpm"
             peringatan.append({"level": "warn", "jenis": "ketukan",
                                "teks": f"ketukan sound tidak terbaca jelas; dipakai pola {bpm:.0f} BPM"})
     else:
-        bpm = float(bs.get("bpm") or 0)
+        bpm = float(bs.get("bpm") or beat.get("bpm") or 0)
         if not bpm:
             bpm = 120.0
             peringatan.append({"level": "warn", "jenis": "ketukan", "teks": "tanpa sound dan tanpa BPM: dipakai 120 BPM"})
@@ -299,7 +314,7 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
             return tolak(out_dir, "beatspot.bpm harus 60-200")
         ketukan = ketukan_bpm(bpm, target[1] + 5)
         sumber_ketukan = "bpm"
-    k = langkah(bpm, bs.get("ketukan_per_potong", "auto"))
+    k = langkah(bpm, bs.get("ketukan_per_potong", beat.get("tiap_ketukan", "auto")))
 
     progres("shot", 10, f"memotong {len(footage)} footage per orang")
     with tempfile.TemporaryDirectory() as tmp:
@@ -329,7 +344,7 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
                            "teks": f"durasi {video_akhir + pen_dtk:.1f} dtk di bawah target {target[0]:.0f}: "
                                    "tambah footage orang / sound lebih panjang"})
 
-    ops, menunggu, pen_dtk = buat_ops(potongan, sound, video_akhir, total, brand, tagline)
+    ops, menunggu, pen_dtk = buat_ops(potongan, sound, video_akhir, total, brand, tagline, watermark, pakai_logo)
     total = video_akhir + pen_dtk
     s0 = ketukan[0]
     ketukan_tl = [round(b - s0, 3) for b in ketukan]
@@ -376,6 +391,8 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")  # progres JSON-lines dibaca app sebagai UTF-8 (Windows: cp1252)
+    sys.stderr.reconfigure(encoding="utf-8")
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
     job_dir = Path(sys.argv[1])

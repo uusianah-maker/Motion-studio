@@ -539,6 +539,140 @@ class BeatSpot(unittest.TestCase):
             self.assertEqual(self.bs.jalankan(j, analisis=lambda f, t: {}), 2)
 
 
+class GayaR18(unittest.TestCase):
+    """R18 (kontrak §17): preset hasil belajar Hanagaki + audio_pilihan. Field tidak ada = perilaku lama."""
+
+    def setUp(self):
+        import gaya
+        import perencana
+        self.g, self.pr = gaya, perencana
+        rv = vo.susun(vo_sintetis(), random.Random(1), (10, 28))
+        sus = matcher.susun_shot(rv, lib_sintetis(), {"A", "B", "C"}, random.Random(3))
+        self.v = {"id": "varian-001", "vo": "A", "rv": rv, "susunan": sus, "musik": None, "durasi": sus["durasi"],
+                  "hook": {"teks": "Celana adem", "dari": 0.0, "sampai": 2.0}, "cta": "Cek keranjang kuning",
+                  "caption": perencana.frasa_caption(rv["kalimat"], sus["vo_klip"])}
+        self.brand = {"warna": {"caption": "#ffffff", "outline": "#000000", "aksen": "#ffffff", "latar_gelap": "#111111"},
+                      "preset": {}, "aset": [], "penutup": {}, "kata_kunci": [], "cta": {}}
+
+    def _ops(self, gaya=None, v=None):
+        return self.pr.buat_ops(v or self.v, self.brand, "u3", False, gaya)[0]
+
+    def test_tanpa_field_sama_dengan_perilaku_lama(self):
+        import json as _j
+        lama = _j.dumps(self.pr.buat_ops(self.v, self.brand, "u3", False)[0], sort_keys=True)
+        _, g = self.g.siapkan(self.brand, {}, {})
+        self.assertEqual(lama, _j.dumps(self._ops(g), sort_keys=True))
+
+    def test_preset_aktif_dari_job(self):
+        b = dict(self.brand, preset={"x-interview": {"jenis": "street_interview", "caption": {"y": 0.76}}, "x-harian": {}})
+        self.assertEqual(self.g.preset_aktif(b, {"preset": "x-interview"})["jenis"], "street_interview")
+        self.assertEqual(self.g.preset_aktif(b, {}), {})  # kumpulan preset tanpa pilihan: tidak menebak
+
+    def test_caption_hook_dari_preset(self):
+        c = self.g.gaya_caption({"y": 0.76, "warna": "#F5EFA0", "kotak": True}, self.brand["warna"])
+        self.assertEqual((c["y"], c["color"], c["bg"]), (0.76, "#f5efa0", "#111111"))
+        h = self.g.gaya_hook({"y": 0.18, "ukuran": 4.5, "warna": "#FFFFFF"})
+        self.assertEqual((h["y"], h["size"]), (0.18, 8.0))  # 4,5 % tinggi = 8 % sisi pendek 9:16
+        ops = self._ops({"caption": {"y": 0.76, "warna": "#F5EFA0"}, "hook": {"y": 0.18}})
+        sub = [o for o in ops if o.get("track_kind") == "subtitle"]
+        self.assertTrue(sub and all(o["style"]["y"] == 0.76 and o["style"]["color"] == "#f5efa0" for o in sub))
+        self.assertEqual(next(o for o in ops if o.get("track_kind") == "text")["style"]["y"], 0.18)
+
+    def test_hook_dari_kalimat_kuat(self):
+        rv = dict(self.v["rv"])
+        rv["kalimat"] = [dict(k) for k in rv["kalimat"]]
+        k = rv["kalimat"][2]
+        k["teks"] = "Harganya cuma 80 ribu!"
+        k["kata"] = kata("Harganya cuma 80 ribu!")
+        self.assertEqual(self.g.teks_hook(rv, {"dari_kalimat_kuat": True}), "Harganya cuma 80 ribu!")
+        self.assertEqual(len(self.g.teks_hook(rv, {"dari_kalimat_kuat": True, "baris": 1}).split()), 3)
+        tanpa = dict(self.v, rv=self.v["rv"])
+        self.assertEqual([p["jenis"] for p in self.g.peringatan(tanpa, {"hook": {"dari_kalimat_kuat": True}})], ["hook"])
+
+    def test_shot_panjang_dipecah_dengan_punch_in(self):
+        pot = [{"jenis": "sinkron", "footage": "A", "shot": "A#00", "start": 0.0, "dur": 7.0, "in": 2.0, "blur": []},
+               {"jenis": "broll", "footage": "B", "shot": "B#01", "start": 7.0, "dur": 2.0, "in": 3.0, "blur": []}]
+        out, punch = self.g.pecah_shot(pot, {"target_dtk": 1.9, "maks_dtk": 3.5})
+        self.assertEqual(len(out), 5)  # 7 dtk -> 4 pecahan + shot B utuh
+        self.assertTrue(all(p["dur"] <= 3.5 for p in out))
+        self.assertAlmostEqual(sum(p["dur"] for p in out), 9.0, places=2)
+        self.assertEqual(out[1]["in"] - out[0]["in"], out[1]["start"] - out[0]["start"])  # tetap sinkron bibir
+        self.assertEqual(len(punch), 2)
+        fr = self.g.gabung_punch([{"atMs": 0, "scale": 1.12, "mode": "smooth"}, {"atMs": 3000, "scale": 1.0}], punch)
+        self.assertTrue(any(f["scale"] == 1.1 for f in fr))
+        self.assertFalse(any(f["scale"] == 1.12 for f in fr))  # zoom halus yang bentrok dibuang
+        self.assertEqual(self.g.pecah_shot(pot, {}), (pot, []))
+
+    def test_flash_saat_ganti_footage_bukan_di_pecahan(self):
+        ops = self._ops({"transisi": "flash", "shot": {"target_dtk": 1.2, "maks_dtk": 2.0}})
+        vid = [o for o in ops if o.get("track_kind") == "video"]
+        for a, b in zip(vid, vid[1:]):
+            beda = a["media"] != b["media"]
+            self.assertEqual("transition" in b, beda, (a["media"], b["media"]))
+        self.assertTrue(any(o.get("transition") == {"type": "flash", "ms": 300} for o in vid))
+
+    def test_audio_pilihan_musik_tanpa_vo_dan_caption(self):
+        m = {"kunci": "$musik:x", "durasi": 60.0, "volume": 0.12, "sumber": "brand_kit", "lisensi_iklan": True}
+        v = dict(self.v, musik=m)
+        ops = self._ops({"audio_pilihan": "musik"}, v)
+        kinds = {o.get("track_kind") for o in ops}
+        self.assertNotIn("audio", kinds)
+        self.assertNotIn("subtitle", kinds)
+        self.assertIn("music", kinds)
+        ops2 = self._ops({"audio_pilihan": "keduanya"}, v)
+        self.assertIn({"op": "set_ducking", "on": True, "level": 0.3}, ops2)
+        self.assertIn("audio", {o.get("track_kind") for o in ops2})
+
+    def test_end_card_dan_watermark(self):
+        aset = {"kunci": "$penutup:logo", "durasi_ms": 5000, "lisensi_iklan": True}
+        b = dict(self.brand, aset=[aset], penutup={"aset": "$penutup:logo", "detik": 2.0},
+                 preset={"p": {"penutup": {"end_card": True}}})
+        b2, g = self.g.siapkan(b, {"teks": {"tagline": "CUCI · JEMUR · PAKAI"},
+                                   "visual": {"watermark": {"teks": "@aysillafactoryid", "y": 0.05}}}, {"preset": "p"})
+        ops = self.pr.buat_ops(self.v, b2, "u3", False, g)[0]
+        total = int(round(self.v["durasi"] * 1000))
+        self.assertIn(("broll", total, 2000), [(o.get("track_kind"), o.get("start_ms"), o.get("duration_ms")) for o in ops])
+        teks = sorted((o["start_ms"], o["start_ms"] + o["duration_ms"]) for o in ops if o.get("track_kind") == "text")
+        self.assertTrue(all(b1 <= a2 for (_, b1), (a2, _) in zip(teks, teks[1:])))  # track text tidak tumpang tindih
+        self.assertTrue(any(o.get("text") == "@aysillafactoryid" for o in ops))
+        self.assertTrue(any(o.get("text") == "CUCI · JEMUR · PAKAI" for o in ops))
+        tanpa = self.g.siapkan(dict(self.brand, preset={"p": {"penutup": {"end_card": True}}}), {}, {"preset": "p"})[1]
+        self.assertEqual([p["jenis"] for p in self.g.peringatan(self.v, tanpa)], ["penutup"])
+
+    def test_audio_pilihan_salah_ditolak(self):
+        self.assertIn("audio_pilihan", self.g.siapkan(self.brand, {}, {"audio_pilihan": "lagu"})[1]["salah"])
+
+    def test_beatspot_preset_beat_watermark_dan_vo(self):
+        import json as _json
+        import tempfile
+        import beatspot
+        with tempfile.TemporaryDirectory() as tmp:
+            j = Path(tmp)
+            kit = _json.loads((Path(__file__).resolve().parents[2] / "brandkit" / "aysilla.export.json").read_text(encoding="utf-8"))
+            kit["preset"] = {"aysilla-beatspot": {"jenis": "beat_spot", "beat": {"tiap_ketukan": 2, "bpm": 100}}}
+            kit["visual"]["watermark"] = {"teks": "@aysillafactoryid", "y": 0.05, "lebar": 0.4}
+            kit["teks"]["tagline"] = "NYAMAN SEHARIAN"
+            (j / "brand_kit.json").write_text(_json.dumps(kit))
+            vids = []
+            for i in range(4):
+                (j / f"v{i}.mp4").write_bytes(b"x")
+                vids.append({"kunci": f"$sumber:f{i}", "path": str(j / f"v{i}.mp4")})
+            (j / "s.wav").write_bytes(b"x")
+            vids.append({"kunci": "$sumber:snd", "path": str(j / "s.wav")})
+            (j / "job.json").write_text(_json.dumps({"mode": "beatspot", "job_id": "T", "brand_kit": "brand_kit.json",
+                                                     "preset": "aysilla-beatspot", "audio_pilihan": "vo",
+                                                     "sumber": vids, "beatspot": {}}))
+            palsu = lambda footage, t: {"footage": {f: {"durasi": 12.0} for f in footage}, "shots": shots_bs()}  # noqa: E731
+            self.assertEqual(beatspot.jalankan(j, analisis=palsu), 0)
+            lap = _json.loads((j / "out" / "beatspot.json").read_text())
+            ops = _json.loads((j / "out" / "ops.json").read_text())["ops"]
+        self.assertEqual((lap["bpm"], lap["ketukan_per_potong"]), (100.0, 2))  # dari preset
+        self.assertFalse(any(o.get("track_kind") == "music" for o in ops))  # audio_pilihan vo
+        self.assertTrue(any(o.get("text") == "@aysillafactoryid" for o in ops))
+        self.assertTrue(any(o.get("text") == "NYAMAN SEHARIAN" for o in ops))
+        self.assertIn({"op": "set_brand_logo", "on": False}, ops)  # beat_spot + watermark = tanpa logo
+
+
 def vo_dengan_saran():
     v = vo_sintetis()
     v["kalimat"][1]["saran_buang"] = "urgensi"

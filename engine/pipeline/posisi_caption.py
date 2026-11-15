@@ -69,7 +69,8 @@ def pilih_y(wajah_per_frame, default: float = 0.72, area_produk: str | None = No
     produk = AREA_PRODUK.get(area_produk or "")
     terbaik = None
     laporan = []
-    for y in KANDIDAT:
+    # Posisi preset (§17.1 caption.y, mis. 0.76) ikut dicoba walau tidak ada di daftar kandidat.
+    for y in sorted(set(KANDIDAT) | {round(default, 3)}, reverse=True):
         y0, y1 = y - SETENGAH_TINGGI, y + SETENGAH_TINGGI
         if y1 > BATAS_BAWAH:
             continue

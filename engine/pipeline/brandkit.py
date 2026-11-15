@@ -163,6 +163,9 @@ def dari_ekspor(d: dict) -> dict:
         "aset": d.get("aset", []),
         "sfx_dilarang": a.get("sfx_dilarang", []),
         "penutup": v.get("penutup") or {},
+        # §17.3 (R18): tagline end card/Beat Spot + watermark teks opsional.
+        "tagline": t.get("tagline", "") or "",
+        "watermark": v.get("watermark") or None,
     }
 
 

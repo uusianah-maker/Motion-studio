@@ -230,6 +230,8 @@ def jalankan_job(job_dir: Path) -> int:
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")  # progres JSON-lines dibaca app sebagai UTF-8 (Windows: cp1252)
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("batch", nargs="?", help="nama folder di konten/1-upload/")
     ap.add_argument("--job", help="folder job dari Motion Studio (mode job)")
