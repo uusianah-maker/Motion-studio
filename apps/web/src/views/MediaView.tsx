@@ -46,6 +46,8 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
   const [filter, setFilter] = useState<'all' | 'shared' | string>('all');
   /** Audit 14 Nov (sukma): the library is mostly SFX — filter by what the file is. */
   const [kind, setKind] = useState<'' | MediaKind>('');
+  /** R14: proxies asked for on this page (shown as "sedang dibuat" until the list says "siap"). */
+  const [asked, setAsked] = useState<ReadonlySet<string>>(new Set());
   const input = useRef<HTMLInputElement>(null);
   const usable = projects.filter((p) => !p.error);
 
@@ -61,6 +63,13 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
   useEffect(() => {
     void load();
   }, [load, finished]);
+  // While a light copy is being made, look again every few seconds until it is ready.
+  const making = (media ?? []).some((m) => m.proxy === 'proses' || (asked.has(m.current_version_id) && m.proxy !== 'siap'));
+  useEffect(() => {
+    if (!making) return;
+    const t = setInterval(() => void load(), 4000);
+    return () => clearInterval(t);
+  }, [making, load]);
 
   useEffect(() => {
     if (selectedProject && projects.some((p) => !p.error && p.project_id === selectedProject)) setTarget(`project:${selectedProject}`);
@@ -221,6 +230,27 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
                         <small>
                           {m.versions.length} versi{cur && cur.original_name !== m.display_name ? ` · file: ${cur.original_name}` : ''}
                         </small>
+                        {cur?.probe?.video_codec && (
+                          <small aria-label={`Pratinjau ringan ${m.display_name}`}>
+                            {m.proxy === 'siap' ? (
+                              'Pratinjau ringan: siap'
+                            ) : m.proxy === 'proses' || asked.has(cur.version_id) ? (
+                              'Pratinjau ringan: sedang dibuat…'
+                            ) : (
+                              <button
+                                className="linkBtn small"
+                                onClick={() =>
+                                  void api.makeProxy(cur.version_id).then(
+                                    () => setAsked((a) => new Set([...a, cur.version_id])),
+                                    setError,
+                                  )
+                                }
+                              >
+                                Buat pratinjau ringan
+                              </button>
+                            )}
+                          </small>
+                        )}
                       </td>
                       <td className="hideNarrow">{m.scope.kind === 'shared' ? 'Bersama' : `Proyek: ${projectName(m.scope.project_id)}`}</td>
                       <td>{cur ? formatBytes(cur.size) : '–'}</td>

@@ -247,6 +247,8 @@ export interface Media {
   created_at: number;
   current_version_id: string;
   versions: Version[];
+  /** R14: the light preview copy of the current version (null = none / not needed). */
+  proxy?: 'siap' | 'proses' | null;
 }
 
 export interface TrashItem extends Version {
@@ -784,6 +786,8 @@ export function createApi(token: string | null, base = '') {
     /** Paket 1: waveform + thumbnail strip of one media version (made once on the server, cached). */
     mediaVisuals: (versionId: string) => call<{ visuals: MediaVisuals }>('GET', `/api/media/${encodeURIComponent(versionId)}/visuals`).then((r) => r.visuals),
     /** Short-lived signed playback URL for one media version (W07). */
+    /** R14: ask for the light preview copy (made in the background). */
+    makeProxy: (versionId: string) => call<{ proxy: 'siap' | 'proses' | 'tidak_perlu' }>('POST', `/api/media/${encodeURIComponent(versionId)}/proxy`, { json: {} }).then((r) => r.proxy),
     streamUrl: (versionId: string) => call<{ url: string; expires_at: number; mime: string }>('GET', `/api/media/${encodeURIComponent(versionId)}/stream-url`),
     copilotPlan: (id: string, body: { prompt: string; selected_clip_ids?: string[]; playhead_ms?: number; mode?: 'local' | 'auto' | 'ai' }) =>
       call<PlanReply>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plan`, { json: body }),

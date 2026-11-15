@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { createWriteStream, promises as fsp } from 'node:fs';
+import { createReadStream, createWriteStream, promises as fsp } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -32,9 +32,12 @@ import {
   appendLearning,
   correctionsFrom,
   engineOrigin,
+  proxyPath,
+  proxyReady,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
+import { type ProxyQueue, createProxyQueue } from './proxy.js';
 import { type RenderJobView, type RenderJobs, createRenderJobs } from './render.js';
 import { type StreamSigner, createStreamSigner, mimeFor, sendBytes } from './stream.js';
 
@@ -289,7 +292,7 @@ function variantView(p: ProjectManifest, job: RenderJobView | null, outputs: num
 
 // ------------------------------------------------------------------ routes
 
-export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSigner = createStreamSigner(), render?: RenderJobs): Route[] {
+export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSigner = createStreamSigner(), render?: RenderJobs, proxies: ProxyQueue = createProxyQueue()): Route[] {
   const uploadOpts: UploadOptions = { tmpDir: upload.tmpDir ?? os.tmpdir(), maxBytes: upload.maxBytes ?? 50 * 1024 ** 3 };
   let jobs = render;
   const jobsFor = (ws: Workspace) => (jobs ??= createRenderJobs(ws, { tmpRoot: os.tmpdir() }));
@@ -535,7 +538,25 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         const filter = (s: MediaScope) =>
           !scope || scope === 'all' ? true : scope === 'shared' ? s.kind === 'shared' : s.kind === 'project' && (!pid || s.project_id === pid);
         if (scope && !['all', 'shared', 'project'].includes(scope)) throw bad('scope tidak dikenal');
-        return { media: mediaList(await loadRegistry(ws), filter) };
+        const list = mediaList(await loadRegistry(ws), filter);
+        // R14: is the light preview copy of the current version ready (or being made)?
+        const withProxy = await Promise.all(
+          list.map(async (m) => ({ ...m, proxy: (await proxyReady(ws, m.current_version_id)) ? ('siap' as const) : proxies.busy(ws, m.current_version_id) ? ('proses' as const) : null })),
+        );
+        return { media: withProxy };
+      },
+    },
+    {
+      // R14: "Buat pratinjau ringan" for an older media (background; the answer does not wait).
+      method: 'POST',
+      path: '/api/media/:version_id/proxy',
+      handle: async ({ req, ws, params }) => {
+        onlyKeys(await readJsonBody(req), []);
+        const v = await playable(ws, params.version_id!);
+        if (await proxyReady(ws, v.version_id)) return { proxy: 'siap' };
+        if (!v.probe?.video_codec) return { proxy: 'tidak_perlu' };
+        void proxies.enqueue(ws, v.version_id);
+        return { proxy: 'proses' };
       },
     },
     {
@@ -552,6 +573,8 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
           const up = await receiveUpload(ws, req, uploadOpts);
           try {
             const r = await svc.importMedia({ sourcePath: up.file, scope, actor, ...(display_name ? { display_name } : {}) });
+            // R14: the light preview copy is made in the background (the import does not wait).
+            void proxies.enqueue(ws, r.version.version_id);
             return { media_id: r.media.media_id, version: versionView(r.version), duplicate: r.duplicate };
           } finally {
             await fsp.rm(up.dir, { recursive: true, force: true });
@@ -566,9 +589,15 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
     {
       method: 'GET',
       path: '/api/media/:version_id/stream-url',
-      handle: async ({ ws, params }) => {
+      handle: async ({ ws, params, url }) => {
         const v = await playable(ws, params.version_id!);
-        return { ...signer.sign(v.version_id), mime: mimeFor(v.rel_path), probe: v.probe ?? null };
+        // R14: the editor plays the light copy when there is one (render always uses the original);
+        // a media opened for the first time gets one made in the background. ?asli=1 = the original.
+        if (url.searchParams.get('asli') !== '1') {
+          if (await proxyReady(ws, v.version_id)) return { ...signer.signProxy(v.version_id), mime: 'video/mp4', probe: v.probe ?? null, proxy: true };
+          if (v.probe?.video_codec) void proxies.enqueue(ws, v.version_id);
+        }
+        return { ...signer.sign(v.version_id), mime: mimeFor(v.rel_path), probe: v.probe ?? null, proxy: false };
       },
     },
     {
@@ -576,6 +605,15 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       path: '/api/stream/:version_id',
       public: true, // <video> cannot send Authorization; the HMAC signature is the credential
       handle: async ({ req, res, url, ws, params }) => {
+        if (url.searchParams.get('proxy') === '1') {
+          signer.verifyProxy(params.version_id!, url.searchParams.get('exp'), url.searchParams.get('sig'));
+          await playable(ws, params.version_id!);
+          const file = proxyPath(ws, params.version_id!);
+          const st = await fsp.stat(file).catch(() => null);
+          if (!st?.isFile()) throw new ApiError(404, 'NOT_FOUND', 'Pratinjau ringan belum ada');
+          await sendBytes(req, res, { size: st.size, mime: 'video/mp4', open: async (range) => createReadStream(file, range ? { start: range.start, end: range.end } : {}) });
+          return undefined;
+        }
         signer.verify(params.version_id!, url.searchParams.get('exp'), url.searchParams.get('sig'));
         const v = await playable(ws, params.version_id!);
         const rel = await ws.blobs.resolve(v.rel_path, MEDIA_AREAS);

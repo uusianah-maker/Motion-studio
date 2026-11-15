@@ -36,6 +36,7 @@ export { type BlurRegion, type Crop, fillCrop, validateBlur, validateCrop } from
 export { type Keyframe, keyframeAt } from './storage/keyframes.js';
 export { type Adjust, type ClipExtras, LOOKS, LOOK_IDS, type LookId, TRANSITIONS, type Transition, effectiveLook } from './storage/clipLook.js';
 export { type ApprovalItem, approvalQueue } from './storage/approvals.js';
+export { PROXY_AUDIO_KBPS, PROXY_SHORT_SIDE, PROXY_VIDEO_KBPS, type ProxyResult, makeProxy, needsProxy, proxyPath, proxyReady } from './storage/proxy.js';
 export { type EngineOrigin, type LearningNote, LEARN_FILE, appendLearning, correctionsFrom, engineOrigin, learnFile, markEngineOrigin, readLearning } from './storage/learning.js';
 export { type Author, MAX_COMMENTS, type ReviewComment, type ReviewDecision, type ReviewState, addComment, decideReview, readReview, resolveComment, reviewState } from './storage/review.js';
 export {

@@ -29,6 +29,14 @@ export function createStreamSigner(now: () => number = Date.now) {
     verify(versionId: string, expRaw: string | null, sig: string | null): void {
       check(versionId, expRaw, sig, 'pemutaran');
     },
+    /** R14: link to a version's light preview copy (a different subject: never the original). */
+    signProxy(versionId: string, ttlMs = STREAM_TTL_MS): { url: string; expires_at: number } {
+      const exp = now() + ttlMs;
+      return { url: `/api/stream/${encodeURIComponent(versionId)}?proxy=1&exp=${exp}&sig=${mac(`proxy:${versionId}`, exp)}`, expires_at: exp };
+    },
+    verifyProxy(versionId: string, expRaw: string | null, sig: string | null): void {
+      check(`proxy:${versionId}`, expRaw, sig, 'pemutaran');
+    },
     /** Render output link (W08): bound to one project + file name (+ download flag). */
     signOutput(projectId: string, name: string, download: boolean, ttlMs = STREAM_TTL_MS): { url: string; expires_at: number } {
       const exp = now() + ttlMs;
