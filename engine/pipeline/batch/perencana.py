@@ -22,7 +22,7 @@ import re
 import subprocess
 import sys
 import traceback
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -44,7 +44,9 @@ SARAN_DURASI = {"konversi": (20.0, 30.0), "awareness": (12.0, 25.0), "branding":
 TAHAN = 1.5  # gambar ditahan sesudah kalimat terakhir
 MAKS_KATA_CAPTION = 3
 MAKS_OPS = 1000
-MAKS_MIRIP = 0.6  # Jaccard shot broll antar varian dengan VO sama
+MAKS_MIRIP = 0.4  # Jaccard SEMUA shot (b-roll + sinkron) antar varian dengan VO sama (owner 14 Nov: 0,6 -> 0,4)
+MAKS_SAMA_POSISI = 0.5  # porsi kalimat yang gambarnya identik di posisi sama antar varian VO sama
+MAKS_PER_VO = 3  # varian maksimal per VO: audio sama terlalu sering = rawan "konten tidak orisinal"
 
 
 class Ditolak(Exception):
@@ -307,6 +309,22 @@ def jaccard(a: set, b: set) -> float:
     return len(a & b) / max(1, len(a | b))
 
 
+def shot_per_kalimat(rv: dict, sus: dict) -> dict:
+    """{id kalimat: tuple shot} — gambar yang menemani tiap kalimat VO."""
+    out = {}
+    for vk in sus["vo_klip"]:
+        a, b = vk["start"], vk["start"] + vk["dur"]
+        out[vk["kalimat"]] = tuple(p["shot"] or f"{p['footage']}@{p['in']:.0f}" for p in sus["potongan"]
+                                   if p["start"] < b - 1e-3 and p["start"] + p["dur"] > a + 1e-3)
+    return out
+
+
+def sama_posisi(a: dict, b: dict) -> float:
+    """Porsi kalimat (yang ada di kedua varian) dengan gambar identik."""
+    bersama = set(a) & set(b)
+    return sum(a[k] == b[k] for k in bersama) / max(1, len(bersama))
+
+
 def jalankan(job_dir: Path) -> int:
     job = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
     if job.get("mode") != "batch":
@@ -380,11 +398,22 @@ def jalankan(job_dir: Path) -> int:
     n = int(job.get("jumlah", 10))
     varian, alasan_kurang = [], ""
     g_pakai, m_pakai, vo_pakai = Counter(), Counter(), Counter()
+    maks_per_vo = int(job.get("maks_per_vo", MAKS_PER_VO))
+    urutan_vo, vo_habis, gagal_vo = defaultdict(set), set(), Counter()
     percobaan = 0
     while len(varian) < n and vos and percobaan < n * 15:
         percobaan += 1
-        vo_c = min(vos, key=lambda x: (vo_pakai[x["id"]], -x["skor"], rng.random()))
+        sisa = [x for x in vos if vo_pakai[x["id"]] < maks_per_vo and x["id"] not in vo_habis]
+        if not sisa:
+            break
+        vo_c = min(sisa, key=lambda x: (vo_pakai[x["id"]], gagal_vo[x["id"]], -x["skor"], rng.random()))
         rv = vo_mod.susun(vo_c, rng, (target[0] - TAHAN, target[1] - TAHAN) if target else None, buang_otomatis)
+        # Audio tidak boleh identik antar varian VO sama: susunan kalimat (urutan/isi) harus beda.
+        rv = vo_mod.ragamkan(rv, vo_c, rng, urutan_vo[vo_c["id"]],
+                             (target[0] - TAHAN, target[1] - TAHAN) if target else None)
+        if rv is None:
+            vo_habis.add(vo_c["id"])  # kalimat VO ini terlalu sedikit untuk disusun beda lagi
+            continue
         total_vo = rv["durasi_ucapan"] + TAHAN
         if target and (total_vo < target[0] or total_vo > target[1] + 0.5):
             vos.remove(vo_c)
@@ -400,18 +429,25 @@ def jalankan(job_dir: Path) -> int:
             if p["in"] + p["dur"] > dmax:
                 p["in"] = round(max(0.0, dmax - p["dur"] - 0.05), 3)
                 p["blur"] = matcher._blur_watermark(lib["footage"][p["footage"]], p["in"], p["in"] + p["dur"])
-        shots = {p["shot"] for p in sus["potongan"] if p["jenis"] == "broll"}
-        mirip = [x for x in varian if x["vo"] == rv["vo"] and jaccard(shots, x["_shots"]) > MAKS_MIRIP]
-        if mirip:
+        shots = {p["shot"] or f"{p['footage']}@{p['in']:.0f}" for p in sus["potongan"]}
+        pembuka = sus["potongan"][0]["shot"] if sus["potongan"] else None
+        per_kalimat = shot_per_kalimat(rv, sus)
+        mirip = [x for x in varian if x["vo"] == rv["vo"] and (
+            jaccard(shots, x["_shots"]) > MAKS_MIRIP or (pembuka and pembuka == x["_pembuka"])
+            or sama_posisi(per_kalimat, x["_per_kalimat"]) > MAKS_SAMA_POSISI)]
+        terlalu_asli = sus["rasio_sinkron"] > matcher.MAKS_SINKRON + 0.1
+        if mirip or terlalu_asli:
             if m:  # batch tanpa musik: m = None (dulu crash: "NoneType not subscriptable")
                 m_pakai[m["kunci"]] -= 1
-            if percobaan % 5 == 0:
-                vo_pakai[vo_c["id"]] += 1  # VO ini sudah jenuh, beri kesempatan VO lain
+            gagal_vo[vo_c["id"]] += 1
+            if gagal_vo[vo_c["id"]] >= 12:
+                vo_habis.add(vo_c["id"])  # VO ini sudah jenuh: tidak ada susunan gambar yang cukup beda lagi
             continue
         for p in sus["potongan"]:
             if p["jenis"] == "broll":
                 g_pakai[p["shot"]] += 1
         vo_pakai[vo_c["id"]] += 1
+        urutan_vo[vo_c["id"]].add(tuple(rv["urutan"]))
         k0 = rv["kalimat"][0]
         hook_sampai = min(3.0, k0["sampai"] - k0["dari"] + 0.1)
         cta = rv["cta_terucap"]
@@ -421,13 +457,15 @@ def jalankan(job_dir: Path) -> int:
         idx = len(varian) + 1
         v = {"id": f"varian-{idx:03d}", "vo": rv["vo"], "rv": rv, "susunan": sus, "musik": m,
              "durasi": sus["durasi"], "hook": {"teks": rv["judul"], "dari": 0.0, "sampai": round(hook_sampai, 2)},
-             "cta": cta_teks, "_shots": shots}
+             "cta": cta_teks, "_shots": shots,
+             "_pembuka": pembuka, "_per_kalimat": per_kalimat}
         v["caption"] = frasa_caption(rv["kalimat"], sus["vo_klip"])
         varian.append(v)
         progres("rencana", 30 + int(60 * len(varian) / n), f"{v['id']}: VO {v['vo']}, {len(sus['potongan'])} shot")
     if len(varian) < n:
-        alasan_kurang = (f"hanya {len(varian)} varian unik dari {len(vos)} VO layak; tambah footage/VO baru "
-                         "untuk jumlah lebih banyak tanpa risiko konten duplikat")
+        alasan_kurang = (f"hanya {len(varian)} varian unik dari {len(vos)} VO layak (maks {maks_per_vo} varian per VO "
+                         "supaya suara tidak berulang); tambah footage/VO baru untuk jumlah lebih banyak tanpa "
+                         "risiko konten tidak orisinal")
 
     media = {}
     tabel = []

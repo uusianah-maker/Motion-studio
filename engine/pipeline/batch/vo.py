@@ -123,11 +123,70 @@ def susun(vo: dict, rng: random.Random, target: tuple[float, float] | None = Non
         k = rng.choice(calon)
         pakai.remove(k)
         dibuang.append({"dari": k["dari"], "sampai": k["sampai"], "teks": k["teks"], "jenis": "durasi", "sumber": "aturan"})
+    return _hasil(vo, pakai, dibuang, saran, target)
+
+
+# Kata pembuka yang menyambung ke kalimat sebelumnya: kalimat ini tidak boleh dipindah ke depan
+# kalimat lain (artinya jadi rusak), dan kalimat sebelumnya tidak boleh dibuang sendirian.
+SAMBUNG = {"tapi", "dan", "jadi", "karena", "terus", "trus", "nah", "so", "but", "and", "makanya", "soalnya",
+           "apalagi", "plus", "trs", "lalu", "pokoknya", "tuh"}
+
+
+def _menyambung(k: dict) -> bool:
+    awal = norm(k["teks"].split()[0]) if k["teks"].split() else ""
+    return awal in SAMBUNG or k["teks"].rstrip().endswith(("...", "…"))
+
+
+def ragamkan(rv: dict, vo: dict, rng: random.Random, hindari: set[tuple], target=None) -> dict | None:
+    """Variasi kalimat VO antar varian (owner 14 Nov: audio tidak boleh identik antar varian).
+
+    Varian pertama sebuah VO memakai susunan `rv` apa adanya. Varian berikutnya: 1-2 kalimat tengah
+    dibuang dan/atau dua kalimat tengah yang berdiri sendiri ditukar. Hook (kalimat pertama) dan CTA tidak
+    disentuh. Return None kalau tidak ada susunan baru yang belum dipakai (`hindari` = urutan id kalimat).
+    """
+    def kunci(ks):
+        return tuple(k["id"] for k in ks)
+
+    if kunci(rv["kalimat"]) not in hindari:
+        return rv
+    pakai0 = rv["kalimat"]
+    ada_cta = "cta" in pakai0[-1]["topik"]
+    akhir = len(pakai0) - 1 if ada_cta else len(pakai0)
+    tengah_idx = list(range(1, akhir))
+    if not tengah_idx:
+        return None
+    for _ in range(40):
+        pakai = list(pakai0)
+        # Buang 1-2 kalimat tengah yang tidak "ditempeli" kalimat sesudahnya.
+        n_buang = rng.choice([0, 1, 1, 2]) if len(tengah_idx) >= 3 else rng.choice([0, 1])
+        # Membuang kalimat penyambung itu sendiri aman; yang dijaga: kalimat SESUDAHNYA tidak menyambung.
+        bisa = [i for i in tengah_idx if not (i + 1 < len(pakai0) and _menyambung(pakai0[i + 1]))]
+        buang = set(rng.sample(bisa, min(n_buang, len(bisa)))) if bisa else set()
+        pakai = [k for i, k in enumerate(pakai0) if i not in buang]
+        # Tukar dua kalimat tengah bersebelahan yang sama-sama berdiri sendiri.
+        akhir2 = len(pakai) - 1 if ada_cta else len(pakai)
+        pasang = [i for i in range(1, akhir2 - 1)
+                  if not _menyambung(pakai[i]) and not _menyambung(pakai[i + 1])
+                  and not (i + 2 < len(pakai) and _menyambung(pakai[i + 2]))]
+        if pasang and (not buang or rng.random() < 0.5):
+            i = rng.choice(pasang)
+            pakai[i], pakai[i + 1] = pakai[i + 1], pakai[i]
+        if kunci(pakai) in hindari or len(pakai) < 2:
+            continue
+        dibuang = list(rv["dibuang"]) + [{"dari": pakai0[i]["dari"], "sampai": pakai0[i]["sampai"],
+                                          "teks": pakai0[i]["teks"], "jenis": "variasi", "sumber": "variasi"}
+                                         for i in sorted(buang)]
+        return _hasil(vo, pakai, dibuang, rv["saran_buang"], target)
+    return None
+
+
+def _hasil(vo: dict, pakai: list[dict], dibuang: list[dict], saran: list[dict], target) -> dict:
     pertama = pakai[0]
     judul = judul_hook(pertama["kata"])
     return {
         "vo": vo["id"],
         "kalimat": pakai,
+        "urutan": [k["id"] for k in pakai],
         "dibuang": sorted(dibuang, key=lambda d: d["dari"]),
         "saran_buang": saran,
         "durasi_ucapan": round(panjang(pakai), 2),

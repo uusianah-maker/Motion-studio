@@ -292,3 +292,60 @@ Mesin menjaga sendiri supaya Motion Studio tidak pernah menerima ops yang tidak 
   - **Generate:** ditolak berarti kode 1 dengan alasan yang jelas.
 - Setiap perubahan oleh pengaman dicatat sebagai peringatan `info` `durasi_sumber` di `rencana.json`.
 
+
+## 11. Anti konten-tidak-orisinal di Batch Remix (v0.3.4, 14 Nov 2026, keputusan owner)
+
+Aditif. Tidak ada field output yang dihapus; app tidak perlu berubah.
+
+| Aturan | Nilai |
+|---|---|
+| Pembuka (potongan pertama) | selalu b-roll footage lain, bukan detik pertama video asli; judul hook tetap tampil sebagai teks |
+| Gambar dari footage asli VO (sinkron) | maks 35% durasi (`matcher.MAKS_SINKRON`); varian > 45% dibuang |
+| Varian dengan VO sama dianggap mirip bila | Jaccard semua shot (b-roll + sinkron) > 0,4, ATAU shot pembuka sama, ATAU > 50% kalimat bergambar identik |
+| Audio | susunan kalimat tidak boleh identik antar varian VO sama: 1-2 kalimat tengah dibuang dan/atau dua kalimat tengah yang berdiri sendiri ditukar; hook & CTA tetap. Kalimat yang dibuang tercatat di `dibuang` dengan `jenis: "variasi"` |
+| Varian per VO | maks 3 (job opsional `maks_per_vo: int`). Kurang dari `jumlah` -> `alasan_kurang` menjelaskan dan meminta VO baru |
+
+## 12. Tambahan aplikasi (opsional untuk mesin) — v0.3.5, 15 Nov 2026 (kerja malam, fitur pilihan owner dari audit CapCut)
+
+**Aditif.** Semua field di bawah **opsional**. Ops lama dan proyek lama tetap valid tanpa field ini. Mesin **tidak wajib** mengirimnya. Kalau dikirim, Motion Studio memvalidasinya sama ketatnya dengan field lain (field tidak dikenal / nilai di luar rentang = ditolak). Teknik meniru CapCut, tapi semua filter, preset, dan namanya dibuat sendiri dengan FFmpeg. Tidak ada file, LUT, sticker, atau font milik CapCut/ByteDance.
+
+### 12.1 Field baru di `add_clip` (dan di klip yang tersimpan)
+
+| Field | Boleh di | Nilai | Arti |
+|---|---|---|---|
+| `fade_in_ms`, `fade_out_ms` | klip media apa pun (video, b-roll, audio, music, sfx) | 0–10000 (0 = tanpa) | Suara klip naik/turun pelan di awal/akhir klip |
+| `denoise` | klip media | `"off"` \| `"ringan"` \| `"sedang"` | Reduksi noise suara (`highpass` + `afftdn`). Hanya terdengar di hasil render |
+| `fit` | klip media di track `video` / `broll` | `"isi"` \| `"blur"` \| `"warna"` | Cara gambar mengisi canvas. Tidak ada = pas + latar hitam (perilaku lama). `isi` = crop memenuhi layar. `blur` = pas + latar salinan gambar yang diburamkan. `warna` = pas + latar `fit_color` |
+| `fit_color` | idem | `"#rrggbb"` | Warna latar untuk `fit: "warna"` |
+| `adjust` | idem | objek `{terang, kontras, saturasi, suhu}` −100..100 dan `{tajam, vignette}` 0..100; field yang tidak ada = 0 | Penyesuaian warna (`eq`, `colortemperature`, `unsharp`, `vignette`) |
+| `look` | idem | `"hangat"` \| `"sejuk"` \| `"cerah"` \| `"pastel"` \| `"tegas"` \| `"hitamputih"` \| `"senja"` \| `"adem"` \| `"none"` | Filter warna buatan sendiri. `"none"` = tanpa filter walau brand punya filter bawaan. Tidak ada = ikut filter bawaan brand |
+| `transition` | idem | `{ "type": "dissolve" \| "geser_kiri" \| "geser_kanan" \| "wipe" \| "flash", "ms": 200–1500 }` (ms default 500) | Transisi MASUK ke klip ini dari gambar sebelumnya (`xfade`). Durasi total video tidak berubah: klip sebelumnya diperpanjang ½ transisi, klip ini mulai ½ transisi lebih awal (bila sumbernya tidak cukup, frame pertama ditahan). Suara tetap potong biasa (tetap sinkron). Dibatasi otomatis oleh panjang kedua klip |
+
+Zoom-through tetap memakai efek lama (`effect: {type: "zoom_through"}` di track `effects`).
+
+### 12.2 Operasi baru
+
+```json
+{ "op": "set_audio", "clip_id": "...", "fade_in_ms": 300, "fade_out_ms": 800, "denoise": "ringan" }
+{ "op": "set_picture", "clip_id": "...", "fit": "blur", "fit_color": null, "adjust": {"suhu": 20}, "look": "hangat", "transition": {"type": "dissolve", "ms": 500} }
+{ "op": "set_ducking", "on": true, "level": 0.3 }
+```
+- `set_audio`: minimal satu field. `fade_*_ms: 0` menghapus fade, `denoise: "off"` mematikan.
+- `set_picture`: minimal satu field. `null` menghapus field itu. `adjust` yang semuanya 0 = dihapus.
+- `set_ducking`: menyimpan `duck` (0.1–0.8, default 0.3) di **track `music`**. Musik turun ke level itu saat ada suara bicara: klip track `audio` dan suara klip track `video` yang terdengar (tidak dibisukan, volume > 0, sumbernya punya audio). Rentang yang jaraknya ≤ 400 ms digabung. Turun/naik dalam 200 ms.
+
+### 12.3 Brand Kit
+- Field baru `filter_bawaan`: salah satu id `look` di atas, atau `null`. Dipakai semua klip video/b-roll proyek brand itu yang tidak punya `look` sendiri. Kit lama = `null`.
+
+### 12.4 Split / potong jeda
+- Klip yang dipotong: fade masuk dan transisi tetap di potongan kiri (awal klip). Fade keluar pindah ke potongan kanan (akhir klip). Filter, adjust, fit, dan reduksi noise ikut ke dua potongan.
+
+### 12.5 Keyframe (posisi, skala, opacity)
+- Field opsional `keyframes` di `add_clip` dan klip tersimpan, untuk klip **video / b-roll (dengan media), teks, subtitle**. Maksimal 20 titik:
+  `[{ "at_ms": 0, "x": 0, "y": 0, "scale": 1, "opacity": 1, "ease": "linear" | "ease" }, ...]`
+  - `at_ms`: waktu di dalam klip (0 = awal klip). Boleh di luar klip (hasil split/trim) sebagai jangkar kurva.
+  - `x`, `y`: geser dari posisi normal, pecahan canvas −1..1. `scale` 0.1..4 (di sekitar titik tengah klip). `opacity` 0..1 (gambar memudar ke hitam, teks memudar).
+  - `ease`: kurva dari titik sebelumnya ke titik ini (`ease` = ease-in-out). Field yang tidak ada memakai nilai netral.
+- Operasi baru: `{ "op": "set_keyframes", "clip_id": "...", "keyframes": [...] }` (`[]` = hapus semua).
+- Batas: keyframe di teks **tidak bisa** digabung dengan caption kata per kata (`words`), animasi `pop`/`fade`, atau sorot kata. Ops seperti itu ditolak dengan alasan jelas.
+- Split/trim/potong jeda menjaga gerakan yang sama di tiap potongan.
