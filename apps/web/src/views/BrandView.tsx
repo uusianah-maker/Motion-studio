@@ -486,12 +486,12 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                 </label>
                 <label>
                   Watermark teks (opsional)
-                  <input aria-label="Watermark teks" maxLength={60} placeholder="mis. @aysilla.factory" value={draft.watermark?.teks ?? ''} onChange={(e) => set({ watermark: { teks: e.target.value, y: draft.watermark?.y ?? 0.92, lebar: draft.watermark?.lebar ?? 0.4, opasitas: draft.watermark?.opasitas ?? 0.6 } })} />
+                  <input aria-label="Watermark teks" maxLength={60} placeholder="mis. AYSILLA FACTORY" value={draft.watermark?.teks ?? ''} onChange={(e) => set({ watermark: { teks: e.target.value, y: draft.watermark?.y ?? 0.07, lebar: draft.watermark?.lebar ?? 0.25, opasitas: draft.watermark?.opasitas ?? 0.85 } })} />
                 </label>
                 {draft.watermark && draft.watermark.teks.trim() !== '' && (
                   <label>
                     Posisi watermark (0 atas – 1 bawah)
-                    <input type="number" aria-label="Posisi watermark" min={0} max={1} step={0.01} value={draft.watermark.y} onChange={(e) => set({ watermark: { ...draft.watermark!, y: Math.min(1, Math.max(0, Number(e.target.value) || 0)) } })} />
+                    <input type="number" aria-label="Posisi watermark" min={0} max={0.85} step={0.01} value={draft.watermark.y} onChange={(e) => set({ watermark: { ...draft.watermark!, y: Math.min(1, Math.max(0, Number(e.target.value) || 0)) } })} />
                   </label>
                 )}
               </div>

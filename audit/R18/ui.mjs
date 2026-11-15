@@ -52,10 +52,11 @@ const server = await start(
 );
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const errors = [];
-const lastJob = async () => {
+/** The newest engine job of a mode, over all projects (project ids are random: no order to rely on). */
+const jobOf = async (mode) => {
   for (const pid of await core.listProjectIds(ws)) {
-    const jobs = await core.listEngineJobs(ws, pid);
-    if (jobs.length) return JSON.parse(await fsp.readFile(path.join(wsRoot, 'PROJECTS', pid, '06_ENGINE', jobs[0].job_id, 'job.json'), 'utf8'));
+    const j = (await core.listEngineJobs(ws, pid)).find((x) => x.mode === mode);
+    if (j) return JSON.parse(await fsp.readFile(path.join(wsRoot, 'PROJECTS', pid, '06_ENGINE', j.job_id, 'job.json'), 'utf8'));
   }
   return null;
 };
@@ -68,7 +69,7 @@ try {
   await nav.getByRole('button', { name: /Brand/ }).click();
   await page.getByLabel('Tagline', { exact: true }).waitFor();
   await page.getByLabel('Tagline', { exact: true }).fill('CUCI · JEMUR · LANGSUNG PAKAI');
-  await page.getByLabel('Watermark teks').fill('@aysilla.factory');
+  await page.getByLabel('Watermark teks').fill('AYSILLA FACTORY');
   await page.getByRole('button', { name: /Isi contoh preset Aysilla/ }).click();
   const note = page.getByRole('status', { name: 'Preset contoh' });
   await note.waitFor();
@@ -82,11 +83,11 @@ try {
   const inter = kit.presets.find((p) => p.id === 'aysilla-interview');
   check(
     'R18-02 Tersimpan: tagline + watermark, 4 preset; angka contoh (interview caption 0,76 / hook 0,18 / flash) ikut',
-    saved && kit.tagline === 'CUCI · JEMUR · LANGSUNG PAKAI' && kit.watermark?.teks === '@aysilla.factory' && ids.length === 4 && harian?.nama === 'Harian versi tim' && inter?.caption.y === 0.76 && inter?.hook.y === 0.18 && inter?.transisi?.ganti_orang === 'flash',
+    saved && kit.tagline === 'CUCI · JEMUR · LANGSUNG PAKAI' && kit.watermark?.teks === 'AYSILLA FACTORY' && kit.watermark?.y === 0.07 && kit.watermark?.lebar === 0.25 && kit.watermark?.opasitas === 0.85 && ids.length === 4 && harian?.nama === 'Harian versi tim' && inter?.caption.y === 0.76 && inter?.hook.y === 0.18 && inter?.transisi?.ganti_orang === 'flash',
     ids.join(','),
   );
   const exp = await exportBrandKit(ws, own.brand_id, { paths: false });
-  check('R18-03 Ekspor Brand Kit ke mesin: teks.tagline + visual.watermark (nama field kontrak §17.3)', exp.teks.tagline === 'CUCI · JEMUR · LANGSUNG PAKAI' && exp.visual.watermark?.teks === '@aysilla.factory');
+  check('R18-03 Ekspor Brand Kit ke mesin: teks.tagline + visual.watermark (nama field kontrak §17.3)', exp.teks.tagline === 'CUCI · JEMUR · LANGSUNG PAKAI' && exp.visual.watermark?.teks === 'AYSILLA FACTORY');
   await page.getByRole('button', { name: /Isi contoh preset Aysilla/ }).click();
   check('R18-04 Klik lagi: tidak ada yang ditimpa', await until(async () => (await note.innerText()).includes('tidak ada yang ditimpa')));
   // The style block of a preset shows the learnt numbers and stays editable.
@@ -103,7 +104,7 @@ try {
   await form.getByLabel('Produk').selectOption('Loose Pants');
   await form.getByLabel('Audio').selectOption('vo');
   await form.getByRole('button', { name: /Susun draf otomatis/ }).click();
-  const j1 = (await until(async () => (await lastJob())?.mode === 'generate', 20000)) ? await lastJob() : null;
+  const j1 = (await until(async () => !!(await jobOf('generate')), 20000)) ? await jobOf('generate') : null;
   check('R18-06 Video iklan: pilihan "Voice over" → job.json audio_pilihan "vo"', j1?.audio_pilihan === 'vo', JSON.stringify(j1?.audio_pilihan));
 
   // Beat Spot: preset + "Keduanya" → job.json preset + audio_pilihan.
@@ -114,7 +115,7 @@ try {
   await bs.getByLabel('Preset').selectOption('aysilla-beatspot');
   await bs.getByLabel('Audio').selectOption('keduanya');
   await bs.getByRole('button', { name: /Susun Beat Spot/ }).click();
-  const j2 = (await until(async () => (await lastJob())?.mode === 'beatspot', 20000)) ? await lastJob() : null;
+  const j2 = (await until(async () => !!(await jobOf('beatspot')), 20000)) ? await jobOf('beatspot') : null;
   check('R18-07 Beat Spot: preset + "Keduanya" → job.json preset aysilla-beatspot, audio_pilihan keduanya, durasi preset 15–18; "auto" tidak dikirim', j2?.preset === 'aysilla-beatspot' && j2?.audio_pilihan === 'keduanya' && j2?.beatspot && !('ketukan_per_potong' in j2.beatspot) && j2.beatspot.durasi.join('-') === '15-18', JSON.stringify({ preset: j2?.preset, audio: j2?.audio_pilihan, bs: j2?.beatspot }));
   check('R18-99 0 error JS', errors.length === 0, errors.join(' | '));
 } catch (e) {

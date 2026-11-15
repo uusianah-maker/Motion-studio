@@ -56,16 +56,20 @@ describe('R18 presets, tagline, watermark, audio choice', () => {
     const fx = await fixtureWorkspace();
     const svc = new StorageService(fx.ws);
     expect(code(() => validateBrandInput({ name: 'A', kode: 'AYS', watermark: { teks: 'x', y: 2 } }))).toBe('EDIT_INVALID');
+    // The bottom 15 % is under the TikTok / Reels buttons: refused with a plain reason.
+    expect(() => validateBrandInput({ name: 'A', kode: 'AYS', watermark: { teks: 'x', y: 0.92 } })).toThrow(/terlalu bawah, tertutup tombol TikTok/);
+    expect(validateBrandInput({ name: 'A', kode: 'AYS', watermark: { teks: 'x', y: 0.85 } }).watermark!.y).toBe(0.85);
     expect(code(() => validateBrandInput({ name: 'A', kode: 'AYS', tagline: 'x'.repeat(121) }))).toBe('EDIT_INVALID');
     const plain = (await svc.createBrand({ kit: { name: 'Polos', kode: 'PLS' }, actor: 'user' })).result;
     const e0 = (await exportBrandKit(fx.ws, plain.brand_id, { paths: false })) as { teks: Record<string, unknown>; visual: Record<string, unknown> };
     expect(e0.teks).not.toHaveProperty('tagline');
     expect(e0.visual).not.toHaveProperty('watermark');
-    const b = (await svc.createBrand({ kit: { name: 'Aysilla', kode: 'AYS', tagline: 'CUCI · JEMUR · LANGSUNG PAKAI', watermark: { teks: '@aysilla.factory', y: 0.9 } }, actor: 'user' })).result;
-    expect(b.watermark).toEqual({ teks: '@aysilla.factory', y: 0.9, lebar: 0.4, opasitas: 0.6 });
+    const b = (await svc.createBrand({ kit: { name: 'Aysilla', kode: 'AYS', tagline: 'CUCI · JEMUR · LANGSUNG PAKAI', watermark: { teks: 'AYSILLA FACTORY' } }, actor: 'user' })).result;
+    // §17.3 defaults: top centre, 25 % wide, 85 % opaque.
+    expect(b.watermark).toEqual({ teks: 'AYSILLA FACTORY', y: 0.07, lebar: 0.25, opasitas: 0.85 });
     const e = (await exportBrandKit(fx.ws, b.brand_id, { paths: false })) as { teks: Record<string, unknown>; visual: Record<string, unknown> };
     expect(e.teks.tagline).toBe('CUCI · JEMUR · LANGSUNG PAKAI');
-    expect(e.visual.watermark).toEqual({ teks: '@aysilla.factory', y: 0.9, lebar: 0.4, opasitas: 0.6 });
+    expect(e.visual.watermark).toEqual({ teks: 'AYSILLA FACTORY', y: 0.07, lebar: 0.25, opasitas: 0.85 });
   });
 
   it('audio_pilihan: vo | musik | keduanya on Generate, Batch, Beat Spot; absent = not sent', () => {

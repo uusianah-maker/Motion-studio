@@ -433,7 +433,11 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
   if (o.watermark !== undefined && o.watermark !== null) {
     const wm = obj(o.watermark, 'watermark', ['teks', 'y', 'lebar', 'opasitas']);
     const t = text(wm.teks, 'teks watermark', 60);
-    watermark = t ? { teks: t, y: num(wm.y, 'posisi watermark', 0, 1, 0.92), lebar: num(wm.lebar, 'lebar watermark', 0.05, 1, 0.4), opasitas: num(wm.opasitas, 'opasitas watermark', 0.05, 1, 0.6) } : null;
+    // Defaults from Hanagaki's study / §17.3: top centre, small, clearly visible. The bottom 15 % is
+    // covered by the TikTok / Reels buttons (text-free area), so a watermark is never put there.
+    const y = num(wm.y, 'posisi watermark', 0, 1, 0.07);
+    if (y > 0.85) bad('Posisi watermark terlalu bawah, tertutup tombol TikTok (maks 0,85)');
+    watermark = t ? { teks: t, y, lebar: num(wm.lebar, 'lebar watermark', 0.05, 1, 0.25), opasitas: num(wm.opasitas, 'opasitas watermark', 0.05, 1, 0.85) } : null;
   }
   const areas = o.area_bebas_teks === undefined ? [] : Array.isArray(o.area_bebas_teks) ? [...new Set(o.area_bebas_teks as unknown[])] : bad('area bebas teks harus daftar');
   const assets = o.aset === undefined ? [] : Array.isArray(o.aset) ? o.aset : bad('aset harus daftar');
