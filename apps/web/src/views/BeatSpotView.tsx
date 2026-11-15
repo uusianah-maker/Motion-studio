@@ -37,6 +37,8 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const [target, setTarget] = useSessionState('beatspot.proyek', 'new');
   const [name, setName] = useState('');
   const [footage, setFootage] = useState<File[]>([]);
+  /** Per footage (index): creator / model who agreed, or the public (default) — contract §16, PC-R7. */
+  const [orang, setOrang] = useState<Record<number, 'kreator' | 'umum'>>({});
   const [sound, setSound] = useState<File | null>(null);
   const [bpm, setBpm] = useState('');
   const [kpp, setKpp] = useState<BeatspotSettings['ketukan_per_potong']>('auto');
@@ -152,7 +154,10 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
         sources,
         ...(preset ? { preset } : {}),
         ...(audio ? { audio_pilihan: audio } : {}),
-        beatspot: { sound: sound ? `$sumber:${ids[ids.length - 1]}` : null, bpm: !sound && b ? b : null, ketukan_per_potong: kpp, durasi: [durMin, durMax], tagline: tagline.trim() || null },
+        beatspot: {
+          // Only "kreator" needs saying: "umum" is the engine's default.
+          sumber_orang: Object.fromEntries(footage.map((_, i) => [ids[i]!, orang[i] ?? 'umum'] as const).filter(([, v]) => v === 'kreator')),
+          sound: sound ? `$sumber:${ids[ids.length - 1]}` : null, bpm: !sound && b ? b : null, ketukan_per_potong: kpp, durasi: [durMin, durMax], tagline: tagline.trim() || null },
       });
       unstarted.current = null;
       setTarget(projectId);
@@ -252,8 +257,33 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
               )}
               <label>
                 Footage orang (bisa banyak video)
-                <input aria-label="Footage orang" type="file" accept="video/*" multiple onChange={(e) => setFootage([...(e.target.files ?? [])].filter((f) => !AUDIO.test(f.name)).slice(0, 39))} />
+                <input
+                  aria-label="Footage orang"
+                  type="file"
+                  accept="video/*"
+                  multiple
+                  onChange={(e) => {
+                    setFootage([...(e.target.files ?? [])].filter((f) => !AUDIO.test(f.name)).slice(0, 39));
+                    setOrang({});
+                  }}
+                />
               </label>
+              {footage.length > 0 && (
+                <div className="inspFull" role="group" aria-label="Orang di footage">
+                  <div className="small">Orang di tiap footage (umum = orang lewat yang memakai produk; kreator = model/kreator sendiri yang setuju):</div>
+                  {footage.map((f, i) => (
+                    <label key={`${f.name}-${i}`} className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <span className="small" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                        {f.name}
+                      </span>
+                      <select aria-label={`Orang di ${f.name}`} value={orang[i] ?? 'umum'} onChange={(e) => setOrang((o) => ({ ...o, [i]: e.target.value as 'kreator' | 'umum' }))}>
+                        <option value="umum">Umum</option>
+                        <option value="kreator">Kreator</option>
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              )}
               <label>
                 Sound tim (opsional, video atau audio)
                 <input aria-label="Sound tim" type="file" accept="audio/*,video/*" onChange={(e) => setSound(e.target.files?.[0] ?? null)} />

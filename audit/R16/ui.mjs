@@ -68,12 +68,22 @@ try {
   await until(async () => (await form.getByLabel('Brand').inputValue()) !== '');
   await form.getByLabel('Footage orang').setInputFiles([mall1, mall2]);
   await form.getByLabel('Sound tim').setInputFiles(sound);
+  // R17b: creator / public per footage in the first form (default "umum").
+  const orangDefault = await form.getByLabel('Orang di mall-2.mp4').inputValue();
+  await form.getByLabel('Orang di mall 1.mp4').selectOption('kreator');
   check('R16-02 Dengan sound tim, isian BPM disembunyikan (ketukan dibaca dari sound)', (await form.getByLabel('BPM').count()) === 0);
   await form.getByRole('button', { name: /Susun Beat Spot/ }).click();
   const hasil = page.getByRole('region', { name: 'Hasil Beat Spot' });
   const shown = await until(async () => (await hasil.getByRole('table', { name: 'Daftar potongan' }).locator('tbody tr').count()) === 4, 30000);
   const txt = shown ? await hasil.innerText() : '';
   check('R16-03 Mesin jalan → 4 potongan di ketukan, tempo dari sound tim, nama footage = nama file upload', shown && txt.includes('128 BPM') && txt.includes('dari sound tim') && txt.includes('mall 1.mp4'), txt.split('\n').slice(0, 3).join(' | '));
+  const cutRows = shown ? await hasil.getByRole('table', { name: 'Daftar potongan' }).locator('tbody tr').allInnerTexts() : [];
+  const ofFile = (name) => cutRows.filter((r) => r.includes(name));
+  check(
+    'R16-03b Form awal: orang per footage (bawaan Umum); "mall 1" = Kreator → potongannya Kreator, mall-2 tetap Umum',
+    orangDefault === 'umum' && ofFile('mall 1.mp4').length > 0 && ofFile('mall 1.mp4').every((r) => r.includes('Kreator')) && ofFile('mall-2.mp4').every((r) => r.includes('Umum')),
+    cutRows.join(' / '),
+  );
   const planCard = page.getByRole('region', { name: 'Rencana edit' });
   check('R16-04 Kartu rencana edit muncul (render ditahan sampai disetujui)', await until(() => planCard.isVisible(), 15000));
   await page.screenshot({ path: path.join(EVID, 'beatspot.png'), fullPage: true });

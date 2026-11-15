@@ -467,8 +467,8 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                           </div>
                         )}
                         {saved[v.id]?.project_id && (
-                          <button className="linkBtn small" onClick={() => onOpenProject(saved[v.id]!.project_id!)}>
-                            buka varian
+                          <button className="btn small" aria-label={`Buka di Edit ${v.id}`} onClick={() => onOpenProject(saved[v.id]!.project_id!)}>
+                            ✎ Buka di Edit
                           </button>
                         )}
                       </td>

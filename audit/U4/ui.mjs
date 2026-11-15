@@ -151,6 +151,15 @@ try {
   const jobs = page.getByRole('region', { name: 'Batch sebelumnya' });
   // R4 (G4): one count per brand per day over all projects — the batch is this brand's 2nd job today.
   check('U5-07 Batch sebelumnya bisa dibuka lagi (nomor job lanjut per brand: -002)', await until(() => jobs.getByRole('cell', { name: /AYS-\d{8}-002/ }).isVisible()));
+  // R17b: each approved variant has a clear "Buka di Edit" (the struck one has none).
+  const openEdit = table.getByRole('button', { name: 'Buka di Edit varian-001' });
+  const noneForStruck = (await table.getByRole('button', { name: 'Buka di Edit varian-002' }).count()) === 0;
+  await openEdit.click();
+  const v1 = (await variantProjects()).find((p) => p.variant.label?.includes('001') || p.variant.number === 1);
+  const inEdit = await until(async () => (await page.evaluate(() => location.hash)) === '#/edit' && (await page.getByRole('heading', { level: 1 }).first().innerText()).length > 0);
+  check('U5-08 Varian disetujui: tombol "Buka di Edit" membuka varian itu di 2. Edit (yang dicoret tidak punya)', noneForStruck && inEdit, v1?.name ?? '');
+  await nav.getByRole('button', { name: /Buat video/ }).click();
+  await page.getByRole('button', { name: /^Buka Batch Remix/ }).click();
 
   // Phone width: no field sticks out of the page.
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
