@@ -123,6 +123,22 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install-autostart.ps1 -V
 ```
 Untuk mencabut: jalankan skrip yang sama dengan `-Remove`.
 
+## Rilis ke situs live (sejak 15 Nov 2026)
+Server live **tidak** jalan dari folder kerja. Ia jalan dari salinan bersih satu commit di
+`D:\VIBECODING\Motion Studio Release\rilis\<nama>`, dan nama rilis yang dipakai tertulis di `AKTIF.txt`.
+`npm run build` di folder kerja tidak lagi mengubah situs. Rincian dan hasil uji ada di `docs/RILIS-TERPISAH-2026-11-15.md`.
+```
+powershell -ExecutionPolicy Bypass -File deploy\windows\rilis.ps1 -Status
+powershell -ExecutionPolicy Bypass -File deploy\windows\rilis.ps1 -Commit <sha> -TanpaGanti   # siapkan + build + smoke saja
+powershell -ExecutionPolicy Bypass -File deploy\windows\rilis.ps1 -Aktifkan <nama>            # pasang ke situs (restart +- 15-60 dtk)
+powershell -ExecutionPolicy Bypass -File deploy\windows\rilis.ps1 -Commit <sha>               # siapkan + pasang sekaligus
+powershell -ExecutionPolicy Bypass -File deploy\windows\rilis.ps1 -Kembali                    # kembali ke rilis sebelumnya
+```
+- Rilis hanya dibuat dari commit di `main`.
+- Restart ditolak kalau ada render atau job mesin yang sedang berjalan (kode keluar 3).
+- Kalau server baru tidak sehat dalam 2 menit, skrip otomatis kembali ke rilis sebelumnya (kode keluar 4).
+- Workspace, state dir, `.env.local`, dan port tidak berubah.
+
 ## Mematikan / rollback
 - **Matikan akses online:** tutup `start-tunnel.ps1`, atau `Stop-ScheduledTask MotionStudio-Tunnel`. App di PC tetap jalan.
 - **Kembali ke mode lokal:** kosongkan `MOTION_PUBLIC_URL` dan variabel Google di `.env.local`, lalu restart server.
