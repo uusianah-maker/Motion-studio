@@ -368,3 +368,8 @@ Aditif. App tidak wajib berubah; semua field opsional.
 - `batch.json`, field baru: `riwayat: {aktif, brand, entri_dihitung, pembuka_dihindari, dicatat, ditolak_karena_riwayat}` atau `{aktif: false, alasan}`.
 - Perintah (read/write data mesin, dari root repo): `python pipeline/batch/riwayat.py lihat|reset <brand>` · `tandai <brand> <job_id> <status> [varian...]` · `lepas <brand> <job_id> [varian...]`. `reset` menyimpan cadangan `<kode>.reset-<waktu>.json`.
 - Disarankan untuk app (belum wajib): saat tim mencoret varian, panggil `lepas`; saat render selesai, `tandai ... dirender`. Jalurnya lewat `engine.py` (milik venus).
+
+## 14. Generate: lagu, teks bawaan, CTA kosong (v0.3.7, 15 Nov 2026, venus — R1–R3)
+- **R1 (G1)** Audio yang terdeteksi lirik lagu (kata Inggris > 35 % atau kata Indonesia < 8 %) → `rencana.status: "ditolak"`, kode keluar 2. Field opsional `job.json`: `abaikan_cek_ucapan: true` → tetap dibuat rencana dengan peringatan `jenis: "ucapan"` (tombol "Tetap lanjut" di app; hybrid).
+- **R2 (G2)** Hook tidak menimpa teks bawaan video. Mesin membaca teks (OCR) dan wajah di rentang hook, lalu menggeser `hook.top` ke kandidat 0.30 / 0.18 / 0.10 / 0.48 / 0.56. Teks wajib dihindari, wajah diusahakan. Tidak ada tempat → hook dilewati, peringatan `jenis: "hook"`, butir QC hook tetap lulus dengan `nilai` "dilewati". Catatan geser ada di `rencana.ragu`. `potongan.json.cekTeksBawaan` = `{dicek, kotak, wajah, catatan}` atau `{dicek: false, gagal}` (OCR gagal tidak menghentikan rencana). Posisi pilihan tim (`--hook-top` / koreksi) selalu menang.
+- **R3 (G6)** CTA Brand Kit kosong → peringatan `jenis: "cta"`; teks "CTA ditampilkan di … dtk terakhir" tidak muncul lagi.
