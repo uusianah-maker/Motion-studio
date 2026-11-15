@@ -240,7 +240,8 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
                     "style": {"x": 0.5, "y": 0.45, "size": 6.0, "width": 0.84, "color": "#ffffff", "bg": warna["latar_gelap"].lower(),
                               "bg_opacity": 0.75, "bold": True, "outline": False, "align": "center", "font": "brand"}})
     if not penutup_ms:
-        menunggu.append(f"penutup logo/video: Brand Kit belum punya aset penutup (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)")
+        menunggu.append("penutup logo/video: Brand Kit belum punya aset penutup"
+                        + (f" (sekarang CTA ditampilkan di {CTA_MS / 1000:.1f} dtk terakhir)" if cta else ""))
     # Disclaimer (preset teks "disclaimer" ucok): teks kecil di bawah, di sela hook dan CTA
     # (track text tidak boleh tumpang tindih).
     if props.get("disclaimer") and cta_mulai - hook_end >= MIN_CLIP_MS:
@@ -298,6 +299,16 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     peringatan = [{"level": "warn", "jenis": "ucapan", "teks": p} for p in laporan.get("peringatan", [])]
     peringatan += [{"level": bk.get("level_pelanggaran", "block"), "jenis": "kata_terlarang", "detik": x["atSec"], "teks": x["frasa"]}
                    for x in laporan.get("superlatifDisembunyikan", [])]
+    if not cta:
+        # G6: dulu rencana menyebut "CTA ditampilkan" padahal CTA Brand Kit kosong, tanpa peringatan.
+        peringatan.append({"level": "warn", "jenis": "cta",
+                           "teks": "CTA Brand Kit kosong: video ini tanpa ajakan beli. Isi CTA di menu Brand, "
+                                   "atau tambahkan teks CTA manual di editor."})
+    hook_lewat = str((laporan.get("cekTeksBawaan") or {}).get("catatan") or "").startswith("hook dilewati")
+    if hook_lewat:
+        peringatan.append({"level": "warn", "jenis": "hook",
+                           "teks": "Hook dilewati karena teks bawaan video memenuhi layar di detik awal. "
+                                   "Tambahkan hook manual di editor kalau perlu."})
     status = "siap"
     if target and not (target[0] <= akhir <= target[1]):
         status = "perlu_keputusan"
@@ -337,7 +348,8 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         "butir": [
             {"butir": "durasi sesuai target", "lulus": not target or target[0] <= akhir <= target[1],
              "nilai": akhir if target else f"{akhir} dtk (tanpa batas; saran {saran[0]}-{saran[1]} dtk)"},
-            {"butir": "hook di 3 detik pertama", "lulus": bool(hook) and hook_end <= 3000},
+            {"butir": "hook di 3 detik pertama", "lulus": (bool(hook) and hook_end <= 3000) or hook_lewat,
+             **({"nilai": "dilewati: teks bawaan video (G2)"} if hook_lewat else {})},
             {"butir": "kata terlarang tidak tampil sebagai teks", "lulus": not terlarang, "nilai": terlarang},
             {"butir": "jumlah jenis efek <= batas preset", "lulus": len(jenis_efek) <= maks_efek, "nilai": sorted(jenis_efek)},
             {"butir": "caption tidak di 15% bawah", "lulus": y + 0.07 <= 0.85, "nilai": y},
