@@ -15,6 +15,7 @@ import { VariantsDialog } from './VariantsDialog';
 import { useBrand } from '../brand';
 import { PresetPanel } from './PresetPanel';
 import { RenderDialog } from './RenderDialog';
+import { KirimPicButton } from './KirimPicButton';
 import { TranscriptDialog } from './TranscriptDialog';
 
 const TEXT_CLIP_MS = 3000;
@@ -366,6 +367,7 @@ export function EditorView({
         >
           ↧ Render
         </button>
+        {project && role !== 'reviewer' && <KirimPicButton api={api} projectId={project.project_id} revision={project.revision} onChanged={() => void load()} />}
       </header>
       {variantsOpen && project && (
         <VariantsDialog

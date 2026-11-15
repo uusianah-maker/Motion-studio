@@ -120,9 +120,10 @@ try {
   const table = page.getByRole('region', { name: 'Tabel batch' });
   check('U5-01 Mesin menyusun batch → tabel 3 varian (hook, VO, shot, durasi, QC)', await until(() => table.isVisible(), 30000) && (await table.locator('tbody tr').count()) === 3);
   check('U5-02 Varian bermusik tanpa lisensi ditandai UJI (bukan iklan)', (await table.locator('tbody tr').nth(2).getByText('UJI').isVisible()) && (await table.locator('tbody tr').nth(0).getByText('UJI').count()) === 0);
-  await table.getByRole('group', { name: 'Keputusan varian-001' }).getByRole('button', { name: /Setujui/ }).click();
-  await table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Coret/ }).click();
-  await table.getByRole('group', { name: 'Keputusan varian-003' }).getByRole('button', { name: /Setujui/ }).click();
+  // R19: the Batch table says "Pilih untuk render" / "Buang"; "Setujui" is the PIC's word only.
+  await table.getByRole('group', { name: 'Keputusan varian-001' }).getByRole('button', { name: /Pilih untuk render/ }).click();
+  await table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Buang/ }).click();
+  await table.getByRole('group', { name: 'Keputusan varian-003' }).getByRole('button', { name: /Pilih untuk render/ }).click();
   check('U5-03 Baris dicoret tampil dicoret sebelum disimpan', (await table.locator('tbody tr').nth(1).getAttribute('class')) === 'struck');
   await table.getByRole('button', { name: /Simpan keputusan \(3\)/ }).click();
   const variantProjects = async () => {
@@ -139,8 +140,8 @@ try {
   });
   check('U5-04 Simpan: 2 baris disetujui jadi proyek varian yang sudah disetujui; yang dicoret tidak', variantsOk, (await variantProjects()).map((p) => p.variant.label).join(' | '));
   await page.screenshot({ path: path.join(EVID, 'batch-table.png') });
-  await table.getByRole('button', { name: /Render 2 varian disetujui/ }).click();
-  check('U5-05 "Render varian disetujui" memasukkan tepat 2 render ke antrean', await until(() => table.getByRole('status').filter({ hasText: '2 render masuk antrean' }).isVisible()));
+  await table.getByRole('button', { name: /Render 2 varian terpilih/ }).click();
+  check('U5-05 "Render varian terpilih" memasukkan tepat 2 render ke antrean', await until(() => table.getByRole('status').filter({ hasText: '2 render masuk antrean' }).isVisible()));
   // Real renders of the approved variants (crop + blur + VO + subtitle) finish with clean metadata.
   const outputs = async () => {
     let n = 0;

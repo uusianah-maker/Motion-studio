@@ -6,6 +6,7 @@
 import { readBrandFor } from './brand.js';
 import { listOutputs } from './render.js';
 import { type ReviewState, type ReviewStatus, readReview } from './review.js';
+import { readKirimPic } from './kirimPic.js';
 import { type Workspace, listProjectIds, readProject } from './workspace.js';
 
 export interface ApprovalItem {
@@ -23,6 +24,8 @@ export interface ApprovalItem {
   open_comments: number;
   /** The previous decision on an earlier revision (e.g. what was asked last time). */
   last: { status: ReviewStatus; note: string; by: string | null } | null;
+  /** R19: how many times the editor sent it with "Kirim ke PIC" ("Revisi 2"); absent = never. */
+  kiriman?: number;
 }
 
 /** Waiting = has a render, not archived, and not "Lulus" for its current revision. Oldest render first. */
@@ -51,6 +54,7 @@ export async function approvalQueue(ws: Workspace, opts: { brand_id?: string | n
     const b = await brandOf(p.brand_id);
     if (opts.brand_id !== undefined && opts.brand_id !== null && b.id !== opts.brand_id) continue;
     const newest = files[0]!;
+    const sent = await readKirimPic(ws, id);
     out.push({
       project_id: id,
       name: p.name,
@@ -63,6 +67,7 @@ export async function approvalQueue(ws: Workspace, opts: { brand_id?: string | n
       ...(p.variant ? { variant: { master_id: p.variant.master_id, number: p.variant.number, uji: p.variant.bukan_iklan === true } } : {}),
       open_comments: r.comments.filter((c) => c.resolved_at === null).length,
       last: r.decision ? { status: r.decision.status, note: r.decision.note, by: r.decision.by?.name ?? null } : null,
+      ...(sent ? { kiriman: sent.kiriman } : {}),
     });
   }
   return out.sort((a, b) => a.output.mtime_ms - b.output.mtime_ms);

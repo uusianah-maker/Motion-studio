@@ -164,3 +164,4 @@ export { MAX_TRANSFER_SCENES, type TransferScene, type TransferView, editTransfe
 export { type BeatspotCandidate, type BeatspotCut, type BeatspotView, readBeatspotView, rerunBeatspot } from './storage/beatspot.js';
 export { type BackupLocation, listBackupLocations, registerBackupLocation, verifyBackupLocation } from './storage/backup.js';
 export { PRESET_JENIS, examplePresets } from './storage/brand.js';
+export { type KirimPic, readKirimPic, writeKirimPic } from './storage/kirimPic.js';

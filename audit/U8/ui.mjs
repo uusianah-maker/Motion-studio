@@ -155,18 +155,18 @@ try {
     await bform.getByRole('button', { name: /Susun 3 varian/ }).click();
     await until(async () => (await page.getByLabel('Pilihan yang dikirim').innerText().catch(() => '')).includes('@rusakuji'), 30000);
     await until(() => table.getByRole('group', { name: 'Keputusan varian-002' }).isVisible(), 30000);
-    await table.getByRole('button', { name: 'Setujui semua' }).click();
+    await table.getByRole('button', { name: 'Pilih semua' }).click();
     await table.getByRole('button', { name: /Simpan keputusan \(3\)/ }).click();
     const note = table.getByRole('status', { name: 'Hasil simpan keputusan' });
     const saved = await until(() => note.isVisible(), 30000);
     const text = saved ? await note.innerText() : '';
-    const approveBroken = table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Setujui/ });
+    const approveBroken = table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Pilih untuk render/ });
     check(
-      'U8-14 Satu varian rusak: yang lain tetap tersimpan, varian rusak ditandai + alasan, tombol Setujui-nya mati',
+      'U8-14 Satu varian rusak: yang lain tetap tersimpan, varian rusak ditandai + alasan, tombol "Pilih untuk render"-nya mati',
       text.includes('2 keputusan disimpan') && text.includes('varian-002') && /melebihi panjang video sumber/.test(text) && (await table.getByLabel('Varian rusak varian-002').isVisible()) && (await approveBroken.isDisabled()),
       text.replace(/\n/g, ' | '),
     );
-    check('U8-15 "Render N varian disetujui" menghitung 2 varian yang berhasil', await until(() => table.getByRole('button', { name: /Render 2 varian disetujui/ }).isVisible()));
+    check('U8-15 "Render N varian terpilih" menghitung 2 varian yang berhasil', await until(() => table.getByRole('button', { name: /Render 2 varian terpilih/ }).isVisible()));
     await page.screenshot({ path: path.join(EVID, 'batch-rusak.png') });
   }
 
@@ -177,10 +177,10 @@ try {
     await bform.getByRole('button', { name: /Susun 2 varian/ }).click();
     await until(async () => (await page.getByLabel('Pilihan yang dikirim').innerText().catch(() => '')).includes('@rusakmesin'), 30000);
     const shown = await until(() => table.getByLabel('Varian rusak varian-001').isVisible(), 30000);
-    const ok2 = table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Setujui/ });
+    const ok2 = table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Pilih untuk render/ });
     check(
-      'U8-16 Varian yang ditandai rusak oleh mesin: badge + alasan sebelum disimpan, Setujui mati (varian lain tetap bisa)',
-      shown && (await table.getByLabel('Varian rusak varian-001').innerText()).includes('Durasi VO melebihi') && (await table.getByRole('group', { name: 'Keputusan varian-001' }).getByRole('button', { name: /Setujui/ }).isDisabled()) && (await ok2.isEnabled()),
+      'U8-16 Varian yang ditandai rusak oleh mesin: badge + alasan sebelum disimpan, "Pilih untuk render" mati (varian lain tetap bisa)',
+      shown && (await table.getByLabel('Varian rusak varian-001').innerText()).includes('Durasi VO melebihi') && (await table.getByRole('group', { name: 'Keputusan varian-001' }).getByRole('button', { name: /Pilih untuk render/ }).isDisabled()) && (await ok2.isEnabled()),
     );
   }
 

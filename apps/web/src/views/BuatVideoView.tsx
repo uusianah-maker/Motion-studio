@@ -20,7 +20,7 @@ export const FITUR: { id: BuatFitur; nama: string; sym: string; kapan: string; b
     sym: '▦',
     kapan: 'Banyak footage lama/winning mau dijadikan puluhan varian sekaligus untuk uji iklan.',
     bahan: ['Footage yang sudah dipisah (Pisah Audio ada di halaman Batch Remix)', 'Voice over (opsional)', 'Jumlah varian & tujuan'],
-    hasil: 'Tabel varian → coret / setujui → render massal.',
+    hasil: 'Tabel varian → pilih / buang → render massal.',
   },
   {
     id: 'beatspot',

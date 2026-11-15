@@ -456,6 +456,8 @@ export function createDemoApi(): Api {
     media: async (q = {}) => clone(media.filter((m) => q.scope !== 'shared' || m.scope.kind === 'shared')),
     importQueue: async () => ({ berjalan: false, menunggu: 0 }),
     presetContoh: async () => [],
+    kirimPic: async () => fail(409, 'BUSY', 'Render tidak tersedia di demo browser'),
+    kirimPicStatus: async () => ({ kirim: null, revision: 0 }),
     backup: async () => ({ lokasi: [], verifikasi: { location_id: null, state: 'idle' as const, started_at: null, finished_at: null, hasil: null, alasan: null } }),
     backupAdd: async () => fail(409, 'PRECONDITION', 'Folder backup tidak tersedia di demo browser'),
     backupVerify: async () => fail(409, 'PRECONDITION', 'Folder backup tidak tersedia di demo browser'),

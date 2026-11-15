@@ -249,7 +249,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     }
   };
   const approvedCount = Object.values(saved).filter((d) => d.status === 'disetujui').length;
-  // "Setujui semua" never approves a row the engine's plan cannot make (it stays as it is).
+  // "Pilih semua" never picks a row the engine's plan cannot make (it stays as it is).
   /** Why a row cannot be approved: the engine said so (batch.json) or a save found it (keputusan). */
   const rusakOf = (id: string): string | undefined => saved[id]?.rusak ?? table?.varian.find((v) => v.id === id)?.rusak ?? undefined;
   const setAll = (s: BatchRowStatus) => setDraft((d) => Object.fromEntries(Object.keys(d).map((k) => [k, s === 'disetujui' && rusakOf(k) ? d[k]! : s])));
@@ -259,7 +259,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
       <header className="top">
         <h1>Batch Remix</h1>
         <div className="spacer" />
-        <span className="muted small hideNarrow">Library video winning → N rencana varian → coret / setujui sekali → render yang disetujui</span>
+        <span className="muted small hideNarrow">Library video winning → N rencana varian → pilih / buang sekali → render yang disetujui</span>
       </header>
       <div className="body enginePage">
         <ErrorNotice error={error ?? jobError ?? listError} />
@@ -404,10 +404,10 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
             {table.vo_batch && <div className="muted small">VO diambil dari batch {table.vo_batch}.</div>}
             <div className="row wrap" style={{ gap: 6 }}>
               <button className="btn small" onClick={() => setAll('disetujui')}>
-                Setujui semua
+                Pilih semua
               </button>
               <button className="btn small" onClick={() => setAll('dicoret')}>
-                Coret semua
+                Buang semua
               </button>
             </div>
             <div className="tableScroll">
@@ -454,10 +454,10 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                               className={`btn small${draft[v.id] === s ? ' sel' : ''}`}
                               aria-pressed={draft[v.id] === s}
                               disabled={s === 'disetujui' && !!rusakOf(v.id)}
-                              title={s === 'disetujui' && rusakOf(v.id) ? `Tidak bisa disetujui: ${rusakOf(v.id)}` : undefined}
+                              title={s === 'disetujui' && rusakOf(v.id) ? `Tidak bisa dipilih: ${rusakOf(v.id)}` : undefined}
                               onClick={() => setDraft((d) => ({ ...d, [v.id]: d[v.id] === s ? 'usul' : s }))}
                             >
-                              {s === 'disetujui' ? '✓ Setujui' : '✕ Coret'}
+                              {s === 'disetujui' ? '✓ Pilih untuk render' : '✕ Buang'}
                             </button>
                           ))}
                         </div>
@@ -500,7 +500,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                   {saveNote.rusak.length > 0 && (
                     <>
                       {' '}
-                      {saveNote.rusak.length} varian tidak bisa dibuat dan tetap belum disetujui:
+                      {saveNote.rusak.length} varian tidak bisa dibuat dan tetap belum dipilih:
                       <ul style={{ margin: '4px 0 0' }}>
                         {saveNote.rusak.map((r) => (
                           <li key={r.id}>
@@ -513,7 +513,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                 </div>
               )}
               <button className="btn" disabled={busy || !approvedCount || changed.length > 0 || role === 'reviewer'} onClick={() => void renderApproved()}>
-                ▶ Render {approvedCount} varian disetujui
+                ▶ Render {approvedCount} varian terpilih
               </button>
               <button className="linkBtn small" onClick={() => onOpenProject(current.project_id)}>
                 buka proyek batch

@@ -353,6 +353,18 @@ export interface ApprovalItem {
   variant?: { master_id: string; number: number; uji: boolean };
   open_comments: number;
   last: { status: 'lulus' | 'revisi'; note: string; by: string | null } | null;
+  /** R19: times sent with "Kirim ke PIC" ("Revisi 2"). */
+  kiriman?: number;
+}
+/** R19: the editor's last "Kirim ke PIC". */
+export interface KirimPic {
+  revision: number;
+  kiriman: number;
+  at: number;
+  by: string | null;
+  job_id: string | null;
+  state: 'merender' | 'terkirim' | 'gagal';
+  alasan: string | null;
 }
 
 export interface OutputItem {
@@ -844,6 +856,9 @@ export function createApi(token: string | null, base = '') {
       return call<{ media: Media[] }>('GET', `/api/media?${p}`).then((r) => r.media);
     },
     /** Upload with progress (XHR: fetch has no upload progress). Bytes go raw; the server hashes them. */
+    /** R19: render the newest revision and put it in the PIC's queue. */
+    kirimPic: (id: string, expected_revision: number) => call<{ kirim: KirimPic; revision: number }>('POST', `/api/projects/${encodeURIComponent(id)}/kirim-pic`, { json: { expected_revision } }),
+    kirimPicStatus: (id: string) => call<{ kirim: KirimPic | null; revision: number }>('GET', `/api/projects/${encodeURIComponent(id)}/kirim-pic`),
     /** R18 §17.4: the example presets ("Isi contoh preset Aysilla"). */
     presetContoh: () => call<{ presets: BrandPreset[] }>('GET', '/api/preset-contoh').then((r) => r.presets),
     backup: () => call<BackupInfo>('GET', '/api/backup'),

@@ -38,7 +38,7 @@ import {
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { createImportQueue } from './importQueue.js';
-import { examplePresets } from './core.js';
+import { examplePresets, readKirimPic, writeKirimPic } from './core.js';
 import { type ProxyQueue, createProxyQueue } from './proxy.js';
 import { type RenderJobView, type RenderJobs, createRenderJobs } from './render.js';
 import { type StreamSigner, createStreamSigner, mimeFor, sendBytes } from './stream.js';
@@ -666,6 +666,55 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         if (activeRenders(j) >= MAX_ACTIVE_RENDERS) throw new ApiError(409, 'BUSY', 'Antrean render penuh; tunggu yang berjalan selesai');
         const job = j.start({ project_id: project.project_id, output_name: renderOutputName(raw ?? project.name), actor, ...(short ? { settings: { short_side: short } } : {}), ...(body.accept_brand_warnings ? { accept_brand_warnings: true } : {}) });
         return { job };
+      },
+    },
+    {
+      // R19 "Kirim ke PIC" (owner: "Ya, buat"): render the newest revision for the PIC's queue.
+      // A Batch variant changed after its approval loses that approval first (PC-R4: the PIC's
+      // Lulus approves it again) and IS rendered: this render is for review, not the final ad.
+      method: 'POST',
+      path: '/api/projects/:project_id/kirim-pic',
+      handle: async ({ req, ws, svc, params, actor, user }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['expected_revision']);
+        let project = await readProject(ws, params.project_id!);
+        if (project.revision !== body.expected_revision) throw new ApiError(409, 'CONFLICT', 'Proyek sudah berubah; muat ulang dulu');
+        const j = jobsFor(ws);
+        const last = await readKirimPic(ws, project.project_id);
+        const lastJob = last?.job_id ? j.list(project.project_id).find((x) => x.job_id === last.job_id) : undefined;
+        if (lastJob && (lastJob.status === 'queued' || lastJob.status === 'running')) throw new ApiError(409, 'BUSY', 'Masih merender kiriman sebelumnya');
+        if (last && last.revision === project.revision && last.state !== 'gagal' && (lastJob?.status ?? 'completed') === 'completed')
+          throw new ApiError(409, 'SUDAH_DIKIRIM', 'Sudah dikirim ke PIC, tidak ada perubahan sejak kiriman terakhir');
+        if (project.variant && project.variant.approved_revision !== null && variantState(project) === 'changed') {
+          project = (await svc.setVariantApproval({ project_id: project.project_id, expected_revision: project.revision, approved: false, actor })).result;
+        }
+        if (activeRenders(j) >= MAX_ACTIVE_RENDERS) throw new ApiError(409, 'BUSY', 'Antrean render penuh; tunggu yang berjalan selesai');
+        const job = j.start({ project_id: project.project_id, output_name: renderOutputName(project.name), actor });
+        const kirim = { revision: project.revision, kiriman: (last?.kiriman ?? 0) + 1, at: Date.now(), by: user?.name ?? null, job_id: job.job_id, state: 'merender' as const, alasan: null };
+        await writeKirimPic(ws, project.project_id, kirim);
+        return { kirim, job, revision: project.revision };
+      },
+    },
+    {
+      // Status of the last send: rendering / sent (in the PIC's queue) / failed (with the reason).
+      method: 'GET',
+      path: '/api/projects/:project_id/kirim-pic',
+      handle: async ({ ws, params }) => {
+        const project = await readProject(ws, params.project_id!);
+        let k = await readKirimPic(ws, project.project_id);
+        if (k && k.state === 'merender') {
+          const job = k.job_id ? jobsFor(ws).list(project.project_id).find((x) => x.job_id === k!.job_id) : undefined;
+          const next =
+            !job ? { state: 'gagal' as const, alasan: 'Render terputus (server dimulai ulang); kirim lagi' }
+            : job.status === 'completed' ? { state: 'terkirim' as const, alasan: null }
+            : job.status === 'queued' || job.status === 'running' ? null
+            : { state: 'gagal' as const, alasan: job.status === 'blocked' ? `Render ditahan: ${job.problems.map((p) => p.code).join('; ') || 'cek pra-render'}` : job.status === 'cancelled' ? 'Render dibatalkan' : (job.error?.message ?? 'Render gagal') };
+          if (next) {
+            k = { ...k, ...next };
+            await writeKirimPic(ws, project.project_id, k);
+          }
+        }
+        return { kirim: k, revision: project.revision };
       },
     },
     {

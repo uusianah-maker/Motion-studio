@@ -150,7 +150,7 @@ export function PersetujuanView({ api, role = 'owner', active = true, onOpenProj
                     {it.brand_name ?? 'Brand bawaan'} · {formatDate(it.output.mtime_ms)}
                   </small>
                   <span className="row wrap" style={{ gap: 4 }}>
-                    <span className={`badge ${it.state === 'berubah' ? 'warn' : ''}`}>{STATE[it.state]}</span>
+                    <span className={`badge ${it.state === 'berubah' ? 'warn' : ''}`}>{it.kiriman ? `Revisi ${it.kiriman}${it.state === 'berubah' || it.kiriman > 1 ? ' · diubah' : ''}` : STATE[it.state]}</span>
                     {it.variant && <span className="badge">V{it.variant.number}</span>}
                     {it.variant?.uji && <span className="badge bad">UJI</span>}
                     {it.open_comments > 0 && <span className="badge warn">{it.open_comments} komentar terbuka</span>}
