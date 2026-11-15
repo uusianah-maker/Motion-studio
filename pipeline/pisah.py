@@ -22,6 +22,7 @@ Mode job (--job): job.json {"mode": "pisah", "batch", "video_saja"?, "shot_tikto
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -217,7 +218,9 @@ def jalankan_job(job_dir: Path) -> int:
         else:
             cmd += ["--hanya", *perlu]
     if cmd:
-        subprocess.run(cmd, check=True, cwd=ROOT, stdout=sys.stderr)
+        # R20: cwd = folder data (MOTION_ENGINE_DATA), skrip tetap dari folder kode.
+        data = Path(os.environ["MOTION_ENGINE_DATA"]).resolve() if os.environ.get("MOTION_ENGINE_DATA") else ROOT
+        subprocess.run(cmd, check=True, cwd=data, stdout=sys.stderr)
 
     lib = json.loads(lib_path.read_text(encoding="utf-8")) if lib_path.exists() else {"shots": []}
     doc = {"schema": "pisah/1", "status": "selesai", "batch": batch, "dipisah_pada": int(time.time() * 1000),
