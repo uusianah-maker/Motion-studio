@@ -27,6 +27,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 | R16 | Beat Spot tahap 1 (mesin) | DONE (audit venus lulus) · halaman app: ucok | test_batch 62/62, uji nyata 11 potongan 18,4 dtk QC 7/7, validator asli lulus | yuki | 6100e34 |
 | R17 | Tata letak menu per alur + halaman Buat video | DIANTREKAN (owner: "Ya, rapikan") | — | ucok | — |
 | R18 | Preset gaya hasil belajar Hanagaki + audio opsional | Video iklan DONE (0d18b2a) · Batch/Beat Spot DONE (yuki b4cefac, audit lulus: test_batch 72/72, validator 5/5, Beat Spot QC lulus) · app: ucok | kontrak §17 v0.4.0; uji a3 preset interview, validator asli lulus | venus + yuki + ucok | 0d18b2a |
+| R14b/R15b/R6b | Antrean upload, Verifikasi backup, sinyal riwayat dari app | DONE (audit venus lulus) | ANTREAN 4/4, BACKUP 6/6, server r6 3/3 | ucok | f5ab1f9, d5cbb70, 2a8fa43 |
 | R15 | Backup mingguan | skrip DONE; jadwal TIDAK dipasang (keputusan owner) | backup 1,84 GB 64 dtk, pulih 74/74 proyek | sukma | 6bcf6c0 |
 
 ### Audit checkpoint putaran R (R1–R7)
