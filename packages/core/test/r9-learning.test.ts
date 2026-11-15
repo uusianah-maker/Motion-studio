@@ -20,25 +20,44 @@ const tl = (sub: string, hook: string, late: string, cut: { start_ms: number; en
 });
 
 describe('R9 learning notes', () => {
-  it('classifies an editor change of an engine draft: words, hook, cuts (not a later text)', () => {
+  it('PC-R6 "catat semua koreksi": words, hook, other text, cuts, timing, look, sound, picture, added clips', () => {
     const before = tl('celana adm banget', 'Diskon 50%', 'Cek keranjang', { start_ms: 0, end_ms: 5000 });
     const after = tl('celana adem banget', 'Diskon 50% hari ini', 'Cek keranjang kuning', { start_ms: 0, end_ms: 4200 });
+    after.tracks[1]!.clips[1] = { ...after.tracks[1]!.clips[1]!, start_ms: 8500, end_ms: 10500, style: { size: 7 } };
+    after.tracks[0]!.clips[0] = { ...after.tracks[0]!.clips[0]!, volume: 0.4 };
     const notes = correctionsFrom(
       before,
       [
         { op: 'set_text', clip_id: 's1', text: 'celana adem banget' },
         { op: 'set_text', clip_id: 'h', text: 'Diskon 50% hari ini' },
-        { op: 'set_text', clip_id: 'cta', text: 'Cek keranjang kuning' }, // a CTA at 9 s: not the hook
+        { op: 'set_text', clip_id: 'cta', text: 'Cek keranjang kuning' },
         { op: 'trim_clip', clip_id: 'v1', edge: 'end', to_ms: 4200 },
+        { op: 'move_clip', clip_id: 'cta', start_ms: 8500 },
+        { op: 'set_style', clip_id: 'cta', style: { size: 7 } },
+        { op: 'set_volume', clip_id: 'v1', volume: 0.4 },
+        { op: 'set_ducking', track_kind: 'music', amount: 0.3 },
+        { op: 'add_clip', track_kind: 'sfx', start_ms: 100, duration_ms: 200 },
+        { op: 'set_text', clip_id: 'h', text: 'Diskon 50% hari ini' }, // same clip twice in one edit: one note
       ],
       after,
       asal,
     );
-    expect(notes.map((n) => (n.jenis === 'koreksi' ? [n.bagian, n.sebelum, n.sesudah] : n.jenis))).toEqual([
-      ['kata', 'celana adm banget', 'celana adem banget'],
-      ['hook', 'Diskon 50%', 'Diskon 50% hari ini'],
-      ['potongan', { start_ms: 0, end_ms: 5000, in_ms: 0 }, { start_ms: 0, end_ms: 4200, in_ms: 0 }],
+    expect(notes.map((n) => (n.jenis === 'koreksi' ? `${n.bagian}:${n.op}` : n.jenis))).toEqual([
+      'kata:set_text',
+      'hook:set_text',
+      'teks:set_text',
+      'potongan:trim_clip',
+      'posisi:move_clip',
+      'gaya:set_style',
+      'audio:set_volume',
+      'audio:set_ducking',
+      'tambah:add_clip',
     ]);
+    const byOp = (o: string) => notes.find((n) => n.jenis === 'koreksi' && n.op === o) as Extract<(typeof notes)[number], { jenis: 'koreksi' }>;
+    expect(byOp('trim_clip')).toMatchObject({ sebelum: { start_ms: 0, end_ms: 5000, in_ms: 0 }, sesudah: { start_ms: 0, end_ms: 4200, in_ms: 0 } });
+    expect(byOp('set_style')).toMatchObject({ track: 'text', sesudah: { style: { size: 7 } } });
+    expect(byOp('set_volume')).toMatchObject({ sebelum: { clip_id: 'v1' }, sesudah: { volume: 0.4 } });
+    expect(byOp('set_ducking')).toMatchObject({ sebelum: null, sesudah: { track_kind: 'music', amount: 0.3 } });
   });
 
   it('the PIC\'s Revisi note lands in the project\'s brand log; engine origin is a marker on the project', async () => {

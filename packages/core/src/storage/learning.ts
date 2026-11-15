@@ -42,7 +42,10 @@ export async function engineOrigin(ws: Workspace, projectId: string): Promise<En
 
 export type LearningNote =
   | { jenis: 'revisi_pic'; revision: number; note: string; by: string | null }
-  | { jenis: 'koreksi'; bagian: 'kata' | 'hook' | 'potongan'; op: string; clip_id: string; track: string; sebelum: unknown; sesudah: unknown; asal: EngineOrigin };
+  | { jenis: 'koreksi'; bagian: Bagian; op: string; clip_id: string; track: string; sebelum: unknown; sesudah: unknown; asal: EngineOrigin };
+
+/** What part of the draft an editor changed (PC-R6, owner 15 Nov: "catat semua koreksi"). */
+export type Bagian = 'kata' | 'hook' | 'teks' | 'potongan' | 'posisi' | 'gaya' | 'audio' | 'gambar' | 'tambah' | 'lainnya';
 
 /** Append one note to the project's brand log (never throws: learning must not break editing). */
 export async function appendLearning(ws: Workspace, projectId: string, note: LearningNote): Promise<string | null> {
@@ -83,34 +86,62 @@ const clipIn = (t: Timeline, id: string): { track: string; clip: Clip } | null =
 const cutView = (c: Clip | undefined) => (c ? { start_ms: c.start_ms, end_ms: c.end_ms, in_ms: c.in_ms ?? 0 } : null);
 const text = (s: string | undefined) => (s ?? '').slice(0, MAX_TEXT);
 
+const MEDIA_TRACKS = new Set(['video', 'broll', 'audio']);
+const CLIP_GROUP: Record<string, Bagian> = { set_style: 'gaya', set_volume: 'audio', set_audio: 'audio', set_framing: 'gambar', set_picture: 'gambar', set_keyframes: 'gambar' };
+const TRACK_GROUP: Record<string, Bagian> = { set_ducking: 'audio', set_loudness: 'audio', set_track_mute: 'audio', set_canvas: 'gambar', set_brand_logo: 'gambar' };
+/** A clip as recorded: everything but the per-word timings (long, and kept by `kata` anyway). */
+const snap = (c: Clip | undefined) => {
+  if (!c) return null;
+  const { words: _w, ...rest } = c as Clip & { words?: unknown };
+  void _w;
+  return rest;
+};
+const opParams = (raw: Op) => {
+  const { op: _o, ...rest } = raw;
+  void _o;
+  return rest;
+};
+
 /**
- * What an editor changed in an engine draft, from one edit: words of subtitles (`kata`), the hook
- * (a text clip in the first 3 s), or cuts of video / audio clips (`potongan`).
+ * Every change an editor made to an engine draft in one edit (PC-R6: "catat semua koreksi"):
+ * words (`kata`), the hook (text in the first 3 s), other text (`teks`), cuts of video / b-roll /
+ * audio (`potongan`), timing of other clips (`posisi`), look (`gaya`), sound (`audio`), picture
+ * (`gambar`), added clips (`tambah`) — with the value before and after.
  */
 export function correctionsFrom(before: Timeline, ops: unknown[], after: Timeline, asal: EngineOrigin): LearningNote[] {
   const out: LearningNote[] = [];
+  // Before / after are the whole edit's: one note per clip and kind of change is enough.
+  const seen = new Set<string>();
+  const note = (bagian: Bagian, op: string, clip_id: string, track: string, sebelum: unknown, sesudah: unknown) => {
+    if (clip_id) {
+      if (seen.has(`${op}:${clip_id}`)) return;
+      seen.add(`${op}:${clip_id}`);
+    }
+    out.push({ jenis: 'koreksi', bagian, op, clip_id, track, sebelum, sesudah, asal });
+  };
   for (const raw of ops as Op[]) {
     const op = typeof raw?.op === 'string' ? raw.op : '';
-    if (op === 'set_text' && typeof raw.clip_id === 'string') {
-      const b = clipIn(before, raw.clip_id);
-      const a = clipIn(after, raw.clip_id);
+    const id = typeof raw?.clip_id === 'string' ? raw.clip_id : null;
+    const b = id ? clipIn(before, id) : null;
+    const a = id ? clipIn(after, id) : null;
+    if (op === 'set_text' && id) {
       if (!b || b.clip.text === a?.clip.text) continue;
-      const bagian = b.track === 'subtitle' ? 'kata' : b.track === 'text' && b.clip.start_ms < 3000 ? 'hook' : null;
-      if (bagian) out.push({ jenis: 'koreksi', bagian, op, clip_id: raw.clip_id, track: b.track, sebelum: text(b.clip.text), sesudah: text(a?.clip.text), asal });
+      const bagian: Bagian = b.track === 'subtitle' ? 'kata' : b.track === 'text' && b.clip.start_ms < 3000 ? 'hook' : 'teks';
+      note(bagian, op, id, b.track, text(b.clip.text), text(a?.clip.text));
     } else if (CUT_OPS.has(op)) {
-      const id = typeof raw.clip_id === 'string' ? raw.clip_id : null;
-      const b = id ? clipIn(before, id) : null;
-      if (id && b && b.track !== 'video' && b.track !== 'broll' && b.track !== 'audio') continue;
-      out.push({
-        jenis: 'koreksi',
-        bagian: 'potongan',
-        op,
-        clip_id: id ?? '',
-        track: b?.track ?? (typeof raw.track_kind === 'string' ? raw.track_kind : ''),
-        sebelum: id ? cutView(b?.clip) : { from_ms: raw.from_ms ?? raw.at_ms ?? null, to_ms: raw.to_ms ?? null },
-        sesudah: id ? cutView(clipIn(after, id)?.clip) : null,
-        asal,
-      });
+      if (id && !b) continue;
+      const media = !b || MEDIA_TRACKS.has(b.track);
+      const track = b?.track ?? (typeof raw.track_kind === 'string' ? raw.track_kind : '');
+      note(media ? 'potongan' : 'posisi', op, id ?? '', track, id ? cutView(b?.clip) : { from_ms: raw.from_ms ?? raw.at_ms ?? null, to_ms: raw.to_ms ?? null }, id ? cutView(a?.clip) : null);
+    } else if (CLIP_GROUP[op] && id) {
+      if (!b) continue;
+      note(CLIP_GROUP[op]!, op, id, b.track, snap(b.clip), snap(a?.clip));
+    } else if (TRACK_GROUP[op]) {
+      note(TRACK_GROUP[op]!, op, id ?? '', typeof raw.track_kind === 'string' ? raw.track_kind : '', null, opParams(raw));
+    } else if (op === 'add_clip') {
+      note('tambah', op, '', typeof raw.track_kind === 'string' ? raw.track_kind : '', null, opParams(raw));
+    } else if (op) {
+      note('lainnya', op, id ?? '', b?.track ?? '', b ? snap(b.clip) : null, a ? snap(a.clip) : opParams(raw));
     }
   }
   return out;
