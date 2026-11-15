@@ -20,7 +20,8 @@ import json
 import sys
 from pathlib import Path
 
-KONTEN = Path(__file__).resolve().parent.parent.parent / "konten"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from jalur import KONTEN  # noqa: E402  (R20: folder data MOTION_ENGINE_DATA, bawaan = repo)
 EXT_VIDEO = {".mp4", ".mov"}
 
 

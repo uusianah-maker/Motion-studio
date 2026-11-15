@@ -21,6 +21,7 @@ Mesin TIDAK merender dan tidak menulis apa pun di luar <job_dir>.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# R20 (rilis mesin terpisah): KODE bisa jalan dari folder rilis, DATA (konten/, public/, arsip/, .venv) tetap di
+# folder data. MOTION_ENGINE_DATA = folder data; tanpa env = ROOT (perilaku lama, persis sama).
+DATA = Path(os.environ["MOTION_ENGINE_DATA"]).resolve() if os.environ.get("MOTION_ENGINE_DATA") else ROOT
 PY = sys.executable
 JOB_SCHEMA = "engine-job/1"
 
@@ -44,10 +48,15 @@ def log(*a) -> None:
     print(*a, file=sys.stderr, flush=True)
 
 
+def skrip_absolut(cmd: list[str]) -> list[str]:
+    """Argumen skrip mesin relatif ("pipeline/x.py") jadi absolut dari folder KODE, karena cwd = DATA."""
+    return [str(ROOT / c) if isinstance(c, str) and c.startswith("pipeline/") and c.endswith(".py") else c for c in cmd]
+
+
 def jalankan(cmd: list[str]) -> int:
     """Proses anak: stdout-nya dialihkan ke stderr supaya stdout tetap JSON progres saja."""
     log("$ " + " ".join(cmd))
-    return subprocess.run(cmd, cwd=ROOT, stdout=sys.stderr, stderr=sys.stderr).returncode
+    return subprocess.run(skrip_absolut(cmd), cwd=DATA, stdout=sys.stderr, stderr=sys.stderr).returncode
 
 
 def teruskan(cmd: list[str]) -> int:
@@ -55,7 +64,7 @@ def teruskan(cmd: list[str]) -> int:
     stdout & stderr diteruskan apa adanya, kode keluar juga (0 / 2 ditolak / 1 gagal)."""
     log("$ " + " ".join(cmd))
     sys.stdout.flush()
-    return subprocess.run(cmd, cwd=ROOT).returncode
+    return subprocess.run(skrip_absolut(cmd), cwd=DATA).returncode
 
 
 def baca_job(job_dir: Path) -> dict:

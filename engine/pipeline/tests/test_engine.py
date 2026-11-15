@@ -47,6 +47,16 @@ class Engine(unittest.TestCase):
         job["audio_pilihan"] = "lain"
         self.assertNotIn("--audio", engine.argumen_edit(job, Path("J"), Path("t"), Path("v"), Path("o")))
 
+    def test_r20_skrip_absolut_dari_folder_kode(self):
+        cmd = engine.skrip_absolut(["py", "pipeline/edit.py", "pipeline/x.json", "--out", "o"])
+        self.assertEqual(cmd[1], str(engine.ROOT / "pipeline/edit.py"))
+        self.assertEqual(cmd[2:], ["pipeline/x.json", "--out", "o"])  # bukan skrip .py: tidak diubah
+
+    def test_r20_data_bawaan_root(self):
+        import os
+        if not os.environ.get("MOTION_ENGINE_DATA"):
+            self.assertEqual(engine.DATA, engine.ROOT)
+
 
 if __name__ == "__main__":
     unittest.main()

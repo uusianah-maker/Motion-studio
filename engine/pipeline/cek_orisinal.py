@@ -17,13 +17,16 @@ Exit code: 0 OK, 1 HATI-HATI, 2 TOLAK (atau error).
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import date
 from difflib import SequenceMatcher
 from pathlib import Path
 
-ARSIP = Path(__file__).resolve().parent.parent / "arsip" / "terbit"
+# R20: arsip naskah terbit = data, bukan kode (MOTION_ENGINE_DATA; tanpa env = root repo seperti dulu).
+ARSIP = (Path(os.environ["MOTION_ENGINE_DATA"]).resolve() if os.environ.get("MOTION_ENGINE_DATA")
+         else Path(__file__).resolve().parent.parent) / "arsip" / "terbit"
 BATAS_TOLAK = 0.60    # kemiripan urutan kata >= 60%: naskah dianggap sama  [SEMENTARA]
 BATAS_HATI = 0.40     # 40-60%: terlalu banyak kalimat yang sama            [SEMENTARA]
 FRASA_PANJANG = 8     # 8+ kata berurutan yang identik dilaporkan sebagai frasa yang dipakai ulang

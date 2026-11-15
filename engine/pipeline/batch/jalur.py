@@ -3,7 +3,11 @@
 Windows (PC kantor) dan Linux (VPS jalur B) sama-sama didukung:
   MOTION_BATCH_PY    path Python yang punya Demucs + OpenCV (default: venv demucs di D:\\VIBECODING\\tools)
   MOTION_BATCH_VENV  folder venv itu (dipakai kalau MOTION_BATCH_PY kosong)
-Python utama (Whisper, transcribe.py) = <root>/.venv.
+Python utama (Whisper, transcribe.py) = <DATA>/.venv.
+
+R20 (owner: "Ya, pisahkan"): KODE bisa jalan dari folder rilis, DATA tetap di folder kerja.
+  ROOT = folder kode (repo ini / folder rilis): pipeline/, brandkit/ (konfigurasi ter-commit).
+  DATA = env MOTION_ENGINE_DATA (folder kerja: konten/, public/, .venv); tidak ada = ROOT (perilaku lama).
 """
 
 import os
@@ -11,7 +15,8 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-KONTEN = ROOT / "konten"
+DATA = Path(os.environ["MOTION_ENGINE_DATA"]).resolve() if os.environ.get("MOTION_ENGINE_DATA") else ROOT
+KONTEN = DATA / "konten"
 
 
 def venv_py(venv: Path) -> Path:
@@ -28,15 +33,15 @@ def batch_py() -> Path:
     return venv_py(Path(os.environ.get("MOTION_BATCH_VENV", r"D:\VIBECODING\tools\demucs-venv")))
 
 
-MAIN_PY = venv_py(ROOT / ".venv")
+MAIN_PY = venv_py(DATA / ".venv")
 BATCH_PY = batch_py()
 
 
 def relatif(p: Path) -> str:
-    """Path relatif ke root repo dengan '/' (portabel Windows/Linux); di luar root tetap absolut."""
+    """Path relatif ke folder DATA dengan '/' (portabel Windows/Linux); di luar DATA tetap absolut."""
     p = Path(p).resolve()
     try:
-        return p.relative_to(ROOT).as_posix()
+        return p.relative_to(DATA).as_posix()
     except ValueError:
         return p.as_posix()
 

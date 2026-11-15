@@ -39,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common import PIPELINE  # noqa: E402,F401  (memasang path modul venus)
-from jalur import BATCH_PY, ROOT  # noqa: E402
+from jalur import BATCH_PY, DATA  # noqa: E402  (R20: proses analisis jalan di folder data)
 import musik as musik_mod  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import MIN_CLIP_MS  # noqa: E402  (milik venus)
@@ -234,7 +234,7 @@ def analisis_shot(footage: dict[str, Path], tmp: Path) -> dict:
     keluar = tmp / "shots.json"
     cmd = [str(BATCH_PY), str(Path(__file__).resolve().parent / "beatspot_shot.py"), str(keluar)] + \
           [f"{fid}={p}" for fid, p in footage.items()]
-    r = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=sys.stderr, text=True, encoding="utf-8")
+    r = subprocess.Popen(cmd, cwd=DATA, stdout=subprocess.PIPE, stderr=sys.stderr, text=True, encoding="utf-8")
     for line in r.stdout:  # progres per footage diteruskan langsung (JSON-lines), log lain ke stderr
         (print(line.rstrip(), flush=True) if line.startswith("{") else print(line.rstrip(), file=sys.stderr))
     if r.wait() != 0:

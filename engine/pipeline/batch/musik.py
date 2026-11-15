@@ -66,7 +66,8 @@ def library(brand_raw: dict, batch_dir: Path, izinkan_tanpa_lisensi: bool, vo_di
         if a.get("jenis") == "musik" and a.get("lisensi_iklan"):
             out.append({"kunci": a["kunci"], "path": a["path"], "tag": a.get("tag", []), "lisensi_iklan": True,
                         "sumber": "brand_kit"})
-    pm = Path(__file__).resolve().parent.parent.parent / "public" / "musik"
+    from jalur import DATA  # R20: data (public/musik) di folder MOTION_ENGINE_DATA, bawaan = repo
+    pm = DATA / "public" / "musik"
     if (pm / "lisensi.txt").exists():
         for p in sorted(pm.glob("*")):
             if p.suffix.lower() in {".mp3", ".wav", ".m4a"}:
