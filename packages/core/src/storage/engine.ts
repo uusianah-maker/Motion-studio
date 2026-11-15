@@ -16,6 +16,7 @@
 import { execFile, spawn } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type BrandKit, brandReferences, exportBrandKit, readBrandFor } from './brand.js';
 import { localDate } from './brandGuard.js';
 import { createLease, releaseLease, setLeaseStatus } from './deps.js';
@@ -41,25 +42,35 @@ export const ENGINE_ID_CLAIMS = 'engine-ids';
 export const MAX_ENGINE_LOG = 64 * 1024;
 
 export interface EngineConfig {
-  /** Engine repository (cwd of the CLI). */
+  /** Engine DATA folder (konten/, aset/, .venv): cwd of the CLI; every path check stays inside it. */
   root: string;
+  /**
+   * R20: engine CODE folder (pipeline/…), e.g. a separate release folder. Absent = `root` (one
+   * folder for code and data, as before).
+   */
+  code?: string;
   /** Interpreter (default `<root>/.venv/Scripts/python.exe`). */
   command: string;
-  /** CLI script (default `<root>/pipeline/engine.py`). */
+  /** CLI script (default `<code>/pipeline/engine.py`). */
   script: string;
   /** Kill the engine after this long (default 30 min). */
   timeout_ms: number;
 }
 
-/** From env: MOTION_ENGINE_ROOT (+ optional MOTION_ENGINE_PYTHON / _SCRIPT / _TIMEOUT_MS). Null = not installed. */
+/**
+ * From env: MOTION_ENGINE_ROOT (data) + optional MOTION_ENGINE_CODE (R20: code from a release
+ * folder; default = root) / _PYTHON / _SCRIPT / _TIMEOUT_MS. Null = not installed.
+ */
 export function engineConfigFromEnv(env: NodeJS.ProcessEnv = process.env): EngineConfig | null {
   const root = env.MOTION_ENGINE_ROOT?.trim();
   if (!root) return null;
+  const code = env.MOTION_ENGINE_CODE?.trim() || root;
   const win = process.platform === 'win32';
   return {
     root: path.resolve(root),
+    code: path.resolve(code),
     command: env.MOTION_ENGINE_PYTHON?.trim() || path.join(root, '.venv', win ? 'Scripts' : 'bin', win ? 'python.exe' : 'python'),
-    script: env.MOTION_ENGINE_SCRIPT?.trim() || path.join(root, 'pipeline', 'engine.py'),
+    script: env.MOTION_ENGINE_SCRIPT?.trim() || path.join(code, 'pipeline', 'engine.py'),
     timeout_ms: Number(env.MOTION_ENGINE_TIMEOUT_MS) > 0 ? Number(env.MOTION_ENGINE_TIMEOUT_MS) : 30 * 60_000,
   };
 }
@@ -554,11 +565,28 @@ export function killTree(child: { pid?: number | undefined; kill: () => boolean 
  * The engine's environment: only what Python / Whisper / FFmpeg need. Never the server's secrets
  * (MOTION_SECRET_KEY, Google client secret, …) — Checkpoint I M3.
  */
-export function engineEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+/** The engine's code folder (R20): `code`, or `root` when code and data are one folder. */
+export const engineCode = (cfg: EngineConfig): string => cfg.code ?? cfg.root;
+
+/**
+ * This app's built storage core (packages/core/dist): the engine imports timeline.js from it, so a
+ * released app is checked by its own core, never by a working copy (R20).
+ */
+export const MOTION_STUDIO_CORE = (() => {
+  const here = path.dirname(fileURLToPath(import.meta.url)); // …/core/dist/storage (or src/storage in tests)
+  const pkg = path.resolve(here, '..');
+  return path.basename(pkg) === 'src' ? path.join(path.dirname(pkg), 'dist') : pkg;
+})();
+
+/**
+ * The engine's environment: only what Python / FFmpeg / Whisper need (no app secrets), plus — with a
+ * config — where its data is (MOTION_ENGINE_DATA) and which app core to use (MOTION_STUDIO_CORE).
+ */
+export function engineEnv(env: NodeJS.ProcessEnv = process.env, cfg?: EngineConfig | null): NodeJS.ProcessEnv {
   const keep = /^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TEMP|TMP|TMPDIR|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|PROGRAMDATA|PROGRAMFILES|PROGRAMFILES\(X86\)|NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|OS|LANG|LC_ALL|CUDA_VISIBLE_DEVICES|PYTHON[A-Z_]*|VIRTUAL_ENV|HF_HOME|XDG_CACHE_HOME)$/i;
   const out: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(env)) if (keep.test(k) && v !== undefined) out[k] = v;
-  return { ...out, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' };
+  return { ...out, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', ...(cfg ? { MOTION_ENGINE_DATA: cfg.root, MOTION_STUDIO_CORE } : {}) };
 }
 
 /** Spawn seam for tests. */
@@ -596,7 +624,7 @@ export async function runEngineJob(
     }
     let child: ReturnType<Spawner>;
     try {
-      child = (opts.spawnImpl ?? spawn)(cfg.command, [cfg.script, mode, jdir], { cwd: cfg.root, windowsHide: true, env: engineEnv() });
+      child = (opts.spawnImpl ?? spawn)(cfg.command, [cfg.script, mode, jdir], { cwd: cfg.root, windowsHide: true, env: engineEnv(process.env, cfg) });
       lowerPriority(child); // Whisper / Demucs / FFmpeg children inherit it
     } catch (e) {
       log += `tidak bisa menjalankan mesin: ${String(e)}`;
@@ -900,7 +928,10 @@ export async function readEngineLog(ws: Workspace, projectId: string, jobId: str
   const swap = (from: string, to: string) => {
     for (const v of [from, from.replace(/\\/g, '/')]) if (v) log = log.split(v).join(to);
   };
-  if (cfg) swap(cfg.root, '<mesin>');
+  if (cfg) {
+    swap(cfg.root, '<mesin>');
+    if (cfg.code && cfg.code !== cfg.root) swap(cfg.code, '<mesin>');
+  }
   swap(ws.root, '<workspace>');
   return scrubPaths(log);
 }

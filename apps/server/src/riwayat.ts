@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { type EngineConfig, type Spawner, type Workspace, engineEnv, engineOrigin, isJobId, killTree, readBrandFor, readProject } from './core.js';
+import { type EngineConfig, type Spawner, type Workspace, engineCode, engineEnv, engineOrigin, isJobId, killTree, readBrandFor, readProject } from './core.js';
 
 const VARIAN = /^varian-\d{3}$/;
 const KODE = /^[A-Za-z0-9_.-]{1,60}$/;
@@ -23,7 +23,8 @@ export function createRiwayatSignal(ws: Workspace, cfg: EngineConfig | null, opt
         new Promise<void>((resolve) => {
           let child: ReturnType<Spawner>;
           try {
-            child = (opts.spawnImpl ?? spawn)(cfg.command, [path.join(cfg.root, 'pipeline', 'batch', 'riwayat.py'), ...args], { cwd: cfg.root, windowsHide: true, env: engineEnv() });
+            // R20: the script from the engine's code folder; cwd and data stay the data folder (root).
+            child = (opts.spawnImpl ?? spawn)(cfg.command, [path.join(engineCode(cfg), 'pipeline', 'batch', 'riwayat.py'), ...args], { cwd: cfg.root, windowsHide: true, env: engineEnv(process.env, cfg) });
           } catch (e) {
             opts.onError?.(e);
             resolve();

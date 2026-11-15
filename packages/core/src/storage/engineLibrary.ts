@@ -99,7 +99,7 @@ export async function runEngineQuery(cfg: EngineConfig, command: 'daftar_batch',
     let err = '';
     let child: ReturnType<Spawner>;
     try {
-      child = (opts.spawnImpl ?? spawn)(cfg.command, [cfg.script, command], { cwd: cfg.root, windowsHide: true, env: engineEnv() });
+      child = (opts.spawnImpl ?? spawn)(cfg.command, [cfg.script, command], { cwd: cfg.root, windowsHide: true, env: engineEnv(process.env, cfg) });
       lowerPriority(child);
     } catch (e) {
       reject(new StorageError('PRECONDITION', `Mesin tidak bisa dijalankan: ${scrubPaths(String(e)).slice(0, 200)}`));

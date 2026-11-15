@@ -54,6 +54,16 @@ describe('R6 riwayat signal', () => {
     expect(calls).toEqual([{ cmd: 'python', args: [path.join(cfg.root, 'pipeline', 'batch', 'riwayat.py'), 'tandai', 'AYS', 'AYS-20261115-004', 'dirender', 'varian-002'], cwd: cfg.root }]);
   });
 
+  it('R20: with a separate engine code folder, riwayat.py comes from it; cwd stays the data folder', async () => {
+    const { ws, cfg } = await setup();
+    const code = path.join(path.dirname(cfg.root), 'rilis-mesin');
+    const calls: { cmd: string; args: string[]; cwd: string }[] = [];
+    const r = createRiwayatSignal(ws, { ...cfg, code }, { spawnImpl: fakeSpawn(calls) });
+    await r.rendered('var1');
+    await r.idle();
+    expect(calls[0]).toMatchObject({ args: [path.join(code, 'pipeline', 'batch', 'riwayat.py'), 'tandai', 'AYS', 'AYS-20261115-004', 'dirender', 'varian-002'], cwd: cfg.root });
+  });
+
   it('batch decisions: struck → lepas, approved → tandai disetujui; bad ids are not sent', async () => {
     const { ws, cfg } = await setup();
     const calls: { cmd: string; args: string[]; cwd: string }[] = [];

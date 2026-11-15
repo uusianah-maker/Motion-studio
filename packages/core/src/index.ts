@@ -55,6 +55,8 @@ export {
   loadBatchPlans,
   engineEnv,
   killTree,
+  engineCode,
+  MOTION_STUDIO_CORE,
   type Spawner,
   type BatchDecision,
   readEngineBatch,
