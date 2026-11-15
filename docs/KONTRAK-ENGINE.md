@@ -380,7 +380,7 @@ Aditif. App tidak wajib berubah; semua field opsional.
 - Hasil: `out/transfer.json` (schema `engine-transfer/1`: `referensi`, `durasi`, `produk`, `adegan[]` = `{no, dari, sampai, durasi, detik_gambar, gambar, prompt_gambar, prompt_gerak, sumber}`) + `out/adegan/NN.jpg` (lebar 1080, frame paling tajam di tengah adegan). Adegan < 0,8 dtk digabung, > 4 dtk dipecah, tanpa celah.
 - Tahap 2–3 belum memanggil API AI: prompt disalin manual oleh tim (hybrid, tanpa biaya). Kode keluar 0 siap · 2 ditolak (`rencana.json` status ditolak) · 1 gagal.
 
-## 14. Beat Spot tahap 1 (R16, v0.3.7, 15 Nov 2026, yuki — nama dari owner)
+## 16. Beat Spot tahap 1 (R16, v0.3.9, 15 Nov 2026, yuki — nama dari owner)
 
 Video **awareness**: footage orang jalan (di mall) memakai produk brand dipotong per orang, pergantian **tepat di ketukan** sound, logo brand + end card dari Brand Kit. Tanpa AI ganti pakaian (tahap 2 ditahan menunggu owner). Aditif; mode baru.
 
