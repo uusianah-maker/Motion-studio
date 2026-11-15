@@ -43,6 +43,16 @@ Fitur baru untuk video **awareness** (dinamai owner, 15 Nov 2026). Kreator merek
 - Tahap 1 (mesin, yuki): footage → potong per orang/adegan → susun mengikuti ketukan sound → logo + end card. Tim tetap bisa memilih, mengurutkan, dan menggeser potongan (hybrid).
 - Tahap 2 (usulan owner): AI mengambil gambar orang yang lewat, lalu mengganti pakaiannya dengan celana/kemeja brand. Keputusan owner: hanya untuk footage kreator/model sendiri; orang asing dipakai hanya kalau memang memakai produk brand, wajah tidak di-blur. Menunggu akun AI.
 
+## Alur kerja di aplikasi (disetujui owner 15 Nov 2026)
+Empat cara membuat video, satu alur yang sama: **Buat video → Edit → Setujui → Hasil**.
+| Cara | Kapan dipakai | Bahan |
+|---|---|---|
+| Video iklan | 1 rekaman orang bicara ke kamera | 1 video talking head |
+| Batch Remix | banyak varian sekaligus | kumpulan footage + suara |
+| Beat Spot | awareness, orang memakai produk, potong ikut ketukan | footage mall + sound |
+| Motion Transfer | tiru konsep video referensi | video referensi + foto produk |
+Menu: Alur kerja (Buat video, Edit, Setujui, Hasil) · Bahan (Media, Shot, Brand) · Pengaturan (AI, Tim, Storage, Trash). Dikerjakan ucok (R17).
+
 ## Rencana perbaikan putaran 1 (R)
 Status dicatat di `PROGRESS.md` bagian "Putaran R". Kolom "Isian tim" = hal yang harus diisi atau diputuskan orang, bukan kode.
 
@@ -66,6 +76,7 @@ Status dicatat di `PROGRESS.md` bagian "Putaran R". Kolom "Isian tim" = hal yang
 - [ ] R13 Brand baru cepat: duplikat Brand Kit dari brand yang ada.
 - [ ] R14 Pratinjau resolusi kecil supaya cepat dibuka dari luar kantor.
 - [ ] R15 Backup mingguan workspace (skrip ada; owner: tanpa lokasi backup).
+- [ ] R17 Tata letak menu per alur kerja + halaman Buat video (4 kartu).
 - [ ] R16 Beat Spot tahap 1: susun footage awareness mengikuti ketukan sound.
 
 ## Isian tim (bukan kode)
