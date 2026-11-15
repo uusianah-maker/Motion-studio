@@ -38,6 +38,11 @@ Nama pola kerja Jika (dinamai owner, 15 Nov 2026):
 
 Rencana: tahap 1–2 diuji dulu bersama Jika. Tahap 3 menyusul dengan batas biaya.
 
+## Beat Spot
+Fitur baru untuk video **awareness** (dinamai owner, 15 Nov 2026). Kreator merekam orang yang jalan di mall memakai produk brand. Video dipotong per orang, dengan pergantian tepat di ketukan sound, lalu diberi logo brand kecil dan end card dari Brand Kit.
+- Tahap 1 (mesin, yuki): footage → potong per orang/adegan → susun mengikuti ketukan sound → logo + end card. Tim tetap bisa memilih, mengurutkan, dan menggeser potongan (hybrid).
+- Tahap 2 (usulan owner): AI mengambil gambar orang yang lewat, lalu mengganti pakaiannya dengan celana/kemeja brand. **Ditahan, menunggu keputusan owner** soal izin orang yang terekam (lihat PROGRESS PC-R7).
+
 ## Rencana perbaikan putaran 1 (R)
 Status dicatat di `PROGRESS.md` bagian "Putaran R". Kolom "Isian tim" = hal yang harus diisi atau diputuskan orang, bukan kode.
 
@@ -60,7 +65,8 @@ Status dicatat di `PROGRESS.md` bagian "Putaran R". Kolom "Isian tim" = hal yang
 - [ ] R12 Motion Transfer tahap 2: ganti produk di gambar lewat AI gambar (butuh akun API, lihat isian tim).
 - [ ] R13 Brand baru cepat: duplikat Brand Kit dari brand yang ada.
 - [ ] R14 Pratinjau resolusi kecil supaya cepat dibuka dari luar kantor.
-- [ ] R15 Backup mingguan workspace.
+- [ ] R15 Backup mingguan workspace (skrip ada; owner: tanpa lokasi backup).
+- [ ] R16 Beat Spot tahap 1: susun footage awareness mengikuti ketukan sound.
 
 ## Isian tim (bukan kode)
 | Isian | Siapa | Untuk |

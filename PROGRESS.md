@@ -24,6 +24,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 | R12 | Motion Transfer tahap 2 (API AI gambar) | BLOCKED (PC-R2) | — | — | — |
 | R13 | Duplikat brand | BERJALAN | — | ucok | — |
 | R14 | Ukur + pratinjau kecil | ukur DONE (sukma) · proxy: ucok | terowongan macet 1/20 unduhan; preview pakai file 4K 21 Mbps | sukma + ucok | 6bcf6c0 |
+| R16 | Beat Spot tahap 1 (susun ikut ketukan) | BERJALAN | — | yuki | — |
 | R15 | Backup mingguan | skrip DONE; jadwal TIDAK dipasang (keputusan owner) | backup 1,84 GB 64 dtk, pulih 74/74 proyek | sukma | 6bcf6c0 |
 
 ### Audit checkpoint putaran R (R1–R7)
@@ -37,6 +38,7 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 - **PC-R4 Setujui varian**: "Setujui" di layar PIC = review Lulus. Untuk proyek varian Batch, apakah Lulus otomatis menyetujui varian untuk render massal? (sekarang terpisah)
 - **PC-R5 draf belum dirender**: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
 - ~~PC-R6 catatan belajar~~ → owner 15 Nov: "Catat semua koreksi". Dikerjakan ucok sebagai R9b setelah R13.
+- **PC-R7 Beat Spot tahap 2 (AI ganti pakaian orang yang terekam di mall)**: orang asing yang wajahnya terlihat dibuat seolah memakai produk kita = klaim palsu + memakai wajah orang tanpa izin. Opsi A (saran): AI hanya untuk footage kreator/model sendiri yang setuju; orang asing hanya kalau benar-benar memakai produk kita, wajah di-blur. Opsi B: orang asing boleh diganti pakaiannya asal wajah selalu di-blur/tidak dikenali. Opsi C: tanpa AI ganti pakaian.
 - **PC-R3 terowongan**: macet sesekali (1 dari 6–20 unduhan) di jalur VPS → PC. Opsi: 2 terowongan paralel atau WireGuard/Tailscale. Butuh izin ubah jalur (VPS dipakai bersama Affiliate).
 
 ## Log task
