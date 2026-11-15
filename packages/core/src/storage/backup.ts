@@ -119,6 +119,15 @@ export async function verifyBackupLocation(ws: Workspace, input: { location_id: 
   return { scanned, hashed, matched: Object.keys(found).sort() };
 }
 
+/** Registered backup folders with how many versions each has proven (read-only). */
+export async function listBackupLocations(ws: Workspace): Promise<(BackupLocation & { verified: number; last_verified_at: number | null })[]> {
+  const f = await loadBackups(ws);
+  return f.locations.map((l) => {
+    const proofs = Object.values(f.verified).filter((p) => p.location_id === l.location_id);
+    return { ...l, verified: proofs.length, last_verified_at: proofs.length ? Math.max(...proofs.map((p) => p.verified_at)) : null };
+  });
+}
+
 export async function backupStatusOf(ws: Workspace, versionId: string): Promise<BackupStatus> {
   const f = await loadBackups(ws);
   const proof = f.verified[versionId];

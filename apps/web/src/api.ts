@@ -583,6 +583,11 @@ export interface EngineStart {
   mode_ops?: 'kompat' | 'u3';
   batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[]; vo_batch?: string; izinkan_musik_tanpa_lisensi?: boolean; buang_otomatis?: string[] };
 }
+/** Footage backup folders (Storage) + the background verification. */
+export interface BackupInfo {
+  lokasi: { location_id: string; nama: string; path?: string; registered_at: number; terverifikasi: number; terakhir: number | null }[];
+  verifikasi: { location_id: string | null; state: 'idle' | 'berjalan' | 'selesai' | 'gagal'; started_at: number | null; finished_at: number | null; hasil: { scanned: number; hashed: number; matched: number } | null; alasan: string | null };
+}
 /** R16 Beat Spot settings (contract §16), the team's choices included. */
 export interface BeatspotSettings {
   sound: string | null;
@@ -824,6 +829,9 @@ export function createApi(token: string | null, base = '') {
       return call<{ media: Media[] }>('GET', `/api/media?${p}`).then((r) => r.media);
     },
     /** Upload with progress (XHR: fetch has no upload progress). Bytes go raw; the server hashes them. */
+    backup: () => call<BackupInfo>('GET', '/api/backup'),
+    backupAdd: (folder: string) => call<BackupInfo>('POST', '/api/backup/lokasi', { json: { path: folder } }),
+    backupVerify: (locationId: string) => call<BackupInfo>('POST', `/api/backup/lokasi/${encodeURIComponent(locationId)}/verifikasi`, { json: {} }),
     /** Upload queue on the server (all pages / team members): one running, how many waiting. */
     importQueue: () => call<{ berjalan: boolean; menunggu: number }>('GET', '/api/media/import/antrean'),
     importFile: (file: File, scope: { kind: 'shared' } | { kind: 'project'; project_id: string }, onProgress?: (fraction: number) => void) => {

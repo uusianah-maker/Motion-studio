@@ -156,7 +156,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {keep('media', <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />)}
         {view === 'brand' && <BrandView api={api} readOnly={role !== 'owner'} />}
         {view === 'trash' && <TrashView api={api} role={role} />}
-        {view === 'storage' && <StorageView api={api} />}
+        {view === 'storage' && <StorageView api={api} role={role} />}
         {view === 'ai' && <AiView api={api} />}
         {view === 'team' && role === 'owner' && account && <TeamView api={api} />}
       </div>

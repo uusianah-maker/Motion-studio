@@ -33,6 +33,8 @@ const RULES: { method: RegExp; path: RegExp; roles: readonly Role[] }[] = [
   { method: /./, path: /^\/api\/brands?(\/|$)/, roles: OWNER },
   { method: /./, path: /^\/api\/ai\//, roles: OWNER },
   { method: /./, path: /^\/api\/purge\//, roles: OWNER },
+  // Footage backup folders: adding one and verifying it (hashing, read-only) are the owner's.
+  { method: /./, path: /^\/api\/backup(\/|$)/, roles: OWNER },
   // Review: comments by anyone, decisions by approvers.
   { method: /./, path: /^\/api\/projects\/:project_id\/comments(\/|$)/, roles: ALL },
   { method: /./, path: /^\/api\/projects\/:project_id\/review$/, roles: APPROVE },

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Api, Dashboard } from '../api';
+import type { Api, Dashboard, Role } from '../api';
 import { AREA_LABEL, formatBytes, formatDate, relativeDays } from '../lib';
 import { ErrorNotice } from '../ui';
+import { BackupCard } from './BackupCard';
 
-export function StorageView({ api }: { api: Api }) {
+export function StorageView({ api, role = 'owner' }: { api: Api; role?: Role }) {
   const [d, setD] = useState<Dashboard | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
@@ -81,6 +82,8 @@ export function StorageView({ api }: { api: Api }) {
                 </b>
               </div>
             </div>
+
+            <BackupCard api={api} role={role} onVerified={() => void load()} />
 
             <div className="card">
               <h2>Pemakaian per area</h2>
