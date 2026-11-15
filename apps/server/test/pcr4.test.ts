@@ -1,4 +1,5 @@
-// PC-R4: in the Setujui (R10) screen, Lulus on a VARIANT also approves it for mass render, and
+// PC-R4: Lulus (U7 review, now only in the Editor after R21 removed the PIC page) on a VARIANT
+// also approves it for mass render, and
 // Revisi withdraws that approval. A refused decision changes nothing.
 import { promises as fsp } from 'node:fs';
 import http from 'node:http';

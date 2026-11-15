@@ -1,5 +1,5 @@
 import type { Route } from './app.js';
-import { type Workspace, addComment, approvalQueue, decideReview, precheckReview, readProject, readReview, resolveComment, variantState } from './core.js';
+import { type Workspace, addComment, decideReview, precheckReview, readProject, readReview, resolveComment, variantState } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { onlyKeys } from './routes.js';
@@ -15,16 +15,6 @@ export function reviewRoutes(ws: Workspace): Route[] {
     return x;
   };
   return [
-    {
-      // R10: the PIC's queue — every rendered video waiting for Lulus / Revisi (one brand or all).
-      method: 'GET',
-      path: '/api/review/antrean',
-      handle: async ({ url }) => {
-        const b = url.searchParams.get('brand_id');
-        if (b !== null && b !== '' && !/^[A-Za-z0-9_-]{1,64}$/.test(b)) throw new ApiError(400, 'BAD_REQUEST', 'brand_id tidak valid');
-        return { items: await approvalQueue(ws, b ? { brand_id: b } : {}) };
-      },
-    },
     {
       method: 'GET',
       path: '/api/projects/:project_id/review',

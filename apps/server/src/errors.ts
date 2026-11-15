@@ -5,7 +5,6 @@ export type HttpErrorCode =
   | StorageErrorCode
   | 'UNAUTHORIZED'
   | 'CLIENT_CLOSED'
-  | 'SUDAH_DIKIRIM'
   | 'HOST_REJECTED'
   | 'ORIGIN_REJECTED'
   | 'ACTOR_NOT_ALLOWED'

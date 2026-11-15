@@ -12,7 +12,7 @@ export const FITUR: { id: BuatFitur; nama: string; sym: string; kapan: string; b
     sym: '⚡',
     kapan: 'Satu video orang bicara ke kamera (review / jualan) mau dijadikan iklan siap tayang.',
     bahan: ['1 video bicara (talking head)', 'Brand + produk di Brand Kit', 'Harga & catatan (opsional)'],
-    hasil: 'Draf edit (potong jeda, hook, caption, musik) → Setujui → Edit → render.',
+    hasil: 'Draf edit (potong jeda, hook, caption, musik) → Edit → render → Hasil.',
   },
   {
     id: 'batch',
@@ -28,7 +28,7 @@ export const FITUR: { id: BuatFitur; nama: string; sym: string; kapan: string; b
     sym: '♪',
     kapan: 'Video awareness: orang-orang memakai produk (mis. di mall) dipotong tepat di ketukan sound.',
     bahan: ['Beberapa footage orang memakai produk', 'Sound tim (opsional; tanpa sound pakai BPM)', 'Logo + end card di Brand Kit'],
-    hasil: 'Potongan di ketukan → Setujui → Edit → render.',
+    hasil: 'Potongan di ketukan → Edit → render → Hasil.',
   },
   {
     id: 'transfer',

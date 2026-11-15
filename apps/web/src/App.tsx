@@ -10,7 +10,6 @@ import { HasilView } from './views/HasilView';
 import { BeatSpotView } from './views/BeatSpotView';
 import { type BuatFitur, BuatTabs, BuatVideoView } from './views/BuatVideoView';
 import { MotionTransferView } from './views/MotionTransferView';
-import { PersetujuanView } from './views/PersetujuanView';
 import { MediaView } from './views/MediaView';
 import { StorageView } from './views/StorageView';
 import { TeamView } from './views/TeamView';
@@ -18,7 +17,7 @@ import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 import { Logo } from './Logo';
 
-export type View = 'buat' | 'generate' | 'batch' | 'shots' | 'transfer' | 'beatspot' | 'editor' | 'hasil' | 'persetujuan' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
+export type View = 'buat' | 'generate' | 'batch' | 'shots' | 'transfer' | 'beatspot' | 'editor' | 'hasil' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
 
 /** The four ways of "Buat video" (shown inside it, no menu items of their own). */
 const BUAT: readonly View[] = ['generate', 'batch', 'beatspot', 'transfer'];
@@ -30,8 +29,7 @@ const NAV: { group: string; items: { id: View; sym: string; label: string }[] }[
     items: [
       { id: 'buat', sym: '✚', label: '1. Buat video' },
       { id: 'editor', sym: '▤', label: '2. Edit' },
-      { id: 'persetujuan', sym: '✓', label: '3. Setujui' },
-      { id: 'hasil', sym: '⤓', label: '4. Hasil' },
+      { id: 'hasil', sym: '⤓', label: '3. Hasil' },
     ],
   },
   {
@@ -61,7 +59,6 @@ const ROUTE: Record<View, string> = {
   beatspot: 'buat/beat-spot',
   transfer: 'buat/motion-transfer',
   editor: 'edit',
-  persetujuan: 'setujui',
   hasil: 'hasil',
   media: 'media',
   shots: 'shot',
@@ -71,7 +68,7 @@ const ROUTE: Record<View, string> = {
   storage: 'storage',
   trash: 'trash',
 };
-const OLD_ROUTE: Record<string, View> = { generate: 'generate', batch: 'batch', beatspot: 'beatspot', 'beat-spot': 'beatspot', transfer: 'transfer', 'motion-transfer': 'transfer', editor: 'editor', persetujuan: 'persetujuan', shots: 'shots', team: 'team' };
+const OLD_ROUTE: Record<string, View> = { generate: 'generate', batch: 'batch', beatspot: 'beatspot', 'beat-spot': 'beatspot', transfer: 'transfer', 'motion-transfer': 'transfer', editor: 'editor', setujui: 'hasil', persetujuan: 'hasil', shots: 'shots', team: 'team' };
 export function viewFromHash(hash: string): View | null {
   const slug = hash.replace(/^#\/?/, '').replace(/\/+$/, '').toLowerCase();
   if (!slug) return null;
@@ -225,7 +222,6 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {keep('beatspot', <BeatSpotView api={api} role={role} projects={projects ?? []} active={view === 'beatspot'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('transfer', <MotionTransferView api={api} role={role} projects={projects ?? []} active={view === 'transfer'} />)}
         {keep('shots', <ShotLibraryView api={api} role={role} active={view === 'shots'} />)}
-        {keep('persetujuan', <PersetujuanView api={api} role={role} active={view === 'persetujuan'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('hasil', <HasilView api={api} active={view === 'hasil'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('media', <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />)}
         {view === 'brand' && <BrandView api={api} readOnly={role !== 'owner'} />}

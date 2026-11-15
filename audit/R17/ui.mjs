@@ -1,5 +1,5 @@
 // R17 menu restructure (owner: "Ya, rapikan"): sidebar = Alur kerja (1. Buat video · 2. Edit ·
-// 3. Setujui · 4. Hasil), Bahan (Media · Shot · Brand), Pengaturan (AI · Tim · Storage · Trash).
+// 3. Hasil — R21: no PIC step), Bahan (Media · Shot · Brand), Pengaturan (AI · Tim · Storage · Trash).
 // "Buat video" = 4 cards (when to use + what to prepare) that open the feature inside it; Transfer and
 // Beat Spot are no separate menus; a draft ends in "Buka di Edit"; old addresses are redirected.
 import { execFileSync } from 'node:child_process';
@@ -62,8 +62,8 @@ try {
   const groups = {};
   for (const g of ['Alur kerja', 'Bahan', 'Pengaturan']) groups[g] = (await nav.getByRole('group', { name: g }).getByRole('button').allInnerTexts()).map((t) => t.replace(/^\S+\s+/, '').replace(/\s+/g, ' ').trim());
   check(
-    'R17-01 Menu dikelompokkan: Alur kerja (1–4), Bahan, Pengaturan',
-    groups['Alur kerja'].join('|') === '1. Buat video|2. Edit|3. Setujui|4. Hasil' && groups.Bahan.join('|') === 'Media|Shot|Brand' && groups.Pengaturan.join('|') === 'AI|Storage|Trash',
+    'R17-01 Menu dikelompokkan: Alur kerja (1–3), Bahan, Pengaturan',
+    groups['Alur kerja'].join('|') === '1. Buat video|2. Edit|3. Hasil' && groups.Bahan.join('|') === 'Media|Shot|Brand' && groups.Pengaturan.join('|') === 'AI|Storage|Trash',
     JSON.stringify(groups),
   );
   const names = (await nav.getByRole('button').allInnerTexts()).join(' ');

@@ -70,7 +70,7 @@ try {
   await planCard.getByRole('button', { name: 'Terapkan (1)' }).click();
   await panel.getByText(/Diterapkan 1 dari 2 operasi/).waitFor();
   const p1 = await proj();
-  check('CP-04 Setujui sebagian: hanya hook masuk, satu revisi, satu langkah undo berlabel Copilot', p1.revision === 1 && JSON.stringify(await texts('text')) === '["Diskon 50%"]' && (await texts('subtitle')).length === 0 && p1.snapshots.filter((s) => s.kind === 'undo').length === 1 && /^Copilot: hook/.test(p1.snapshots.at(-1).label), `rev ${p1.revision}`);
+  check('CP-04 Terapkan sebagian: hanya hook masuk, satu revisi, satu langkah undo berlabel Copilot', p1.revision === 1 && JSON.stringify(await texts('text')) === '["Diskon 50%"]' && (await texts('subtitle')).length === 0 && p1.snapshots.filter((s) => s.kind === 'undo').length === 1 && /^Copilot: hook/.test(p1.snapshots.at(-1).label), `rev ${p1.revision}`);
   await page.locator('.track .clip', { hasText: 'Diskon 50%' }).waitFor();
   await page.screenshot({ path: path.join(EVID, 'applied.png') });
 

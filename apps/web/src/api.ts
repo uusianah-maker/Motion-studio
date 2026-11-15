@@ -340,32 +340,6 @@ export interface ImageAiView {
   providers: { id: 'openai' | 'gemini' | 'lainnya'; label: string; model_hint: string; needs_endpoint: boolean }[];
 }
 
-/** R10: a rendered video waiting for the PIC (GET /api/review/antrean). */
-export interface ApprovalItem {
-  project_id: string;
-  name: string;
-  brand_id: string | null;
-  brand_name: string | null;
-  revision: number;
-  state: 'belum' | 'lulus' | 'revisi' | 'berubah';
-  output: { name: string; size: number; mtime_ms: number };
-  outputs: number;
-  variant?: { master_id: string; number: number; uji: boolean };
-  open_comments: number;
-  last: { status: 'lulus' | 'revisi'; note: string; by: string | null } | null;
-  /** R19: times sent with "Kirim ke PIC" ("Revisi 2"). */
-  kiriman?: number;
-}
-/** R19: the editor's last "Kirim ke PIC". */
-export interface KirimPic {
-  revision: number;
-  kiriman: number;
-  at: number;
-  by: string | null;
-  job_id: string | null;
-  state: 'merender' | 'terkirim' | 'gagal';
-  alasan: string | null;
-}
 
 export interface OutputItem {
   project_id: string;
@@ -856,9 +830,6 @@ export function createApi(token: string | null, base = '') {
       return call<{ media: Media[] }>('GET', `/api/media?${p}`).then((r) => r.media);
     },
     /** Upload with progress (XHR: fetch has no upload progress). Bytes go raw; the server hashes them. */
-    /** R19: render the newest revision and put it in the PIC's queue. */
-    kirimPic: (id: string, expected_revision: number) => call<{ kirim: KirimPic; revision: number }>('POST', `/api/projects/${encodeURIComponent(id)}/kirim-pic`, { json: { expected_revision } }),
-    kirimPicStatus: (id: string) => call<{ kirim: KirimPic | null; revision: number }>('GET', `/api/projects/${encodeURIComponent(id)}/kirim-pic`),
     /** R18 §17.4: the example presets ("Isi contoh preset Aysilla"). */
     presetContoh: () => call<{ presets: BrandPreset[] }>('GET', '/api/preset-contoh').then((r) => r.presets),
     backup: () => call<BackupInfo>('GET', '/api/backup'),
@@ -971,8 +942,6 @@ export function createApi(token: string | null, base = '') {
     renderJob: (jobId: string) => call<{ job: RenderJob }>('GET', `/api/render/jobs/${encodeURIComponent(jobId)}`).then((r) => r.job),
     cancelRender: (jobId: string) => call<{ job: RenderJob }>('POST', `/api/render/jobs/${encodeURIComponent(jobId)}/cancel`, { json: {} }).then((r) => r.job),
     /** Short-lived signed link to play (or download) one finished output. */
-    // R10: the PIC's queue (one brand, or all)
-    approvalQueue: (brandId?: string) => call<{ items: ApprovalItem[] }>('GET', `/api/review/antrean${brandId ? `?brand_id=${encodeURIComponent(brandId)}` : ''}`).then((r) => r.items),
     // U7 review
     review: (id: string) => call<{ review: ReviewInfo }>('GET', `/api/projects/${encodeURIComponent(id)}/review`).then((r) => r.review),
     addComment: (id: string, at_ms: number, text: string) => call<{ comment: ReviewComment }>('POST', `/api/projects/${encodeURIComponent(id)}/comments`, { json: { at_ms, text } }).then((r) => r.comment),

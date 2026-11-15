@@ -113,7 +113,7 @@ try {
   const p = await core.readProject(ws, pid);
   const vids = p.timeline.tracks.find((t) => t.kind === 'video')?.clips.length ?? 0;
   const music = p.timeline.tracks.find((t) => t.kind === 'music')?.clips.length ?? 0;
-  check('R16-06 Setujui → draf Beat Spot masuk timeline (3 potongan + sound)', vids === 3 && music === 1, `video ${vids}, musik ${music}`);
+  check('R16-06 Terapkan → draf Beat Spot masuk timeline (3 potongan + sound)', vids === 3 && music === 1, `video ${vids}, musik ${music}`);
   // The history lists both jobs; the first one still shows its own result.
   const riwayat = page.getByRole('region', { name: 'Riwayat Beat Spot' });
   await riwayat.getByRole('button', { name: `Lihat ${firstJob}` }).click();

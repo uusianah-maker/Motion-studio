@@ -98,7 +98,7 @@ try {
   await card.getByRole('button', { name: /Terapkan ke timeline/ }).click();
   await page.getByRole('region', { name: 'Draf diterapkan' }).waitFor();
   const after = await core.readProject(ws, pid);
-  check('U4-06 Setujui = diterapkan ke timeline sebagai satu langkah (video + subtitle kata + musik mesin)', after.revision === before.revision + 1 && after.timeline.tracks.map((t) => t.kind).join(',') === 'video,subtitle,music', after.timeline.tracks.map((t) => t.kind).join(','));
+  check('U4-06 Terapkan = diterapkan ke timeline sebagai satu langkah (video + subtitle kata + musik mesin)', after.revision === before.revision + 1 && after.timeline.tracks.map((t) => t.kind).join(',') === 'video,subtitle,music', after.timeline.tracks.map((t) => t.kind).join(','));
   const sub = after.timeline.tracks.find((t) => t.kind === 'subtitle').clips[0];
   check('U4-07 Caption per kata + sorot dari mesin terbawa (words + pop + highlight)', sub.words?.length === 2 && sub.style?.anim === 'pop' && sub.style?.highlight?.words?.[0] === 'adem');
   check('U4-08 Riwayat job proyek tampil', await until(() => page.getByRole('region', { name: 'Riwayat job mesin' }).getByRole('cell', { name: /AYS-\d{8}-001/ }).isVisible()));
@@ -120,7 +120,7 @@ try {
   const table = page.getByRole('region', { name: 'Tabel batch' });
   check('U5-01 Mesin menyusun batch → tabel 3 varian (hook, VO, shot, durasi, QC)', await until(() => table.isVisible(), 30000) && (await table.locator('tbody tr').count()) === 3);
   check('U5-02 Varian bermusik tanpa lisensi ditandai UJI (bukan iklan)', (await table.locator('tbody tr').nth(2).getByText('UJI').isVisible()) && (await table.locator('tbody tr').nth(0).getByText('UJI').count()) === 0);
-  // R19: the Batch table says "Pilih untuk render" / "Buang"; "Setujui" is the PIC's word only.
+  // R19: the Batch table says "Pilih untuk render" / "Buang" (R21: the PIC step is gone).
   await table.getByRole('group', { name: 'Keputusan varian-001' }).getByRole('button', { name: /Pilih untuk render/ }).click();
   await table.getByRole('group', { name: 'Keputusan varian-002' }).getByRole('button', { name: /Buang/ }).click();
   await table.getByRole('group', { name: 'Keputusan varian-003' }).getByRole('button', { name: /Pilih untuk render/ }).click();

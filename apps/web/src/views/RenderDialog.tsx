@@ -230,13 +230,10 @@ export function RenderDialog({ api, project, onClose }: { api: Api; project: Pro
             </div>
           )}
           {latest.status === 'completed' && (
-            // R17 / R19: what comes next in the work flow.
+            // What comes next in the work flow (R21: no PIC step — the file is ready in Hasil).
             <div className="row wrap" style={{ gap: 8 }} role="group" aria-label="Langkah berikutnya">
-              <a className="btn small primary" href="#/setujui" onClick={onClose}>
-                Lanjut ke 3. Setujui →
-              </a>
-              <a className="btn small" href="#/hasil" onClick={onClose}>
-                Lihat di 4. Hasil →
+              <a className="btn small primary" href="#/hasil" onClick={onClose}>
+                Lihat di 3. Hasil →
               </a>
             </div>
           )}
