@@ -43,8 +43,8 @@ Progres: 13/15 selesai · 2 dikerjakan ucok (R13, proxy R14 + halaman Motion Tra
 ### Pending Confirmation putaran R
 - ~~PC-R1 lokasi backup~~ → owner 15 Nov: "ga usah ada lokasi backup". Skrip backup sukma tetap ada di `deploy/backup/`, tidak dijadwalkan. Risiko tercatat: workspace hanya di 1 SSD USB.
 - PC-R2 AI gambar: owner masih mencari akun. Disiapkan kolom API (ucok R12a).
-- **PC-R4 Setujui varian**: "Setujui" di layar PIC = review Lulus. Untuk proyek varian Batch, apakah Lulus otomatis menyetujui varian untuk render massal? (sekarang terpisah)
-- **PC-R5 draf belum dirender**: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
+- ~~PC-R4 Setujui varian~~ → owner 15 Nov: "point 4 setuju ya" — Setujui di layar PIC juga menyetujui varian untuk render massal. Dikerjakan ucok. Dulu:: "Setujui" di layar PIC = review Lulus. Untuk proyek varian Batch, apakah Lulus otomatis menyetujui varian untuk render massal? (sekarang terpisah)
+- ~~PC-R5 draf belum dirender~~ → owner: "ikuti saran" — antrean PIC hanya video yang sudah dirender (tanpa perubahan). Dulu:: apakah draf yang belum dirender ikut masuk antrean PIC? (sekarang hanya yang sudah dirender)
 - ~~PC-R6 catatan belajar~~ → owner 15 Nov: "Catat semua koreksi". R9b selesai (19617c1), audit lulus.
 - ~~PC-R7 Beat Spot~~ → owner 15 Nov: opsi A, wajah tidak perlu di-blur. AI ganti pakaian hanya untuk footage kreator/model sendiri; orang asing hanya kalau memang memakai produk kita.
 - ~~PC-R3 terowongan~~ → owner: "gas perbaiki". Dikerjakan sukma (aditif, tanpa restart VPS, tanpa sentuh Affiliate).
