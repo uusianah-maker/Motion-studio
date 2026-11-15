@@ -138,6 +138,7 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\rilis.ps1 -Kembali      
 - Restart ditolak kalau ada render atau job mesin yang sedang berjalan (kode keluar 3).
 - Kalau server baru tidak sehat dalam 2 menit, skrip otomatis kembali ke rilis sebelumnya (kode keluar 4).
 - Workspace, state dir, `.env.local`, dan port tidak berubah.
+- **Mesin** punya rilisnya sendiri, dengan perintah yang sama ditambah `-Mesin`. Kode diambil dari satu commit remotion `master` di `Motion Studio Release\mesin\<nama>`. Data mesin (`konten/`, `public/`, `.venv`) tetap di `MOTION_ENGINE_ROOT`. Rilis mesin baru berlaku kalau rilis app yang aktif berisi `dc897a6` atau lebih baru.
 
 ## Mematikan / rollback
 - **Matikan akses online:** tutup `start-tunnel.ps1`, atau `Stop-ScheduledTask MotionStudio-Tunnel`. App di PC tetap jalan.

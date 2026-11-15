@@ -88,7 +88,65 @@ Belum diuji: restart lewat task (`-CaraRestart Task`, bawaan) di situs live. Itu
    Persiapan bisa kapan saja; pemasangan dilakukan saat sepi.
 3. Setelah aktif, build di folder kerja tidak lagi mengubah situs. Perubahan baru tampil hanya setelah rilis berikutnya.
 
+## Rilis MESIN (R20, ditambahkan 15 Nov 2026 malam)
+Owner setuju dengan "Ya, pisahkan". Rancangan disetujui venus, dengan pembagian kerja:
+- A1–A4: ucok (`dc897a6`);
+- B1–B6: yuki (`9c5259a`);
+- C1–C3: venus (`da0fb99`);
+- S1–S3: sukma.
+
+**Data tetap di tempat, kode dari rilis.**
+- `MOTION_ENGINE_ROOT=D:\VIBECODING\remotion` (`.env.local`, tidak berubah) tetap folder **data** mesin: `konten/`, `public/`, `arsip/`, `.venv`. Data tidak disalin dan tidak ada yang tertinggal. Semua cek realpath app tetap memakai folder ini.
+- **Kode** diambil dari `D:\VIBECODING\Motion Studio Release\mesin\<yyyyMMdd-HHmmss>_<sha7>`, yaitu `git archive` satu commit remotion `master` (± 6 MB). Penunjuknya `mesin\AKTIF.txt` / `SEBELUMNYA.txt`.
+- `start-motion.ps1` mengisi `MOTION_ENGINE_CODE` dari `mesin\AKTIF.txt`. Kalau belum ada rilis mesin, atau rilisnya rusak, env itu tidak di-set dan kode berjalan dari folder data (perilaku lama).
+- Setiap baris "server mulai" di log penjaga mencatat `mesin <nama>` atau `mesin folder kerja`.
+- App (`dc897a6`) menjalankan mesin dengan cwd = DATA, script = `<kode>\pipeline\engine.py`, dan env `MOTION_ENGINE_DATA` (= DATA) + `MOTION_STUDIO_CORE` (= `packages\core\dist` rilis app yang jalan).
+
+**Perintah** sama dengan rilis app, ditambah `-Mesin`:
+```
+deploy\windows\rilis.ps1 -Mesin -Status
+deploy\windows\rilis.ps1 -Mesin -Commit master -TanpaGanti
+deploy\windows\rilis.ps1 -Mesin -Aktifkan <nama>
+deploy\windows\rilis.ps1 -Mesin -Kembali
+deploy\windows\rilis.ps1 -Mesin -SmokeSaja <folder kode>      # smoke saja, tanpa rilis
+```
+
+**Pengaman tambahan:**
+- Commit harus ada di `master`, berisi `pipeline/engine.py`, `jalur.py`, `edit.py`, dan `transcribe.py`, dan bukan repo Motion Studio.
+- `engine.py` dan `jalur.py` di commit itu harus sudah mendukung `MOTION_ENGINE_DATA`. Tanpa dukungan itu, kode dari rilis akan mencari data di folder rilis yang kosong.
+
+**Smoke mesin** dijalankan seperti app menjalankannya: cwd = DATA, env daftar putih `engineEnv`. Data live tidak ditulis.
+1. `engine cek`.
+2. `engine daftar_batch` (baca saja). Harus melihat batch di `DATA\konten`.
+3. `engine generate` pada job sementara, memakai video uji 9:16 ± 17 dtk (pola warna + suara TTS Windows, bukan footage owner) dan `brand_kit.json` contoh dari job generate terbaru. Bahan uji disimpan di `<Rilis>\uji`. Hasil harus berupa `ops.json` ms-ops/1.
+
+**Pergantian** = restart server lewat task, ditolak saat ada job. Server dianggap sehat kalau:
+- tetap jalan dari rilis app yang aktif;
+- pid-nya baru;
+- log penjaga untuk pid itu memuat `mesin <nama baru>`.
+Kalau tidak tercapai dalam 2 menit → rollback otomatis.
+
+**Penting:** rilis mesin hanya berguna kalau rilis app yang aktif sudah berisi `dc897a6`. Rilis app lama mengabaikan `MOTION_ENGINE_CODE`, jadi mesin tetap jalan dari folder kerja. Karena itu rilis app dipasang dulu (atau bersamaan), lalu `-Mesin -Aktifkan`.
+
+### Hasil uji mesin (folder uji di D:, penjaga uji port 4397, workspace dan state sementara; situs live tidak tersentuh)
+| # | Uji | Hasil |
+|---|---|---|
+| M1 | `-Mesin -Commit master -TanpaGanti` (9c5259a) | Siap dalam **37 dtk**. Smoke: cek ok, daftar_batch 5 batch, generate 28 operasi (17 dtk) |
+| M2 | Uji setara: generate dari folder kerja vs dari rilis (video uji sama, `MOTION_ENGINE_DATA` sama) | `ops.json`, `rencana.json`, `qc_rencana.json`, `potongan.json`, `props.json` **identik**. `transkrip.json` hanya beda `modelLoadSec` (waktu muat model) |
+| M3 | Rilis app dari main (`dc897a6`) lalu `-Mesin -Aktifkan` | Sehat dari rilis mesin dalam 22 dtk. Log penjaga mencatat `mesin 20261115-203230_9c5259a` |
+| M4 | Rilis mesin penanda (salinan rilis + 1 baris pencatat di `daftar.py`), dipanggil lewat API app `/api/engine/batches` | Mesin jalan dari **folder rilis**, cwd = `D:\VIBECODING\remotion`, `MOTION_ENGINE_DATA` = DATA, `MOTION_STUDIO_CORE` = core rilis app. Env `MOTION_*` hanya 2 variabel itu (tidak ada secret) |
+| M5 | `/api/engine/batches`: rilis mesin vs folder kerja | Jawaban identik (903 byte). `/batches/2026-11-14_footage/shots` 200 (app membaca DATA langsung) |
+| M6 | `-Mesin -Kembali` | Kembali ke rilis sebelumnya, sehat, log penjaga benar |
+
+Catatan pemakaian:
+- Dengan `-CaraRestart Proses`, restart yang berurutan dalam 5 menit makin lama (15 → 22 → 43 → 83 dtk) karena jeda bertahap milik penjaga.
+- Cara bawaan (Task) menyalakan penjaga baru, jadi tidak terkena jeda itu. venus sudah mengukur sehat dalam 30 dtk.
+
+Ditemukan dan diperbaiki saat uji:
+- Env proses dipulihkan lewat .NET, bukan `env:\` (dulu menghentikan skrip).
+- Argumen ffmpeg `-c:v` dibaca PowerShell sebagai parameter, sekarang dikutip.
+
 ## Sisa risiko (di luar tugas ini)
-- **Mesin masih jalan dari folder kerja.** `MOTION_ENGINE_ROOT=D:\VIBECODING\remotion` adalah repo kerja venus/yuki, jadi perubahan `pipeline\engine.py` yang belum diaudit langsung dipakai job dari situs. Pola rilis yang sama bisa dipakai untuk mesin, tapi itu tugas terpisah.
+- **Mesin:** sudah ditangani (bagian Rilis MESIN di atas). Yang tetap dipakai bersama hanya `.venv` dan `demucs-venv`. Aturan: pip install = lapor venus.
 - **Skrip penjaga dibaca dari folder kerja.** Task menunjuk ke `deploy\windows\*.ps1` di repo kerja, jadi perubahan WIP di skrip itu berlaku pada restart task berikutnya. File-file itu jarang diubah dan hanya oleh sukma.
 - **Upload yang sedang berjalan tidak terdeteksi oleh cek sibuk.** Upload itu akan terputus dan harus diulang. Pasang rilis saat sepi.

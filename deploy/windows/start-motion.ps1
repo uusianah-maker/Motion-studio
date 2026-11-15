@@ -35,6 +35,25 @@ function Folder-Aplikasi {
     return @{ Dir = $Repo; Ket = 'folder kerja (belum ada rilis)' }
 }
 
+# Kode mesin (rilis mesin, 15 Nov 2026): <Rilis>\mesin\AKTIF.txt -> MOTION_ENGINE_CODE. DATA mesin (konten/, public/,
+# .venv) tetap MOTION_ENGINE_ROOT dari .env.local. Belum ada rilis mesin / rusak = env tidak di-set = kode dari folder
+# DATA itu sendiri (perilaku lama). Label "mesin ..." di log penjaga dipakai rilis.ps1 untuk memastikan pergantian.
+function Kode-Mesin {
+    $penunjuk = Join-Path $Rilis 'mesin\AKTIF.txt'
+    if (Test-Path $penunjuk) {
+        $nama = ([IO.File]::ReadAllText($penunjuk)).Trim()
+        if ($nama -match '^[A-Za-z0-9._-]+$') {
+            $dir = Join-Path (Join-Path $Rilis 'mesin') $nama
+            if ((Test-Path (Join-Path $dir 'pipeline\engine.py')) -and (Test-Path (Join-Path $dir 'pipeline\batch\jalur.py'))) {
+                return @{ Dir = $dir; Ket = "mesin $nama" }
+            }
+            return @{ Dir = $null; Ket = "mesin folder kerja (PERHATIAN: rilis mesin '$nama' tidak lengkap)" }
+        }
+        return @{ Dir = $null; Ket = 'mesin folder kerja (PERHATIAN: mesin\AKTIF.txt tidak valid)' }
+    }
+    return @{ Dir = $null; Ket = 'mesin folder kerja' }
+}
+
 $delay = 5
 # Catatan penjaga: baris pendek per kejadian. Ditulis dengan berbagi-akses + coba ulang, jadi tidak pernah
 # menghentikan loop walaupun file sedang dibuka program lain (dulu `*>>` mengunci log sepanjang proses jalan).
@@ -68,9 +87,11 @@ while ($true) {
         if (-not (Test-Path $main)) { throw "Build belum ada di $($app.Dir) (npm run build / rilis.ps1)" }
         # main.js mencari .env.local relatif terhadap dirinya; di folder rilis tidak ada, jadi ditunjuk ke sini.
         $env:MOTION_ENV_FILE = $EnvFile
+        $mesin = Kode-Mesin
+        if ($mesin.Dir) { $env:MOTION_ENGINE_CODE = $mesin.Dir } else { Remove-Item env:MOTION_ENGINE_CODE -ErrorAction SilentlyContinue }
         $p = Start-Process -FilePath $node -ArgumentList "`"$main`"" -WorkingDirectory $app.Dir -NoNewWindow -PassThru `
             -RedirectStandardOutput "$jalan.out.log" -RedirectStandardError "$jalan.err.log"
-        Tulis-Catatan $log "server mulai (pid $($p.Id); $($app.Ket); output: $(Split-Path -Leaf $jalan).*.log)"
+        Tulis-Catatan $log "server mulai (pid $($p.Id); $($app.Ket); $($mesin.Ket); output: $(Split-Path -Leaf $jalan).*.log)"
         # PC-R3: task jalan di prioritas BelowNormal; saat CPU penuh oleh kerja lain di PC ini, server tertahan
         # belasan detik per permintaan. Normal = berbagi CPU adil (proses mesin anak ikut Normal).
         try { $p.PriorityClass = 'Normal' } catch { }
