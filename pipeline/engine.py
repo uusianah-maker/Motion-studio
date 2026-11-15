@@ -5,6 +5,7 @@
   engine batch    <job_dir>   Batch Remix (modul yuki: pipeline/batch/perencana.py)
   engine pisah    <job_dir>   Batch Remix: unggahan <job_dir>/masuk/ -> konten/, pisah audio + Shot Library
                               (pipeline/pisah.py --job); hasil di <job_dir>/out/pisah.json (schema pisah/1)
+  engine transfer <job_dir>   Motion Transfer tahap 1: video referensi -> adegan + gambar + prompt (pipeline/transfer.py)
   engine daftar_batch         daftar batch untuk dropdown (read-only, tanpa job_dir);
                               stdout satu JSON {"schema":"daftar-batch/1","batch":[...]}
   engine cek                  cek alat (ffmpeg, Whisper, GPU, OpenCV) untuk halaman status
@@ -202,6 +203,45 @@ def ulang(job_dir: Path) -> int:
     return selesai(out, kamus_baru=kamus_baru or None)
 
 
+def transfer(job_dir: Path) -> int:
+    """Motion Transfer tahap 1 (R11): out/transfer.json + out/adegan/NN.jpg."""
+    import transfer as mt
+
+    job = baca_job(job_dir)
+    out = job_dir / "out"
+    video = sumber_utama(job)
+    progres("cek_input", 5, video.name)
+    try:
+        cek = cek_input_gambar(video)
+    except Ditolak as e:
+        tulis_ditolak(out, str(e))
+        progres("selesai", 100, f"ditolak: {e}")
+        return 2
+    brief = job.get("brief", {})
+    produk = brief.get("produk")
+    bk_p = job_dir / job.get("brand_kit", "brand_kit.json")
+    if not produk and bk_p.exists():
+        daftar = json.loads(bk_p.read_text(encoding="utf-8")).get("produk") or []
+        produk = daftar[0].get("nama") if daftar and isinstance(daftar[0], dict) else None
+    doc = mt.transfer(str(video), out, produk or "produk kami", brief.get("deskripsi_produk", ""), progres)
+    progres("selesai", 100, f"siap · {len(doc['adegan'])} adegan · {cek['durasi']:.0f} dtk")
+    return 0
+
+
+def cek_input_gambar(video: Path) -> dict:
+    """Seperti cek_input, tapi video referensi boleh tanpa suara dan rasio apa pun."""
+    if not video.exists():
+        raise Ditolak(f"file video tidak ditemukan: {video}")
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type:format=duration", "-of", "json",
+                        str(video)], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Ditolak(f"file tidak bisa dibaca sebagai video: {r.stderr.strip()[:200]}")
+    info = json.loads(r.stdout)
+    if not any(s.get("codec_type") == "video" for s in info.get("streams", [])):
+        raise Ditolak("tidak ada gambar video di file")
+    return {"durasi": float(info.get("format", {}).get("duration", 0))}
+
+
 def batch(job_dir: Path) -> int:
     progres("rencana", 5, "Batch Remix")
     # perencana.py menulis progres JSON-lines sendiri: stdout-nya harus sampai ke app.
@@ -248,7 +288,7 @@ def cek_alat() -> int:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
-    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "daftar_batch", "cek"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "daftar_batch", "cek"):
         log(__doc__)
         return 1
     cmd = sys.argv[1]
@@ -261,7 +301,7 @@ def main() -> int:
         return 1
     job_dir = Path(sys.argv[2]).resolve()
     try:
-        return {"generate": generate, "ulang": ulang, "batch": batch, "pisah": pisah}[cmd](job_dir)
+        return {"generate": generate, "ulang": ulang, "batch": batch, "pisah": pisah, "transfer": transfer}[cmd](job_dir)
     except Exception as e:  # noqa: BLE001 - gagal teknis: kode 1, pesan ke progres
         log(f"GAGAL: {e!r}")
         progres("gagal", 100, str(e)[:300])
