@@ -170,5 +170,6 @@ export { MAX_TRANSFER_SCENES, type TransferScene, type TransferView, editTransfe
 export { type BeatspotCandidate, type BeatspotCut, type BeatspotView, readBeatspotView, rerunBeatspot } from './storage/beatspot.js';
 export { type BackupLocation, listBackupLocations, registerBackupLocation, verifyBackupLocation } from './storage/backup.js';
 export { PRESET_JENIS, examplePresets } from './storage/brand.js';
+export { SUARA_OWNER, type SuaraContohView, type SuaraOwnerList, type SuaraProfilSettings, type SuaraProfilView, addSuaraOwner, clearSuaraOwnerRemovals, readSuaraOwner, readSuaraProfilResult, removeSuaraOwner, sampleKey, validateSuaraProfilJob } from './storage/suaraOwner.js';
 export { DEFAULT_VOICE, TTS_LIMITS, type TtsSettings, type TtsView, type TtsVoice, type VoIndex, listTtsVoices, readTtsResult, readVoIndex, splitKalimat, voSubtitleOps } from './storage/tts.js';
 export { BG_MODELS, VISUAL_MAX_VIDEO_S, VISUAL_TOOLS, type VisualTool, type VisualView, readVisualResult, visualEstimate } from './storage/visual.js';

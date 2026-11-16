@@ -567,6 +567,23 @@ export async function authMode(base = ''): Promise<'local' | 'google'> {
 // ---- U6 engine runner (Generate Otomatis / Batch Remix)
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
 /** R34 (contract §21). */
+/** Suara owner (contract §23). */
+export interface SuaraOwnerList {
+  contoh: { media_id: string; version_id: string }[];
+  dihapus: string[];
+}
+export interface SuaraProfilView {
+  job_id: string;
+  status: 'siap' | 'kurang_contoh' | 'ditolak' | 'lain';
+  alasan: string;
+  contoh: { kunci: string | null; media_id: string | null; durasi: number; durasi_bersih: number; snr_db: number | null; musik: boolean; clipping: boolean; dipakai: boolean; alasan: string }[];
+  durasi_bersih_total: number;
+  target_dtk: [number, number];
+  minimal_dtk: number;
+  backend: string;
+  dilatih_pada: string | null;
+  contoh_hasil: { teks: string; ref: { media_id: string; version_id: string } | null }[];
+}
 export interface TtsVoice {
   id: string;
   nama: string;
@@ -597,7 +614,7 @@ export interface TtsView {
 export interface EngineJob {
   job_id: string;
   project_id: string;
-  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual';
+  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual' | 'suara_profil';
   state: EngineState;
   tahap: string;
   persen: number;
@@ -997,6 +1014,15 @@ export function createApi(token: string | null, base = '') {
     /** R34 Suara dari Teks: the engine's voices, a tts job, its voice over, a VO's known text. */
     engineSuara: () => call<{ tersedia: boolean; suara: TtsVoice[] }>('GET', '/api/engine/suara'),
     engineTts: (id: string, tts: { teks?: string; kalimat?: string[]; suara: string; kecepatan: number; jeda_ms: number }) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'tts', tts } }).then((r) => r.job),
+    suaraOwner: () => call<{ suara_owner: SuaraOwnerList }>('GET', '/api/suara-owner').then((r) => r.suara_owner),
+    suaraOwnerAdd: (contoh: { media_id: string; version_id: string }[]) => call<{ suara_owner: SuaraOwnerList }>('POST', '/api/suara-owner/contoh', { json: { contoh } }).then((r) => r.suara_owner),
+    suaraOwnerRemove: (mediaId: string) => call<{ suara_owner: SuaraOwnerList }>('DELETE', `/api/suara-owner/contoh/${encodeURIComponent(mediaId)}`).then((r) => r.suara_owner),
+    /** `latih` false = only check the samples; true = train the owner's voice. */
+    suaraProfil: (projectId: string, contoh: { media_id: string; version_id: string }[], latih: boolean, hapus: string[]) =>
+      call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(projectId)}/engine/jobs`, {
+        json: { mode: 'suara_profil', sources: contoh.map((r) => ({ kunci: `$media:${r.media_id}`, ref: r })), suara_profil: { latih, ...(hapus.length ? { hapus_contoh: hapus } : {}) } },
+      }).then((r) => r.job),
+    suaraProfilResult: (projectId: string, jobId: string) => call<{ suara_profil: SuaraProfilView }>('GET', `/api/projects/${encodeURIComponent(projectId)}/engine/jobs/${encodeURIComponent(jobId)}/suara-profil`).then((r) => r.suara_profil),
     ttsResult: (id: string, jobId: string) => call<{ tts: TtsView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/tts`).then((r) => r.tts),
     /** R35 Visual Tools (contract §18.10). */
     engineVisual: (id: string, ref: { media_id: string; version_id: string }, visual: Record<string, unknown>) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'visual', ref, visual } }).then((r) => r.job),

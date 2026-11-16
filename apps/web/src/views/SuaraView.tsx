@@ -3,6 +3,7 @@ import { splitKalimat, voSubtitleOps } from '../../../../packages/core/dist/stor
 import type { Api, BrandKit, EditOp, ProjectSummary, Role, TtsView, TtsVoice } from '../api';
 import { ErrorNotice } from '../ui';
 import { useEngineJob } from './GenerateView';
+import { SuaraOwnerPanel } from './SuaraOwnerPanel';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const sec = (n: number) => `${n.toFixed(1).replace('.', ',')} dtk`;
@@ -27,6 +28,8 @@ function Play({ api, versionId, label }: { api: Api; versionId: string; label: s
  * known text (no Whisper). Hybrid: a sentence can be redone with new text.
  */
 export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProjectsChanged }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void; onProjectsChanged?: () => void }) {
+  /** Owner 16 Nov: "Suara saya" — train the owner's own voice (contract §23). */
+  const [tab, setTab] = useState<'teks' | 'saya'>('teks');
   const [brands, setBrands] = useState<BrandKit[]>([]);
   const [brandId, setBrandId] = useState('');
   const [defaultBrand, setDefaultBrand] = useState<string | null>(null);
@@ -143,9 +146,20 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
     <>
       <header className="top">
         <h1>Suara dari Teks</h1>
+        <div className="tabs" role="tablist" aria-label="Bagian suara">
+          <button type="button" role="tab" aria-selected={tab === 'teks'} className={`btn small${tab === 'teks' ? ' primary' : ''}`} onClick={() => setTab('teks')}>
+            Dari teks
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'saya'} className={`btn small${tab === 'saya' ? ' primary' : ''}`} onClick={() => setTab('saya')}>
+            Suara saya
+          </button>
+        </div>
         <div className="spacer" />
         <span className="muted small hideNarrow">Tulis kalimat → suara VO → tersimpan di Aset (VO) → pakai di Edit &amp; fitur lain, subtitle langsung dari teks</span>
       </header>
+      {tab === 'saya' ? (
+        <SuaraOwnerPanel api={api} role={role} projects={projects} onProjectsChanged={onProjectsChanged} />
+      ) : (
       <div className="body enginePage">
         {error ? <ErrorNotice error={error} /> : null}
         {engineOk === false && <div className="notice warn">Mesin belum terpasang di server ini, jadi suara belum bisa dibuat.</div>}
@@ -264,6 +278,7 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
           </section>
         )}
       </div>
+      )}
     </>
   );
 }

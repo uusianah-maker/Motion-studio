@@ -38,6 +38,7 @@ import { markEngineOrigin, readLearning } from './learning.js';
 import { kamusBelajar } from './kamusBelajar.js';
 import { type TtsSettings, validateTtsJob } from './tts.js';
 import { validateVisualJob } from './visual.js';
+import { type SuaraProfilSettings, validateSuaraProfilJob } from './suaraOwner.js';
 import { VISUAL_RESULT, type VisualTool } from './visualCalc.js';
 
 export const ENGINE_DIR = '06_ENGINE';
@@ -79,7 +80,7 @@ export function engineConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Engin
   };
 }
 
-export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual';
+export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual' | 'suara_profil';
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
 
 export interface EngineStatus {
@@ -113,7 +114,7 @@ export interface EngineBrief {
 
 export interface EngineJobInput {
   project_id: string;
-  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual';
+  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual' | 'suara_profil';
   /** `$sumber` (one video) or `$sumber:<id>` (several). */
   sources: { kunci: string; ref: MediaRef }[];
   preset: string;
@@ -140,6 +141,8 @@ export interface EngineJobInput {
   tts?: TtsSettings;
   /** R35 Visual Tools (contract §18.10): `{alat, …}`; job.json gets `masuk` = the source path. */
   visual?: { alat: VisualTool } & Record<string, unknown>;
+  /** Suara owner (contract §23): written to job.json as the `suara_profil` object. */
+  suara_profil?: SuaraProfilSettings;
 }
 
 export const AUDIO_PILIHAN = ['vo', 'musik', 'keduanya'] as const;
@@ -190,6 +193,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (o.mode === 'beatspot') return validateBeatspotJob(o);
   if (o.mode === 'tts') return validateTtsJob(o);
   if (o.mode === 'visual') return validateVisualJob(o);
+  if (o.mode === 'suara_profil') return validateSuaraProfilJob(o);
   const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
@@ -573,6 +577,7 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ...(input.audio_pilihan ? { audio_pilihan: input.audio_pilihan } : {}),
       // "auto" / empty BPM are left out, so a chosen preset's beat defaults can apply (§17.5).
       ...(input.tts ? { tts: input.tts } : {}),
+      ...(input.suara_profil ? { suara_profil: input.suara_profil } : {}),
       ...(input.visual ? { visual: await visualJob(ws, input, sumber[0]?.path) } : {}),
       ...(input.beatspot ? { beatspot: Object.fromEntries(Object.entries(input.beatspot).filter(([k, v]) => !((k === 'ketukan_per_potong' && v === 'auto') || (k === 'bpm' && v === null)))) } : {}),
     };
@@ -732,13 +737,13 @@ export async function runEngineJob(
   if (mode === 'pisah') await removeMasuk(jdir);
   // R35: a visual job's result depends on its tool.
   const alat = mode === 'visual' ? ((await readJson<{ visual?: { alat?: VisualTool } }>(path.join(jdir, 'job.json')))?.visual?.alat ?? 'deteksi') : null;
-  const resultFile = mode === 'pisah' ? 'pisah.json' : mode === 'tts' ? 'tts.json' : mode === 'visual' ? 'visual.json' : 'rencana.json';
+  const resultFile = mode === 'pisah' ? 'pisah.json' : mode === 'tts' ? 'tts.json' : mode === 'visual' ? 'visual.json' : mode === 'suara_profil' ? 'suara_profil.json' : 'rencana.json';
   const rencana = await readJson<{ status?: string; alasan?: string }>(path.join(jdir, 'out', resultFile)).catch(() => null);
   if (code === 0 && rencana?.status === 'ditolak') code = 2; // contract §5.1: the plan itself says refused
   // The log tail can hold local paths (D:\...): never shown to the browser as is.
   const tail = scrubPaths(log.trim().split('\n').slice(-3).join(' · ')).slice(0, 300);
   if (code === 0) {
-    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : mode === 'tts' ? 'tts.json' : alat ? VISUAL_RESULT[alat] : 'ops.json';
+    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : mode === 'tts' ? 'tts.json' : mode === 'suara_profil' ? 'suara_profil.json' : alat ? VISUAL_RESULT[alat] : 'ops.json';
     const okFiles = await fsp.stat(path.join(jdir, 'out', need)).catch(() => null);
     s = okFiles
       ? { ...s, state: 'siap', tahap: 'selesai', persen: 100, ...(rencana?.status === 'perlu_keputusan' ? { pesan: 'Perlu keputusan tim (lihat kartu rencana)' } : {}) }

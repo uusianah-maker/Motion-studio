@@ -60,6 +60,33 @@ ${tag}`)]));
   process.exit(0);
 }
 
+if (mode === 'suara_profil') {
+  // Contract §23 (Suara owner): a check per sample (fake: 95 s clean speech each); training only with
+  // >= 300 s clean speech; one example take when trained.
+  const sj = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8'));
+  const outDir = path.join(jobDir, 'out');
+  fs.mkdirSync(path.join(outDir, 'contoh'), { recursive: true });
+  const sp = sj.suara_profil;
+  if (sp.profil !== 'owner') {
+    fs.writeFileSync(path.join(outDir, 'suara_profil.json'), JSON.stringify({ schema: 'suara-profil/1', status: 'ditolak', alasan: 'profil harus owner' }));
+    process.exit(2);
+  }
+  const contoh = sj.sumber.map((x) => ({ kunci: x.kunci, durasi: 100, durasi_bersih: 95, snr_db: 30, musik: false, clipping: false, dipakai: true, alasan: '' }));
+  const total = contoh.reduce((a, c) => a + c.durasi_bersih, 0);
+  const latih = sp.latih && total >= 300;
+  const hasil = [];
+  if (latih) {
+    const b = Buffer.alloc(44 + 9600);
+    b.write('RIFF', 0); b.writeUInt32LE(36 + 9600, 4); b.write('WAVE', 8); b.write('fmt ', 12);
+    b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(48000, 24); b.writeUInt32LE(96000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
+    b.write('data', 36); b.writeUInt32LE(9600, 40);
+    fs.writeFileSync(path.join(outDir, 'contoh', '01.wav'), b);
+    hasil.push({ teks: 'Halo kak, ini suara owner.', file: 'out/contoh/01.wav' });
+  }
+  fs.writeFileSync(path.join(outDir, 'suara_profil.json'), JSON.stringify({ schema: 'suara-profil/1', status: latih ? 'siap' : 'kurang_contoh', contoh, durasi_bersih_total: total, target_dtk: [600, 900], minimal_dtk: 300, backend: 'applio', dilatih_pada: latih ? '2026-11-16T15:00:00' : null, versi_model: latih ? 1 : null, contoh_hasil: hasil }));
+  process.exit(0);
+}
+
 if (mode === 'tts') {
   // R34 / contract §21: voices, or one WAV per sentence + the joined take with pauses, word times.
   const tj = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8'));

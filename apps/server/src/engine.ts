@@ -16,6 +16,11 @@ import {
   listTtsVoices,
   pendingPlan,
   readTtsResult,
+  addSuaraOwner,
+  clearSuaraOwnerRemovals,
+  readSuaraOwner,
+  readSuaraProfilResult,
+  removeSuaraOwner,
   readVisualResult,
   readVoIndex,
   type TtsVoice,
@@ -191,6 +196,36 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
       handle: async ({ params }) => ({ tts: await readTtsResult(ws, params.project_id!, jobParam(params.job_id)) }),
     },
     {
+      // Suara owner (§23): the samples the owner picked (ordinary shared Media).
+      method: 'GET',
+      path: '/api/suara-owner',
+      handle: async () => ({ suara_owner: await readSuaraOwner(ws) }),
+    },
+    {
+      method: 'POST',
+      path: '/api/suara-owner/contoh',
+      handle: async ({ req, actor }) => {
+        if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh mengubah contoh suara');
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        onlyKeys(body, ['contoh']);
+        return { suara_owner: await addSuaraOwner(ws, body.contoh) };
+      },
+    },
+    {
+      method: 'DELETE',
+      path: '/api/suara-owner/contoh/:media_id',
+      handle: async ({ params, actor }) => {
+        if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh mengubah contoh suara');
+        return { suara_owner: await removeSuaraOwner(ws, params.media_id!) };
+      },
+    },
+    {
+      // Suara owner (§23): a finished check/training job → its report (example takes into Media).
+      method: 'GET',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/suara-profil',
+      handle: async ({ params }) => ({ suara_profil: await readSuaraProfilResult(ws, params.project_id!, jobParam(params.job_id)) }),
+    },
+    {
       // R35: a finished visual tool job → its result (made files imported into Media on first read).
       method: 'GET',
       path: '/api/projects/:project_id/engine/jobs/:job_id/visual',
@@ -239,7 +274,10 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
           const kecuali = await readShotExclusions(ws, input.batch.batch);
           if (kecuali.length) input.batch.kecualikan_shot = kecuali;
         }
-        return { job: await enqueue(input.project_id, () => prepareEngineJob(ws, input)) };
+        const job = await enqueue(input.project_id, () => prepareEngineJob(ws, input));
+        // Suara owner: the removals this job carries are delivered (the engine forgets them).
+        if (input.suara_profil?.hapus_contoh?.length) await clearSuaraOwnerRemovals(ws, input.suara_profil.hapus_contoh);
+        return { job };
       },
     },
     {
