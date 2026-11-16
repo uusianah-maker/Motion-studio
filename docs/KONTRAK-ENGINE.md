@@ -545,7 +545,9 @@ Semua perintah itu menulis progres JSON-lines dalam UTF-8.
 | `blaze_face_short_range.tflite` (0,23 MB) | storage.googleapis.com/mediapipe-models …/float16/1 | Apache-2.0 | `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f` |
 | `efficientdet_lite0_int8.tflite` (4,6 MB) | storage.googleapis.com/mediapipe-models …/int8/1 | Apache-2.0 | `0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb` |
 | `BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx` (224 MB) = rembg `birefnet-general-lite` | GitHub ZhengPeng7/BiRefNet rilis v1 | MIT | `5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333` |
-| `realesrgan-ncnn-vulkan-20220424-windows.zip` (45,5 MB) — **belum diekstrak** | GitHub xinntao/Real-ESRGAN rilis v0.2.5.0 | BSD-3 (model) + MIT (ncnn-vulkan) + BSD-3 (ncnn); zip tanpa LICENSE | `abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d` |
+| `u2net_human_seg.onnx` (176 MB) — terpasang, **tidak jadi bawaan** (ikut menghapus produk yang dipegang) | GitHub danielgatis/rembg rilis v0.0.0 (distribusi ONNX resmi, OK venus) | Apache-2.0 | `01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c` |
+| `isnet-general-use.onnx` (179 MB) — bawaan video | GitHub danielgatis/rembg rilis v0.0.0 | Apache-2.0 | `60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a` |
+| `realesrgan-ncnn-vulkan-20220424-windows.zip` (45,5 MB) — diekstrak ke `realesrgan\` (§18.9) | GitHub xinntao/Real-ESRGAN rilis v0.2.5.0 | BSD-3 (model) + MIT (ncnn-vulkan) + BSD-3 (ncnn); zip tanpa LICENSE | `abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d` |
 
 ### 18.6 Deteksi wajah & objek (R24a) — sudah jalan
 Perintah: `<visual-venv>\Scripts\python pipeline/visual/deteksi.py <video> <keluar.json> [--jenis wajah,objek] [--hz 10] [--label person,handbag,…]`. Hasilnya jalur-posisi/1 (§18.1).
@@ -579,7 +581,15 @@ Perintah: `<visual-venv>\Scripts\python pipeline/visual/hapus_latar.py <masuk> <
   - `<nama>-masker.mp4`: abu-abu, putih = subjek, untuk `alphamerge` di render.
 - **Laporan**: `<folder_keluar>/hapus_latar.json`, berisi `{"schema":"hapus-latar/1","status":"selesai|ditolak","usulan":true,"model","lisensi","jenis","file","masker",…}`. Kode keluar 2 untuk ditolak (model di luar daftar putih, klip lebih dari 15 dtk, fps di luar batas), 1 untuk gagal teknis.
 - **Tanpa unduhan dari rembg.** rembg ternyata mengunduh model dari mirror danielgatis, bukan dari sumber resmi. Satu kali sempat terunduh saat uji coba; filenya identik (SHA sama) dan sudah dihapus. Karena itu inferensi BiRefNet ditulis langsung dengan onnxruntime dan file resmi di §18.5: input tetap 1024×1024, normalisasi ImageNet, lalu sigmoid. Model lain di daftar putih belum dipasang dan ditolak sampai unduhannya mendapat OK.
-- **Kecepatan CPU di PC kantor: ±13 dtk per frame.**
+- **Model (16 Nov, OK venus)**:
+
+| Model | Untuk | Kecepatan per frame | Catatan |
+|---|---|---|---|
+| `isnet-general-use` | bawaan **video** | ±1,3 dtk | Topengnya dipertegas (0,15–0,55 → 0–1) karena kain polos sempat setengah transparan; sebagian latar bisa ikut terbawa. Video 15 dtk @10 fps ≈ **3,5 menit** (uji 2 dtk: 27 dtk). |
+| `birefnet-general-lite` | bawaan **gambar**, opsi "kualitas tinggi" untuk klip sangat pendek | ±13 dtk | — |
+| `u2net_human_seg` | — | ±0,45 dtk | **Tidak dipakai sebagai bawaan**: celana yang dipegang ikut terhapus. |
+
+- **Kecepatan BiRefNet di CPU PC kantor: ±13 dtk per frame.**
   - Satu gambar butuh ±13 dtk.
   - Video 15 dtk pada 10 fps (150 frame) butuh ±33 menit. Pada 5 fps, ±17 menit.
   - Perkiraan waktu diukur dari frame pertama, lalu dikirim lewat `perkiraan_dtk`.

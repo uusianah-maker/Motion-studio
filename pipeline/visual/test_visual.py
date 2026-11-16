@@ -224,10 +224,14 @@ class HapusLatar(unittest.TestCase):
             f.write_bytes(b"x")
             self.assertEqual(hapus_latar.jalankan(f, Path(d) / "out", None, 60), 2)
 
-    def test_model_resmi_terdaftar_dengan_sha(self):
+    def test_model_terpasang_ada_di_daftar_putih_dengan_sha(self):
+        import beban
         import hapus_latar
-        self.assertEqual(set(hapus_latar.FILE_MODEL), {"birefnet-general-lite"})
-        self.assertEqual(len(hapus_latar.SHA256["birefnet-general-lite"]), 64)
+        self.assertTrue(set(hapus_latar.SPEK) <= set(beban.MODEL_LATAR))
+        for nama, sp in hapus_latar.SPEK.items():
+            self.assertEqual(len(sp["sha256"] or ""), 64, nama)
+        self.assertIn(hapus_latar.BAWAAN_VIDEO, hapus_latar.SPEK)
+        self.assertNotEqual(hapus_latar.BAWAAN_VIDEO, "u2net_human_seg")  # menghapus produk yang dipegang
 
 
 class Perjelas(unittest.TestCase):

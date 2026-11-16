@@ -30,9 +30,25 @@ import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
 
-FILE_MODEL = {"birefnet-general-lite": "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"}
-SHA256 = {"birefnet-general-lite": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333"}
-SISI = 1024
+# Model terpasang (file + SHA256 di §18.5). Praproses sama dengan rembg 2.0.87 (sesi masing-masing model).
+#   ukuran input, mean, std, keluaran: "sigmoid" (BiRefNet) | "minmax" (U2Net/ISNet)
+SPEK = {
+    "birefnet-general-lite": {"file": "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx", "sisi": 1024, "bagi": "255",
+                              "mean": (0.485, 0.456, 0.406), "std": (0.229, 0.224, 0.225), "keluar": "sigmoid",
+                              "sha256": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333"},
+    "u2net_human_seg": {"file": "u2net_human_seg.onnx", "sisi": 320, "bagi": "maks",
+                        "mean": (0.485, 0.456, 0.406), "std": (0.229, 0.224, 0.225), "keluar": "minmax",
+                        "sha256": "01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c"},
+    "isnet-general-use": {"file": "isnet-general-use.onnx", "sisi": 1024, "bagi": "maks",
+                          "mean": (0.5, 0.5, 0.5), "std": (1.0, 1.0, 1.0), "keluar": "minmax",
+                          # topeng ISNet setengah transparan di kain polos: dipertegas (0,15..0,55 -> 0..1)
+                          "tegas": (0.15, 0.55),
+                          "sha256": "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a"},
+}
+FILE_MODEL = {k: v["file"] for k, v in SPEK.items()}
+SHA256 = {k: v["sha256"] for k, v in SPEK.items()}
+# Video: bawaan model ringan (venus 16 Nov); BiRefNet = opsi "kualitas tinggi" untuk gambar / klip sangat pendek.
+BAWAAN_VIDEO = "isnet-general-use"  # u2net_human_seg ikut menghapus produk yang dipegang (uji IN17)
 GAMBAR = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 IDLE = 0x40
 
@@ -41,9 +57,10 @@ class Model:
     def __init__(self, nama: str):
         import onnxruntime as ort
         nama = beban.model_latar(nama)
-        if nama not in FILE_MODEL:
+        if nama not in SPEK:
             raise beban.Ditolak(f"model '{nama}' diizinkan lisensinya tetapi belum dipasang (unduhan perlu OK venus)")
-        p = beban.FOLDER_MODEL / FILE_MODEL[nama]
+        self.spek = SPEK[nama]
+        p = beban.FOLDER_MODEL / self.spek["file"]
         if not p.exists():
             raise RuntimeError(f"file model tidak ada: {p}")
         so = ort.SessionOptions()
@@ -57,11 +74,21 @@ class Model:
         """rgb: PIL.Image RGB -> PIL.Image L (0..255, ukuran sama)."""
         import numpy as np
         from PIL import Image
-        x = np.asarray(rgb.resize((SISI, SISI), Image.BILINEAR), dtype=np.float32) / 255.0
-        x = ((x - (0.485, 0.456, 0.406)) / (0.229, 0.224, 0.225)).transpose(2, 0, 1)[None].astype(np.float32)
+        sp = self.spek
+        n = sp["sisi"]
+        x = np.asarray(rgb.resize((n, n), Image.LANCZOS if sp["bagi"] == "maks" else Image.BILINEAR), dtype=np.float32)
+        x = x / (max(float(x.max()), 1e-6) if sp["bagi"] == "maks" else 255.0)
+        x = ((x - sp["mean"]) / sp["std"]).transpose(2, 0, 1)[None].astype(np.float32)
         y = self.s.run(None, {self.inp: x})[0][0, 0]
-        m = 1.0 / (1.0 + np.exp(-y))
-        return Image.fromarray((m * 255).clip(0, 255).astype(np.uint8)).resize(rgb.size, Image.BILINEAR)
+        if sp["keluar"] == "sigmoid":
+            m = 1.0 / (1.0 + np.exp(-y))
+        else:
+            mi, ma = float(y.min()), float(y.max())
+            m = (y - mi) / (ma - mi) if ma > mi else np.zeros_like(y)
+        if sp.get("tegas"):
+            lo, hi = sp["tegas"]
+            m = np.clip((m - lo) / (hi - lo), 0, 1)
+        return Image.fromarray((m * 255).clip(0, 255).astype(np.uint8)).resize(rgb.size, Image.LANCZOS)
 
 
 def sha256(p: Path) -> str:
@@ -155,10 +182,12 @@ def jalankan(masuk: Path, keluar: Path, model: str | None, fps: float) -> int:
             raise beban.Ditolak(f"file tidak ada: {masuk.name}")
         if not 1 <= fps <= 30:
             raise beban.Ditolak("--fps harus 1..30")
+        adalah_gambar = masuk.suffix.lower() in GAMBAR
+        model = model or (beban.MODEL_LATAR_BAWAAN if adalah_gambar else BAWAAN_VIDEO)
         beban.model_latar(model)  # daftar putih dulu, sebelum memuat apa pun
         beban.tunggu_ram()
         with beban.kunci_ai("hapus_latar"):
-            m = Model(model or beban.MODEL_LATAR_BAWAAN)
+            m = Model(model)
             lap.update(model=m.nama, lisensi=beban.MODEL_LATAR[m.nama])
             hasil = gambar(m, masuk, keluar) if masuk.suffix.lower() in GAMBAR else video(m, masuk, keluar, fps)
         lap.update(status="selesai", **hasil)
@@ -180,7 +209,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="hapus latar gambar/video (BiRefNet-lite, CPU)")
     ap.add_argument("masuk")
     ap.add_argument("keluar")
-    ap.add_argument("--model", default=beban.MODEL_LATAR_BAWAAN)
+    ap.add_argument("--model", help="bawaan: gambar birefnet-general-lite, video isnet-general-use")
     ap.add_argument("--fps", type=float, default=10.0)
     a = ap.parse_args()
     try:
