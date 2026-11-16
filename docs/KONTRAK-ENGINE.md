@@ -446,3 +446,39 @@ Sumber angka: laporan Hanagaki (85 video Aysilla, `BELAJAR/hanagaki/LAPORAN-HANA
 - `audio_pilihan` Batch: `"vo"` = tanpa musik; `"musik"` = tanpa klip VO dan tanpa caption ucapan (susunan gambar tetap mengikuti kalimat); `"keduanya"` = musik + VO + `set_ducking` 0,3. `"musik"`/`"keduanya"` tanpa musik yang boleh dipakai = ditolak (kode 2).
 - Beat Spot: bawaan `beat.bpm` / `beat.tiap_ketukan` dari preset kalau `job.beatspot` tidak mengisinya; tagline dari `teks.tagline`; watermark seperti di atas; preset `jenis: "beat_spot"` + watermark = logo tidak dipasang ("hanya watermark", §17.4). `audio_pilihan: "vo"` = sound tidak dipasang (pola BPM).
 - Progres JSON-lines Batch / Pisah / Beat Spot kini ditulis UTF-8 (di Windows sebelumnya cp1252, karakter seperti "·" rusak di app).
+
+## 18. Visual Tools AI lokal (R24, v0.4.1, 16 Nov 2026, yuki — owner: "Ya, bagikan") — DRAF
+Semua model jalan di PC sendiri, tanpa API berbayar. Hasil AI selalu **usulan** (`"usulan": true`): app menampilkannya sebagai keyframe/jalur yang bisa diubah, dimatikan, atau dihapus manual (hybrid). Job berat jalan dengan prioritas Idle dan maksimal 2 pekerja. Kode ada di `pipeline/visual/`. Python vision = venv terpisah `D:\VIBECODING\tools\visual-venv` (override `MOTION_VISUAL_PY`) supaya OpenCV demucs-venv tidak bentrok. Status: format 18.1–18.2 sudah ada dan dites; 18.3–18.6 menunggu OK instalasi dari venus.
+
+### 18.1 Jalur posisi `jalur-posisi/1` (R24a wajah/objek, R24c pelacakan)
+Koordinat = pecahan frame (0..1), kotak kiri-atas + lebar/tinggi, `t` dalam detik (naik).
+```json
+{"schema":"jalur-posisi/1","video":"konten/…/a.mp4","lebar":1920,"tinggi":1080,"fps":30,"durasi":12.4,
+ "sumber":"mediapipe-wajah|mediapipe-objek|lacak-csrt|lacak-kcf|manual","usulan":true,
+ "jalur":[{"id":"wajah-1","jenis":"wajah|objek|lacak","label":"face","titik":[{"t":0.0,"x":0.31,"y":0.18,"w":0.22,"h":0.12,"skor":0.93}]}]}
+```
+- Celah lebih dari 0,5 detik di antara dua titik = subjek hilang. Pada celah itu jalur tidak diinterpolasi, jadi app tidak menempelkan apa pun.
+- Subjek utama = luas × skor × lama tampil. Wajah dibobot ×2.
+
+### 18.2 Reframe `reframe/1` (R24b, pola AutoFlip)
+Hasilnya keyframe jendela crop, **bukan** video jadi.
+```json
+{"schema":"reframe/1","rasio":"9:16","lebar_crop":0.3164,"tinggi_crop":1.0,"mode":"diam|ikut|tengah",
+ "subjek":"wajah-1","usulan":true,"keyframe":[{"t":0.0,"x":0.41,"y":0.0}]}
+```
+- `x`, `y` = kiri-atas jendela, pecahan frame sumber. Di antara keyframe dipakai interpolasi linear; sebelum keyframe pertama dan sesudah keyframe terakhir posisinya tetap.
+- `mode`:
+  - `diam`: subjek muat di satu jendela, jadi cukup 1 keyframe.
+  - `ikut`: kamera mengikuti subjek dengan zona mati 0,06, pan maksimal 0,30 frame/detik, dan penghalusan 0,6 detik. Keyframe disederhanakan dengan RDP, toleransi 0,004.
+  - `tengah`: tidak ada subjek, atau sumber sudah memiliki rasio target.
+- Perlu kesepakatan dengan ucok (R23): cara menerapkannya di editor. Usul: keyframe `posisi` + `skala` klip video (§12.5), dengan skala = 1/`lebar_crop`.
+
+### 18.3 Perintah (rencana)
+`python pipeline/visual/reframe.py <jalur.json> <keluar.json> [--rasio 9:16] [--subjek id]` sudah ada. Perintah berikut menyusul sesudah OK instalasi:
+- `deteksi` (R24a) → jalur-posisi
+- `lacak` (R24c, kotak awal dari user)
+- `hapus_latar` (R24d, BiRefNet-lite lewat rembg; RMBG BRIA **tidak** dipakai karena non-komersial) → PNG/WebM dengan alpha
+- `perjelas` (R24e, Real-ESRGAN ncnn-vulkan)
+- `tts` (R24f, `pipeline/tts_windows.ps1`, suara Windows offline)
+
+Semua perintah itu menulis progres JSON-lines dalam UTF-8.
