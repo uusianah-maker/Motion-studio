@@ -99,7 +99,12 @@ class GenerateVO(unittest.TestCase):
         foot = g / "foot.mp4"  # footage TANPA suara, 2 dtk (lebih pendek dari VO -> diulang)
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=540x960:rate=30:duration=2",
                         "-pix_fmt", "yuv420p", str(foot)], check=True)
-        shutil.copy(PIPE.parent / "brandkit" / "aysilla.export.json", g / "brand_kit.json")
+        bk = json.loads((PIPE.parent / "brandkit" / "aysilla.export.json").read_text(encoding="utf-8"))
+        # Seperti app (tts.ts): VO gabungan = aset Brand Kit jenis "vo" -> placeholder dikenal validator/runner.
+        bk["aset"].append({"kunci": "$vo:vo-uji", "jenis": "vo", "nama": "VO uji", "tag": ["vo", "tts"], "lisensi_iklan": True,
+                           "status_lisensi": "milik_sendiri", "durasi_ms": round(lap["gabungan"]["durasi"] * 1000),
+                           "path": str(t / "out" / "vo" / "gabungan.wav")})
+        (g / "brand_kit.json").write_text(json.dumps(bk, ensure_ascii=False), encoding="utf-8")
         (g / "vo_index.json").write_text(json.dumps({"schema": "vo-index/1", "job_id": "uji", "teks": "",
                                                      "kalimat": [{"teks": f["teks"], "mulai": f["mulai"], "akhir": f["akhir"],
                                                                   "kata": f["kata"]} for f in lap["file"]]}), encoding="utf-8")
@@ -120,6 +125,8 @@ class GenerateVO(unittest.TestCase):
         rencana = json.loads((g / "out" / "rencana.json").read_text(encoding="utf-8"))
         self.assertEqual(rencana["sumber_suara"], "vo_library")
         self.assertIn("footage_kurang", [p["jenis"] for p in rencana["peringatan"]])
+        aset_lokal = json.loads((g / "out" / "ops.json").read_text(encoding="utf-8")).get("aset_lokal", [])
+        self.assertNotIn("$vo:vo-uji", [a["kunci"] for a in aset_lokal])  # VO di luar root: dikenal lewat Brand Kit
 
     def test_index_tidak_ada_ditolak(self):
         g = Path(tempfile.mkdtemp())
@@ -132,6 +139,23 @@ class GenerateVO(unittest.TestCase):
                            encoding="utf-8", errors="replace")
         self.assertEqual(r.returncode, 2, r.stderr[-500:])
         self.assertIn("index VO", json.loads((g / "out" / "rencana.json").read_text(encoding="utf-8"))["alasan"])
+
+
+class BatchVO(unittest.TestCase):
+    """§22 Batch: VO dari Library = satu kandidat VO berbentuk vo_mod.kandidat (kalimat utuh, urutan tetap)."""
+
+    def test_kandidat_vo_library(self):
+        sys.path.insert(0, str(PIPE / "batch"))
+        import perencana
+        import vo as vo_mod
+        c = perencana.kandidat_vo_library(idx(), "$vo:x", {"superlatif_dilarang": ["terbaik"]})
+        self.assertEqual(c["id"], "$vo:x")
+        self.assertEqual([k["id"] for k in c["kalimat"]], [0, 1])
+        self.assertEqual(c["kalimat"][1]["kata"][0]["startMs"], 1500)  # waktu ABSOLUT di file VO
+        self.assertIn("harga", c["kalimat"][1]["topik"])
+        rv = vo_mod._hasil(c, c["kalimat"], [], [], None)
+        self.assertEqual(rv["urutan"], [0, 1])
+        self.assertAlmostEqual(rv["durasi_ucapan"], 1.2 + 2.0 + vo_mod.JEDA)
 
 
 if __name__ == "__main__":

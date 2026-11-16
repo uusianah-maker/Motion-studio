@@ -834,5 +834,17 @@ Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts`
     - footage IN17 12,9 dtk → 2 klip video;
     - footage 2 dtk → diulang 7×, dengan peringatan `footage_kurang`;
     - SFX `harga` muncul di "sembilan puluh sembilan ribu" dan "diskon".
-- **Batch Remix & Beat Spot**: menyusul.
+- **Aset VO tidak masuk `aset_lokal`** (Generate dan Batch). File VO ada di Media workspace, di luar folder mesin, dan app/runner sudah mengenalnya lewat **Brand Kit** (aset `vo`, kunci `$vo:<id>`). Path VO dari `sumber` job hanya dipakai mesin untuk validasi index dan `jaga_durasi`. Konsekuensinya, aset VO **wajib ada di brand_kit.json job**. Ini sudah terjadi karena `tts.ts` memasukkannya ke Brand Kit; tanpa itu validator menolak dengan "placeholder tidak dideklarasikan".
+- **Batch Remix — sudah jalan** (`batch/perencana.py`):
+  - VO dari Library menjadi **satu kandidat VO** (`kandidat_vo_library`): kalimat utuh dengan urutan tetap, topik dari teks, waktu kata absolut.
+  - `vo_mod.susun/ragamkan` dilewati. Kalimat yang kena aturan superlatif hanya dilaporkan (`saran_buang`), tidak dibuang.
+  - Variasi antar varian hanya berasal dari susunan shot. Matcher tidak menemukan footage dengan id VO, jadi semua potongan b-roll.
+  - Klip audio per kalimat diambil dari `$vo:…` dengan `in_ms` = posisi kalimat di file VO.
+  - `maks_per_vo` bawaan = `jumlah`.
+  - `batch.json` → `sumber_suara: "vo_library"`, `vo_library: {…}`.
+  - **Perbaikan umum** (berlaku juga untuk Batch biasa):
+    - shot pembuka yang sudah dipakai varian lain dengan VO sama ikut dihindari. Dulu pembuka selalu sama, sehingga semua calon ditolak "pembuka sama";
+    - `batch.json.calon_ditolak` = hitungan alasan penolakan calon varian.
+  - Uji di salinan batch 2026-11-13_video-winning, VO 13,5 dtk: 3/3 varian dengan shot berbeda, validator OK, qc lulus.
+- **Beat Spot**: menyusul.
 

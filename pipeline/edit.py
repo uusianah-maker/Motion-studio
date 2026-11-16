@@ -390,8 +390,8 @@ def pasang_vo(ops_doc: dict, rencana: dict, bk: dict, args, vo_idx: dict, cut: d
     from jaga_ops import SISA_MS
     ops.append({"op": "add_clip", "track_kind": "audio", "media": args.vo_media, "start_ms": 0,
                 "duration_ms": min(vo_ms - SISA_MS - 1, video_ms), "in_ms": 0, "volume": 1.0})
-    if args.vo_path and args.vo_media not in {a.get("kunci") for a in bk.get("aset", [])}:
-        ops_doc.setdefault("aset_lokal", []).append({"kunci": args.vo_media, "path": str(Path(args.vo_path).resolve()).replace("\\", "/")})
+    # "$vo:" = aset VO Brand Kit (Media workspace, di luar root mesin): app mengenalnya lewat Brand Kit/refs,
+    # jadi TIDAK masuk aset_lokal (aturan runner §8). Path VO hanya dipakai jaga_durasi (lihat main).
     rencana["sumber_suara"] = "vo_library"
     rencana["vo"] = {"media": args.vo_media, "durasi": round(vo_ms / 1000, 3), "kalimat": len(vo_idx["kalimat"]),
                      "suara_footage": vol}
@@ -681,6 +681,8 @@ def main() -> None:
     # Pengaman (venus, 14 Nov): tiap klip <= panjang ASLI file sumbernya (lihat jaga_ops.py).
     lokal = {a["kunci"]: a["path"] for a in ops_doc.get("aset_lokal", [])}
     lokal["$sumber"] = str((Path.cwd() / "public" / args.video).resolve())
+    if args.vo_media and args.vo_path:  # §22: cek durasi klip VO terhadap file aslinya
+        lokal[args.vo_media] = str(Path(args.vo_path).resolve())
     aset_brand = {a["kunci"]: a.get("path") for a in bk.get("aset", []) if a.get("kunci")}
     path_of = lambda k: lokal.get(k) or aset_brand.get(k)  # noqa: E731
     catatan_durasi = jaga_durasi(ops_doc["ops"], path_of) + buang_teks_kosong(ops_doc["ops"]) + rapikan_kata(ops_doc["ops"])
