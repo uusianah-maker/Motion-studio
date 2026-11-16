@@ -305,8 +305,9 @@ table.list tr:hover td { background: #191d29; }
 .clip.selected .handle { background: #f6d67c88; }
 .trackSurface { cursor: pointer; }
 .trackSurface .playhead { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid #f09d87; pointer-events: none; z-index: 4; }
-/* Owner 16 Nov: grab the playhead line in the lanes to scrub (10 px hit area around the 2 px line). */
-.trackSurface .playheadGrip { position: absolute; top: 0; bottom: 0; width: 10px; margin-left: -4px; cursor: ew-resize; z-index: 5; touch-action: none; }
+/* Owner 16 Nov: grab the playhead line in the lanes to scrub (10 px hit area around the 2 px line);
+   under the clips (z-index 0), so a click on a clip at the playhead still picks/drags the clip. */
+.trackSurface .playheadGrip { position: absolute; top: 0; bottom: 0; width: 10px; margin-left: -4px; cursor: ew-resize; z-index: 0; touch-action: none; }
 .trackSurface.ruler { cursor: ew-resize; touch-action: none; }
 .rulerRow { height: 28px; border-bottom: 1px solid #303545; }
 .trackSurface.ruler { background: transparent; height: 22px; overflow: visible; }

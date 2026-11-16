@@ -10,7 +10,7 @@ export interface Span {
  * track, so a drop onto a neighbour used to bounce back. Here the clip
  *  1. sticks to nearby edges (neighbour clips, playhead, 0) within `tolMs` (≈ 8 px), and
  *  2. never overlaps: it stops against the neighbour, at the nearest free spot to where it was dropped.
- * With no free spot at all it stays where it was (`original`).
+ * With no free spot near the drop it stays where it was (`original`).
  */
 export function fitMove(want: Span, others: readonly Span[], magnets: readonly number[], tolMs: number, original: Span): Span {
   const len = want.end_ms - want.start_ms;
@@ -26,7 +26,8 @@ export function fitMove(want: Span, others: readonly Span[], magnets: readonly n
   const free = (s: number) => s >= 0 && others.every((o) => s + len <= o.start_ms || s >= o.end_ms);
   if (free(start)) return { start_ms: start, end_ms: start + len };
   // 2. Overlap: slide to the nearest position that touches a neighbour without overlapping.
-  const options = others.flatMap((o) => [o.end_ms, o.start_ms - len]).filter(free);
+  // Only spots within one clip length of the drop: a clip never jumps far away (e.g. past a long neighbour).
+  const options = others.flatMap((o) => [o.end_ms, o.start_ms - len]).filter((x) => free(x) && Math.abs(x - want.start_ms) <= Math.max(len, tolMs));
   if (!options.length) return original;
   const pick = options.reduce((a, b) => (Math.abs(b - want.start_ms) < Math.abs(a - want.start_ms) ? b : a));
   return { start_ms: pick, end_ms: pick + len };

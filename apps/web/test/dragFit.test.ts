@@ -17,7 +17,7 @@ describe('fitMove (drag klip di timeline)', () => {
     expect(fitMove(s(3800, 4300), others, [], 10, s(1500, 2000))).toEqual(s(4000, 4500)); // past it: after it
   });
   it('never before 0', () => expect(fitMove(s(-500, 0), [], [], 10, s(100, 600)).start_ms).toBe(0));
-  it('no free spot that fits: stays where it was', () => expect(fitMove(s(1200, 3200), [s(0, 1000), s(2500, 4000), s(4000, 9000)], [], 10, s(1000, 2500))).toEqual(s(1000, 2500)));
+  it('no free spot near the drop: stays where it was (never jumps far)', () => expect(fitMove(s(3000, 4500), [s(0, 1000), s(2500, 4000), s(4000, 9000)], [], 10, s(1000, 2500))).toEqual(s(1000, 2500)));
 });
 
 describe('fitTrim', () => {
