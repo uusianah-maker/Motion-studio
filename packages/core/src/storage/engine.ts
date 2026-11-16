@@ -34,7 +34,8 @@ import { importMedia, loadRegistry } from './registry.js';
 import { LAYOUT, type Workspace, listProjectIds, projectRel, readProject } from './workspace.js';
 import { writeJsonAtomic } from './jsonStore.js';
 import { audit } from './audit.js';
-import { markEngineOrigin } from './learning.js';
+import { markEngineOrigin, readLearning } from './learning.js';
+import { kamusBelajar } from './kamusBelajar.js';
 
 export const ENGINE_DIR = '06_ENGINE';
 /** `.motionstudio/engine-ids/<job_id>`: one empty-ish file per job id ever handed out (R4). */
@@ -449,6 +450,25 @@ export function brandPlaceholders(kit: BrandKit): Record<string, MediaRef> {
  * Prepare a job: job folder + job.json + brand_kit.json (with local paths) + refs.json, and a lease
  * on the sources. Nothing runs yet (status `menunggu`).
  */
+
+/**
+ * R30: words the editors corrected in earlier subtitles of this brand become Whisper fixes for the
+ * next job (`teks.kamus`). Only safe pairs (`otomatis`); the Brand Kit dictionary always wins.
+ * Never fails the job: learning is a bonus.
+ */
+async function addLearnedKamus(ws: Workspace, kit: BrandKit, brandExport: Record<string, unknown>): Promise<void> {
+  try {
+    const teks = brandExport.teks as { kamus?: Record<string, string> } | undefined;
+    if (!teks || !kit.brand_id) return;
+    const pasangan = kamusBelajar(await readLearning(ws, kit.brand_id), [kit.name, ...kit.kosakata, ...kit.kata_kunci], kit.kamus);
+    const kamus = { ...(teks.kamus ?? {}) };
+    for (const p of pasangan) if (p.otomatis && !(p.salah in kamus)) kamus[p.salah] = p.benar;
+    teks.kamus = kamus;
+  } catch {
+    /* learning must never break a job */
+  }
+}
+
 export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opts: { now?: number; actor?: 'user' } = {}): Promise<EngineStatus> {
   const project = await readProject(ws, input.project_id);
   const kit = await readBrandFor(ws, project.brand_id);
@@ -512,6 +532,7 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       }
     } else for (const s of input.sources) sumber.push({ kunci: s.kunci, path: (await localPath(ws, s.ref)).replace(/\\/g, '/') });
     const brandExport = await exportBrandKit(ws, kit.brand_id, { paths: true });
+    await addLearnedKamus(ws, kit, brandExport);
     await writeJsonAtomic(path.join(jdir, 'brand_kit.json'), brandExport);
     const job = {
       schema: 'engine-job/1',
