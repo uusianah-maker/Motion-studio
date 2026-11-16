@@ -31,6 +31,7 @@ ZONA_MATI = 0.06     # pecahan frame: gerak subjek lebih kecil dari ini tidak me
 MAKS_PAN = 0.30      # pecahan frame per detik
 HALUS_DTK = 0.6      # jendela rata-rata bergerak
 TOLERANSI = 0.004    # RDP: simpangan maks keyframe terhadap kurva halus
+MAKS_KEYFRAME = 20   # batas app (keyframes.ts MAX_KEYFRAMES)
 
 
 def ukuran_crop(lebar: int, tinggi: int, rasio: tuple[int, int]) -> tuple[float, float]:
@@ -124,6 +125,9 @@ def reframe(doc: dict, rasio: tuple[int, int] = (9, 16), hz: float = HZ, zona: f
     xs = [_jepit(v, 0, 1 - cw) for v in _rata(_ikuti(ix, dt, zona, maks_pan), w)]
     ys = [_jepit(v, 0, 1 - ch) for v in _rata(_ikuti(iy, dt, zona, maks_pan), w)]
     idx = _rdp(ts, xs, ys, toleransi)
+    while len(idx) > MAKS_KEYFRAME:  # app maks 20 keyframe per klip: longgarkan toleransi sedikit demi sedikit
+        toleransi *= 1.25
+        idx = _rdp(ts, xs, ys, toleransi)
     kf = [{"t": round(ts[i], 3), "x": round(xs[i], 4), "y": round(ys[i], 4)} for i in idx]
     return {**dasar, "mode": "ikut", "keyframe": kf}
 
@@ -138,6 +142,37 @@ def posisi_di(rf: dict, t: float) -> tuple[float, float]:
             r = (t - a["t"]) / (b["t"] - a["t"]) if b["t"] > a["t"] else 1.0
             return a["x"] + (b["x"] - a["x"]) * r, a["y"] + (b["y"] - a["y"]) * r
     return kf[-1]["x"], kf[-1]["y"]
+
+
+def ke_keyframe_app(rf: dict, sumber: tuple[int, int], kanvas: tuple[int, int], fit: str = "pas",
+                    awal_ms: int = 0, ease: str = "linear") -> list[dict]:
+    """reframe/1 -> keyframe klip video Motion Studio (keyframes.ts: x, y = geser dari tengah, pecahan kanvas
+    -1..1; scale 0.1..4 di sekitar tengah; at_ms = waktu di dalam klip).
+
+    Render app: gambar sumber di-fit ke kanvas dulu (fit "pas" = contain/warna/blur, "isi" = cover), lalu
+    discale `scale` di sekitar tengah kanvas dan digeser x*W, y*H. Supaya jendela crop (x0, y0, cw, ch)
+    memenuhi kanvas:
+        f      = min(W/sw, H/sh) (pas)  atau  max(W/sw, H/sh) (isi)
+        scale  = W / (sw * f * cw)
+        x_app  = (0.5 - (x0 + cw/2)) / cw
+        y_app  = (0.5 - (y0 + ch/2)) / ch
+    x_app tidak bergantung fit. |x_app| dipotong ke 1: jendela bergeser ke arah tengah, gambar tetap penuh.
+    `awal_ms` = titik masuk klip di video sumber (keyframe reframe memakai waktu sumber)."""
+    sw, sh = sumber
+    W, H = kanvas
+    cw, ch = rf["lebar_crop"], rf["tinggi_crop"]
+    f = (max if fit == "isi" else min)(W / sw, H / sh)
+    skala = _jepit(W / (sw * f * cw), 0.1, 4.0)
+    out, lalu = [], None
+    for k in rf["keyframe"]:
+        at = int(round(k["t"] * 1000)) - awal_ms
+        if lalu is not None and at <= lalu:
+            continue
+        lalu = at
+        out.append({"at_ms": at, "x": round(_jepit((0.5 - (k["x"] + cw / 2)) / cw, -1, 1), 3),
+                    "y": round(_jepit((0.5 - (k["y"] + ch / 2)) / ch, -1, 1), 3),
+                    "scale": round(skala, 3), "opacity": 1, "ease": ease})
+    return out
 
 
 def main() -> int:

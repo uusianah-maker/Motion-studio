@@ -471,7 +471,23 @@ Hasilnya keyframe jendela crop, **bukan** video jadi.
   - `diam`: subjek muat di satu jendela, jadi cukup 1 keyframe.
   - `ikut`: kamera mengikuti subjek dengan zona mati 0,06, pan maksimal 0,30 frame/detik, dan penghalusan 0,6 detik. Keyframe disederhanakan dengan RDP, toleransi 0,004.
   - `tengah`: tidak ada subjek, atau sumber sudah memiliki rasio target.
-- Perlu kesepakatan dengan ucok (R23): cara menerapkannya di editor. Usul: keyframe `posisi` + `skala` klip video (§12.5), dengan skala = 1/`lebar_crop`.
+- **Ke keyframe app** (`keyframes.ts`: x, y = geser dari tengah −1..1, scale 0.1..4, `at_ms` = waktu di dalam klip). Fungsinya `reframe.ke_keyframe_app(rf, sumber=(sw,sh), kanvas=(W,H), fit, awal_ms)`.
+  - Render app: sumber di-fit ke kanvas dulu, lalu di-scale di sekitar tengah dan digeser x·W, y·H. Faktor fit:
+    - `f = min(W/sw, H/sh)` untuk fit pas, yaitu contain / warna / blur;
+    - `f = max(W/sw, H/sh)` untuk fit `isi` (cover).
+  - Dengan `cw = lebar_crop` dan `ch = tinggi_crop`:
+    - `scale = W / (sw·f·cw)`
+    - `x_app = (0.5 − (x + cw/2)) / cw`
+    - `y_app = (0.5 − (y + ch/2)) / ch`
+    - `at_ms = t·1000 − titik masuk klip (ms sumber)`
+    - `ease = linear`
+  - x_app tidak bergantung pada fit.
+  - |x_app| dipotong ke 1. Di pinggir frame nilai aslinya bisa 1,08. Jendela jadi bergeser sedikit ke tengah, tetapi gambar tetap penuh tanpa bolong hitam.
+  - Paling banyak 20 keyframe (`MAX_KEYFRAMES`). Kalau lebih, RDP dilonggarkan.
+  - Contoh 1920×1080 → 1080×1920, `cw` = 0,3164:
+    - fit `isi`, crop di tengah: x 0, scale 1 (identitas);
+    - fit pas, crop x = 0,6: scale 3,16, x_app −1,0 (dipotong dari −1,08).
+  - Tes `KeyframeApp` mensimulasikan transform render app. Hasilnya: sudut jendela crop jatuh di sudut kanvas, meleset maksimal 3 px.
 
 ### 18.3 Perintah (rencana)
 `python pipeline/visual/reframe.py <jalur.json> <keluar.json> [--rasio 9:16] [--subjek id]` sudah ada. Perintah berikut menyusul sesudah OK instalasi:
@@ -482,3 +498,15 @@ Hasilnya keyframe jendela crop, **bukan** video jadi.
 - `tts` (R24f, `pipeline/tts_windows.ps1`, suara Windows offline)
 
 Semua perintah itu menulis progres JSON-lines dalam UTF-8.
+
+### 18.4 TTS voice over `tts/1` (R24f) — sudah jalan
+`engine tts <job_dir>`:
+- Masukan: `job.json` → `"tts": {"kalimat": ["…", "…"], "suara": "Andika", "kecepatan": 1.0}`. `"teks": "…"` boleh dipakai sebagai ganti `kalimat`.
+- Keluaran, hanya di dalam job_dir:
+  - `out/vo/01.wav`, `02.wav`, …
+  - `out/tts.json` = `{"schema":"tts/1","status":"selesai|ditolak","suara","kecepatan","usulan":true,"file":[{"no":1,"teks","file":"out/vo/01.wav","durasi":1.84}],"total_durasi","alasan"?}`
+- Kode keluar:
+  - 2 (ditolak) bila teks kosong, lebih dari 60 kalimat, lebih dari 1000 huruf per kalimat, kecepatan di luar 0,5–2,0, suara tidak terpasang, atau bukan Windows;
+  - 1 bila gagal teknis.
+- Suara offline dari Windows OneCore. Di PC kantor yang ada: Andika (id-ID), dan suara Inggris David, Zira, Mark, George, Susan, Hazel.
+- Prioritas proses Idle. Skrip `tts_windows.ps1` diambil dari folder kode (rilis). Tidak ada yang ditulis ke folder data. App yang memindahkan WAV ke proyek sebagai usulan di track audio.

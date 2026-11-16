@@ -98,5 +98,57 @@ class Reframe(unittest.TestCase):
         self.assertEqual(rf.reframe(d)["mode"], "tengah")
 
 
+def titik_kanvas(u, v, sumber, kanvas, fit, kf):
+    """Simulasi render app (render.ts fit + keyframes.ts overlay): titik sumber (pecahan) -> piksel kanvas."""
+    (sw, sh), (W, H) = sumber, kanvas
+    f = (max if fit == "isi" else min)(W / sw, H / sh)
+    dw, dh = sw * f, sh * f
+    return (W / 2 + kf["scale"] * dw * (u - 0.5) + kf["x"] * W, H / 2 + kf["scale"] * dh * (v - 0.5) + kf["y"] * H)
+
+
+class KeyframeApp(unittest.TestCase):
+    def _cek_memenuhi(self, sumber, kanvas, fit, x0):
+        rasio = (9, 16) if kanvas[0] < kanvas[1] else (16, 9)
+        cw, ch = rf.ukuran_crop(*sumber, rasio)
+        r = {"lebar_crop": cw, "tinggi_crop": ch, "keyframe": [{"t": 1.5, "x": x0, "y": 0.0}]}
+        kf = rf.ke_keyframe_app(r, sumber, kanvas, fit=fit, awal_ms=500)[0]
+        self.assertEqual(kf["at_ms"], 1000)
+        kiri_atas = titik_kanvas(x0, 0, sumber, kanvas, fit, kf)
+        kanan_bawah = titik_kanvas(x0 + cw, ch, sumber, kanvas, fit, kf)
+        self.assertAlmostEqual(kiri_atas[0], 0, delta=3)        # 3 px: pembulatan 3 desimal di app
+        self.assertAlmostEqual(kiri_atas[1], 0, delta=3)
+        self.assertAlmostEqual(kanan_bawah[0], kanvas[0], delta=3)
+        self.assertAlmostEqual(kanan_bawah[1], kanvas[1], delta=3)
+        return kf
+
+    def test_169_ke_916_pas_dan_isi(self):
+        for fit in ("pas", "isi"):
+            for x0 in (0.1, 0.34, 0.6):
+                kf = self._cek_memenuhi((1920, 1080), (1080, 1920), fit, x0)
+                self.assertTrue(-1 <= kf["x"] <= 1 and 0.1 <= kf["scale"] <= 4)
+        self.assertAlmostEqual(rf.ke_keyframe_app({"lebar_crop": .3164, "tinggi_crop": 1, "keyframe": [{"t": 0, "x": .3418, "y": 0}]},
+                                                  (1920, 1080), (1080, 1920), "isi")[0]["scale"], 1.0, places=2)
+
+    def test_tengah_identitas_di_isi(self):
+        cw, _ = rf.ukuran_crop(1920, 1080, (9, 16))
+        kf = rf.ke_keyframe_app({"lebar_crop": cw, "tinggi_crop": 1.0, "keyframe": [{"t": 0, "x": (1 - cw) / 2, "y": 0}]},
+                                (1920, 1080), (1080, 1920), "isi")[0]
+        self.assertEqual((kf["x"], kf["y"], kf["scale"]), (0, 0, 1))
+
+    def test_pinggir_dipotong_ke_batas_app_tanpa_bolong(self):
+        cw, ch = rf.ukuran_crop(1920, 1080, (9, 16))
+        kf = rf.ke_keyframe_app({"lebar_crop": cw, "tinggi_crop": ch, "keyframe": [{"t": 0, "x": 0.0, "y": 0}]},
+                                (1920, 1080), (1080, 1920), "pas")[0]
+        self.assertEqual(kf["x"], 1.0)  # seharusnya 1,08: dipotong
+        kiri = titik_kanvas(0, 0, (1920, 1080), (1080, 1920), "pas", kf)[0]
+        self.assertLessEqual(kiri, 0.5)  # tepi kiri sumber tetap di luar/tepat di kiri kanvas: tidak ada bolong hitam
+
+    def test_maks_20_keyframe(self):
+        import math
+        d = doc_jalur([jp.titik(t / 10, .4 + .35 * math.sin(t / 7), .2, .1, .15) for t in range(600)])  # 60 dtk zig-zag
+        out = rf.reframe(d)
+        self.assertLessEqual(len(out["keyframe"]), rf.MAKS_KEYFRAME)
+
+
 if __name__ == "__main__":
     unittest.main()

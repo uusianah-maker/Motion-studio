@@ -8,6 +8,8 @@
   engine transfer <job_dir>   Motion Transfer tahap 1: video referensi -> adegan + gambar + prompt (pipeline/transfer.py)
   engine beatspot <job_dir>   Beat Spot tahap 1 (modul yuki): footage orang jalan + sound -> potongan tepat di ketukan,
                               logo + end card (pipeline/batch/beatspot.py); out/beatspot.json = laporan potongan
+  engine tts      <job_dir>   R24f voice over offline (suara Windows, mis. Andika): job.tts.kalimat -> out/vo/NN.wav,
+                              laporan out/tts.json (schema tts/1); pipeline/tts.py (modul yuki)
   engine daftar_batch         daftar batch untuk dropdown (read-only, tanpa job_dir);
                               stdout satu JSON {"schema":"daftar-batch/1","batch":[...]}
   engine cek                  cek alat (ffmpeg, Whisper, GPU, OpenCV) untuk halaman status
@@ -277,6 +279,13 @@ def beatspot(job_dir: Path) -> int:
     return teruskan([PY, "pipeline/batch/beatspot.py", str(job_dir)])
 
 
+def tts(job_dir: Path) -> int:
+    if not (job_dir / "job.json").exists():
+        raise FileNotFoundError(f"job.json tidak ada di {job_dir}")
+    # tts.py menulis progres JSON-lines + out/tts.json sendiri; kode 2 = ditolak.
+    return teruskan([PY, "pipeline/tts.py", str(job_dir)])
+
+
 def daftar_batch() -> int:
     return teruskan([PY, "pipeline/batch/daftar.py"])
 
@@ -311,7 +320,7 @@ def cek_alat() -> int:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
-    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "beatspot", "daftar_batch", "cek"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "beatspot", "tts", "daftar_batch", "cek"):
         log(__doc__)
         return 1
     cmd = sys.argv[1]
@@ -325,7 +334,7 @@ def main() -> int:
     job_dir = Path(sys.argv[2]).resolve()
     try:
         return {"generate": generate, "ulang": ulang, "batch": batch, "pisah": pisah, "transfer": transfer,
-                "beatspot": beatspot}[cmd](job_dir)
+                "beatspot": beatspot, "tts": tts}[cmd](job_dir)
     except Exception as e:  # noqa: BLE001 - gagal teknis: kode 1, pesan ke progres
         log(f"GAGAL: {e!r}")
         progres("gagal", 100, str(e)[:300])
