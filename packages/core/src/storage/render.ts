@@ -1,7 +1,7 @@
 import { promises as fsp } from 'node:fs';
 import { framingFilters } from './framing.js';
 import { zoomExpr } from './effects.js';
-import { DEFAULT_DUCK, type LookId, XFADE, denoiseFilter, duckFilter, effectiveLook, fadeFilter, fitFilters, lookFilters, speechRanges } from './clipLook.js';
+import { DEFAULT_DUCK, type LookId, denoiseFilter, duckFilter, effectiveLook, fadeFilter, fitFilters, lookFilters, speechRanges, xfadeTransition } from './clipLook.js';
 export { speechRanges } from './clipLook.js';
 import { kfExpr, keyframeFilters } from './keyframes.js';
 import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
@@ -373,7 +373,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const h = half[g.into]!;
       const tr = segments[g.into]!.clip!.transition!;
       const out = i === groups.length - 1 ? 'vraw' : `vx${i}`;
-      graph.push(`[${acc}][${label}]xfade=transition=${XFADE[tr.type]}:duration=${s6((2 * h) / fps)}:offset=${s6((accFrames - 2 * h) / fps)}[${out}]`);
+      graph.push(`[${acc}][${label}]xfade=transition=${xfadeTransition(tr.type)}:duration=${s6((2 * h) / fps)}:offset=${s6((accFrames - 2 * h) / fps)}[${out}]`);
       acc = out;
       accFrames += g.frames - 2 * h;
     });

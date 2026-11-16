@@ -347,7 +347,7 @@ export function Preview({
             style={{
               ...zoomStyle,
               ...cropStyle,
-              ...(css?.filter ? { filter: css.filter } : {}),
+              ...(css?.filter || trans?.blur ? { filter: `${css?.filter ?? ''}${trans?.blur ? ` blur(${trans.blur.toFixed(1)}px)` : ''}`.trim() } : {}),
               ...(fit === 'isi' ? { objectFit: 'cover' as const } : {}),
               ...(fit === 'blur' ? { background: 'transparent' } : fit === 'warna' && visual?.fit_color ? { background: visual.fit_color } : {}),
               ...(trans?.opacity !== undefined || kf.opacity !== undefined ? { opacity: (trans?.opacity ?? 1) * (kf.opacity ?? 1) } : {}),
@@ -362,6 +362,7 @@ export function Preview({
           {css && css.vignette > 0 && visual?.media && <div className="lookVignette" aria-hidden="true" style={{ background: `radial-gradient(ellipse at center, transparent ${Math.round(70 - css.vignette * 50)}%, rgba(0,0,0,${(css.vignette * 0.9).toFixed(2)}) 100%)` }} />}
           {css && css.grain > 0 && visual?.media && <div className="lookGrain" aria-hidden="true" data-grain={css.grain} style={{ opacity: Math.min(0.35, css.grain / 40) }} />}
           {trans?.flash !== undefined && trans.flash > 0 && <div className="transFlash" aria-hidden="true" style={{ opacity: trans.flash }} />}
+          {trans?.black !== undefined && trans.black > 0 && <div className="transBlack" aria-hidden="true" style={{ opacity: trans.black }} />}
           {blurs.length > 0 && srcSize && (
             <div className="blurLayer" style={zoomStyle} aria-hidden="true">
               {blurs.map((b, i) => {

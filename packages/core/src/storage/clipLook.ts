@@ -64,16 +64,30 @@ export const NO_TONE: LookTone = { sepia: 0, grain: 0 };
 export type LookId = keyof typeof LOOKS;
 export const LOOK_IDS = Object.keys(LOOKS) as LookId[];
 
-export const TRANSITIONS = ['dissolve', 'geser_kiri', 'geser_kanan', 'wipe', 'flash'] as const;
+export const TRANSITIONS = ['dissolve', 'geser_kiri', 'geser_kanan', 'wipe', 'flash', 'hitam', 'zoom_in', 'blur', 'pull_out'] as const;
 export type TransitionType = (typeof TRANSITIONS)[number];
 export interface Transition {
   type: TransitionType;
   ms: number;
 }
-export const TRANSITION_LABEL: Record<TransitionType, string> = { dissolve: 'Dissolve (larut)', geser_kiri: 'Geser ke kiri', geser_kanan: 'Geser ke kanan', wipe: 'Wipe (sapu)', flash: 'Flash putih' };
+export const TRANSITION_LABEL: Record<TransitionType, string> = { dissolve: 'Dissolve (larut)', geser_kiri: 'Geser ke kiri', geser_kanan: 'Geser ke kanan', wipe: 'Wipe (sapu)', flash: 'Flash putih', hitam: 'Fade ke hitam', zoom_in: 'Zoom in', blur: 'Blur', pull_out: 'Pull out (zoom out)' };
 export const TRANSITION_MS: readonly [number, number] = [200, 1500];
-/** FFmpeg xfade names. */
-export const XFADE: Record<TransitionType, string> = { dissolve: 'fade', geser_kiri: 'slideleft', geser_kanan: 'slideright', wipe: 'wipeleft', flash: 'fadewhite' };
+/** FFmpeg xfade names (R23d: `pull_out` is our own custom expression, see `xfadeTransition`). */
+export const XFADE: Record<TransitionType, string> = { dissolve: 'fade', geser_kiri: 'slideleft', geser_kanan: 'slideright', wipe: 'wipeleft', flash: 'fadewhite', hitam: 'fadeblack', zoom_in: 'zoomin', blur: 'hblur', pull_out: 'custom' };
+/** R23d pull out: the incoming picture starts 1,5× zoomed in and pulls back to normal while it fades in. */
+export const PULL_OUT_ZOOM = 0.5;
+
+/**
+ * The `transition=…` value of an FFmpeg xfade. xfade's progress P runs 1 → 0; the custom pull-out
+ * samples B around the centre at scale 1 + 0,5·P (no st()/ld(): xfade is slice-threaded and the
+ * registers would be shared between threads).
+ */
+export function xfadeTransition(type: TransitionType): string {
+  if (type !== 'pull_out') return XFADE[type];
+  const x = `floor(W/2+(X-W/2)/(1+${PULL_OUT_ZOOM}*P))`;
+  const y = `floor(H/2+(Y-H/2)/(1+${PULL_OUT_ZOOM}*P))`;
+  return `custom:expr='if(eq(PLANE,0),b0(${x},${y}),if(eq(PLANE,1),b1(${x},${y}),b2(${x},${y})))*(1-P)+A*P'`;
+}
 
 export const MAX_FADE_MS = 10_000;
 export const DUCK_RANGE: readonly [number, number] = [0.1, 0.8];
@@ -278,7 +292,7 @@ export function duckFilter(ranges: readonly [number, number][], level: number, s
  * Preview approximation of an incoming transition at a cut (`p` 0..1 across the transition window,
  * 0.5 = the cut; before 0.5 the outgoing clip is on screen, after it the incoming one).
  */
-export function transitionCss(type: TransitionType, p: number): { opacity?: number; transform?: string; clipPath?: string; flash?: number } {
+export function transitionCss(type: TransitionType, p: number): { opacity?: number; transform?: string; clipPath?: string; flash?: number; black?: number; blur?: number } {
   const q = Math.max(0, Math.min(1, p));
   switch (type) {
     case 'dissolve':
@@ -291,6 +305,17 @@ export function transitionCss(type: TransitionType, p: number): { opacity?: numb
       return { transform: q < 0.5 ? `translateX(${q * 100}%)` : `translateX(${-(1 - q) * 100}%)` };
     case 'wipe':
       return { clipPath: q < 0.5 ? `inset(0 ${q * 100}% 0 0)` : `inset(0 0 0 ${(1 - q) * 100}%)` };
+    // R23d
+    case 'hitam':
+      return { black: 1 - Math.abs(2 * q - 1) };
+    case 'blur':
+      return { blur: (1 - Math.abs(2 * q - 1)) * 12 };
+    case 'zoom_in':
+      // The outgoing picture zooms into its centre, then the incoming one fades in.
+      return q < 0.5 ? { transform: `scale(${(1 + q).toFixed(3)})` } : { opacity: 0.35 + 0.65 * (2 * q - 1) };
+    case 'pull_out':
+      // The outgoing picture fades, then the incoming one pulls back from 1,5× to 1×.
+      return q < 0.5 ? { opacity: 1 - 0.65 * (2 * q) } : { transform: `scale(${(1 + PULL_OUT_ZOOM * (2 - 2 * q)).toFixed(3)})` };
   }
 }
 

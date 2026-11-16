@@ -1,0 +1,57 @@
+[
+  {
+    "id": "R23D-01 Pilihan transisi: + Fade ke hitam, Zoom in, Blur, Pull out (zoom out)",
+    "ok": true,
+    "detail": "Tanpa (potong langsung) | Dissolve (larut) | Geser ke kiri | Geser ke kanan | Wipe (sapu) | Flash putih | Fade ke hitam | Zoom in | Blur | Pull out (zoom out) | Zoom-through (tambah efek di track Efek)"
+  },
+  {
+    "id": "R23D-02 Fade ke hitam tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23D-03 Pratinjau: hitam penuh di titik potong",
+    "ok": true,
+    "detail": "1"
+  },
+  {
+    "id": "R23D-04 Blur tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23D-05 Pratinjau: gambar kabur di titik potong (CSS blur)",
+    "ok": true,
+    "detail": "blur(12px)"
+  },
+  {
+    "id": "R23D-06 Zoom in tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23D-07 Pratinjau zoom in: gambar keluar membesar sebelum potong",
+    "ok": true,
+    "detail": "matrix(1.1, 0, 0, 1.1, 0, 0)"
+  },
+  {
+    "id": "R23D-08 Pull out tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23D-09 Pratinjau pull out: gambar masuk mulai membesar lalu kembali normal",
+    "ok": true,
+    "detail": "matrix(1.3, 0, 0, 1.3, 0, 0)"
+  },
+  {
+    "id": "R23D-10 Undo → kembali ke Zoom in",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23D-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]
