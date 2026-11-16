@@ -52,7 +52,7 @@
   {
     "id": "R38A-11 Pratinjau menggambar teks dengan font itu (@font-face Aset)",
     "ok": true,
-    "detail": "MotionAset_v_b69566431d349cce, Arial, sans-serif"
+    "detail": "MotionAset_v_125157507a407142, Arial, sans-serif"
   },
   {
     "id": "R38A-12 \"Simpan sebagai preset\" → Brand → Aset: preset teks (teks + gaya + font)",
@@ -65,7 +65,7 @@
     "detail": ""
   },
   {
-    "id": "R38A-14 Tab Efek: video efek dari Aset tampil + ▶; \"＋\" menunggu R38b (nonaktif + keterangan) atau aktif bila R38b ada",
+    "id": "R38A-14 Tab Efek: video efek dari Aset tampil + ▶ pratinjau; \"＋\" aktif (R38b: mode campur)",
     "ok": true,
     "detail": ""
   },

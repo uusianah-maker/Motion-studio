@@ -151,8 +151,11 @@ try {
   const fp = L.getByRole('tabpanel', { name: 'Font' });
   await fp.getByRole('button', { name: 'Pakai font huruf-iklan' }).click();
   check('R38A-10 Library → Font → Pakai: teks terpilih memakai font Aset (ref ke file itu)', await until(async () => (await textClip()).style?.font === `ref:${by['huruf-iklan'].ref.media_id}/${by['huruf-iklan'].ref.version_id}`));
-  const fam = await page.locator('.overlayText').first().evaluate((el) => getComputedStyle(el).fontFamily);
-  check('R38A-11 Pratinjau menggambar teks dengan font itu (@font-face Aset)', fam.includes(`MotionAset_${by['huruf-iklan'].ref.version_id}`) && (await page.evaluate((f) => document.fonts.check(`16px '${f}'`), `MotionAset_${by['huruf-iklan'].ref.version_id}`)), fam);
+  // The preview re-renders after the saved edit comes back, and the @font-face loads after that.
+  const asetFam = `MotionAset_${by['huruf-iklan'].ref.version_id}`;
+  const famOf = () => page.locator('.overlayText').first().evaluate((el) => getComputedStyle(el).fontFamily);
+  const drawn = await until(async () => (await famOf()).includes(asetFam) && (await page.evaluate((f) => document.fonts.check(`16px '${f}'`), asetFam)));
+  check('R38A-11 Pratinjau menggambar teks dengan font itu (@font-face Aset)', drawn, await famOf());
   // Save as preset → Teks tab.
   await page.getByRole('button', { name: 'Simpan sebagai preset' }).click();
   await page.getByLabel('Nama preset').fill('Diskon Merah');
@@ -173,8 +176,9 @@ try {
   await L.getByRole('tab', { name: 'Efek' }).click();
   const ve = L.getByRole('group', { name: 'Video efek light-leak' });
   await ve.getByRole('button', { name: 'Lihat light-leak' }).click();
-  const blendReady = await L.getByRole('button', { name: 'Tambah video efek light-leak' }).isEnabled();
-  check('R38A-14 Tab Efek: video efek dari Aset tampil + ▶; "＋" menunggu R38b (nonaktif + keterangan) atau aktif bila R38b ada', (await ve.getByLabel('Pratinjau video aset').count()) === 1 && (blendReady || (await L.getByText(/segera \(R38b\)/).first().isVisible())));
+  // The <video> appears only after its stream link arrives (ucok: a direct count() raced it).
+  const peekShown = await until(async () => (await ve.getByLabel('Pratinjau video aset').count()) === 1);
+  check('R38A-14 Tab Efek: video efek dari Aset tampil + ▶ pratinjau; "＋" aktif (R38b: mode campur)', peekShown && (await L.getByRole('button', { name: 'Tambah video efek light-leak' }).isEnabled()));
   await L.getByRole('tab', { name: 'Transisi' }).click();
   check('R38A-15 Tab Transisi: stinger dari Aset tampil', (await L.getByRole('group', { name: 'Stinger stinger-swipe' }).count()) === 1);
   await page.screenshot({ path: path.join(EVID, 'editor-library.png') });
