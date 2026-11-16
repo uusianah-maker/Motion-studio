@@ -152,7 +152,8 @@ export interface SuaraContohView {
 }
 export interface SuaraProfilView {
   job_id: string;
-  status: 'siap' | 'kurang_contoh' | 'ditolak' | 'lain';
+  /** `perlu_latih_ulang`: samples were removed after training (§23); train again. */
+  status: 'siap' | 'kurang_contoh' | 'perlu_latih_ulang' | 'ditolak' | 'lain';
   alasan: string;
   contoh: SuaraContohView[];
   durasi_bersih_total: number;
@@ -199,7 +200,7 @@ export async function readSuaraProfilResult(ws: Workspace, projectId: string, jo
     }
     await writeJsonAtomic(importedFile, imp);
   }
-  const status = r.status === 'siap' || r.status === 'kurang_contoh' || r.status === 'ditolak' ? r.status : 'lain';
+  const status = r.status === 'siap' || r.status === 'kurang_contoh' || r.status === 'perlu_latih_ulang' || r.status === 'ditolak' ? r.status : 'lain';
   const target = Array.isArray(r.target_dtk) && r.target_dtk.length === 2 ? ([sec(r.target_dtk[0]), sec(r.target_dtk[1])] as [number, number]) : ([...SUARA_OWNER.target_dtk] as [number, number]);
   return {
     job_id: jobId,

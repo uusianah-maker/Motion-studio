@@ -304,6 +304,7 @@ export function SuaraOwnerPanel({ api, role = 'owner', projects, onProjectsChang
             <div className="small" style={{ marginTop: 8 }}>
               {report.status === 'siap' && <div className="notice ok">Suara owner siap{report.dilatih_pada ? ` (dilatih ${report.dilatih_pada.replace('T', ' ').slice(0, 16)})` : ''}. Pilih &quot;Suara owner&quot; di tab Dari teks.</div>}
               {report.status === 'kurang_contoh' && <div className="notice info">Contoh tersimpan, belum dilatih: suara bersih {menit(report.durasi_bersih_total)} dari minimal {menit(report.minimal_dtk)}.</div>}
+              {report.status === 'perlu_latih_ulang' && <div className="notice warn">Ada contoh yang dihapus sejak latihan terakhir. Tekan Latih suara lagi supaya Suara owner memakai contoh terbaru.</div>}
               {report.status === 'ditolak' && <div className="notice warn">Ditolak mesin: {report.alasan}</div>}
               {report.contoh_hasil.some((h) => h.ref) && (
                 <div aria-label="Contoh hasil suara owner" style={{ marginTop: 6 }}>

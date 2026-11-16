@@ -83,7 +83,11 @@ if (mode === 'suara_profil') {
     fs.writeFileSync(path.join(outDir, 'contoh', '01.wav'), b);
     hasil.push({ teks: 'Halo kak, ini suara owner.', file: 'out/contoh/01.wav' });
   }
-  fs.writeFileSync(path.join(outDir, 'suara_profil.json'), JSON.stringify({ schema: 'suara-profil/1', status: latih ? 'siap' : 'kurang_contoh', contoh, durasi_bersih_total: total, target_dtk: [600, 900], minimal_dtk: 300, backend: 'applio', dilatih_pada: latih ? '2026-11-16T15:00:00' : null, versi_model: latih ? 1 : null, contoh_hasil: hasil }));
+  // The profile lives in the engine (cwd); removing samples after training → perlu_latih_ulang (§23).
+  const trained = path.join(process.cwd(), '.suara-owner-dilatih');
+  if (latih) fs.writeFileSync(trained, '1');
+  const status = latih ? 'siap' : sp.hapus_contoh?.length && fs.existsSync(trained) ? 'perlu_latih_ulang' : 'kurang_contoh';
+  fs.writeFileSync(path.join(outDir, 'suara_profil.json'), JSON.stringify({ schema: 'suara-profil/1', status, contoh, durasi_bersih_total: total, target_dtk: [600, 900], minimal_dtk: 300, backend: 'applio', dilatih_pada: latih ? '2026-11-16T15:00:00' : null, versi_model: latih ? 1 : null, contoh_hasil: hasil }));
   process.exit(0);
 }
 

@@ -574,7 +574,7 @@ export interface SuaraOwnerList {
 }
 export interface SuaraProfilView {
   job_id: string;
-  status: 'siap' | 'kurang_contoh' | 'ditolak' | 'lain';
+  status: 'siap' | 'kurang_contoh' | 'perlu_latih_ulang' | 'ditolak' | 'lain';
   alasan: string;
   contoh: { kunci: string | null; media_id: string | null; durasi: number; durasi_bersih: number; snr_db: number | null; musik: boolean; clipping: boolean; dipakai: boolean; alasan: string }[];
   durasi_bersih_total: number;

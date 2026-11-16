@@ -101,6 +101,10 @@ try {
 
   await card.getByRole('button', { name: 'Latih suara' }).click();
   check('SO-10 Latih suara → "Suara owner siap" + ▶ contoh hasil', await until(async () => (await stat.getByText(/Suara owner siap/).count()) === 1 && (await stat.getByRole('button', { name: 'Dengar hasil 1' }).count()) === 1));
+  await card.getByRole('button', { name: 'Hapus contoh Owner live 4.wav' }).click();
+  await until(async () => (await rows.count()) === 3);
+  await card.getByRole('button', { name: 'Periksa mutu' }).click();
+  check('SO-11 Hapus contoh setelah dilatih → Periksa mutu → "perlu latih ulang" tampil', await until(async () => (await stat.getByText(/Tekan Latih suara lagi/).count()) === 1));
   check('SO-99 0 error JS', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('SO-XX run selesai tanpa exception', false, String(e).split('\n').slice(0, 3).join(' '));
