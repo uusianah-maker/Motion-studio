@@ -5,6 +5,7 @@ import { DEFAULT_DUCK, type LookId, denoiseFilter, duckFilter, effectiveLook, fa
 export { speechRanges } from './clipLook.js';
 import { kfExpr, keyframeFilters } from './keyframes.js';
 import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
+import { stabilPath, stabilReady } from './stabil.js';
 import { audioFxFilters } from './clipAudio.js';
 import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
 import { readFontInfo } from './fontInfo.js';
@@ -229,6 +230,9 @@ export function transitionHalves(segments: readonly VisualSegment[], fps: number
   return half;
 }
 
+/** R23f: render input key of a stabilised copy. */
+export const stabilKey = (versionId: string, level: string) => `${versionId}@stabil-${level}`;
+
 export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInput>, settings: RenderSettings, font: string | null, regularFont: string | null = font, brand: RenderBrand = { font: null, logo: null }): RenderPlan {
   const fps = settings.fps;
   const ratio = t.canvas?.ratio ?? '9:16';
@@ -253,7 +257,8 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   };
   const media = (c: Clip | null) => {
     if (!c?.media) return null;
-    const src = inputs.get(c.media.version_id);
+    // R23f: a stabilised clip reads the stabilised copy of its media.
+    const src = inputs.get(c.stabil ? stabilKey(c.media.version_id, c.stabil) : c.media.version_id);
     if (!src) throw new StorageError('PRECONDITION', 'Media klip tidak tersedia untuk render', { clip_id: c.clip_id });
     return src;
   };
@@ -666,6 +671,11 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
         const probe = v.probe ?? (await probeFile(abs[i]!));
         if (!probe) throw new StorageError('PRECONDITION', `Media "${v.original_name}" tidak bisa dibaca sebagai video/audio`, { version_id: v.version_id });
         inputs.set(v.version_id, { path: abs[i]!, probe });
+        // R23f: clips of this version marked `stabil` read the stabilised copy (made beforehand).
+        for (const level of new Set(project.timeline.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.media?.version_id === v.version_id && c.stabil ? [c.stabil] : []))))) {
+          if (!(await stabilReady(ws, v.version_id, level))) throw new StorageError('PRECONDITION', `Stabilisasi "${v.original_name}" (${level}) belum selesai. Tunggu sampai siap di Inspector, atau matikan stabil.`, { version_id: v.version_id });
+          inputs.set(stabilKey(v.version_id, level), { path: stabilPath(ws, v.version_id, level), probe });
+        }
         for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
       }
       const brandFont = brandRefs.font ? local.get(brandRefs.font.version_id)! : null;

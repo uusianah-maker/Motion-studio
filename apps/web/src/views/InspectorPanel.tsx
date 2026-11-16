@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fillCrop } from '../../../../packages/core/dist/storage/framing.js';
 import { TEXT_PRESETS } from '../../../../packages/core/dist/storage/textPresets.js';
 import { DEFAULT_STYLES, type TextStyle, effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
-import type { BrandKit, Clip, EditOp, Track } from '../api';
+import type { Api, BrandKit, Clip, EditOp, Track } from '../api';
 import { formatDuration, parseDecimal } from '../lib';
 import { ClipLookPanel } from './ClipLookPanel';
 import { KeyframePanel } from './KeyframePanel';
@@ -31,6 +31,7 @@ export function InspectorPanel({
   onOverlayDraft,
   readOnly = false,
   lockReason = null,
+  api = null,
   brand = null,
   onCutReview,
   sourceSize = null,
@@ -53,6 +54,8 @@ export function InspectorPanel({
   readOnly?: boolean;
   /** R32: why the clip cannot be changed / deleted right now (shown, with how to unlock). */
   lockReason?: string | null;
+  /** R23f: for background jobs of a clip (stabilisation). */
+  api?: Api | null;
   /** X06: Brand Kit colours + whether it has a font. */
   brand?: BrandKit | null;
   /** X07: open "Deteksi jeda & adegan" for this media clip. */
@@ -322,7 +325,7 @@ export function InspectorPanel({
       )}
       {sound && <ClipLookPanel key={clip.clip_id} clip={clip} kind={clip.kind} submit={submit} duck={duck} brandLook={brand?.filter_bawaan ? LOOKS[brand.filter_bawaan].label : null} />}
       {sound && <AudioFxPanel clip={clip} kind={clip.kind} submit={submit} />}
-      {clip.media && (clip.kind === 'video' || clip.kind === 'broll') && <MotionPanel clip={clip} playhead={playhead} submit={submit} />}
+      {clip.media && (clip.kind === 'video' || clip.kind === 'broll') && <MotionPanel clip={clip} playhead={playhead} submit={submit} api={api} />}
       {((clip.media && (clip.kind === 'video' || clip.kind === 'broll')) || isText) && <KeyframePanel clip={clip} playhead={playhead} submit={submit} />}
       {sound && onCutReview && (
         <button className="btn small" onClick={onCutReview} title="Cari jeda & pergantian adegan, lalu pilih yang mau dipotong (FFmpeg, tanpa AI)">

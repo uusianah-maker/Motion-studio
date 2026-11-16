@@ -778,6 +778,8 @@ export function createDemoApi(): Api {
     suaraProfil: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
     suaraProfilResult: async () => fail(404, 'NOT_FOUND', 'Job mesin tidak ditemukan'),
     voIndex: async () => null,
+    stabilStatus: async () => ({ stabil: null, alasan: null }),
+    stabilStart: async () => fail(409, 'UNAVAILABLE', 'Stabilisasi tidak tersedia di demo browser'),
     engineVisual: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
     visualResult: async () => fail(404, 'NOT_FOUND', 'Job mesin tidak ditemukan'),
     rencanaTertunda: async () => [],

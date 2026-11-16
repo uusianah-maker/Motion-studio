@@ -9,7 +9,7 @@ import { needsAss } from './ass.js';
 import { OVERLAY_DEFAULT, type Overlay, contentEnd, patchOverlay, validateOverlay, validateOverlayPatch } from './overlay.js';
 import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateTransition } from './clipLook.js';
 import { type Eq, validateEq } from './clipAudio.js';
-import { FREEZE_MS, MAX_REVERSE_MS, type Rotation, type VDenoise, sliceIn, sourceAt, sourceLength, validateBool, validateRotate, validateSpeed, validateVDenoise } from './clipMotion.js';
+import { FREEZE_MS, MAX_REVERSE_MS, type Rotation, type StabilLevel, type VDenoise, validateStabil, sliceIn, sourceAt, sourceLength, validateBool, validateRotate, validateSpeed, validateVDenoise } from './clipMotion.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
 
 /**
@@ -63,7 +63,7 @@ export type EditOp =
   | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }
   /** R23a: direction / speed / reverse / picture noise of a video/b-roll clip. A new speed changes the
    * clip's length; later clips on the same track move with it. 0 / false / 'off' / 1 = off. */
-  | { op: 'set_motion'; clip_id: string; rotate?: Rotation | 0; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: VDenoise | 'off' }
+  | { op: 'set_motion'; clip_id: string; rotate?: Rotation | 0; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: VDenoise | 'off'; stabil?: StabilLevel | 'off' }
   /** R23a: insert a still of the frame at `at_ms` for `duration_ms`; later clips on that track move right. */
   | { op: 'freeze_frame'; clip_id: string; at_ms: number; duration_ms: number }
   /** R33 multi-select: several clips at once — one op, one undo step. */
@@ -248,7 +248,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         keys(['op', 'clip_id', 'keyframes']);
         return { op: 'set_keyframes', clip_id: clipId(o.clip_id), keyframes: validateKeyframes(o.keyframes, `ops[${i}].keyframes`) };
       case 'set_motion': {
-        const fields = ['rotate', 'flip_h', 'flip_v', 'speed', 'reverse', 'vdenoise'] as const;
+        const fields = ['rotate', 'flip_h', 'flip_v', 'speed', 'reverse', 'vdenoise', 'stabil'] as const;
         keys(['op', 'clip_id', ...fields]);
         if (fields.every((k) => o[k] === undefined)) bad(`ops[${i}]: isi minimal satu dari ${fields.join(', ')}`);
         const w = (k: string) => `ops[${i}].${k}`;
@@ -261,6 +261,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           ...(o.speed !== undefined ? { speed: validateSpeed(o.speed, w('speed')) } : {}),
           ...(o.reverse !== undefined ? { reverse: validateBool(o.reverse, w('reverse')) } : {}),
           ...(o.vdenoise !== undefined ? { vdenoise: validateVDenoise(o.vdenoise, w('vdenoise')) } : {}),
+          ...(o.stabil !== undefined ? { stabil: validateStabil(o.stabil, w('stabil')) } : {}),
         };
       }
       case 'freeze_frame': {
@@ -706,7 +707,7 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         const { track, clip } = locate(t, op.clip_id);
         const visual = track.kind === 'video' || track.kind === 'broll';
         // R23b: a sound clip (audio / music / sfx) only has a speed.
-        const onlySpeed = op.rotate === undefined && op.flip_h === undefined && op.flip_v === undefined && op.reverse === undefined && op.vdenoise === undefined;
+        const onlySpeed = op.rotate === undefined && op.flip_h === undefined && op.flip_v === undefined && op.reverse === undefined && op.vdenoise === undefined && op.stabil === undefined;
         if (!clip.media || (!visual && !(SOUND_TRACKS.includes(track.kind) && onlySpeed))) bad(visual || !clip.media ? 'Putar, balik, kecepatan dan mundur hanya untuk klip video/b-roll' : 'Klip suara hanya bisa diubah kecepatannya', { clip_id: op.clip_id });
         if (clip.freeze && (op.speed !== undefined || op.reverse !== undefined)) bad('Potongan diam tidak punya kecepatan/mundur', { clip_id: op.clip_id });
         if (op.rotate !== undefined) {
@@ -721,6 +722,10 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         if (op.vdenoise !== undefined) {
           if (op.vdenoise === 'off') delete clip.vdenoise;
           else clip.vdenoise = op.vdenoise;
+        }
+        if (op.stabil !== undefined) {
+          if (op.stabil === 'off') delete clip.stabil;
+          else clip.stabil = op.stabil;
         }
         if (op.speed !== undefined && op.speed !== (clip.speed ?? 1)) {
           // Same source span, new length on the timeline; the clips after it on this track follow.

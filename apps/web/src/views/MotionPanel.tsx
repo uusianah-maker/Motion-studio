@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FREEZE_MS, MAX_REVERSE_MS, NATURAL_SPEED, SPEED_RANGE, sourceLength } from '../../../../packages/core/dist/storage/clipMotion.js';
-import type { Clip, EditOp } from '../api';
+import type { Api, Clip, EditOp } from '../api';
 import { parseDecimal } from '../lib';
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5];
@@ -10,7 +10,29 @@ const fmt = (n: number) => String(n).replace('.', ',');
  * R23a (owner 16 Nov, alat edit gaya CapCut): arah, kecepatan, mundur, bekukan frame dan reduksi
  * noise gambar untuk klip video/b-roll yang dipilih. Setiap perubahan = satu edit = satu undo.
  */
-export function MotionPanel({ clip, playhead, submit }: { clip: Clip; playhead: number; submit: (ops: EditOp[]) => void }) {
+export function MotionPanel({ clip, playhead, submit, api = null }: { clip: Clip; playhead: number; submit: (ops: EditOp[]) => void; api?: Api | null }) {
+  // R23f: the stabilised copy is made in the background; poll its state while it is being made.
+  const [stabilState, setStabilState] = useState<{ s: 'siap' | 'proses' | 'gagal' | null; alasan: string | null } | null>(null);
+  const vid = clip.media?.version_id;
+  useEffect(() => {
+    if (!api || !vid || !clip.stabil) return setStabilState(null);
+    let stop = false;
+    let t: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      const r = await api.stabilStatus(vid, clip.stabil!).catch(() => null);
+      if (stop || !r) return;
+      if (r.stabil === null) {
+        await api.stabilStart(vid, clip.stabil!).catch(() => undefined); // e.g. after a server restart
+        setStabilState({ s: 'proses', alasan: null });
+      } else setStabilState({ s: r.stabil, alasan: r.alasan });
+      if (r.stabil !== 'siap' && r.stabil !== 'gagal') t = setTimeout(() => void tick(), 3000);
+    };
+    void tick();
+    return () => {
+      stop = true;
+      clearTimeout(t);
+    };
+  }, [api, vid, clip.stabil]);
   const speed = clip.speed ?? 1;
   const [speedText, setSpeedText] = useState(fmt(speed));
   useEffect(() => setSpeedText(fmt(clip.speed ?? 1)), [clip.clip_id, clip.speed]);
@@ -78,6 +100,28 @@ export function MotionPanel({ clip, playhead, submit }: { clip: Clip; playhead: 
           </label>
         </>
       )}
+      <label>
+        Stabilkan
+        <select
+          aria-label="Stabilkan video"
+          value={clip.stabil ?? 'off'}
+          title="Meredam goyangan kamera (FFmpeg vid.stab 2 tahap). Dibuat sekali di latar belakang; pratinjau & render memakai hasilnya."
+          onChange={(e) => {
+            const v = e.target.value as 'off' | 'ringan' | 'kuat';
+            submit([{ op: 'set_motion', clip_id: clip.clip_id, stabil: v }]);
+            if (v !== 'off' && api && vid) void api.stabilStart(vid, v).catch(() => undefined);
+          }}
+        >
+          <option value="off">Mati</option>
+          <option value="ringan">Ringan</option>
+          <option value="kuat">Kuat</option>
+        </select>
+        {clip.stabil && stabilState && (
+          <span className="muted small" role="status" aria-label="Status stabil">
+            {stabilState.s === 'siap' ? '✓ siap' : stabilState.s === 'gagal' ? `gagal: ${stabilState.alasan ?? ''}` : 'membuat video stabil… (render menunggu ini)'}
+          </span>
+        )}
+      </label>
       <label>
         Noise gambar
         <select aria-label="Reduksi noise gambar" value={clip.vdenoise ?? 'off'} onChange={(e) => set({ vdenoise: e.target.value as 'off' | 'ringan' | 'sedang' })} title="Menghaluskan bintik/grain gambar. Terlihat di hasil render (pratinjau memakai gambar asli).">

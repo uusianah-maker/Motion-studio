@@ -1,0 +1,37 @@
+[
+  {
+    "id": "R23F-01 Stabilkan \"Kuat\" tersimpan di klip",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23F-02 Status tampil saat dibuat di latar belakang",
+    "ok": true,
+    "detail": "membuat video stabil… (render menunggu ini)"
+  },
+  {
+    "id": "R23F-03 Video stabil selesai → \"✓ siap\"",
+    "ok": true,
+    "detail": "✓ siap"
+  },
+  {
+    "id": "R23F-04 Pratinjau memutar versi stabil",
+    "ok": true,
+    "detail": "/api/stream/v_073eccab0b15e7a1?stabil=kuat&exp=1794822188817&sig=…"
+  },
+  {
+    "id": "R23F-05 Render memakai versi stabil (selesai)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23F-06 \"Mati\" → klip kembali memakai asli",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23F-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

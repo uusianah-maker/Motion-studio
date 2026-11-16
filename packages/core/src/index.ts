@@ -175,3 +175,4 @@ export { PRESET_JENIS, examplePresets } from './storage/brand.js';
 export { SUARA_OWNER, type SuaraContohView, type SuaraOwnerList, type SuaraProfilSettings, type SuaraProfilView, addSuaraOwner, clearSuaraOwnerRemovals, readSuaraOwner, readSuaraProfilResult, removeSuaraOwner, sampleKey, validateSuaraProfilJob } from './storage/suaraOwner.js';
 export { DEFAULT_VOICE, TTS_LIMITS, type TtsSettings, type TtsView, type TtsVoice, type VoIndex, listTtsVoices, readTtsResult, readVoIndex, splitKalimat, voSubtitleOps } from './storage/tts.js';
 export { BG_MODELS, VISUAL_MAX_VIDEO_S, VISUAL_TOOLS, type VisualTool, type VisualView, readVisualResult, visualEstimate } from './storage/visual.js';
+export { STABIL_LEVELS, STABIL_MAX_S, type StabilLevel, makeStabil, stabilArgs, stabilPath, stabilReady } from './storage/stabil.js';

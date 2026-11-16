@@ -14,6 +14,9 @@ import { StorageError } from './errors.js';
 export const ROTATIONS = [90, 180, 270] as const;
 export type Rotation = (typeof ROTATIONS)[number];
 export const VDENOISE_LEVELS = ['ringan', 'sedang'] as const;
+/** R23f: stabilisation strength (the copy is made in the background, see stabil.ts). */
+export const STABIL_LEVELS = ['ringan', 'kuat'] as const;
+export type StabilLevel = (typeof STABIL_LEVELS)[number];
 export type VDenoise = (typeof VDENOISE_LEVELS)[number];
 export const SPEED_RANGE: readonly [number, number] = [0.1, 10];
 /** Reverse keeps every frame of the piece in memory: the source span is capped. */
@@ -30,8 +33,10 @@ export interface MotionFields {
   reverse?: boolean;
   freeze?: boolean;
   vdenoise?: VDenoise;
+  /** R23f: play/render the stabilised copy of the media (made in the background). */
+  stabil?: StabilLevel;
 }
-export const MOTION_FIELDS = ['rotate', 'flip_h', 'flip_v', 'speed', 'reverse', 'freeze', 'vdenoise'] as const;
+export const MOTION_FIELDS = ['rotate', 'flip_h', 'flip_v', 'speed', 'reverse', 'freeze', 'vdenoise', 'stabil'] as const;
 
 const bad = (msg: string): never => {
   throw new StorageError('EDIT_INVALID', msg);
@@ -41,6 +46,7 @@ export const validateRotate = (v: unknown, where: string): Rotation | 0 => (v ==
 export const validateBool = (v: unknown, where: string): boolean => (typeof v === 'boolean' ? v : bad(`${where} harus true/false`));
 export const validateSpeed = (v: unknown, where: string): number =>
   typeof v === 'number' && Number.isFinite(v) && v >= SPEED_RANGE[0] && v <= SPEED_RANGE[1] ? Math.round(v * 100) / 100 : bad(`${where} harus angka ${SPEED_RANGE[0]}–${SPEED_RANGE[1]}`);
+export const validateStabil = (v: unknown, where: string): StabilLevel | 'off' => (v === 'off' || STABIL_LEVELS.includes(v as StabilLevel) ? (v as StabilLevel | 'off') : bad(`${where} harus off | ringan | kuat`));
 export const validateVDenoise = (v: unknown, where: string): VDenoise | 'off' => (v === 'off' || VDENOISE_LEVELS.includes(v as VDenoise) ? (v as VDenoise | 'off') : bad(`${where} harus off | ringan | sedang`));
 
 /** Read the motion fields of an untrusted clip / add_clip op: video/b-roll media clips; R23b: `speed` on any media clip. */
@@ -59,6 +65,10 @@ export function readMotion(o: Record<string, unknown>, where: string, visualMedi
   if (o.vdenoise !== undefined) {
     const d = validateVDenoise(o.vdenoise, `${where}.vdenoise`);
     if (d !== 'off') out.vdenoise = d;
+  }
+  if (o.stabil !== undefined) {
+    const d = validateStabil(o.stabil, `${where}.stabil`);
+    if (d !== 'off') out.stabil = d;
   }
   if (out.freeze && (out.speed || out.reverse)) bad(`${where}: potongan diam tidak punya kecepatan/mundur`);
   return out;
@@ -151,6 +161,7 @@ export function motionSummary(c: MotionFields): string {
     c.flip_h ? 'balik kiri-kanan' : '',
     c.flip_v ? 'balik atas-bawah' : '',
     c.vdenoise ? `noise gambar ${c.vdenoise}` : '',
+    c.stabil ? `stabil ${c.stabil}` : '',
   ]
     .filter(Boolean)
     .join(' · ');

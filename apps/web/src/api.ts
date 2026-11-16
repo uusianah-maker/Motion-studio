@@ -230,7 +230,7 @@ export type EditOp =
   | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
   | { op: 'set_ducking'; on: boolean; level?: number }
   | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }
-  | { op: 'set_motion'; clip_id: string; rotate?: 0 | 90 | 180 | 270; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: 'off' | 'ringan' | 'sedang' }
+  | { op: 'set_motion'; clip_id: string; rotate?: 0 | 90 | 180 | 270; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: 'off' | 'ringan' | 'sedang'; stabil?: 'off' | 'ringan' | 'kuat' }
   | { op: 'freeze_frame'; clip_id: string; at_ms: number; duration_ms: number }
   | { op: 'delete_clips'; clip_ids: string[] }
   | { op: 'shift_clips'; clip_ids: string[]; delta_ms: number }
@@ -952,7 +952,10 @@ export function createApi(token: string | null, base = '') {
     /** Short-lived signed playback URL for one media version (W07). */
     /** R14: ask for the light preview copy (made in the background). */
     makeProxy: (versionId: string) => call<{ proxy: 'siap' | 'proses' | 'tidak_perlu' }>('POST', `/api/media/${encodeURIComponent(versionId)}/proxy`, { json: {} }).then((r) => r.proxy),
-    streamUrl: (versionId: string) => call<{ url: string; expires_at: number; mime: string }>('GET', `/api/media/${encodeURIComponent(versionId)}/stream-url`),
+    streamUrl: (versionId: string, opts: { stabil?: string } = {}) => call<{ url: string; expires_at: number; mime: string; stabil?: string }>('GET', `/api/media/${encodeURIComponent(versionId)}/stream-url${opts.stabil ? `?stabil=${encodeURIComponent(opts.stabil)}` : ''}`),
+    /** R23f: stabilised copy of a video version (background job). */
+    stabilStatus: (versionId: string, level: string) => call<{ stabil: 'siap' | 'proses' | 'gagal' | null; alasan: string | null }>('GET', `/api/media/${encodeURIComponent(versionId)}/stabil?level=${encodeURIComponent(level)}`),
+    stabilStart: (versionId: string, level: string) => call<{ stabil: 'siap' | 'proses' }>('POST', `/api/media/${encodeURIComponent(versionId)}/stabil`, { json: { level } }),
     copilotPlan: (id: string, body: { prompt: string; selected_clip_ids?: string[]; playhead_ms?: number; mode?: 'local' | 'auto' | 'ai' }) =>
       call<PlanReply>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/plan`, { json: body }),
     copilotApply: (id: string, planId: string, expected_revision: number, accept?: number[]) =>

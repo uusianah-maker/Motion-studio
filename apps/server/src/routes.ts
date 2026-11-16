@@ -34,6 +34,11 @@ import {
   engineOrigin,
   proxyPath,
   proxyReady,
+  STABIL_LEVELS,
+  type StabilLevel,
+  makeStabil,
+  stabilPath,
+  stabilReady,
   isProjectFitur,
   resolveFitur,
   type ProjectFitur,
@@ -307,6 +312,10 @@ function variantView(p: ProjectManifest, job: RenderJobView | null, outputs: num
 // ------------------------------------------------------------------ routes
 
 export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSigner = createStreamSigner(), render?: RenderJobs, proxies: ProxyQueue = createProxyQueue()): Route[] {
+  // R23f: stabilisation jobs (one FFmpeg at a time, below-normal priority).
+  const stabilJobs = new Map<string, Promise<void>>();
+  const stabilFailed = new Map<string, string>();
+  let stabilChain: Promise<void> = Promise.resolve();
   const uploadOpts: UploadOptions = { tmpDir: upload.tmpDir ?? os.tmpdir(), maxBytes: upload.maxBytes ?? 50 * 1024 ** 3 };
   let jobs = render;
   const jobsFor = (ws: Workspace) => (jobs ??= createRenderJobs(ws, { tmpRoot: os.tmpdir() }));
@@ -578,6 +587,39 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       },
     },
     {
+      // R23f: stabilisation of a version — status (siap | proses | gagal | null).
+      method: 'GET',
+      path: '/api/media/:version_id/stabil',
+      handle: async ({ ws, params, url }) => {
+        const lv = url.searchParams.get('level') as StabilLevel;
+        if (!STABIL_LEVELS.includes(lv)) throw bad('level harus ringan | kuat');
+        const v = await playable(ws, params.version_id!);
+        const k = `${ws.root}|${v.version_id}|${lv}`;
+        return { stabil: (await stabilReady(ws, v.version_id, lv)) ? 'siap' : stabilJobs.has(k) ? 'proses' : (stabilFailed.get(k) ?? null) && 'gagal', alasan: stabilFailed.get(k) ?? null };
+      },
+    },
+    {
+      // R23f: start stabilising (background, low priority, one at a time; the answer does not wait).
+      method: 'POST',
+      path: '/api/media/:version_id/stabil',
+      handle: async ({ req, ws, params }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['level']);
+        const lv = body.level as StabilLevel;
+        if (!STABIL_LEVELS.includes(lv)) throw bad('level harus ringan | kuat');
+        const v = await playable(ws, params.version_id!);
+        if (!v.probe?.video_codec) throw bad('Stabilisasi hanya untuk video');
+        if (await stabilReady(ws, v.version_id, lv)) return { stabil: 'siap' };
+        const k = `${ws.root}|${v.version_id}|${lv}`;
+        if (!stabilJobs.has(k)) {
+          stabilFailed.delete(k);
+          const p = (stabilChain = stabilChain.then(() => makeStabil(ws, v.version_id, lv).then(() => undefined, (e: unknown) => void stabilFailed.set(k, e instanceof Error ? e.message.slice(0, 200) : 'gagal')))).finally(() => stabilJobs.delete(k));
+          stabilJobs.set(k, p);
+        }
+        return { stabil: 'proses' };
+      },
+    },
+    {
       // R14: "Buat pratinjau ringan" for an older media (background; the answer does not wait).
       method: 'POST',
       path: '/api/media/:version_id/proxy',
@@ -627,6 +669,9 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       path: '/api/media/:version_id/stream-url',
       handle: async ({ ws, params, url }) => {
         const v = await playable(ws, params.version_id!);
+        // R23f: a stabilised clip plays its stabilised copy once it exists (same picture as the render).
+        const lv = url.searchParams.get('stabil');
+        if (lv && STABIL_LEVELS.includes(lv as StabilLevel) && (await stabilReady(ws, v.version_id, lv as StabilLevel))) return { ...signer.signStabil(v.version_id, lv), mime: 'video/mp4', probe: v.probe ?? null, proxy: false, stabil: lv };
         // R14: the editor plays the light copy when there is one (render always uses the original);
         // a media opened for the first time gets one made in the background. ?asli=1 = the original.
         if (url.searchParams.get('asli') !== '1') {
@@ -641,6 +686,17 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       path: '/api/stream/:version_id',
       public: true, // <video> cannot send Authorization; the HMAC signature is the credential
       handle: async ({ req, res, url, ws, params }) => {
+        const stabil = url.searchParams.get('stabil');
+        if (stabil) {
+          if (!STABIL_LEVELS.includes(stabil as StabilLevel)) throw new ApiError(400, 'BAD_REQUEST', 'stabil tidak valid');
+          signer.verifyStabil(params.version_id!, stabil, url.searchParams.get('exp'), url.searchParams.get('sig'));
+          await playable(ws, params.version_id!);
+          const file = stabilPath(ws, params.version_id!, stabil as StabilLevel);
+          const st = await fsp.stat(file).catch(() => null);
+          if (!st?.isFile()) throw new ApiError(404, 'NOT_FOUND', 'Video stabil belum ada');
+          await sendBytes(req, res, { size: st.size, mime: 'video/mp4', open: async (range) => createReadStream(file, range ? { start: range.start, end: range.end } : {}) });
+          return undefined;
+        }
         if (url.searchParams.get('proxy') === '1') {
           signer.verifyProxy(params.version_id!, url.searchParams.get('exp'), url.searchParams.get('sig'));
           await playable(ws, params.version_id!);

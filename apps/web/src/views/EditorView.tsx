@@ -771,6 +771,7 @@ export function EditorView({
               {...(project.status !== 'archived' && !reviewer ? { onCutReview: () => setCutClip(sel) } : {})}
               onEdit={(ops) => edit(ops)}
               lockReason={lockReason}
+              api={api}
               onDraft={setStyleDraft}
               onOverlayDraft={setOverlayDraft}
               flushRef={inspectorFlush}

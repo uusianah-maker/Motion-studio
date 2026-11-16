@@ -37,6 +37,14 @@ export function createStreamSigner(now: () => number = Date.now) {
     verifyProxy(versionId: string, expRaw: string | null, sig: string | null): void {
       check(`proxy:${versionId}`, expRaw, sig, 'pemutaran');
     },
+    /** R23f: link to a version's stabilised copy (its own subject). */
+    signStabil(versionId: string, level: string, ttlMs = STREAM_TTL_MS): { url: string; expires_at: number } {
+      const exp = now() + ttlMs;
+      return { url: `/api/stream/${encodeURIComponent(versionId)}?stabil=${encodeURIComponent(level)}&exp=${exp}&sig=${mac(`stabil:${versionId}:${level}`, exp)}`, expires_at: exp };
+    },
+    verifyStabil(versionId: string, level: string, expRaw: string | null, sig: string | null): void {
+      check(`stabil:${versionId}:${level}`, expRaw, sig, 'pemutaran');
+    },
     /** Render output link (W08): bound to one project + file name (+ download flag). */
     signOutput(projectId: string, name: string, download: boolean, ttlMs = STREAM_TTL_MS): { url: string; expires_at: number } {
       const exp = now() + ttlMs;

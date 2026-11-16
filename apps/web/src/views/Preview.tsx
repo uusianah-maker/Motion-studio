@@ -102,14 +102,20 @@ export function Preview({
   const subs = clipsOf('subtitle').filter((c) => t >= c.start_ms && t < c.end_ms);
   const versionOf = (c: Clip | null) => (c?.media ? media.flatMap((m) => m.versions).find((v) => v.version_id === c.media!.version_id) : undefined);
 
+  /** R23f: the visual clip is stabilised but its copy is not ready: look again every few seconds. */
+  const stabilWaiting = useRef(false);
   /** Bumped when a layer's stream link failed (expired): re-sync with a fresh link. */
   const [retry, setRetry] = useState(0);
   const urlFor = useCallback(
-    async (versionId: string) => {
-      const hit = urls.current.get(versionId);
+    async (versionId: string, stabil?: string) => {
+      const key = stabil ? `${versionId}@${stabil}` : versionId;
+      const hit = urls.current.get(key);
       if (hit && hit.expires_at - Date.now() > 60_000) return hit.url;
-      const fresh = await api.streamUrl(versionId);
-      urls.current.set(versionId, fresh);
+      const fresh = await api.streamUrl(versionId, stabil ? { stabil } : {});
+      // R23f: the stabilised copy may not exist yet → the original plays; ask again in a few seconds.
+      const notYet = !!stabil && fresh.stabil !== stabil;
+      stabilWaiting.current = notYet;
+      urls.current.set(key, notYet ? { ...fresh, expires_at: Math.min(fresh.expires_at, Date.now() + 61_000) } : fresh);
       return fresh.url;
     },
     [api],
@@ -128,11 +134,16 @@ export function Preview({
         }
         return;
       }
-      const vid = clip.media.version_id;
-      if (el.dataset.vid !== vid) {
+      // R23f: a stabilised clip plays its stabilised copy (once made).
+      const stabil = layer === 'visual' ? clip.stabil : undefined;
+      const vid = stabil ? `${clip.media.version_id}@${stabil}` : clip.media.version_id;
+      const cached = urls.current.get(vid);
+      if (el.dataset.vid !== vid || (stabil && cached && cached.expires_at - Date.now() < 60_000)) {
         el.dataset.vid = vid;
         try {
-          el.src = await urlFor(vid);
+          const before = el.currentSrc;
+          const next = await urlFor(clip.media.version_id, stabil);
+          if (next !== before || !el.src) el.src = next;
           setProblem(null);
         } catch {
           setProblem(`Media ${layer === 'visual' ? 'video' : 'audio'} tidak bisa diputar (ada di Trash atau berubah).`);
@@ -156,6 +167,11 @@ export function Preview({
     [urlFor],
   );
 
+  useEffect(() => {
+    if (!visual?.stabil) return;
+    const t = setInterval(() => stabilWaiting.current && setRetry((n) => n + 1), 4000);
+    return () => clearInterval(t);
+  }, [visual?.stabil, visual?.clip_id]);
   // Paused: seek every layer exactly to the playhead. Playing: the clock loop below drives sync.
   useEffect(() => {
     void sync(videoRef.current, visual, t, playing, 'visual');
