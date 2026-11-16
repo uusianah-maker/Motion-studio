@@ -569,3 +569,17 @@ Perintah: `<visual-venv>\Scripts\python pipeline/visual/lacak.py <video> <keluar
   - Wajah IN17: galat pusat ±1% frame dibanding detektor (CSRT 0,011, KCF 0,0065). Objek lepas di detik ke-4–5 saat subjek berbalik. Waktu proses CSRT 7 dtk, KCF 5 dtk.
   - Tes sintetis `Lacak`: CSRT dan KCF sama-sama mengikuti kotak bergerak dengan galat ≤3%.
 - **Pemakaian di app**: hasil ini untuk menempelkan teks, stiker, atau blur yang ikut objek. Rumus posisinya sama dengan §18.2: pusat kotak dikonversi lewat x_app/y_app. Tampilannya diserahkan ke ucok.
+
+### 18.8 Hapus latar (R24d) — sudah jalan
+Perintah: `<visual-venv>\Scripts\python pipeline/visual/hapus_latar.py <masuk> <folder_keluar> [--model birefnet-general-lite] [--fps 10]`.
+- **Gambar** (.jpg/.png/.webp/.bmp): `<nama>.png` (RGBA) dan `<nama>-masker.png`.
+- **Video** (maksimal 15 dtk; topeng dibuat per frame pada `--fps` 1..30, bawaan 10):
+  - `<nama>-alpha.webm`: VP9 dengan alpha (yuva420p, `alpha_mode=1`), untuk layer di editor;
+  - `<nama>-masker.mp4`: abu-abu, putih = subjek, untuk `alphamerge` di render.
+- **Laporan**: `<folder_keluar>/hapus_latar.json`, berisi `{"schema":"hapus-latar/1","status":"selesai|ditolak","usulan":true,"model","lisensi","jenis","file","masker",…}`. Kode keluar 2 untuk ditolak (model di luar daftar putih, klip lebih dari 15 dtk, fps di luar batas), 1 untuk gagal teknis.
+- **Tanpa unduhan dari rembg.** rembg ternyata mengunduh model dari mirror danielgatis, bukan dari sumber resmi. Satu kali sempat terunduh saat uji coba; filenya identik (SHA sama) dan sudah dihapus. Karena itu inferensi BiRefNet ditulis langsung dengan onnxruntime dan file resmi di §18.5: input tetap 1024×1024, normalisasi ImageNet, lalu sigmoid. Model lain di daftar putih belum dipasang dan ditolak sampai unduhannya mendapat OK.
+- **Kecepatan CPU di PC kantor: ±13 dtk per frame.**
+  - Satu gambar butuh ±13 dtk.
+  - Video 15 dtk pada 10 fps (150 frame) butuh ±33 menit. Pada 5 fps, ±17 menit.
+  - Perkiraan waktu diukur dari frame pertama, lalu dikirim lewat `perkiraan_dtk`.
+  - Hasil uji: orang, celana, dan gantungan terpisah rapi.

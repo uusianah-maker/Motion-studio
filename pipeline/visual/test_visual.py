@@ -201,6 +201,35 @@ class AturanBeban(unittest.TestCase):
             beban.cek_durasi_klip(15.5)
 
 
+class HapusLatar(unittest.TestCase):
+    """R24d: model di luar daftar putih ditolak SEBELUM memuat apa pun; laporan hapus-latar/1 tetap ditulis."""
+
+    def test_bria_ditolak_kode_2(self):
+        import json as _j
+        import tempfile
+        import hapus_latar
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "a.png"
+            f.write_bytes(b"x")
+            self.assertEqual(hapus_latar.jalankan(f, Path(d) / "out", "bria-rmbg", 10), 2)
+            lap = _j.loads((Path(d) / "out" / "hapus_latar.json").read_text(encoding="utf-8"))
+            self.assertEqual(lap["status"], "ditolak")
+            self.assertIn("tidak diizinkan", lap["alasan"])
+
+    def test_fps_di_luar_batas_ditolak(self):
+        import tempfile
+        import hapus_latar
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "a.mp4"
+            f.write_bytes(b"x")
+            self.assertEqual(hapus_latar.jalankan(f, Path(d) / "out", None, 60), 2)
+
+    def test_model_resmi_terdaftar_dengan_sha(self):
+        import hapus_latar
+        self.assertEqual(set(hapus_latar.FILE_MODEL), {"birefnet-general-lite"})
+        self.assertEqual(len(hapus_latar.SHA256["birefnet-general-lite"]), 64)
+
+
 def _ada_tracker() -> bool:
     try:
         import cv2
