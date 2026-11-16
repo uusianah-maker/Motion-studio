@@ -26,6 +26,7 @@ describe('R14 preview proxy', () => {
     expect(needsProxy({ video_codec: 'h264', width: 540, height: 960, duration_ms: 10_000 }, 1_200_000)).toBe(false); // already light
     expect(needsProxy({ video_codec: 'h264', width: 540, height: 960, duration_ms: 10_000 }, 10_000_000)).toBe(true); // small but 8 Mbps
     expect(needsProxy({ video_codec: null, width: null, height: null, duration_ms: 5000 }, 80_000)).toBe(false); // audio only
+    expect(needsProxy({ video_codec: 'hevc', width: 540, height: 960, duration_ms: 10_000 }, 1_200_000)).toBe(true); // light but HEVC: the browser cannot play it
   });
 
   it.skipIf(!hasFfmpeg)('makes a 540p, 1 s-keyframe H.264/AAC copy once; the original version stays as it was', async () => {

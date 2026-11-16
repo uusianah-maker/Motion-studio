@@ -15,7 +15,7 @@ import { StorageError } from './errors.js';
 import { ffmpegBin } from './ffmpeg.js';
 import { isSafeId } from './ids.js';
 import { MEDIA_AREAS } from './permissions.js';
-import { probeFile } from './probe.js';
+import { BROWSER_VIDEO_CODECS, probeFile } from './probe.js';
 import { loadRegistry } from './registry.js';
 import { LAYOUT, type Workspace } from './workspace.js';
 
@@ -38,6 +38,8 @@ export type ProxyResult = 'dibuat' | 'sudah_ada' | 'tidak_perlu';
 /** A file already this light plays fine as it is (no proxy). */
 export function needsProxy(p: { video_codec: string | null; width: number | null; height: number | null; duration_ms: number }, size: number): boolean {
   if (!p.video_codec || p.duration_ms <= 0) return false;
+  // A codec the browser cannot play (HEVC from DJI/iPhone) always needs the h264 copy, whatever its size.
+  if (!BROWSER_VIDEO_CODECS.has(p.video_codec)) return true;
   const short = Math.min(p.width ?? 0, p.height ?? 0) || Infinity;
   const kbps = (size * 8) / (p.duration_ms / 1000) / 1000;
   return short > PROXY_SHORT_SIDE || kbps > PROXY_VIDEO_KBPS * 1.5;

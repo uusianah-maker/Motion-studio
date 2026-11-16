@@ -75,4 +75,38 @@ describe('R14 preview proxy over HTTP', () => {
     // The manual button on media that has one already.
     expect(json((await req(`/api/media/${vid}/proxy`, { method: 'POST', body: Buffer.from('{}'), headers: { 'content-type': 'application/json' } })).body)).toEqual({ proxy: 'siap' });
   }, 90_000);
+
+  it.skipIf(!hasFfmpeg)('HEVC (DJI/iPhone): not previewable until its light copy exists, then preview=true', async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'msc-r14h-'));
+    cleanup.push(() => fsp.rm(dir, { recursive: true, force: true, maxRetries: 5 }));
+    const ws = await initWorkspace(path.join(dir, 'ws'));
+    const proxies = createProxyQueue();
+    const app = createApp({ ws, routes: apiRoutes({ tmpDir: dir }, undefined, undefined, proxies) });
+    const port = await app.listen(0);
+    cleanup.push(() => app.close());
+    const req = (p: string, init: { method?: string; body?: Buffer; headers?: Record<string, string> } = {}) =>
+      new Promise<{ status: number; body: Buffer }>((resolve, reject) => {
+        const r = http.request({ host: HOST, port, path: p, method: init.method ?? 'GET', headers: { host: `${HOST}:${port}`, authorization: `Bearer ${app.token}`, ...(init.body ? { 'content-length': String(init.body.length) } : {}), ...init.headers } }, (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks) }));
+        });
+        r.on('error', reject);
+        r.end(init.body);
+      });
+    const json = (b: Buffer) => JSON.parse(b.toString('utf8'));
+    const src = path.join(dir, 'dji.mp4');
+    try {
+      execFileSync(FFMPEG, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=540x960:r=30:d=1', '-c:v', 'libx265', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p', src], { windowsHide: true });
+    } catch {
+      return; // ffmpeg without libx265: nothing to check here
+    }
+    const up = await req('/api/media/import?scope=shared', { method: 'POST', body: await fsp.readFile(src), headers: { 'content-type': 'application/octet-stream', 'x-file-name': 'dji.mp4' } });
+    expect(up.status).toBe(200);
+    expect(json(up.body).version.preview).toBe(false); // the original cannot play in a browser
+    await proxies.idle();
+    const m = json((await req('/api/media')).body).media[0];
+    expect(m.proxy).toBe('siap');
+    expect(m.versions[0].preview).toBe(true); // the editor shows the video (from the light copy)
+  }, 90_000);
 });

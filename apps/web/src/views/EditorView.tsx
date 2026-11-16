@@ -131,6 +131,17 @@ export function EditorView({
     load().catch(setError);
   }, [load]);
 
+  // A video the browser cannot play (HEVC) shows once its light copy is made in the background:
+  // re-read the media list every 4 s while one is still being made, so no page reload is needed.
+  const proxyPending = media.some((m) => m.proxy === 'proses' || (m.proxy == null && m.versions.some((v) => v.version_id === m.current_version_id && v.preview === false && !!v.probe?.video_codec)));
+  useEffect(() => {
+    if (!projectId || !proxyPending) return;
+    const t = setInterval(() => {
+      api.media({ scope: 'all' }).then((m) => openId.current === projectId && setMedia(m), () => undefined);
+    }, 4000);
+    return () => clearInterval(t);
+  }, [api, projectId, proxyPending]);
+
   /** Run one server change; on a stale revision reload and tell the user instead of guessing. */
   // Latest project / busy for edits chained right after another one (R5: flush a pending style
   // change, then undo — the undo must see the revision that change made).

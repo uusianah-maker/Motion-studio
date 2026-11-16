@@ -565,7 +565,13 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         const list = mediaList(await loadRegistry(ws), filter);
         // R14: is the light preview copy of the current version ready (or being made)?
         const withProxy = await Promise.all(
-          list.map(async (m) => ({ ...m, proxy: (await proxyReady(ws, m.current_version_id)) ? ('siap' as const) : proxies.busy(ws, m.current_version_id) ? ('proses' as const) : null })),
+          list.map(async (m) => {
+            const ready = await proxyReady(ws, m.current_version_id);
+            // A codec the browser cannot play (HEVC from DJI/iPhone) is still previewable once its
+            // light copy (h264) exists: the stream link already serves that copy.
+            const versions = ready ? m.versions.map((v) => (v.version_id === m.current_version_id && v.probe ? { ...v, preview: true } : v)) : m.versions;
+            return { ...m, versions, proxy: ready ? ('siap' as const) : proxies.busy(ws, m.current_version_id) ? ('proses' as const) : null };
+          }),
         );
         return { media: withProxy };
       },
