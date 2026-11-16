@@ -493,3 +493,9 @@ kbd { font-size: 10px; border: 1px solid #ffffff44; border-radius: 4px; padding:
 .clipMenu button { text-align: left; padding: 6px 10px; border: 0; background: none; color: inherit; border-radius: 6px; cursor: pointer; }
 .clipMenu button:hover:not(:disabled) { background: #2a2f45; }
 .clipMenu button:disabled { opacity: .45; cursor: default; }
+
+/* Owner 16 Nov: play media straight from the Media page (one at a time). */
+.playBtn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-right: 6px; padding: 0; border-radius: 50%; border: 1px solid #8870b1; background: #2a2440; color: #fff; font-size: 11px; line-height: 1; vertical-align: middle; cursor: pointer; }
+.playBtn:hover { background: #3a3060; }
+.playRow td { padding: 6px 8px 12px; }
+.mediaVideo { display: block; max-width: 100%; max-height: 360px; border-radius: 8px; background: #000; }

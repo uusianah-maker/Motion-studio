@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Api, Media, ProjectSummary, Role } from '../api';
 import { type MediaKind, errorText, formatBytes, formatDate, mediaKind } from '../lib';
 import { ErrorNotice, StatusBadges } from '../ui';
+import { useMediaPlayer } from './MediaPlay';
 
 interface UploadItem {
   id: number;
@@ -48,6 +49,7 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
   const [kind, setKind] = useState<'' | MediaKind>('');
   /** R14: proxies asked for on this page (shown as "sedang dibuat" until the list says "siap"). */
   const [asked, setAsked] = useState<ReadonlySet<string>>(new Set());
+  const player = useMediaPlayer(api, setError);
   const input = useRef<HTMLInputElement>(null);
   const usable = projects.filter((p) => !p.error);
 
@@ -236,6 +238,7 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
               ))}
             </select>
           </div>
+          {player.audioEl}
           {media && shown.length === 0 ? (
             <div className="empty">Belum ada media di sini.</div>
           ) : (
@@ -252,10 +255,28 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
               <tbody>
                 {shown.map((m) => {
                   const cur = m.versions.find((v) => v.version_id === m.current_version_id);
+                  const k = cur ? mediaKind(cur.probe) : 'lain';
+                  const playable = !!cur && (k === 'audio' || k === 'video') && cur.lifecycle === 'active' && cur.integrity === 'ok';
+                  const playing = !!cur && player.isPlaying(cur.version_id);
+                  const videoOpen = !!cur && player.open?.versionId === cur.version_id && player.open.kind === 'video' ? player.open.url : null;
                   return (
-                    <tr key={m.media_id}>
+                    <Fragment key={m.media_id}>
+                    <tr>
                       <td className="cellName">
-                        <b>{m.display_name}</b>
+                        <b>
+                          {playable && (
+                            <button
+                              type="button"
+                              className="playBtn"
+                              aria-label={`${playing ? 'Jeda' : 'Putar'} ${m.display_name}`}
+                              title={k === 'video' ? (videoOpen ? 'Tutup pemutar' : 'Putar video') : playing ? 'Jeda' : 'Putar audio'}
+                              onClick={() => void player.toggle(cur!.version_id, k as 'audio' | 'video')}
+                            >
+                              {playing ? '⏸' : '▶'}
+                            </button>
+                          )}
+                          {m.display_name}
+                        </b>
                         <small>
                           {m.versions.length} versi{cur && cur.original_name !== m.display_name ? ` · file: ${cur.original_name}` : ''}
                         </small>
@@ -286,6 +307,14 @@ export function MediaView({ api, projects, selectedProject, role = 'owner' }: { 
                       <td>{cur ? <StatusBadges lifecycle={cur.lifecycle} integrity={cur.integrity} /> : '–'}</td>
                       <td className="hideNarrow">{formatDate(m.created_at)}</td>
                     </tr>
+                    {videoOpen && (
+                      <tr className="playRow">
+                        <td colSpan={5}>
+                          <video src={videoOpen} controls autoPlay playsInline aria-label={`Video ${m.display_name}`} className="mediaVideo" />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
