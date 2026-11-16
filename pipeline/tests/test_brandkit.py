@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "pipeline"))
-from brandkit import BrandKitError, cek_ekspor, dari_ekspor, ke_ekspor  # noqa: E402
+from brandkit import BrandKitError, cek_ekspor, dari_ekspor, ke_ekspor, kosakata_brand  # noqa: E402
 
 CONTOH = {
     "schema": "brand-kit-export/1",
@@ -78,6 +78,24 @@ class BrandKit(unittest.TestCase):
         self.assertEqual(bk["kamus_kata"], lama["kamus_kata"])
         self.assertEqual(bk["kata_kunci"], lama["kata_kunci"])
         self.assertEqual(bk["cta"]["tiktok"], lama["cta"]["tiktok"])
+
+
+class TestKosakataBrand(unittest.TestCase):
+    """R30: nama brand selalu jadi petunjuk Whisper walau kosakata Brand Kit kosong."""
+
+    def test_nama_brand_selalu_ikut_walau_kosakata_kosong(self):
+        self.assertEqual(kosakata_brand({"nama": "Aysilla Factory"}), ["Aysilla Factory"])
+
+    def test_urutan_dan_tanpa_duplikat(self):
+        bk = {"nama": "Aysilla Factory", "kosakata_whisper": ["celana", "Celana ", "join live"],
+              "kata_kunci": ["diskon"], "kamus_kata": {"cana": "celana", "icy love": "Aysilla"},
+              "produk": [{"nama": "Kulot Highwaist"}, "korset"]}
+        self.assertEqual(kosakata_brand(bk), ["Aysilla Factory", "celana", "join live", "diskon", "Aysilla",
+                                              "Kulot Highwaist", "korset"])
+
+    def test_dibatasi(self):
+        bk = {"nama": "A", "kosakata_whisper": [f"kata{i}" for i in range(100)]}
+        self.assertEqual(len(kosakata_brand(bk)), 40)
 
 
 if __name__ == "__main__":

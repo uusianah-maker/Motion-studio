@@ -208,6 +208,26 @@ def ke_ekspor(lama: dict, kode: str) -> dict:
     return d
 
 
+MAKS_KOSAKATA = 40
+
+
+def kosakata_brand(bk: dict) -> list[str]:
+    """R30: petunjuk kata untuk Whisper (initial_prompt + hotwords). Nama brand SELALU ikut
+    (audit 16 Nov: "Aysilla Factory" terdengar "Icy Love Factory" saat kosakata Brand Kit kosong),
+    lalu kosakata tim, kata kunci, dan kata benar dari kamus. Urutan = prioritas; maks 40 entri."""
+    calon = [bk.get("nama", ""), *bk.get("kosakata_whisper", []), *bk.get("kata_kunci", []),
+             *(bk.get("kamus_kata") or {}).values()]
+    for p in bk.get("produk", []) or []:
+        calon.append(p.get("nama", "") if isinstance(p, dict) else str(p))
+    out, lihat = [], set()
+    for c in calon:
+        c = " ".join(str(c).split())
+        if c and c.lower() not in lihat:
+            lihat.add(c.lower())
+            out.append(c)
+    return out[:MAKS_KOSAKATA]
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
