@@ -150,5 +150,46 @@ class KeyframeApp(unittest.TestCase):
         self.assertLessEqual(len(out["keyframe"]), rf.MAKS_KEYFRAME)
 
 
+class AturanBeban(unittest.TestCase):
+    """Hasil cek sukma 16 Nov (§18.0): daftar putih model, kunci global, RAM, batas klip."""
+
+    def test_daftar_putih_model_latar(self):
+        import beban
+        self.assertEqual(beban.model_latar(None), "birefnet-general-lite")
+        self.assertEqual(beban.model_latar("u2net"), "u2net")
+        for dilarang in ("bria-rmbg", "BRIA-RMBG", "birefnet-general", "sam", "withoutbg", "atlascloud", ""):
+            with self.assertRaises(beban.Ditolak, msg=dilarang):
+                beban.model_latar(dilarang or "x")
+
+    def test_kunci_satu_job_dan_kunci_basi(self):
+        import json as _j
+        import tempfile
+        import beban
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "k.lock"
+            with beban.kunci_ai("a", file=f):
+                self.assertEqual(_j.loads(f.read_text())["job"], "a")
+                with self.assertRaises(RuntimeError):  # job kedua tidak boleh masuk
+                    with beban.kunci_ai("b", file=f, maks_tunggu=0.2, jeda=0.1):
+                        pass
+            self.assertFalse(f.exists())
+            f.write_text(_j.dumps({"pid": 999999, "job": "mati"}))  # pid tidak hidup = basi
+            with beban.kunci_ai("c", file=f, maks_tunggu=1):
+                self.assertEqual(_j.loads(f.read_text())["job"], "c")
+
+    def test_tunggu_ram(self):
+        import beban
+        nilai = iter([1.0, 2.0, 4.0])
+        beban.tunggu_ram(3.0, maks_dtk=5, jeda=0, baca=lambda: next(nilai))
+        with self.assertRaises(RuntimeError):
+            beban.tunggu_ram(3.0, maks_dtk=0, jeda=0, baca=lambda: 1.0)
+
+    def test_batas_klip(self):
+        import beban
+        beban.cek_durasi_klip(15.0)
+        with self.assertRaises(beban.Ditolak):
+            beban.cek_durasi_klip(15.5)
+
+
 if __name__ == "__main__":
     unittest.main()

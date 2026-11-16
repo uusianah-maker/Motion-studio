@@ -450,6 +450,28 @@ Sumber angka: laporan Hanagaki (85 video Aysilla, `BELAJAR/hanagaki/LAPORAN-HANA
 ## 18. Visual Tools AI lokal (R24, v0.4.1, 16 Nov 2026, yuki — owner: "Ya, bagikan") — DRAF
 Semua model jalan di PC sendiri, tanpa API berbayar. Hasil AI selalu **usulan** (`"usulan": true`): app menampilkannya sebagai keyframe/jalur yang bisa diubah, dimatikan, atau dihapus manual (hybrid). Job berat jalan dengan prioritas Idle dan maksimal 2 pekerja. Kode ada di `pipeline/visual/`. Python vision = venv terpisah `D:\VIBECODING\tools\visual-venv` (override `MOTION_VISUAL_PY`) supaya OpenCV demucs-venv tidak bentrok. Status: format 18.1–18.2 sudah ada dan dites; 18.3–18.6 menunggu OK instalasi dari venus.
 
+### 18.0 Aturan wajib: lisensi, cache, beban
+Sumber: cek sukma 16 Nov, Motion-studio `docs/R23-R24-LISENSI-KAPASITAS-2026-11-16.md`. Aturan ini ditegakkan di `pipeline/visual/beban.py` dan dites di `AturanBeban`.
+
+1. **Model hapus latar** selalu disebut eksplisit dan harus ada di daftar putih:
+   - `birefnet-general-lite` (MIT, bawaan kita);
+   - `isnet-general-use`, `u2net`, `u2netp`, `u2net_human_seg`, `silueta` (semuanya Apache-2.0).
+   
+   Model lain ditolak dengan kode 2. Bawaan rembg (bria-rmbg) non-komersial, jadi **dilarang**. Backend cloud (withoutbg, atlascloud) juga tidak dipakai.
+2. **Cache model di D:**, tidak di C:
+   - `U2NET_HOME` = `D:\VIBECODING\tools\models`
+   - `HF_HOME` = `…\models\hf`
+   - Model MediaPipe dipanggil dengan path file eksplisit dari folder yang sama.
+   - Folder bisa diganti lewat `MOTION_MODELS_DIR`.
+3. **Beban:**
+   - Hanya **satu** job AI berat sekaligus di seluruh mesin. Kuncinya file global `…\modelsi-berat.lock` (override `MOTION_AI_LOCK`); kunci dari pid yang sudah mati diambil alih. Whisper ikut aturan ini bila pemanggilnya memakai `kunci_ai`.
+   - Prioritas Idle, maksimal 4 thread, maksimal 2 pekerja.
+   - Kalau RAM bebas kurang dari 3 GB, job menunggu dengan progres `{"tahap":"menunggu"}`. Kalau sedang antre di belakang job lain: `{"tahap":"antre"}`.
+   - Klip video untuk hapus latar atau perjelas maksimal **15 detik**. Lebih dari itu ditolak dengan kode 2.
+   - Perkiraan waktu dikirim sebelum mulai: `{"tahap":…, "perkiraan_dtk": N}`. Real-ESRGAN butuh sekitar 15–45 menit per 30 detik video, jadi hanya untuk klip pendek.
+   - BiRefNet hanya di CPU (onnxruntime), tanpa torch.
+4. AutoFlip (legacy, tidak tersedia di pip) tidak dipakai. Reframe memakai implementasi sendiri (§18.2).
+
 ### 18.1 Jalur posisi `jalur-posisi/1` (R24a wajah/objek, R24c pelacakan)
 Koordinat = pecahan frame (0..1), kotak kiri-atas + lebar/tinggi, `t` dalam detik (naik).
 ```json
