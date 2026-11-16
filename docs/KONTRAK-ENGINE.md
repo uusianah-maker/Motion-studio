@@ -848,3 +848,63 @@ Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts`
   - Uji di salinan batch 2026-11-13_video-winning, VO 13,5 dtk: 3/3 varian dengan shot berbeda, validator OK, qc lulus.
 - **Beat Spot**: menyusul.
 
+
+## 23. Profil suara "Suara owner" — `engine suara_profil` (R31, v0.4.6, 16 Nov 2026, yuki; app: Hanagaki) — DRAF, mesin BELUM tersedia
+Tujuannya: owner menambah contoh suaranya, mesin membersihkan dan memeriksa mutunya, lalu melatih profil. Sesudah siap, `owner:Suara owner` muncul di daftar suara §21. Pengucapannya: TTS Andika (+ pelafalan) lalu dikonversi ke suara owner (OpenVoice V2 tone converter untuk uji cepat, Applio/RVC untuk hasil utama; keduanya MIT).
+- **Satu profil saja**: `owner`. Menambah profil suara orang lain perlu keputusan owner, dan mesin menolak id profil lain dengan kode 2.
+
+### 23.1 Masukan
+```json
+{"schema":"engine-job/1","mode":"suara_profil","job_id":"AYS-…",
+ "sumber":[{"kunci":"$media:m_abc","path":"D:/…/SHARED_MEDIA/…/v_….mp4"}, …],
+ "suara_profil":{"profil":"owner","nama":"Suara owner",
+                 "tambah_contoh":["$media:m_abc", …],
+                 "latih":true,
+                 "contoh_kalimat":["Halo kak, ini Loose Pants.", "…", "…"]}}
+```
+- **`tambah_contoh`**: kunci media yang path-nya diberikan di `sumber`, seperti media lain. Boleh berupa **video atau audio** (mp4/mov/webm/m4a/mp3/wav); mesin mengambil audionya sendiri.
+- File asli **tidak diubah dan tidak dipindah**. Mesin menyalin hasil bersihnya ke folder profil.
+- Contoh yang sudah pernah ditambahkan (sidik SHA-256 sama) dilewati, jadi aman bila dikirim ulang.
+- **`latih`**: `false` = hanya tambah dan periksa contoh. `true` = latih kalau total durasi bersih ≥ minimum.
+- **`contoh_kalimat`**: maksimal 3 kalimat untuk contoh hasil. Bawaannya 3 kalimat jualan baku.
+
+### 23.2 Pemeriksaan & batas (per contoh)
+- **Pembersihan**:
+  - Audio diubah ke mono 40 kHz.
+  - Sunyi lebih dari 0,6 dtk dipotong. Bagian dengan musik atau lebih dari satu pembicara (bila terdeteksi) dibuang.
+  - Sisanya disebut **durasi bersih**.
+- **Mutu** per contoh: `snr_db` (perkiraan), `musik` (true bila musik latar terdeteksi), `clipping`. Contoh dengan SNR < 15 dB atau bermusik ditandai `dipakai: false` beserta `alasan`.
+- **Target durasi bersih**:
+  - **10–15 menit** untuk Applio.
+  - **Minimal 5 menit** untuk melatih Applio.
+  - **Minimal 30 dtk** untuk uji cepat OpenVoice.
+
+### 23.3 Keluaran `out/suara_profil.json` (`suara-profil/1`)
+```json
+{"schema":"suara-profil/1","status":"siap|kurang_contoh|ditolak","profil":"owner","nama":"Suara owner",
+ "contoh":[{"media":"$media:m_abc","durasi":612.4,"durasi_bersih":548.0,"snr_db":31.2,"musik":false,"clipping":false,
+            "dipakai":true,"alasan":null}],
+ "durasi_bersih_total":548.0,"target_dtk":[600,900],"minimal_dtk":300,
+ "backend":"applio|openvoice","dilatih_pada":"2026-11-16T20:00:00+07:00","versi_model":3,
+ "contoh_hasil":[{"teks":"Halo kak, ini Loose Pants.","file":"out/contoh/01.wav"}, …],
+ "alasan":null}
+```
+- **Progres** JSON-lines dikirim per tahap: `ambil_audio`, `bersihkan`, `periksa`, `latih` (dengan `perkiraan_dtk`; Applio ±1–2 jam di GTX 1650), `contoh`.
+- **Kode keluar**:
+  - 0 = selesai, termasuk `kurang_contoh` (contoh tersimpan tetapi belum dilatih karena durasi kurang);
+  - 2 = ditolak (profil bukan `owner`, tidak ada contoh yang terbaca, `latih` tetapi tidak ada contoh yang lolos mutu);
+  - 1 = gagal teknis.
+- **Beban**: kunci AI global, prioritas Idle, menunggu RAM ≥ 3 GB (§18.0). Pelatihan sebaiknya dijalankan di jam sepi.
+
+### 23.4 Penyimpanan & tanda siap
+- **Lokasi profil**: `<DATA>/konten/suara/owner/`.
+  - Isinya `contoh/` (WAV bersih), `model/` (bobot Applio + index, embedding OpenVoice), dan `profil.json`.
+  - Profil berlaku untuk **satu workspace**, tidak per brand, karena suara owner sama untuk semua brand.
+  - Rekaman dan model **tidak pernah masuk repo** (`konten/**` diabaikan git) dan tidak diunggah ke mana pun.
+- **Tanda siap**: `engine tts {"daftar_suara":true}` menyertakan `{"id":"owner:Suara owner","backend":"owner","siap":true,…}` bila `profil.json.status == "siap"`.
+  - App cukup membaca daftar suara. Tidak perlu membaca folder profil.
+  - Selama belum siap, `owner:Suara owner` tidak muncul. `tts` dengan suara itu ditolak dengan kode 2.
+
+### 23.5 Status
+- **Mesin belum tersedia** (16 Nov): venv `<TOOLS>/suara-venv` (Applio 3.7.1 + OpenVoice V2, torch 2.11 cu128) sedang dipasang, dan rekaman owner belum masuk.
+- App boleh dibuat dulu dengan status "mesin belum tersedia" bila `engine suara_profil` mengembalikan kode 1 dengan pesan `perintah tidak dikenal`.
