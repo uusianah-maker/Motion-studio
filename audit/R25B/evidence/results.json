@@ -25,6 +25,21 @@
     "detail": ""
   },
   {
+    "id": "R25B-06 Flag preview H.264 10-bit tanpa proxy = false (bukan hanya cek codec)",
+    "ok": true,
+    "detail": "false"
+  },
+  {
+    "id": "R25B-07 Sebelum proxy siap: pesan jelas di pratinjau (bukan layar hitam)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R25B-08 Proxy jadi → pratinjau otomatis pindah ke salinan ringan tanpa reload",
+    "ok": true,
+    "detail": "/api/stream/v_0c6401bb4777910e?proxy=1&exp=1794818069179&sig=…"
+  },
+  {
     "id": "R25B-99 0 error JS",
     "ok": true,
     "detail": ""

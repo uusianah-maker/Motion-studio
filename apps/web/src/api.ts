@@ -259,7 +259,7 @@ export interface Version {
   pin: boolean;
   legal_hold: boolean;
   trashed_at: number | null;
-  probe?: { duration_ms: number; width: number | null; height: number | null; video_codec: string | null; audio_codec: string | null } | null;
+  probe?: { duration_ms: number; width: number | null; height: number | null; video_codec: string | null; audio_codec: string | null; pix_fmt?: string | null; fps?: number | null } | null;
   /** Browser can preview this codec. */
   preview?: boolean;
 }

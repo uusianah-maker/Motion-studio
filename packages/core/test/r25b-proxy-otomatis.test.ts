@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { isHeavyPixFmt, makeProxy, needsProxy, proxyPath } from '../src/storage/proxy.js';
+import { browserPlayable, isHeavyPixFmt, makeProxy, needsProxy, proxyPath } from '../src/storage/proxy.js';
 import { validateProbe } from '../src/storage/probe.js';
 import { loadRegistry } from '../src/storage/registry.js';
 import { listOutputs, renderProject } from '../src/storage/render.js';
@@ -35,6 +35,13 @@ describe('R25b aturan proxy otomatis', () => {
     expect(needsProxy({ ...light, video_codec: 'hevc' }, 1_200_000)).toBe(true);
     expect(needsProxy({ ...light, video_codec: null, pix_fmt: null, fps: null }, 1_200_000)).toBe(false); // audio only
     expect([isHeavyPixFmt('yuv420p'), isHeavyPixFmt('nv12'), isHeavyPixFmt('yuv420p10le'), isHeavyPixFmt('p010le'), isHeavyPixFmt('yuv444p')]).toEqual([false, false, true, true, true]);
+  });
+  it('R25b(2) browserPlayable: codec AND pixel format (size / fps only make it heavy)', () => {
+    expect(browserPlayable({ video_codec: 'h264', pix_fmt: 'yuv420p' })).toBe(true);
+    expect(browserPlayable({ video_codec: 'h264' })).toBe(true); // old probe without pix_fmt
+    expect(browserPlayable({ video_codec: 'h264', pix_fmt: 'yuv420p10le' })).toBe(false);
+    expect(browserPlayable({ video_codec: 'hevc', pix_fmt: 'yuv420p' })).toBe(false);
+    expect(browserPlayable({ video_codec: null })).toBe(true); // audio only
   });
   it('probe: pix_fmt + fps are optional (old registries stay valid), bad values dropped', () => {
     const base = { duration_ms: 1000, width: 10, height: 10, video_codec: 'h264', audio_codec: null };

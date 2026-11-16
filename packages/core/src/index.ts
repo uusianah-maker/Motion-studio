@@ -40,7 +40,7 @@ export { type Adjust, type ClipExtras, LOOKS, LOOK_IDS, type LookId, TRANSITIONS
 export { FREEZE_MS, MAX_REVERSE_MS, type MotionFields, type Rotation, SPEED_RANGE, type VDenoise, atempoChain, orientFilters, sliceIn, sourceAt, sourceLength } from './storage/clipMotion.js';
 export { EQ_PRESETS, EQ_PRESET_IDS, type Eq, type EqPresetId, audioFxFilters, eqPresetOf, previewAudioFx, validateEq } from './storage/clipAudio.js';
 export { PLAN_MODES, type PendingPlan, pendingPlan } from './storage/rencanaTertunda.js';
-export { PROXY_AUDIO_KBPS, PROXY_SHORT_SIDE, PROXY_VIDEO_KBPS, type ProxyResult, makeProxy, needsProxy, proxyPath, proxyReady } from './storage/proxy.js';
+export { PROXY_AUDIO_KBPS, PROXY_SHORT_SIDE, PROXY_VIDEO_KBPS, type ProxyResult, browserPlayable, makeProxy, needsProxy, proxyPath, proxyReady } from './storage/proxy.js';
 export { type EngineOrigin, type LearningNote, LEARN_FILE, appendLearning, correctionsFrom, engineOrigin, learnFile, markEngineOrigin, readLearning } from './storage/learning.js';
 export { type Author, MAX_COMMENTS, type ReviewComment, type ReviewDecision, type ReviewState, addComment, decideReview, precheckReview, readReview, resolveComment, reviewState } from './storage/review.js';
 export {

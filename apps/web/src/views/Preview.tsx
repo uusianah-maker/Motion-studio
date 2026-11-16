@@ -304,7 +304,23 @@ export function Preview({
   const swapBox = orient.swap ? { width: `${canvasPx.h}px`, height: `${canvasPx.w}px`, left: `${(canvasPx.w - canvasPx.h) / 2}px`, top: `${(canvasPx.h - canvasPx.w) / 2}px`, right: 'auto', bottom: 'auto' } : {};
   const zoomStyle = zoom !== 1 && fx?.effect ? { transform: `scale(${zoom})`, transformOrigin: `${fx.effect.x * 100}% ${fx.effect.y * 100}%` } : {};
   const cropStyle = crop ? ({ objectViewBox: `inset(${crop.y * 100}% ${(1 - crop.x - crop.w) * 100}% ${(1 - crop.y - crop.h) * 100}% ${crop.x * 100}%)` } as Record<string, string>) : {};
-  const unsupported = v && v.preview === false ? `Codec ${v.probe?.video_codec ?? '?'} belum bisa dipratinjau di browser (tetap bisa dirender).` : null;
+  // preview=false only while the light (h264) copy of a video the browser cannot decode is not made yet;
+  // once it is, the server says preview=true and the stream link serves that copy (render keeps the original).
+  const unsupported = v && v.preview === false ? `Video ${v.probe?.video_codec ?? '?'}${v.probe?.pix_fmt ? ` ${v.probe.pix_fmt}` : ''} belum bisa diputar browser — pratinjau ringan sedang dibuat… (render tetap dari file asli)` : null;
+  // R25b(2): the light copy just became ready — drop the cached link to the original and load the copy
+  // (no page reload). Adapted from Hanagaki's hotfix/pratinjau-hevc.
+  const wasUnsupported = useRef(false);
+  useEffect(() => {
+    if (unsupported) {
+      wasUnsupported.current = true;
+      return;
+    }
+    if (!wasUnsupported.current) return;
+    wasUnsupported.current = false;
+    urls.current.clear();
+    if (videoRef.current) videoRef.current.dataset.vid = '';
+    setRetry((r) => r + 1);
+  }, [unsupported]);
   const [st, sr, sb, sl] = safeInsets(ratio);
 
   return (

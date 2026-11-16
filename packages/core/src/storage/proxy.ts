@@ -37,6 +37,11 @@ export type ProxyResult = 'dibuat' | 'sudah_ada' | 'tidak_perlu';
 
 /** R25b: a pixel format the browser cannot decode (10/12-bit, 4:2:2 / 4:4:4 from cameras). */
 export const isHeavyPixFmt = (f: string | null | undefined): boolean => !!f && (/(p(10|12|16)|^p01[026])(le|be)?$/.test(f) || /^yuv4(22|44)/.test(f));
+/**
+ * R25b(2): can a browser decode this video as it is? The codec AND the pixel format (H.264 High 10 /
+ * 4:2:2 from cameras decode nowhere). Size / frame rate only make it heavy, not unplayable.
+ */
+export const browserPlayable = (p: { video_codec: string | null; pix_fmt?: string | null }): boolean => p.video_codec === null || (BROWSER_VIDEO_CODECS.has(p.video_codec) && !isHeavyPixFmt(p.pix_fmt));
 /** Above this the browser struggles (DJI 59,94 fps, 4K): always a light copy. */
 export const PROXY_MAX_FPS = 30.5;
 export const PROXY_MAX_LONG_SIDE = 1920;

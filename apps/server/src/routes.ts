@@ -16,7 +16,7 @@ import {
   createProject,
   diskSpace,
   estimateSpace,
-  BROWSER_VIDEO_CODECS,
+  browserPlayable,
   MEDIA_AREAS,
   checkTools,
   findFont,
@@ -117,7 +117,8 @@ function versionView(v: VersionRecord) {
     trashed_at: v.trash?.trashed_at ?? null,
     /** null = not playable media; undefined probe = not probed yet. */
     probe: v.probe === undefined ? undefined : v.probe,
-    preview: !!v.probe && (v.probe.video_codec === null || BROWSER_VIDEO_CODECS.has(v.probe.video_codec)),
+    // R25b(2): codec AND pixel format (10-bit H.264 decodes nowhere); a ready proxy flips it to true below.
+    preview: !!v.probe && browserPlayable(v.probe),
   };
 }
 

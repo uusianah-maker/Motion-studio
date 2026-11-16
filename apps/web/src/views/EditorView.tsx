@@ -6,6 +6,7 @@ import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, TIMELINE_ZOOM, clampS
 import { ClipThumbs, ClipWave, useMediaVisuals } from './TimelineVisuals';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
+import { waitingForProxy } from '../proxyWait';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
 import { RencanaBanner } from './RencanaBanner';
@@ -166,7 +167,7 @@ export function EditorView({
 
   // A video the browser cannot play (HEVC) shows once its light copy is made in the background:
   // re-read the media list every 4 s while one is still being made, so no page reload is needed.
-  const proxyPending = media.some((m) => m.proxy === 'proses' || ((m.proxy === null || m.proxy === undefined) && m.versions.some((v) => v.version_id === m.current_version_id && v.preview === false && !!v.probe?.video_codec)));
+  const proxyPending = waitingForProxy(media);
   useEffect(() => {
     if (!projectId || !proxyPending) return;
     const t = setInterval(() => {
