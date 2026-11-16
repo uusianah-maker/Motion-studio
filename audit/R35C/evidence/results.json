@@ -1,0 +1,47 @@
+[
+  {
+    "id": "R35C-01 Panel Alat AI punya \"Lacak objek\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35C-02 Pratinjau masuk mode gambar kotak (+ petunjuk)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35C-03 Kotak → job lacak mesin → objek terlacak",
+    "ok": true,
+    "detail": "Lacak objek: teks / blur ikut bergerak\n⌖ Pilih objek di pratinjau\nObjek terlacak (3 titik, 2,0 dtk).\nHarga 99rb\nTeks ikut objek\nBlur ikut objek"
+  },
+  {
+    "id": "R35C-04 Kotak dikirim dalam pecahan SUMBER (dari kotak pratinjau), metode csrt",
+    "ok": true,
+    "detail": "[0.35,0.35,0.25,0.2]"
+  },
+  {
+    "id": "R35C-05 Pratinjau keluar dari mode gambar kotak",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35C-06 \"Teks ikut objek\" → teks dapat keyframe gerak",
+    "ok": true,
+    "detail": "[{\"at_ms\":0,\"x\":-0.1,\"y\":0.1,\"scale\":1,\"opacity\":1,\"ease\":\"linear\"},{\"at_ms\":1000,\"x\":0,\"y\":0.1,\"scale\":1,\"opacity\":1,\"ease\":\"linear\"},{\"at_ms\":2000,\"x\":0.1,\"y\":0.1,\"scale\":1,\"opacity\":1,\"ease\":\"linear\"}]"
+  },
+  {
+    "id": "R35C-07 \"Blur ikut objek\" → area blur di klip video (waktu bertahap)",
+    "ok": true,
+    "detail": "[[0,333],[333,667],[667,1000],[1000,1333],[1333,1667],[1667,2050]]"
+  },
+  {
+    "id": "R35C-08 Undo → blur ikut objek hilang, keyframe teks tetap",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35C-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

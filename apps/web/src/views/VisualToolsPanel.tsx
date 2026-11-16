@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { reframeCanvas, reframeKeyframes, visualEstimate } from '../../../../packages/core/dist/storage/visualCalc.js';
+import { canvasBoxToSource, followBlurRegions, followTextKeyframes, longestPath, type PathPoint } from '../../../../packages/core/dist/storage/follow.js';
+import { effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import type { Api, Clip, EditOp, VisualView } from '../api';
 import { useEngineJob } from './GenerateView';
 
@@ -12,7 +14,7 @@ const menit = (s: number) => (s < 60 ? `±${Math.max(1, Math.round(s))} dtk` : `
  * cancellable) on THIS PC. The result lands in Media; "Pakai di klip ini" swaps the clip's file
  * (one undo), "Kembalikan asli" swaps it back — the AI result is only a suggestion (hybrid).
  */
-export function VisualToolsPanel({ api, projectId, clip, video, durasiS, locked, edit, ratio = '9:16' }: { api: Api; projectId: string; clip: Clip; video: boolean; durasiS: number; locked: boolean; edit: (ops: EditOp[]) => Promise<void> | void; ratio?: string }) {
+export function VisualToolsPanel({ api, projectId, clip, video, durasiS, locked, edit, ratio = '9:16', playhead = 0, srcSize = null, texts = [], requestBox, cancelBox, picking = false }: { api: Api; projectId: string; clip: Clip; video: boolean; durasiS: number; locked: boolean; edit: (ops: EditOp[]) => Promise<void> | void; ratio?: string; playhead?: number; srcSize?: { w: number; h: number } | null; texts?: (Clip & { kind: string })[]; requestBox?: (cb: (b: { x: number; y: number; w: number; h: number }) => void) => void; cancelBox?: () => void; picking?: boolean }) {
   const [kualitas, setKualitas] = useState<'cepat' | 'tinggi'>(video ? 'cepat' : 'tinggi');
   const [mode, setMode] = useState<'cepat' | 'kualitas'>(video ? 'cepat' : 'kualitas');
   const [current, setCurrent] = useState<{ job_id: string; alat: 'hapus_latar' | 'perjelas' } | null>(null);
@@ -55,6 +57,7 @@ export function VisualToolsPanel({ api, projectId, clip, video, durasiS, locked,
         <span className="muted small">di PC ini, tanpa biaya</span>
       </div>
       {video && <ReframeTool api={api} projectId={projectId} clip={clip} ratio={ratio} locked={locked} tooLong={tooLong} edit={edit} />}
+      {video && srcSize && requestBox && <LacakTool api={api} projectId={projectId} clip={clip} ratio={ratio} locked={locked} tooLong={tooLong} edit={edit} playhead={playhead} srcSize={srcSize} texts={texts} requestBox={requestBox} {...(cancelBox ? { cancelBox } : {})} picking={picking} />}
       {tooLong && <div className="notice warn small">Klip video maksimal 15 dtk untuk alat AI. Potong klipnya dulu.</div>}
       <div className="inspGrid" role="group" aria-label="Hapus latar">
         <label>
@@ -189,6 +192,118 @@ function ReframeTool({ api, projectId, clip, ratio, locked, tooLong, edit }: { a
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * R35c Lacak objek (KONTRAK-ENGINE §18.7): draw a box around the object on the preview → the engine
+ * tracks it (CSRT) → a text clip follows it (keyframes) or a blur follows it (blur areas). Both are
+ * ordinary edits: adjust or undo them like any other.
+ */
+function LacakTool(props: { api: Api; projectId: string; clip: Clip; ratio: string; locked: boolean; tooLong: boolean; edit: (ops: EditOp[]) => Promise<void> | void; playhead: number; srcSize: { w: number; h: number }; texts: (Clip & { kind: string })[]; requestBox: (cb: (b: { x: number; y: number; w: number; h: number }) => void) => void; cancelBox?: () => void; picking: boolean }) {
+  const { api, projectId, clip, ratio, locked, tooLong, edit, playhead, srcSize, texts, requestBox, cancelBox, picking } = props;
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [pts, setPts] = useState<PathPoint[] | null>(null);
+  const [textId, setTextId] = useState<string>('');
+  const [msg, setMsg] = useState<string | null>(null);
+  const { job } = useEngineJob(api, jobId ? projectId : null, jobId);
+  const [cw, ch] = reframeCanvas(ratio);
+  const geo = { src: srcSize, canvas: { w: cw, h: ch }, crop: clip.crop, cover: clip.fit === 'isi' };
+  useEffect(() => {
+    if (!jobId || job?.job_id !== jobId) return;
+    if (job.state === 'gagal' || job.state === 'ditolak') {
+      setMsg(`Lacak ${job.state}: ${job.alasan ?? ''}`);
+      setJobId(null);
+    } else if (job.state === 'siap')
+      void api.visualResult(projectId, jobId).then(
+        (r) => {
+          const p = longestPath(r.data);
+          setPts(p.length ? p : null);
+          setMsg(p.length ? null : 'Objek tidak bisa diikuti; coba kotak lain');
+          setJobId(null);
+        },
+        (e) => {
+          setMsg(String((e as Error).message ?? e));
+          setJobId(null);
+        },
+      );
+  }, [job?.state, job?.job_id]);
+  const textKey = texts.map((t) => t.clip_id).join(',');
+  useEffect(() => setTextId((cur) => (cur && texts.some((t) => t.clip_id === cur) ? cur : (texts[0]?.clip_id ?? ''))), [textKey]);
+  const pick = () => {
+    setMsg(null);
+    setPts(null);
+    requestBox((b) => {
+      if (!clip.media) return;
+      const src = canvasBoxToSource(b, geo);
+      const inClip = playhead >= clip.start_ms && playhead < clip.end_ms;
+      const from = ((clip.in_ms ?? 0) + (inClip ? playhead - clip.start_ms : 0)) / 1000;
+      const to = ((clip.in_ms ?? 0) + (clip.end_ms - clip.start_ms)) / 1000;
+      const kotak = [src.x, src.y, src.w, src.h].map((v) => Math.round(v * 1000) / 1000);
+      void api.engineVisual(projectId, clip.media, { alat: 'lacak', kotak, mulai: Math.round(from * 100) / 100, sampai: Math.round(to * 100) / 100, metode: 'csrt' }).then(
+        (j) => setJobId(j.job_id),
+        (e) => setMsg(String((e as Error).message ?? e)),
+      );
+    });
+  };
+  const followText = async () => {
+    const t = texts.find((x) => x.clip_id === textId);
+    if (!t || !pts) return;
+    const st = effectiveStyle(t.kind as 'text' | 'subtitle', t.style);
+    const kfs = followTextKeyframes(pts, { video: clip, text: t, base: { x: st.x, y: st.y }, geo });
+    if (!kfs.length) return setMsg('Jalur objek tidak berada di waktu teks itu');
+    await edit([{ op: 'set_keyframes', clip_id: t.clip_id, keyframes: kfs }]);
+    setMsg(`Teks mengikuti objek (${kfs.length} keyframe).`);
+  };
+  const followBlur = async () => {
+    if (!pts) return;
+    const have = clip.blur ?? [];
+    const free = 8 - have.length;
+    if (free < 1) return setMsg('Area blur klip ini sudah penuh (8)');
+    await edit([{ op: 'set_framing', clip_id: clip.clip_id, blur: [...have, ...followBlurRegions(pts, Math.min(free, 6))] }]);
+    setMsg('Blur mengikuti objek.');
+  };
+  const running = !!jobId;
+  return (
+    <div className="inspGrid" role="group" aria-label="Lacak objek">
+      <div className="inspFull">
+        <span className="muted small">{running ? `Melacak… ${job?.persen ?? 0}%` : picking ? 'Seret kotak di pratinjau…' : 'Lacak objek: teks / blur ikut bergerak'}</span>
+        {picking ? (
+          <button type="button" className="btn small" onClick={() => cancelBox?.()}>
+            Batal pilih
+          </button>
+        ) : (
+          <button type="button" className="btn small" disabled={locked || running || tooLong} onClick={pick}>
+            ⌖ Pilih objek di pratinjau
+          </button>
+        )}
+      </div>
+      {pts && (
+        <div className="inspFull" role="status" aria-label="Hasil lacak">
+          <span className="small">
+            Objek terlacak ({pts.length} titik, {(pts[pts.length - 1]!.t - pts[0]!.t).toFixed(1).replace('.', ',')} dtk).
+          </span>
+          {texts.length > 0 && (
+            <span className="row" style={{ gap: 6 }}>
+              <select aria-label="Teks yang mengikuti" value={textId} onChange={(e) => setTextId(e.target.value)}>
+                {texts.map((t) => (
+                  <option key={t.clip_id} value={t.clip_id}>
+                    {(t.text ?? '').slice(0, 24) || t.clip_id}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="btn small" disabled={locked} onClick={() => void followText()}>
+                Teks ikut objek
+              </button>
+            </span>
+          )}
+          <button type="button" className="btn small" disabled={locked} onClick={() => void followBlur()}>
+            Blur ikut objek
+          </button>
+        </div>
+      )}
+      {msg && <div className="notice info small">{msg}</div>}
     </div>
   );
 }

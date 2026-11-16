@@ -33,6 +33,7 @@ export function Preview({
   busy,
   selectedClipId = null,
   onSelectClip,
+  boxPick = null,
   styleDraft = null,
   onMoveText,
   brand = null,
@@ -52,6 +53,8 @@ export function Preview({
   /** X02: the selected clip (its text can be dragged), live style draft from the inspector. */
   selectedClipId?: string | null;
   onSelectClip?: (id: string) => void;
+  /** R35c: draw a box on the picture (canvas fractions) — Lacak objek. */
+  boxPick?: ((b: { x: number; y: number; w: number; h: number }) => void) | null;
   styleDraft?: { clip_id: string; style: Partial<TextStyle> } | null;
   onMoveText?: (id: string, x: number, y: number) => void;
   /** X06: Brand Kit (logo URL) and the per-project logo switch. */
@@ -457,6 +460,7 @@ export function Preview({
               }}
             />
           )}
+          {boxPick && <BoxPicker onBox={boxPick} />}
           {safe && <div className="safeArea" style={{ top: `${st}%`, right: `${sr}%`, bottom: `${sb}%`, left: `${sl}%` }} aria-hidden="true" />}
           <span className="canvasTag">● PREVIEW</span>
         </div>
@@ -476,5 +480,36 @@ export function Preview({
         </button>
       </div>
     </>
+  );
+}
+
+/** R35c: drag a box over the picture; released → the box in canvas fractions. */
+function BoxPicker({ onBox }: { onBox: (b: { x: number; y: number; w: number; h: number }) => void }) {
+  const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const rel = (e: React.PointerEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return { x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) };
+  };
+  const b = box ? { x: Math.min(box.x0, box.x1), y: Math.min(box.y0, box.y1), w: Math.abs(box.x1 - box.x0), h: Math.abs(box.y1 - box.y0) } : null;
+  return (
+    <div
+      className="boxPicker"
+      role="application"
+      aria-label="Gambar kotak objek"
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+        const p = rel(e);
+        setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+      }}
+      onPointerMove={(e) => box && setBox({ ...box, x1: rel(e).x, y1: rel(e).y })}
+      onPointerUp={() => {
+        if (b && b.w > 0.02 && b.h > 0.02) onBox(b);
+        setBox(null);
+      }}
+    >
+      <span className="boxPickerHint">Seret kotak di sekitar objek yang mau dilacak</span>
+      {b && <div className="boxPickerRect" style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` }} />}
+    </div>
   );
 }

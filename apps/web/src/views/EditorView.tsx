@@ -144,6 +144,8 @@ export function EditorView({
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number; pointerId: number } | null>(null);
   const boxDone = useRef(false);
   const dragMoved = useRef(false);
+  /** R35c: the preview is waiting for a box (Lacak objek). */
+  const [boxPick, setBoxPick] = useState<((b: { x: number; y: number; w: number; h: number }) => void) | null>(null);
   /** R33: right-click menu on a clip (Hapus / Duplikat / Split di playhead). */
   const [menu, setMenu] = useState<{ x: number; y: number; clip_id: string } | null>(null);
   /** Owner 16 Nov: right-click an empty gap on a lane → "Hapus jarak" (pull the clips after it left). */
@@ -723,6 +725,7 @@ export function EditorView({
             busy={locked}
             onRatio={(ratio: CanvasRatio) => void edit([{ op: 'set_canvas', ratio }])}
             selectedClipId={selected}
+            boxPick={boxPick}
             onSelectClip={(id) => setSelected(id)}
             styleDraft={styleDraft}
             brand={brand}
@@ -768,6 +771,15 @@ export function EditorView({
               locked={locked}
               edit={(ops) => edit(ops)}
               ratio={project.timeline.canvas?.ratio ?? '9:16'}
+              playhead={playhead}
+              srcSize={(() => {
+                const p = versionOf(sel.media.version_id)?.probe;
+                return p?.width && p.height ? { w: p.width, h: p.height } : null;
+              })()}
+              texts={allClips.filter((c) => (c.kind === 'text' || c.kind === 'subtitle') && c.start_ms < sel.end_ms && c.end_ms > sel.start_ms)}
+              requestBox={(cb) => setBoxPick(() => (b: { x: number; y: number; w: number; h: number }) => (setBoxPick(null), cb(b)))}
+              cancelBox={() => setBoxPick(null)}
+              picking={!!boxPick}
             />
           )}
           {group.length > 1 && project && <MultiPanel clips={group} busy={busy} readOnly={locked} onEdit={(ops) => void edit(ops).then(() => ops[0]?.op === 'delete_clips' && setPicked([]))} onClear={() => setPicked([])} />}
