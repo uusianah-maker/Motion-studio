@@ -181,6 +181,7 @@ class PerintahVisual(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != "MOTION_ENGINE_DATA"}
         if env_data:
             env["MOTION_ENGINE_DATA"] = env_data
+            env["MOTION_TOOLS_DIR"] = str(engine.TOOLS)  # data uji di folder sementara; alat tetap yang terpasang
         r = subprocess.run([sys.executable, str(engine_py), "visual", str(d)], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", env=env)
         return r, d
@@ -214,7 +215,7 @@ class PerintahVisual(unittest.TestCase):
         job = {"visual": {"alat": "reframe", "jalur": str(d / "out" / "jalur.json"), "kanvas": [1080, 1920], "fit": "isi"}}
         (d / "job.json").write_text(json.dumps(job), encoding="utf-8")
         import os
-        env = {**os.environ, "MOTION_ENGINE_DATA": str(data)}
+        env = {**os.environ, "MOTION_ENGINE_DATA": str(data), "MOTION_TOOLS_DIR": str(engine.TOOLS)}
         r = subprocess.run([sys.executable, str(rilis / "pipeline" / "engine.py"), "visual", str(d)], capture_output=True,
                            text=True, encoding="utf-8", errors="replace", env=env)
         self.assertEqual(r.returncode, 0, r.stderr[-800:])

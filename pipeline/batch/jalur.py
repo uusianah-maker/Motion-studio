@@ -1,7 +1,8 @@
 """Jalur bersama Batch Remix (tanpa dependensi): root repo, Python tiap venv, nama aman.
 
 Windows (PC kantor) dan Linux (VPS jalur B) sama-sama didukung:
-  MOTION_BATCH_PY    path Python yang punya Demucs + OpenCV (default: venv demucs di D:\\VIBECODING\\tools)
+  MOTION_TOOLS_DIR   folder alat bersama (venv, model, exe); bawaan <DATA>/../tools
+  MOTION_BATCH_PY    path Python yang punya Demucs + OpenCV (default: <TOOLS>/demucs-venv)
   MOTION_BATCH_VENV  folder venv itu (dipakai kalau MOTION_BATCH_PY kosong)
 Python utama (Whisper, transcribe.py) = <DATA>/.venv.
 
@@ -17,6 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 DATA = Path(os.environ["MOTION_ENGINE_DATA"]).resolve() if os.environ.get("MOTION_ENGINE_DATA") else ROOT
 KONTEN = DATA / "konten"
+# Alat bersama (demucs-venv, visual-venv, models, realesrgan): satu env, tanpa path absolut di kode (repo publik).
+TOOLS = Path(os.environ["MOTION_TOOLS_DIR"]).resolve() if os.environ.get("MOTION_TOOLS_DIR") else DATA.parent / "tools"
 
 
 def venv_py(venv: Path) -> Path:
@@ -30,7 +33,7 @@ def venv_py(venv: Path) -> Path:
 def batch_py() -> Path:
     if os.environ.get("MOTION_BATCH_PY"):
         return Path(os.environ["MOTION_BATCH_PY"])
-    return venv_py(Path(os.environ.get("MOTION_BATCH_VENV", r"D:\VIBECODING\tools\demucs-venv")))
+    return venv_py(Path(os.environ.get("MOTION_BATCH_VENV") or TOOLS / "demucs-venv"))
 
 
 MAIN_PY = venv_py(DATA / ".venv")

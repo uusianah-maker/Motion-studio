@@ -19,7 +19,11 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-FOLDER_MODEL = Path(os.environ.get("MOTION_MODELS_DIR", r"D:\VIBECODING\tools\models"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "batch"))
+from jalur import TOOLS, venv_py  # noqa: E402  (MOTION_TOOLS_DIR, bawaan <DATA>/../tools)
+
+FOLDER_MODEL = Path(os.environ.get("MOTION_MODELS_DIR") or TOOLS / "models")
+VISUAL_PY = Path(os.environ.get("MOTION_VISUAL_PY") or venv_py(TOOLS / "visual-venv"))
 MAKS_THREAD = 4
 MAKS_PEKERJA = 2
 RAM_MIN_GB = 3.0

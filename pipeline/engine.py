@@ -39,7 +39,11 @@ DATA = Path(os.environ["MOTION_ENGINE_DATA"]).resolve() if os.environ.get("MOTIO
 PY = sys.executable
 JOB_SCHEMA = "engine-job/1"
 # R24: Python visual-venv (MediaPipe/OpenCV-contrib/onnxruntime) terpisah dari .venv & demucs-venv.
-VISUAL_PY = os.environ.get("MOTION_VISUAL_PY") or str(Path("D:/VIBECODING/tools/visual-venv/Scripts/python.exe"))
+# Alat bersama: MOTION_TOOLS_DIR, bawaan <DATA>/../tools (tanpa path absolut di kode; repo publik).
+TOOLS = Path(os.environ["MOTION_TOOLS_DIR"]).resolve() if os.environ.get("MOTION_TOOLS_DIR") else DATA.parent / "tools"
+VISUAL_PY = os.environ.get("MOTION_VISUAL_PY") or str(next(
+    (p for p in (TOOLS / "visual-venv" / "Scripts" / "python.exe", TOOLS / "visual-venv" / "bin" / "python") if p.exists()),
+    TOOLS / "visual-venv" / "Scripts" / "python.exe"))
 
 
 class Ditolak(Exception):

@@ -448,9 +448,11 @@ Sumber angka: laporan Hanagaki (85 video Aysilla, `BELAJAR/hanagaki/LAPORAN-HANA
 - Progres JSON-lines Batch / Pisah / Beat Spot kini ditulis UTF-8 (di Windows sebelumnya cp1252, karakter seperti "·" rusak di app).
 
 ## 18. Visual Tools AI lokal (R24, v0.4.1, 16 Nov 2026, yuki — owner: "Ya, bagikan") — DRAF
-Semua model jalan di PC sendiri, tanpa API berbayar. Hasil AI selalu **usulan** (`"usulan": true`): app menampilkannya sebagai keyframe/jalur yang bisa diubah, dimatikan, atau dihapus manual (hybrid). Job berat jalan dengan prioritas Idle dan maksimal 2 pekerja. Kode ada di `pipeline/visual/`. Python vision = venv terpisah `D:\VIBECODING\tools\visual-venv` (override `MOTION_VISUAL_PY`) supaya OpenCV demucs-venv tidak bentrok. Status: format 18.1–18.2 sudah ada dan dites; 18.3–18.6 menunggu OK instalasi dari venus.
+Semua model jalan di PC sendiri, tanpa API berbayar. Hasil AI selalu **usulan** (`"usulan": true`): app menampilkannya sebagai keyframe/jalur yang bisa diubah, dimatikan, atau dihapus manual (hybrid). Job berat jalan dengan prioritas Idle dan maksimal 2 pekerja. Kode ada di `pipeline/visual/`. Python vision = venv terpisah `<TOOLS>\visual-venv` (override `MOTION_VISUAL_PY`) supaya OpenCV demucs-venv tidak bentrok. Status: format 18.1–18.2 sudah ada dan dites; 18.3–18.6 menunggu OK instalasi dari venus.
 
 ### 18.0 Aturan wajib: lisensi, cache, beban
+> `<TOOLS>` = folder alat bersama: env `MOTION_TOOLS_DIR`, bawaannya `<DATA>/../tools` (di PC kantor `D:` …`\tools`). Isinya `visual-venv`, `demucs-venv`, `models`, dan `realesrgan`. Kode tidak berisi path absolut karena repo bersifat publik.
+
 Sumber: cek sukma 16 Nov, Motion-studio `docs/R23-R24-LISENSI-KAPASITAS-2026-11-16.md`. Aturan ini ditegakkan di `pipeline/visual/beban.py` dan dites di `AturanBeban`.
 
 1. **Model hapus latar** selalu disebut eksplisit dan harus ada di daftar putih:
@@ -459,7 +461,7 @@ Sumber: cek sukma 16 Nov, Motion-studio `docs/R23-R24-LISENSI-KAPASITAS-2026-11-
    
    Model lain ditolak dengan kode 2. Bawaan rembg (bria-rmbg) non-komersial, jadi **dilarang**. Backend cloud (withoutbg, atlascloud) juga tidak dipakai.
 2. **Cache model di D:**, tidak di C:
-   - `U2NET_HOME` = `D:\VIBECODING\tools\models`
+   - `U2NET_HOME` = `<TOOLS>\models`
    - `HF_HOME` = `…\models\hf`
    - Model MediaPipe dipanggil dengan path file eksplisit dari folder yang sama.
    - Folder bisa diganti lewat `MOTION_MODELS_DIR`.
@@ -535,10 +537,10 @@ Semua perintah itu menulis progres JSON-lines dalam UTF-8.
 - Prioritas proses Idle. Skrip `tts_windows.ps1` diambil dari folder kode (rilis). Tidak ada yang ditulis ke folder data. App yang memindahkan WAV ke proyek sebagai usulan di track audio.
 
 ### 18.5 Venv & model terpasang (16 Nov 2026, OK venus)
-- **visual-venv**: `D:\VIBECODING\tools\visual-venv`, Python 3.12.5, ukuran 730 MB.
+- **visual-venv**: `<TOOLS>\visual-venv`, Python 3.12.5, ukuran 730 MB.
   - Versi dikunci di `pipeline/visual/requirements-visual.txt`: mediapipe 1.2.3, opencv-contrib-python 5.0.0.93 (dengan CSRT/KCF), rembg 2.0.87, onnxruntime 1.32.0 CPU. Tanpa torch.
   - `.venv` dan `demucs-venv` tidak berubah: `pip freeze` sebelum dan sesudah instalasi identik.
-- **Model**, di `D:\VIBECODING\tools\models`:
+- **Model**, di `<TOOLS>\models`:
 
 | File | Sumber | Lisensi | SHA256 |
 |---|---|---|---|
@@ -666,7 +668,7 @@ Perintah: `python pipeline/kamus_belajar.py <.motionstudio/brands/<brand_id>/bel
 
 ### 18.9 Perjelas / upscale (R24e) — sudah jalan
 Perintah: `<visual-venv>\Scripts\python pipeline/visual/perjelas.py <masuk> <folder_keluar> [--mode cepat|kualitas] [--skala 2|3|4] [--sisi 1920]`.
-- **Alat**: `D:\VIBECODING\tools\realesrgan\realesrgan-ncnn-vulkan.exe` (override `MOTION_REALESRGAN`), berjalan di GPU Vulkan.
+- **Alat**: `<TOOLS>\realesrgan\realesrgan-ncnn-vulkan.exe` (override `MOTION_REALESRGAN`), berjalan di GPU Vulkan.
   - Lisensi: exe MIT, model BSD-3, ncnn BSD-3. Teks lisensinya tersimpan di `LICENSES\`.
   - `vcomp140d.dll` tidak didistribusikan.
 - **Mode**:
@@ -685,7 +687,7 @@ Perintah: `<visual-venv>\Scripts\python pipeline/visual/perjelas.py <masuk> <fol
 - **Bug yang sudah diperbaiki saat uji**: stderr exe sempat dialirkan ke pipe yang tidak dibaca, sehingga proses tertahan dan butuh ±50 dtk/frame. Sekarang stderr ditulis ke file log.
 
 ### 18.10 Perintah `engine visual <job_dir>` — satu pintu (OK venus 16 Nov)
-Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`, bawaannya `D:/VIBECODING/tools/visual-venv/Scripts/python.exe`. Polanya sama dengan `tts`, dan juga jalan dari folder rilis (R20).
+Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`, bawaannya `<TOOLS>/visual-venv/Scripts/python.exe`. Polanya sama dengan `tts`, dan juga jalan dari folder rilis (R20).
 ```json
 {"schema":"engine-job/1","visual":{"alat":"deteksi|reframe|lacak|hapus_latar|perjelas","masuk":"konten/…/a.mp4", …}}
 ```
