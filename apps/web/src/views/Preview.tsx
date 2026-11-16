@@ -248,7 +248,7 @@ export function Preview({
   const blurs = srcSize ? blurAt(visual?.blur, srcNow) : [];
   // Malam 15 Nov: colour look (+ Brand Kit default), fit and the incoming transition of the picture.
   const lk = visual ? effectiveLook(visual, brand?.kit.filter_bawaan ?? null) : null;
-  const css = lk ? lookCss(lk.adjust, lk.mono) : null;
+  const css = lk ? lookCss(lk.adjust, lk.mono, lk.tone) : null;
   const fit = visual?.fit;
   const allVisual = [...clipsOf('video'), ...clipsOf('broll')];
   const halfMs = (c: Clip, prev: Clip | null) => (c.transition ? Math.min(c.transition.ms / 2, c.end_ms - c.start_ms, prev ? prev.end_ms - prev.start_ms : 0) : 0);
@@ -360,6 +360,7 @@ export function Preview({
           />
           {css && css.warmth !== 0 && visual?.media && <div className="lookWash" aria-hidden="true" data-warmth={css.warmth.toFixed(2)} style={{ background: css.warmth > 0 ? '#ff9a3c' : '#3c8cff', opacity: Math.abs(css.warmth) * 0.28 }} />}
           {css && css.vignette > 0 && visual?.media && <div className="lookVignette" aria-hidden="true" style={{ background: `radial-gradient(ellipse at center, transparent ${Math.round(70 - css.vignette * 50)}%, rgba(0,0,0,${(css.vignette * 0.9).toFixed(2)}) 100%)` }} />}
+          {css && css.grain > 0 && visual?.media && <div className="lookGrain" aria-hidden="true" data-grain={css.grain} style={{ opacity: Math.min(0.35, css.grain / 40) }} />}
           {trans?.flash !== undefined && trans.flash > 0 && <div className="transFlash" aria-hidden="true" style={{ opacity: trans.flash }} />}
           {blurs.length > 0 && srcSize && (
             <div className="blurLayer" style={zoomStyle} aria-hidden="true">

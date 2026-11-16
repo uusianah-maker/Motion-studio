@@ -35,7 +35,11 @@ export const ADJUST_KEYS = ['terang', 'kontras', 'saturasi', 'suhu', 'tajam', 'v
 export const ADJUST_RANGE: Record<keyof Adjust, readonly [number, number]> = { terang: [-100, 100], kontras: [-100, 100], saturasi: [-100, 100], suhu: [-100, 100], tajam: [0, 100], vignette: [0, 100] };
 export const NO_ADJUST: Adjust = { terang: 0, kontras: 0, saturasi: 0, suhu: 0, tajam: 0, vignette: 0 };
 
-/** Own looks (own names, own numbers): an Adjust preset, plus black-and-white for `hitamputih`. */
+/**
+ * Own looks (own names, own numbers): an Adjust preset, plus black-and-white for `hitamputih`.
+ * R23c: a look may also tone the picture towards sepia (0..1, the CSS sepia matrix — the preview
+ * uses CSS `sepia()`, the render the same matrix) and add light film grain (0..20).
+ */
 export const LOOKS = {
   hangat: { label: 'Hangat', adjust: { suhu: 35, saturasi: 10, kontras: 5 } },
   sejuk: { label: 'Sejuk', adjust: { suhu: -35, saturasi: -5 } },
@@ -45,7 +49,18 @@ export const LOOKS = {
   hitamputih: { label: 'Hitam Putih', adjust: { kontras: 15 }, mono: true },
   senja: { label: 'Senja Keemasan', adjust: { suhu: 50, saturasi: 20, kontras: 10, vignette: 25 } },
   adem: { label: 'Adem Lembut', adjust: { suhu: -20, saturasi: -15, terang: 5, kontras: -10 } },
-} as const satisfies Record<string, { label: string; adjust: Partial<Adjust>; mono?: boolean }>;
+  // R23c (owner 16 Nov): four more, own numbers.
+  vintage: { label: 'Vintage', adjust: { terang: 4, kontras: -12, saturasi: -20, suhu: 15, vignette: 35 }, sepia: 0.35, grain: 10 },
+  produk: { label: 'Clean Product', adjust: { terang: 6, kontras: 12, saturasi: 8, suhu: -5, tajam: 30 } },
+  kulit: { label: 'Natural Skin Tone', adjust: { terang: 4, kontras: -5, saturasi: -8, suhu: 12 } },
+  sinematik: { label: 'Cinematic', adjust: { kontras: 20, saturasi: -15, suhu: -10, vignette: 40 }, grain: 6 },
+} as const satisfies Record<string, { label: string; adjust: Partial<Adjust>; mono?: boolean; sepia?: number; grain?: number }>;
+/** R23c: tone + grain on top of the adjust numbers. */
+export interface LookTone {
+  sepia: number;
+  grain: number;
+}
+export const NO_TONE: LookTone = { sepia: 0, grain: 0 };
 export type LookId = keyof typeof LOOKS;
 export const LOOK_IDS = Object.keys(LOOKS) as LookId[];
 
@@ -104,7 +119,7 @@ export function validateTransition(raw: unknown, where = 'transition'): Transiti
 // ------------------------------------------------------------------ picture (shared math)
 
 /** What the picture of a clip finally gets: the look (or the brand's default look) + the clip's own adjust. */
-export function effectiveLook(clip: { look?: LookId | 'none'; adjust?: Adjust }, brandDefault: LookId | null = null): { adjust: Adjust; mono: boolean } {
+export function effectiveLook(clip: { look?: LookId | 'none'; adjust?: Adjust }, brandDefault: LookId | null = null): { adjust: Adjust; mono: boolean; tone: LookTone } {
   const id = clip.look === 'none' ? null : (clip.look ?? brandDefault);
   const base = id ? LOOKS[id] : null;
   const a = { ...NO_ADJUST };
@@ -112,7 +127,8 @@ export function effectiveLook(clip: { look?: LookId | 'none'; adjust?: Adjust },
     const v = ((base?.adjust as Partial<Adjust> | undefined)?.[k] ?? 0) + (clip.adjust?.[k] ?? 0);
     a[k] = Math.max(ADJUST_RANGE[k][0], Math.min(ADJUST_RANGE[k][1], v));
   }
-  return { adjust: a, mono: !!(base && 'mono' in base && base.mono) };
+  const b = base as { sepia?: number; grain?: number; mono?: boolean } | null;
+  return { adjust: a, mono: !!b?.mono, tone: { sepia: b?.sepia ?? 0, grain: b?.grain ?? 0 } };
 }
 
 /** Numbers both sides use: eq brightness/contrast/saturation, colour temperature (K), sharpen amount, vignette angle. */
@@ -128,29 +144,46 @@ export function adjustNumbers(a: Adjust, mono = false) {
 }
 
 /** FFmpeg filters (comma chain, may be empty) for one clip's picture. Applied before fitting. */
-export function lookFilters(a: Adjust, mono = false): string {
-  if (isNeutral(a) && !mono) return '';
+export function lookFilters(a: Adjust, mono = false, tone: LookTone = NO_TONE): string {
+  if (isNeutral(a) && !mono && !tone.sepia && !tone.grain) return '';
   const n = adjustNumbers(a, mono);
   const f: string[] = [];
   if (n.brightness !== 0 || n.contrast !== 1 || n.saturation !== 1) f.push(`eq=brightness=${n.brightness.toFixed(3)}:contrast=${n.contrast.toFixed(3)}:saturation=${n.saturation.toFixed(3)}`);
+  if (tone.sepia > 0) f.push(sepiaMixer(tone.sepia));
   if (n.kelvin !== 6500 && !mono) f.push(`colortemperature=temperature=${n.kelvin}:mix=1:pl=1`);
   if (n.sharpen > 0) f.push(`unsharp=5:5:${n.sharpen.toFixed(2)}:5:5:0`);
   if (n.vignette > 0) f.push(`vignette=angle=${n.vignette.toFixed(3)}`);
+  // Light film grain that changes every frame (the preview shows a noise overlay of the same strength).
+  if (tone.grain > 0) f.push(`noise=alls=${Math.round(tone.grain)}:allf=t`);
   return f.join(',');
+}
+
+/** The CSS `sepia(amount)` colour matrix as an FFmpeg colorchannelmixer (identical maths). */
+export function sepiaMixer(amount: number): string {
+  const k = Math.max(0, Math.min(1, amount));
+  const S = [
+    [0.393, 0.769, 0.189],
+    [0.349, 0.686, 0.168],
+    [0.272, 0.534, 0.131],
+  ];
+  const m = S.map((row, r) => row.map((v, c) => (1 - k) * (r === c ? 1 : 0) + k * v));
+  const name = ['r', 'g', 'b'];
+  return `colorchannelmixer=${m.flatMap((row, r) => row.map((v, c) => `${name[r]}${name[c]}=${v.toFixed(4)}`)).join(':')}`;
 }
 
 /**
  * Same look as CSS for the preview (approximation, as allowed: sharpen is not shown). Temperature is
  * a soft-light colour wash, vignette a radial gradient — both drawn as overlays by the preview.
  */
-export function lookCss(a: Adjust, mono = false): { filter: string; warmth: number; vignette: number } {
+export function lookCss(a: Adjust, mono = false, tone: LookTone = NO_TONE): { filter: string; warmth: number; vignette: number; grain: number } {
   const n = adjustNumbers(a, mono);
   const parts: string[] = [];
   if (n.brightness !== 0) parts.push(`brightness(${(1 + n.brightness * 1.4).toFixed(3)})`);
   if (n.contrast !== 1) parts.push(`contrast(${n.contrast.toFixed(3)})`);
   if (mono) parts.push('grayscale(1)');
   else if (n.saturation !== 1) parts.push(`saturate(${n.saturation.toFixed(3)})`);
-  return { filter: parts.join(' '), warmth: mono ? 0 : a.suhu / 100, vignette: n.vignette };
+  if (tone.sepia > 0) parts.push(`sepia(${tone.sepia.toFixed(3)})`);
+  return { filter: parts.join(' '), warmth: mono ? 0 : a.suhu / 100, vignette: n.vignette, grain: tone.grain };
 }
 
 /** Canvas fit filters: input = the (framed) source picture, output = exactly W×H. */

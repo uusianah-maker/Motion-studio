@@ -1,0 +1,37 @@
+[
+  {
+    "id": "R23C-01 Filter warna: + Vintage, Clean Product, Natural Skin Tone, Cinematic; Pastel & Adem Lembut tetap",
+    "ok": true,
+    "detail": "Ikuti brand (tanpa filter) | Tanpa filter | Hangat | Sejuk | Cerah Natural | Pastel | Kontras Tegas | Hitam Putih | Senja Keemasan | Adem Lembut | Vintage | Clean Product | Natural Skin Tone | Cinematic"
+  },
+  {
+    "id": "R23C-02 Pilih Vintage → tersimpan di klip",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23C-03 Pratinjau Vintage: sepia di filter CSS + lapisan grain + vignette",
+    "ok": true,
+    "detail": "brightness(1.011) contrast(0.94) saturate(0.8) sepia(0.35)"
+  },
+  {
+    "id": "R23C-04 Clean Product: tanpa grain/sepia (gambar bersih)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23C-05 Undo → kembali ke Vintage",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23C-06 Brand Kit \"Filter bawaan video\" juga punya 4 look baru",
+    "ok": true,
+    "detail": "Tanpa filter | Hangat | Sejuk | Cerah Natural | Pastel | Kontras Tegas | Hitam Putih | Senja Keemasan | Adem Lembut | Vintage | Clean Product | Natural Skin Tone | Cinematic"
+  },
+  {
+    "id": "R23C-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

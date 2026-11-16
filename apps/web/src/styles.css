@@ -466,3 +466,7 @@ kbd { font-size: 10px; border: 1px solid #ffffff44; border-radius: 4px; padding:
 
 /* R25: project list label for an engine plan that is ready but not applied. */
 .project small.pendingPlan { color: var(--warn, #f5b14c); }
+
+/* R23c: light film grain of a look (render: FFmpeg noise of the same strength). */
+.lookGrain { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: overlay; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"); animation: lookGrain 0.4s steps(3) infinite; }
+@keyframes lookGrain { 0% { background-position: 0 0; } 33% { background-position: -37px 21px; } 66% { background-position: 19px -43px; } 100% { background-position: 0 0; } }

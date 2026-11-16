@@ -321,7 +321,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const c = seg.clip!;
       // Malam 15 Nov: colour look (+ the brand's default look) on the source picture, then the fit.
       const lk = effectiveLook(c, brand.look ?? null);
-      const look = lookFilters(lk.adjust, lk.mono);
+      const look = lookFilters(lk.adjust, lk.mono, lk.tone);
       // R23a: direction (after crop/blur, which are in source coordinates), reverse, speed, still, picture noise.
       const motion = [...orientFilters(c), ...(c.reverse ? ['reverse', 'setpts=PTS-STARTPTS'] : []), ...(sp !== 1 ? [`setpts=PTS/${s6(sp)}`] : [])].map((f) => `${f},`).join('');
       const vden = vdenoiseFilter(c.vdenoise);
