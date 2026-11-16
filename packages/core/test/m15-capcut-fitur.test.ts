@@ -146,7 +146,7 @@ describe('shared math: preview = render', () => {
     expect(duckGainAt(r, 0.2, 900)).toBeCloseTo(0.6); // halfway down the 200 ms ramp
     expect(duckGainAt(r, 0.2, 4000)).toBe(1);
     // Looks: own presets; the brand default only when the clip has none; 'none' turns it off.
-    expect(Object.keys(LOOKS)).toHaveLength(12); // R23c: + vintage, produk, kulit, sinematik
+    expect(Object.keys(LOOKS)).toHaveLength(13); // R23c: + vintage, produk, kulit, sinematik; R35: + soft
     expect(effectiveLook({}, 'hangat').adjust.suhu).toBe(35);
     expect(effectiveLook({ look: 'none' }, 'hangat').adjust.suhu).toBe(0);
     expect(effectiveLook({ look: 'sejuk', adjust: { ...validateAdjust({ suhu: -80 }) } }).adjust.suhu).toBe(-100); // clamped

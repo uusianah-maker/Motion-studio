@@ -37,6 +37,8 @@ import { audit } from './audit.js';
 import { markEngineOrigin, readLearning } from './learning.js';
 import { kamusBelajar } from './kamusBelajar.js';
 import { type TtsSettings, validateTtsJob } from './tts.js';
+import { validateVisualJob } from './visual.js';
+import { VISUAL_RESULT, type VisualTool } from './visualCalc.js';
 
 export const ENGINE_DIR = '06_ENGINE';
 /** `.motionstudio/engine-ids/<job_id>`: one empty-ish file per job id ever handed out (R4). */
@@ -77,7 +79,7 @@ export function engineConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Engin
   };
 }
 
-export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts';
+export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual';
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
 
 export interface EngineStatus {
@@ -111,7 +113,7 @@ export interface EngineBrief {
 
 export interface EngineJobInput {
   project_id: string;
-  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot' | 'tts';
+  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual';
   /** `$sumber` (one video) or `$sumber:<id>` (several). */
   sources: { kunci: string; ref: MediaRef }[];
   preset: string;
@@ -136,6 +138,8 @@ export interface EngineJobInput {
   beatspot?: BeatspotSettings;
   /** R34 Suara dari Teks (contract §21): written to job.json as the `tts` object. */
   tts?: TtsSettings;
+  /** R35 Visual Tools (contract §18.10): `{alat, …}`; job.json gets `masuk` = the source path. */
+  visual?: { alat: VisualTool } & Record<string, unknown>;
 }
 
 export const AUDIO_PILIHAN = ['vo', 'musik', 'keduanya'] as const;
@@ -185,6 +189,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (o.mode === 'transfer') return validateTransferJob(o);
   if (o.mode === 'beatspot') return validateBeatspotJob(o);
   if (o.mode === 'tts') return validateTtsJob(o);
+  if (o.mode === 'visual') return validateVisualJob(o);
   const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
@@ -473,6 +478,20 @@ async function addLearnedKamus(ws: Workspace, kit: BrandKit, brandExport: Record
   }
 }
 
+/**
+ * R35: job.json `visual` — the source path as `masuk`; for reframe the detection job's path file
+ * (same project, finished) as `jalur`.
+ */
+async function visualJob(ws: Workspace, input: EngineJobInput, masuk: string | undefined): Promise<Record<string, unknown>> {
+  const { jalur_job, ...rest } = input.visual!;
+  if (rest.alat !== 'reframe') return { ...rest, masuk };
+  const src = await readEngineStatus(ws, input.project_id, String(jalur_job));
+  if (src.mode !== 'visual' || src.state !== 'siap') bad('Deteksi wajah/subjek untuk klip ini belum selesai');
+  const file = path.join(jobAbs(ws, input.project_id, String(jalur_job)), 'out', 'jalur.json');
+  if (!(await fsp.stat(file).catch(() => null))) bad('Hasil deteksi tidak ditemukan');
+  return { ...rest, jalur: file.replace(/\\/g, '/'), masuk };
+}
+
 export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opts: { now?: number; actor?: 'user' } = {}): Promise<EngineStatus> {
   const project = await readProject(ws, input.project_id);
   const kit = await readBrandFor(ws, project.brand_id);
@@ -554,6 +573,7 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ...(input.audio_pilihan ? { audio_pilihan: input.audio_pilihan } : {}),
       // "auto" / empty BPM are left out, so a chosen preset's beat defaults can apply (§17.5).
       ...(input.tts ? { tts: input.tts } : {}),
+      ...(input.visual ? { visual: await visualJob(ws, input, sumber[0]?.path) } : {}),
       ...(input.beatspot ? { beatspot: Object.fromEntries(Object.entries(input.beatspot).filter(([k, v]) => !((k === 'ketukan_per_potong' && v === 'auto') || (k === 'bpm' && v === null)))) } : {}),
     };
     await writeJsonAtomic(path.join(jdir, 'job.json'), job);
@@ -710,13 +730,15 @@ export async function runEngineJob(
   await fsp.writeFile(path.join(jdir, 'engine.log'), log, 'utf8').catch(() => undefined);
   // The copies in masuk/ were for the engine only (it keeps its own in konten/1-upload).
   if (mode === 'pisah') await removeMasuk(jdir);
-  const resultFile = mode === 'pisah' ? 'pisah.json' : mode === 'tts' ? 'tts.json' : 'rencana.json';
+  // R35: a visual job's result depends on its tool.
+  const alat = mode === 'visual' ? ((await readJson<{ visual?: { alat?: VisualTool } }>(path.join(jdir, 'job.json')))?.visual?.alat ?? 'deteksi') : null;
+  const resultFile = mode === 'pisah' ? 'pisah.json' : mode === 'tts' ? 'tts.json' : mode === 'visual' ? 'visual.json' : 'rencana.json';
   const rencana = await readJson<{ status?: string; alasan?: string }>(path.join(jdir, 'out', resultFile)).catch(() => null);
   if (code === 0 && rencana?.status === 'ditolak') code = 2; // contract §5.1: the plan itself says refused
   // The log tail can hold local paths (D:\...): never shown to the browser as is.
   const tail = scrubPaths(log.trim().split('\n').slice(-3).join(' · ')).slice(0, 300);
   if (code === 0) {
-    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : mode === 'tts' ? 'tts.json' : 'ops.json';
+    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : mode === 'tts' ? 'tts.json' : alat ? VISUAL_RESULT[alat] : 'ops.json';
     const okFiles = await fsp.stat(path.join(jdir, 'out', need)).catch(() => null);
     s = okFiles
       ? { ...s, state: 'siap', tahap: 'selesai', persen: 100, ...(rencana?.status === 'perlu_keputusan' ? { pesan: 'Perlu keputusan tim (lihat kartu rencana)' } : {}) }

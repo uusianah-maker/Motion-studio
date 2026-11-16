@@ -54,6 +54,8 @@ export const LOOKS = {
   produk: { label: 'Clean Product', adjust: { terang: 6, kontras: 12, saturasi: 8, suhu: -5, tajam: 30 } },
   kulit: { label: 'Natural Skin Tone', adjust: { terang: 4, kontras: -5, saturasi: -8, suhu: 12 } },
   sinematik: { label: 'Cinematic', adjust: { kontras: 20, saturasi: -15, suhu: -10, vignette: 40 }, grain: 6 },
+  // R35 (owner 16 Nov): soft, low contrast, a little warm and bright.
+  soft: { label: 'Soft Aesthetic', adjust: { terang: 12, kontras: -18, saturasi: -6, suhu: 10 } },
 } as const satisfies Record<string, { label: string; adjust: Partial<Adjust>; mono?: boolean; sepia?: number; grain?: number }>;
 /** R23c: tone + grain on top of the adjust numbers. */
 export interface LookTone {

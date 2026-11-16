@@ -301,6 +301,7 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   shift_clips: 'Geser beberapa klip',
   set_style_many: 'Ubah gaya beberapa teks',
   duplicate_clip: 'Duplikat klip',
+  set_media: 'Ganti file klip',
 };
 
 /** Short human label for the undo history ("Geser klip", "3 perubahan"). */

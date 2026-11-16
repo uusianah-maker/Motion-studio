@@ -230,7 +230,8 @@ export type EditOp =
   | { op: 'delete_clips'; clip_ids: string[] }
   | { op: 'shift_clips'; clip_ids: string[]; delta_ms: number }
   | { op: 'set_style_many'; clip_ids: string[]; style: Partial<TextStyle> }
-  | { op: 'duplicate_clip'; clip_id: string };
+  | { op: 'duplicate_clip'; clip_id: string }
+  | { op: 'set_media'; clip_id: string; media: { media_id: string; version_id: string } };
 export interface Track {
   track_id: string;
   kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';
@@ -575,6 +576,14 @@ export interface TtsVoice {
 }
 export type { VoIndex } from '../../../packages/core/dist/storage/voText.js';
 import type { VoIndex } from '../../../packages/core/dist/storage/voText.js';
+export interface VisualView {
+  job_id: string;
+  alat: 'deteksi' | 'reframe' | 'lacak' | 'hapus_latar' | 'perjelas';
+  hasil: { media_id: string; version_id: string } | null;
+  masker: { media_id: string; version_id: string } | null;
+  info: Record<string, unknown>;
+  data: Record<string, unknown> | null;
+}
 export interface TtsView {
   job_id: string;
   suara: string;
@@ -588,7 +597,7 @@ export interface TtsView {
 export interface EngineJob {
   job_id: string;
   project_id: string;
-  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts';
+  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual';
   state: EngineState;
   tahap: string;
   persen: number;
@@ -989,6 +998,9 @@ export function createApi(token: string | null, base = '') {
     engineSuara: () => call<{ tersedia: boolean; suara: TtsVoice[] }>('GET', '/api/engine/suara'),
     engineTts: (id: string, tts: { teks?: string; kalimat?: string[]; suara: string; kecepatan: number; jeda_ms: number }) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'tts', tts } }).then((r) => r.job),
     ttsResult: (id: string, jobId: string) => call<{ tts: TtsView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/tts`).then((r) => r.tts),
+    /** R35 Visual Tools (contract §18.10). */
+    engineVisual: (id: string, ref: { media_id: string; version_id: string }, visual: Record<string, unknown>) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'visual', ref, visual } }).then((r) => r.job),
+    visualResult: (id: string, jobId: string) => call<{ visual: VisualView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/visual`).then((r) => r.visual),
     voIndex: (versionId: string) => call<{ vo: VoIndex | null }>('GET', `/api/vo/${encodeURIComponent(versionId)}`).then((r) => r.vo),
     /** R25: projects whose newest Generate plan is ready but not applied. */
     rencanaTertunda: () => call<{ tertunda: { project_id: string; job_id: string; mode: EngineJob['mode'] }[] }>('GET', '/api/engine/rencana-tertunda').then((r) => r.tertunda),

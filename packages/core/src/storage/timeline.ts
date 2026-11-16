@@ -68,7 +68,9 @@ export type EditOp =
   | { op: 'shift_clips'; clip_ids: string[]; delta_ms: number }
   | { op: 'set_style_many'; clip_ids: string[]; style: Partial<TextStyle> }
   /** R33: a copy right after the clip on its lane (or after the lane's last clip when that spot is taken). */
-  | { op: 'duplicate_clip'; clip_id: string };
+  | { op: 'duplicate_clip'; clip_id: string }
+  /** R35: the same clip on another media version (AI result ↔ original: 'Perjelas', 'Hapus latar'). */
+  | { op: 'set_media'; clip_id: string; media: MediaRef };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -249,6 +251,12 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         const d = ms(o.duration_ms, 'duration_ms');
         if (d < FREEZE_MS[0] || d > FREEZE_MS[1]) bad(`ops[${i}]: lama bekukan ${FREEZE_MS[0] / 1000}–${FREEZE_MS[1] / 1000} detik`);
         return { op: 'freeze_frame', clip_id: clipId(o.clip_id), at_ms: ms(o.at_ms, 'at_ms'), duration_ms: d };
+      }
+      case 'set_media': {
+        keys(['op', 'clip_id', 'media']);
+        const m = (o.media ?? {}) as Record<string, unknown>;
+        if (!isSafeId(m.media_id) || !isSafeId(m.version_id) || Object.keys(m).length !== 2) bad(`ops[${i}]: media tidak valid`);
+        return { op: 'set_media', clip_id: clipId(o.clip_id), media: { media_id: m.media_id as string, version_id: m.version_id as string } };
       }
       case 'duplicate_clip':
         keys(['op', 'clip_id']);
@@ -717,6 +725,12 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         if (src.adjust) still.adjust = { ...src.adjust };
         for (const k of ['fit', 'fit_color', 'look', 'rotate', 'flip_h', 'flip_v', 'vdenoise'] as const) if (src[k] !== undefined) (still as unknown as Record<string, unknown>)[k] = src[k];
         track.clips.push(still);
+        break;
+      }
+      case 'set_media': {
+        const { clip } = locate(t, op.clip_id);
+        if (!clip.media) bad('Hanya klip media yang bisa diganti filenya', { clip_id: op.clip_id });
+        clip.media = { ...op.media };
         break;
       }
       case 'duplicate_clip': {

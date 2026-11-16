@@ -11,6 +11,7 @@ import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle
 import { InspectorPanel } from './InspectorPanel';
 import { RencanaBanner } from './RencanaBanner';
 import { MultiPanel } from './MultiPanel';
+import { VisualToolsPanel } from './VisualToolsPanel';
 import { voSubtitleOps } from '../../../../packages/core/dist/storage/voText.js';
 import type { VoIndex } from '../api';
 import { freeSlot } from './PresetPanel';
@@ -651,6 +652,18 @@ export function EditorView({
                 ＋ Subtitle dari teks
               </button>
             </div>
+          )}
+          {sel?.media && project && group.length < 2 && (sel.kind === 'video' || sel.kind === 'broll') && (
+            <VisualToolsPanel
+              key={`ai-${sel.clip_id}` /* not the Inspector's key: sibling keys must differ */}
+              api={api}
+              projectId={project.project_id}
+              clip={sel}
+              video={(versionOf(sel.media.version_id)?.probe?.duration_ms ?? 0) > 0 && !!versionOf(sel.media.version_id)?.probe?.video_codec}
+              durasiS={(versionOf(sel.media.version_id)?.probe?.duration_ms ?? 0) / 1000}
+              locked={locked}
+              edit={(ops) => edit(ops)}
+            />
           )}
           {group.length > 1 && project && <MultiPanel clips={group} busy={busy} readOnly={locked} onEdit={(ops) => void edit(ops).then(() => ops[0]?.op === 'delete_clips' && setPicked([]))} onClear={() => setPicked([])} />}
           {sel && project && group.length < 2 && (

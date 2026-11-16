@@ -16,6 +16,7 @@ import {
   listTtsVoices,
   pendingPlan,
   readTtsResult,
+  readVisualResult,
   readVoIndex,
   type TtsVoice,
   loadEnginePlan,
@@ -188,6 +189,12 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
       method: 'GET',
       path: '/api/projects/:project_id/engine/jobs/:job_id/tts',
       handle: async ({ params }) => ({ tts: await readTtsResult(ws, params.project_id!, jobParam(params.job_id)) }),
+    },
+    {
+      // R35: a finished visual tool job → its result (made files imported into Media on first read).
+      method: 'GET',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/visual',
+      handle: async ({ params }) => ({ visual: await readVisualResult(ws, params.project_id!, jobParam(params.job_id)) }),
     },
     {
       // R34: the known text + sentence/word times of a VO media (subtitles without Whisper).

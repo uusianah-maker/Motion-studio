@@ -1,0 +1,47 @@
+[
+  {
+    "id": "R35-01 Klip video → panel \"Alat AI\" (Hapus latar, Perjelas) dengan perkiraan waktu",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35-02 Kualitas tinggi → perkiraan waktu jauh lebih lama (menit)",
+    "ok": true,
+    "detail": "Hapus latar Cepat Kualitas tinggi (lambat) Perkiraan ±9 menit ✂ Hapus latar"
+  },
+  {
+    "id": "R35-03 Perjelas jalan sebagai job mesin → selesai, hasil 720×1280 tersimpan di Media",
+    "ok": true,
+    "detail": "Perjelas · selesai"
+  },
+  {
+    "id": "R35-04 \"Pakai di klip ini\" → klip memakai file hasil (waktu sama)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35-05 \"Kembalikan asli\" → file asli lagi",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35-06 Hapus latar → hasil \"Latar terhapus\" tersimpan di Media",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35-07 Media: \"Tanpa latar …\" + \"Masker …\" + \"Diperjelas …\"",
+    "ok": true,
+    "detail": "produk.mp4, Diperjelas v_28ce59e141d59ef5-hd.mp4, Tanpa latar v_28ce59e141d59ef5-alpha.webm, Masker v_28ce59e141d59ef5-masker.mp4"
+  },
+  {
+    "id": "R35-08 Look \"Soft Aesthetic\" tersedia + tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R35-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

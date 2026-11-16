@@ -26,6 +26,40 @@ if (mode === 'daftar_batch') {
   process.exit(0);
 }
 
+if (mode === 'visual') {
+  // R35 / contract §18.10: one tool per job; the made file = a copy of the input (stand-in).
+  const vj = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8')).visual ?? {};
+  const outDir = path.join(jobDir, 'out');
+  fs.mkdirSync(outDir, { recursive: true });
+  if (!vj.masuk || !fs.existsSync(vj.masuk)) {
+    fs.writeFileSync(path.join(outDir, 'visual.json'), JSON.stringify({ status: 'ditolak', alasan: 'masuk tidak ada' }));
+    process.exit(2);
+  }
+  const nama = path.basename(vj.masuk).replace(/\.[^.]+$/, '');
+  // A made file differs from its input (import would otherwise de-duplicate it).
+  const made = (to, tag) => fs.writeFileSync(to, Buffer.concat([fs.readFileSync(vj.masuk), Buffer.from(`
+${tag}`)]));
+  for (const p of [20, 60, 100]) process.stdout.write(`${JSON.stringify({ tahap: vj.alat, persen: p, pesan: 'frame' })}\n`);
+  if (vj.alat === 'hapus_latar') {
+    const d = path.join(outDir, 'hapus_latar');
+    fs.mkdirSync(d, { recursive: true });
+    made(path.join(d, `${nama}-alpha.webm`), 'alpha');
+    made(path.join(d, `${nama}-masker.mp4`), 'masker');
+    fs.writeFileSync(path.join(d, 'hapus_latar.json'), JSON.stringify({ schema: 'hapus-latar/1', status: 'selesai', usulan: true, model: vj.model, lisensi: 'Apache-2.0', jenis: 'video', file: `${nama}-alpha.webm`, masker: `${nama}-masker.mp4`, fps: vj.fps }));
+  } else if (vj.alat === 'perjelas') {
+    const d = path.join(outDir, 'perjelas');
+    fs.mkdirSync(d, { recursive: true });
+    made(path.join(d, `${nama}-hd.mp4`), 'hd');
+    fs.writeFileSync(path.join(d, 'perjelas.json'), JSON.stringify({ schema: 'perjelas/1', status: 'selesai', usulan: true, mode: vj.mode, model: 'realesr-animevideov3', skala: vj.skala, dari: [360, 640], jadi: [720, 1280], file: `${nama}-hd.mp4` }));
+  } else if (vj.alat === 'deteksi' || vj.alat === 'lacak') {
+    const titik = [0, 1, 2].map((t) => ({ t, x: 0.3 + t * 0.1, y: 0.2, w: 0.2, h: 0.2, skor: 0.9 }));
+    fs.writeFileSync(path.join(outDir, vj.alat === 'deteksi' ? 'jalur.json' : 'lacak.json'), JSON.stringify({ schema: 'jalur-posisi/1', video: vj.masuk, lebar: 360, tinggi: 640, fps: 30, durasi: 3, sumber: vj.alat === 'deteksi' ? 'mediapipe-wajah' : 'lacak-csrt', usulan: true, jalur: [{ id: vj.alat === 'deteksi' ? 'wajah-1' : 'lacak-1', jenis: vj.alat === 'deteksi' ? 'wajah' : 'lacak', label: 'face', titik }] }));
+  } else if (vj.alat === 'reframe') {
+    fs.writeFileSync(path.join(outDir, 'reframe.json'), JSON.stringify({ schema: 'reframe/1', rasio: vj.rasio, lebar_crop: 0.3164, tinggi_crop: 1, mode: 'ikut', subjek: 'wajah-1', usulan: true, keyframe: [{ t: 0, x: 0.3, y: 0 }, { t: 2, x: 0.5, y: 0 }], keyframe_app: [{ at_ms: 0, x: 0.58, y: 0, scale: 3.16, opacity: 1, ease: 'linear' }, { at_ms: 2000, x: 0, y: 0, scale: 3.16, opacity: 1, ease: 'linear' }] }));
+  }
+  process.exit(0);
+}
+
 if (mode === 'tts') {
   // R34 / contract §21: voices, or one WAV per sentence + the joined take with pauses, word times.
   const tj = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8'));
