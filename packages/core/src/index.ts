@@ -97,11 +97,13 @@ export { MAX_VARIANTS_PER_RUN, type VariantState, validateBriefs, variantOps, va
 export { type BrandGuard, EMPTY_GUARD, GUARD_LIMITS, type GuardIssue, bannedIn, checkBrandGuard, localDate } from './storage/brandGuard.js';
 export { ANALYSIS_LIMITS, type AnalysisParams, DEFAULT_ANALYSIS, MAX_CUTS, type MediaAnalysis, analyzeMedia, cutOps } from './storage/analysis.js';
 export { type MediaVisuals, PEAK_BUCKET_MS, mediaVisuals } from './storage/visuals.js';
+export { OVERLAY_DEFAULT, OVERLAY_LIMITS, OVERLAY_POS, type Overlay, type OverlayPos, contentEnd, overlayBox, overlayOrder, overlaySpan, validateOverlay } from './storage/overlay.js';
 export {
   type BrandKit,
   type BrandLogo,
   type BrandPreset,
   ASSET_KINDS,
+  OVERLAY_ASSET_KINDS,
   type BrandAsset,
   CAPITALS,
   LICENSE_STATUS,

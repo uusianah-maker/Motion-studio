@@ -6,6 +6,8 @@ import { type CanvasRatio, DEFAULT_CLIP_MS, type DragMode, TIMELINE_ZOOM, clampS
 import { ClipThumbs, ClipWave, useMediaVisuals } from './TimelineVisuals';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
+import { OverlayPicker, type OverlayPick } from './OverlayPicker';
+import { type Overlay, contentEnd } from '../../../../packages/core/dist/storage/overlay.js';
 import { waitingForProxy } from '../proxyWait';
 import { fitMove, fitTrim, gapAt } from '../dragFit';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
@@ -31,6 +33,7 @@ const TRACKS: { kind: Track['kind']; label: string }[] = [
   { kind: 'broll', label: '◈  B-roll' },
   { kind: 'text', label: 'T  Teks & CTA' },
   { kind: 'subtitle', label: '☷  Subtitle' },
+  { kind: 'overlay', label: '◧  Overlay' },
   { kind: 'audio', label: '♫  Audio' },
   { kind: 'music', label: '♬  Musik' },
   { kind: 'sfx', label: '♪  SFX' },
@@ -47,6 +50,21 @@ interface Drag {
 
 /** Tracks that show a thumbnail strip / a waveform inside their clips (paket 1). */
 const THUMB_TRACKS = new Set<Track['kind']>(['video', 'broll']);
+
+/** R26: overlays may overlap in time — each gets a row of the lane (greedy packing, max 3 rows). */
+function overlayRow(clips: readonly Clip[], c: Clip): { top: string; height: string } {
+  const rows: number[] = [];
+  const at = new Map<string, number>();
+  for (const x of [...clips].sort((a, b) => a.start_ms - b.start_ms)) {
+    let r = rows.findIndex((end) => end <= x.start_ms);
+    if (r < 0) r = rows.length;
+    rows[r] = x.end_ms;
+    at.set(x.clip_id, r);
+  }
+  const n = Math.min(3, Math.max(1, rows.length));
+  const r = Math.min(n - 1, at.get(c.clip_id) ?? 0);
+  return { top: `${(r * 100) / n}%`, height: `${100 / n}%` };
+}
 const WAVE_TRACKS: Partial<Record<Track['kind'], string>> = { audio: '#8fe0d2', music: '#9fc4ff', sfx: '#f6d67c' };
 
 /** Waveform or thumbnails for one media clip; renders nothing until the server has made them. */
@@ -110,7 +128,11 @@ export function EditorView({
   const [cutClip, setCutClip] = useState<Clip | null>(null);
   const [variantsOpen, setVariantsOpen] = useState(false);
   /** X06: Brand Kit (logo + font) for preview, inspector swatches and the Brand preset. */
-  const brand = useBrand(api, { brandId: project?.brand_id ?? null });
+  const [brandReload, setBrandReload] = useState(0);
+  const brand = useBrand(api, { brandId: project?.brand_id ?? null, reload: brandReload });
+  /** R26: "＋ Overlay" picker and the inspector's live overlay spec. */
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlayDraft, setOverlayDraft] = useState<{ clip_id: string; overlay: Overlay } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   /** R33: several clips picked together (empty = the single `selected` clip only). */
   const [picked, setPicked] = useState<string[]>([]);
@@ -527,6 +549,16 @@ export function EditorView({
   };
 
   // Audit 14 Nov: at the playhead if free, else the next free spot (no "tumpang tindih" error).
+  /** R26: a picked picture → one overlay clip (whole video, or 3 s at the playhead), in front. */
+  const addOverlay = (p: OverlayPick) => {
+    setOverlayOpen(false);
+    if (!project) return;
+    const end = contentEnd(project.timeline.tracks);
+    const whole = p.sepanjang && end >= 100;
+    const start = whole ? 0 : Math.round(playhead / 100) * 100;
+    void edit([{ op: 'add_clip', track_kind: 'overlay', media: p.ref, start_ms: start, duration_ms: whole ? end : TEXT_CLIP_MS, ...(whole ? { overlay: { pos: p.jenis === 'logo' ? 'tr' : p.jenis === 'frame' ? 'c' : 'br', dx: 0, dy: 0, skala: p.jenis === 'frame' ? 100 : p.jenis === 'logo' ? 18 : 30, opasitas: p.jenis === 'watermark' ? 0.6 : 1, margin: p.jenis === 'frame' ? 0 : 4, layer: Math.min(999, Math.max(-1, ...overlayLayers()) + 1), sepanjang: true } } : {}) }]);
+  };
+  const overlayLayers = () => (project?.timeline.tracks.find((t) => t.kind === 'overlay')?.clips ?? []).map((c) => c.overlay?.layer ?? 0);
   const addText = (kind: 'text' | 'subtitle') =>
     project && void edit([{ op: 'add_clip', track_kind: kind, text: kind === 'text' ? 'Teks baru' : 'Subtitle baru', start_ms: freeSlot(project, kind, playhead, TEXT_CLIP_MS), duration_ms: TEXT_CLIP_MS }]);
 
@@ -583,6 +615,7 @@ export function EditorView({
           }}
         />
       )}
+      {overlayOpen && project && <OverlayPicker api={api} kit={brand?.kit ?? null} onPick={addOverlay} onClose={() => setOverlayOpen(false)} onKitSaved={() => setBrandReload((n) => n + 1)} />}
       {cutClip && project && (
         <CutReviewDialog
           api={api}
@@ -671,6 +704,8 @@ export function EditorView({
             styleDraft={styleDraft}
             brand={brand}
             onBrandLogo={(on) => void edit([{ op: 'set_brand_logo', on }])}
+            overlayDraft={overlayDraft}
+            onMoveOverlay={(id, dx, dy) => void edit([{ op: 'set_overlay', clip_id: id, overlay: { dx, dy } }])}
             onMoveText={(id, x, y) => {
               setSelected(id);
               void edit([{ op: 'set_style', clip_id: id, style: { x, y } }]);
@@ -736,6 +771,7 @@ export function EditorView({
               onEdit={(ops) => edit(ops)}
               lockReason={lockReason}
               onDraft={setStyleDraft}
+              onOverlayDraft={setOverlayDraft}
               flushRef={inspectorFlush}
             />
           )}
@@ -825,6 +861,9 @@ export function EditorView({
           </button>
           <button className="smallbtn" disabled={locked || !project} onClick={() => addText('subtitle')} title="Tambah subtitle di playhead">
             ＋ Subtitle
+          </button>
+          <button className="smallbtn" disabled={locked || !project} onClick={() => setOverlayOpen(true)} title="Tambah logo / watermark / stiker / frame (gambar) di atas video">
+            ＋ Overlay
           </button>
           <button
             className="smallbtn"
@@ -984,7 +1023,7 @@ export function EditorView({
                       <div
                         key={c.clip_id}
                         className={`clip ${t.kind}${isSel ? ' selected' : ''}${drag?.clip.clip_id === c.clip_id ? ' dragging' : ''}`}
-                        style={{ left: pct(live.start_ms), width: pct(Math.max(1, live.end_ms - live.start_ms)) }}
+                        style={{ left: pct(live.start_ms), width: pct(Math.max(1, live.end_ms - live.start_ms)), ...(t.kind === 'overlay' ? overlayRow(clips, c) : {}) }}
                         role="button"
                         tabIndex={0}
                         aria-pressed={isSel}
@@ -1013,7 +1052,7 @@ export function EditorView({
                         onPointerUp={endDrag}
                         onPointerCancel={() => setDrag(null)}
                       >
-                        {c.media && (
+                        {c.media && t.kind !== 'overlay' && (
                           <ClipVisual api={api} clip={c} kind={t.kind} inMs={(c.in_ms ?? 0) + (drag?.mode === 'trim-start' ? live.start_ms - c.start_ms : 0) /* trimming the start moves the source in-point too */} lenMs={live.end_ms - live.start_ms} />
                         )}
                         <span className="handle start" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-start')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={() => setDrag(null)} />

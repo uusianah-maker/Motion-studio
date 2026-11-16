@@ -1,0 +1,107 @@
+[
+  {
+    "id": "R26-01 Jenis aset baru: Watermark, Stiker, Frame (selain Logo)",
+    "ok": true,
+    "detail": "Semua jenis (2) | SFX (0) | Musik (0) | B-roll (0) | Logo (1) | Watermark (0) | Stiker (1) | Frame (0) | Penutup (0) | VO (suara) (0) | Lainnya (0)"
+  },
+  {
+    "id": "R26-02 Gambar overlay tampil sebagai thumbnail di atas papan catur (transparansi terlihat)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-03 \"Jadikan logo default\" → label ★ Logo default di aset itu",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-04 Tersimpan: logo Brand Kit = aset logo-merah (sinkron), pasang logo otomatis = ya",
+    "ok": true,
+    "detail": "logo=v_d76b6c1a2dbdf935 auto=true"
+  },
+  {
+    "id": "R26-05 Dialog overlay menampilkan gambar dari Aset brand (logo default + stiker)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-06 Pilih stiker → 1 klip overlay sepanjang video (0–3 dtk), satu revisi",
+    "ok": true,
+    "detail": "{\"pos\":\"br\",\"dx\":0,\"dy\":0,\"skala\":30,\"opasitas\":1,\"margin\":4,\"layer\":0,\"sepanjang\":true}"
+  },
+  {
+    "id": "R26-07 Pratinjau menampilkan overlay di pojok kanan bawah",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-08 Inspector klip overlay: posisi, ukuran, opasitas, jarak tepi, durasi, lapisan — tanpa volume",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-09 Posisi \"Kiri atas\" → tersimpan + pratinjau ikut",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-10 Geser slider opasitas → satu edit (satu revisi), opasitas 0,4",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-11 Undo → opasitas kembali 1 (satu langkah)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-12 Overlay baru masuk paling depan (lapisan lebih tinggi), boleh tumpang tindih waktu",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-13 \"Paling belakang\" → logo di bawah stiker (urutan lapisan)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-14 Pratinjau menggambar urutan yang sama (belakang → depan)",
+    "ok": true,
+    "detail": "c_61b3d1e5d4768258,c_a0cf15185875eb46"
+  },
+  {
+    "id": "R26-15 Seret overlay di pratinjau → geser manual tersimpan (satu revisi)",
+    "ok": true,
+    "detail": "{\"pos\":\"tr\",\"dx\":-0.0869,\"dy\":0.0611,\"skala\":18,\"opasitas\":1,\"margin\":4,\"layer\":0,\"sepanjang\":true}"
+  },
+  {
+    "id": "R26-16 Unggah gambar baru dari dialog → overlay ditambah + tersimpan permanen di Aset brand (Watermark)",
+    "ok": true,
+    "detail": "logo:logo-merah,stiker:stiker-hijau,watermark:watermark-biru"
+  },
+  {
+    "id": "R26-17 Render nyata: stiker hijau tepat di kotak yang dihitung pratinjau (overlayBox)",
+    "ok": true,
+    "detail": "stiker {\"x\":14,\"y\":14,\"w\":108,\"h\":108} → 0,252,0"
+  },
+  {
+    "id": "R26-18 Render: pinggir transparan PNG tetap tembus (video hitam terlihat)",
+    "ok": true,
+    "detail": "{\"x\":251,\"y\":53,\"w\":64,\"h\":64} pojok 0,0,0"
+  },
+  {
+    "id": "R26-19 Buat video: overlay dipilih sebelum Generate + pratinjau di atas video sumber (stiker kanan atas + logo otomatis)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R26-20 Draf mesin diterapkan: stiker (kanan atas, sepanjang video) + logo default otomatis (paling depan) jadi klip overlay biasa",
+    "ok": true,
+    "detail": "stiker:tr/0,logo:tr/999"
+  },
+  {
+    "id": "R26-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

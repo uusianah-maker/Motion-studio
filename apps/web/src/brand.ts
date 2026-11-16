@@ -79,6 +79,7 @@ export const emptyKit = (): BrandKitInput => ({
   font_caption: null,
   logo: null,
   logo_light: null,
+  logo_otomatis: false,
   outro: { ref: null, detik: 2 },
   gaya: '',
   grading: '',

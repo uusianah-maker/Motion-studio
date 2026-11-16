@@ -8,10 +8,12 @@ import { ClipLookPanel } from './ClipLookPanel';
 import { KeyframePanel } from './KeyframePanel';
 import { MotionPanel } from './MotionPanel';
 import { AudioFxPanel } from './AudioFxPanel';
+import { OverlayPanel } from './OverlayPanel';
+import type { Overlay } from '../../../../packages/core/dist/storage/overlay.js';
 import { LOOKS } from '../../../../packages/core/dist/storage/clipLook.js';
 
 export type SelectedClip = Clip & { kind: Track['kind'] };
-const KIND_NAME: Record<Track['kind'], string> = { video: 'Video', broll: 'B-roll', text: 'Teks', subtitle: 'Subtitle', audio: 'Audio', music: 'Musik', sfx: 'SFX', effects: 'Efek' };
+const KIND_NAME: Record<Track['kind'], string> = { video: 'Video', broll: 'B-roll', text: 'Teks', subtitle: 'Subtitle', overlay: 'Overlay', audio: 'Audio', music: 'Musik', sfx: 'SFX', effects: 'Efek' };
 const sec = (ms: number) => (ms / 1000).toFixed(2);
 
 /**
@@ -26,6 +28,7 @@ export function InspectorPanel({
   busy,
   onEdit,
   onDraft,
+  onOverlayDraft,
   readOnly = false,
   lockReason = null,
   brand = null,
@@ -42,6 +45,8 @@ export function InspectorPanel({
   busy: boolean;
   onEdit: (ops: EditOp[]) => Promise<void> | void;
   onDraft: (d: { clip_id: string; style: Partial<TextStyle> } | null) => void;
+  /** R26: live overlay spec while a slider moves (preview only). */
+  onOverlayDraft?: (d: { clip_id: string; overlay: Overlay } | null) => void;
   /** R5: the editor calls this before undo / redo, so a change still waiting is saved first. */
   flushRef?: { current: (() => Promise<void>) | null };
   /** X05: archived project — everything is shown but nothing can be changed. */
@@ -61,6 +66,9 @@ export function InspectorPanel({
   playhead?: number;
 }) {
   const isText = clip.kind === 'text' || clip.kind === 'subtitle';
+  /** R26: overlay clips are pictures: no sound / look / cut tools, their own panel instead. */
+  const isOverlay = clip.kind === 'overlay';
+  const sound = !!clip.media && !isOverlay;
   const [start, setStart] = useState(sec(clip.start_ms));
   const [dur, setDur] = useState(sec(clip.end_ms - clip.start_ms));
   const [text, setText] = useState(clip.text ?? '');
@@ -236,7 +244,8 @@ export function InspectorPanel({
           {sourceMs !== undefined ? ` dari ${formatDuration(sourceMs)}` : ''}
         </div>
       )}
-      {clip.media && (
+      {isOverlay && clip.overlay && <OverlayPanel clip={clip} submit={submit} {...(onOverlayDraft ? { onDraft: onOverlayDraft } : {})} />}
+      {sound && (
         <div className="inspGrid">
           <label>
             Volume {vol}%
@@ -311,11 +320,11 @@ export function InspectorPanel({
           </span>
         </div>
       )}
-      {clip.media && <ClipLookPanel key={clip.clip_id} clip={clip} kind={clip.kind} submit={submit} duck={duck} brandLook={brand?.filter_bawaan ? LOOKS[brand.filter_bawaan].label : null} />}
-      {clip.media && <AudioFxPanel clip={clip} kind={clip.kind} submit={submit} />}
+      {sound && <ClipLookPanel key={clip.clip_id} clip={clip} kind={clip.kind} submit={submit} duck={duck} brandLook={brand?.filter_bawaan ? LOOKS[brand.filter_bawaan].label : null} />}
+      {sound && <AudioFxPanel clip={clip} kind={clip.kind} submit={submit} />}
       {clip.media && (clip.kind === 'video' || clip.kind === 'broll') && <MotionPanel clip={clip} playhead={playhead} submit={submit} />}
       {((clip.media && (clip.kind === 'video' || clip.kind === 'broll')) || isText) && <KeyframePanel clip={clip} playhead={playhead} submit={submit} />}
-      {clip.media && onCutReview && (
+      {sound && onCutReview && (
         <button className="btn small" onClick={onCutReview} title="Cari jeda & pergantian adegan, lalu pilih yang mau dipotong (FFmpeg, tanpa AI)">
           ✂ Deteksi jeda & adegan
         </button>

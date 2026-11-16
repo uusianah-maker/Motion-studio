@@ -6,6 +6,7 @@ import { type TextStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 import { type ClipExtras, readExtras, validateDuck } from './clipLook.js';
 import { type Keyframe, validateKeyframes } from './keyframes.js';
+import { type Overlay, validateOverlay } from './overlay.js';
 
 export const PROJECT_SCHEMA_VERSION = 1;
 
@@ -28,8 +29,8 @@ export interface MediaRef {
  * (background music under the voice) and `sfx` (short effects). Each lane keeps its clips apart,
  * but the lanes play together.
  */
-export type TrackKind = 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';
-const TRACK_KINDS: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'music', 'sfx', 'effects'];
+export type TrackKind = 'video' | 'broll' | 'text' | 'subtitle' | 'overlay' | 'audio' | 'music' | 'sfx' | 'effects';
+const TRACK_KINDS: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'overlay', 'audio', 'music', 'sfx', 'effects'];
 
 /** Malam 15 Nov: + optional sound/picture fields of `ClipExtras` (fades, denoise, fit, adjust, look, transition). */
 export interface Clip extends ClipExtras {
@@ -55,6 +56,8 @@ export interface Clip extends ClipExtras {
   blur?: BlurRegion[];
   /** Malam 15 Nov: position / scale / opacity keyframes (video, b-roll, text, subtitle). */
   keyframes?: Keyframe[];
+  /** R26: picture overlay on the `overlay` track (position, size, opacity, layer, whole video). */
+  overlay?: Overlay;
 }
 
 export const CANVAS_RATIOS = ['9:16', '3:4', '1:1', '16:9'] as const;
@@ -307,6 +310,14 @@ function validateTracks(timeline: Obj, where: string): Track[] {
           if (k.length) clip.keyframes = k;
         } catch (e) {
           fail(`${cw}.keyframes`, e instanceof Error ? e.message : 'tidak valid');
+        }
+      }
+      if (co.overlay !== undefined || kind === 'overlay') {
+        if (kind !== 'overlay' || !clip.media) fail(`${cw}.overlay`, 'overlay hanya untuk klip media di track overlay');
+        try {
+          clip.overlay = validateOverlay(co.overlay, `${cw}.overlay`);
+        } catch (e) {
+          fail(`${cw}.overlay`, e instanceof Error ? e.message : 'tidak valid');
         }
       }
       try {

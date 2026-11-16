@@ -32,7 +32,13 @@ export const PLATFORMS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
 export const TEXT_FREE_AREAS = ['wajah', 'produk', 'bawah_15', 'atas_10', 'kanan_tombol'] as const;
 export const DISCLAIMER_WHEN = ['selalu', 'varian_warna', 'harga', 'manual'] as const;
 /** R34: `vo` = voice over from "Suara dari Teks" (or uploaded), reusable in every feature. */
-export const ASSET_KINDS = ['sfx', 'musik', 'broll', 'logo', 'penutup', 'vo', 'lainnya'] as const;
+export const ASSET_KINDS = ['sfx', 'musik', 'broll', 'logo', 'watermark', 'stiker', 'frame', 'penutup', 'vo', 'lainnya'] as const;
+/** R26: picture kinds that go on the overlay track (PNG with transparency preferred). */
+export const OVERLAY_ASSET_KINDS = ['logo', 'watermark', 'stiker', 'frame'] as const;
+/** R26: kinds the engine contract (KONTRAK-ENGINE §4) does not know are exported as `lainnya`. */
+const ENGINE_KIND = (j: (typeof ASSET_KINDS)[number]): BrandExportAsset['jenis'] => (j === 'watermark' || j === 'stiker' || j === 'frame' ? 'lainnya' : j);
+/** Placeholder of a library file in the engine export (`$sfx:pop-01`, `$lainnya:stiker-diskon`). */
+export const assetKunci = (a: { jenis: (typeof ASSET_KINDS)[number]; id: string }): string => `$${ENGINE_KIND(a.jenis)}:${a.id}`;
 export const LICENSE_STATUS = ['milik_sendiri', 'berlisensi', 'tanpa_lisensi', 'belum_dicek'] as const;
 export const MAX_BRAND_ASSETS = 500;
 /** Event tags the engine's presets look for (KONTRAK-ENGINE, U2 notes from venus). */
@@ -141,6 +147,8 @@ export interface BrandKit {
   logo: BrandLogo | null;
   /** Light version of the logo for dark footage. */
   logo_light: MediaRef | null;
+  /** R26: put the default logo (`logo`) on every new video from Generate / Batch / Beat Spot as an overlay. */
+  logo_otomatis: boolean;
   outro: { ref: MediaRef | null; detik: number };
   gaya: string;
   grading: string;
@@ -193,6 +201,7 @@ const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
   font_caption: null,
   logo: null,
   logo_light: null,
+  logo_otomatis: false,
   outro: { ref: null, detik: 2 },
   gaya: '',
   grading: '',
@@ -476,6 +485,7 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     font_caption: ref(o.font_caption, 'font caption'),
     logo,
     logo_light: ref(o.logo_light, 'logo terang'),
+    logo_otomatis: logo ? bool(o.logo_otomatis, 'pasang logo otomatis', false) : o.logo_otomatis === true ? bad('pilih logo default dulu sebelum menyalakan "pasang logo otomatis"') : false,
     outro: { ref: ref(out.ref, 'penutup'), detik: num(out.detik, 'durasi penutup', 0.5, 10, 2) },
     gaya: text(o.gaya, 'gaya keseluruhan', 120),
     grading: text(o.grading, 'color grading', 120),
@@ -678,7 +688,7 @@ async function checkFiles(ws: Workspace, reg: Registry, kit: BrandKitInput): Pro
     const e = ext(v.original_name);
     if ((a.jenis === 'sfx' || a.jenis === 'musik' || a.jenis === 'vo') && !AUDIO_EXT.includes(e) && !['.mp4', '.mov', '.webm'].includes(e)) bad(`aset ${a.id}: ${a.jenis} harus file suara (MP3/WAV/M4A/…)`);
     if ((a.jenis === 'broll' || a.jenis === 'penutup') && !OUTRO_EXT.includes(e)) bad(`aset ${a.id}: ${a.jenis} harus video atau gambar`);
-    if (a.jenis === 'logo' && !LOGO_EXT.includes(e)) bad(`aset ${a.id}: logo harus gambar PNG/JPG/WebP`);
+    if ((OVERLAY_ASSET_KINDS as readonly string[]).includes(a.jenis) && !LOGO_EXT.includes(e)) bad(`aset ${a.id}: ${a.jenis} harus gambar PNG/JPG/WebP`);
   }
 }
 
@@ -834,7 +844,7 @@ export async function exportBrandKit(ws: Workspace, brandId: string, opts: { pat
   const outro = await add('$penutup', 'penutup', k.outro.ref);
   // U2 library: `$sfx:pop-01`, `$musik:ceria-01`, `$broll:detail-bahan` … with tags + licence.
   for (const a of k.aset) {
-    const v = usable(reg, a.ref, `$${a.jenis}:${a.id}`);
+    const v = usable(reg, a.ref, assetKunci(a));
     // Duration + orientation come from the file itself (probed now if the import has not yet).
     const local = await ws.blobs.resolve(v.rel_path, MEDIA_AREAS);
     const probe = v.probe ?? (await ws.blobs.withLocalFile(local, probeFile));
@@ -842,9 +852,9 @@ export async function exportBrandKit(ws: Workspace, brandId: string, opts: { pat
     const w = probe?.width ?? still?.width ?? null;
     const h = probe?.height ?? still?.height ?? null;
     const item: BrandExportAsset = {
-      kunci: `$${a.jenis}:${a.id}`,
-      jenis: a.jenis,
-      tag: a.tag,
+      kunci: assetKunci(a),
+      jenis: ENGINE_KIND(a.jenis),
+      tag: a.jenis !== ENGINE_KIND(a.jenis) && !a.tag.includes(a.jenis) ? [a.jenis, ...a.tag] : a.tag,
       lisensi_iklan: a.lisensi.iklan,
       nama: a.nama || v.original_name,
       status_lisensi: a.lisensi.status,

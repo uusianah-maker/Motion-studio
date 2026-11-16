@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { proyekFitur } from '../fitur';
-import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, ProjectSummary, Role } from '../api';
+import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, JobOverlay, ProjectSummary, Role } from '../api';
+import { JobOverlays } from './JobOverlays';
 import { canContinueRefused, pollDelay, readyJobShown } from '../lib';
 import { ErrorNotice } from '../ui';
 import { AudioPilihanSelect } from './PresetGaya';
@@ -173,6 +174,8 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
   const [preset, setPreset] = useState('');
   const [ai, setAi] = useState(false);
   const [audio, setAudio] = useState<'' | 'vo' | 'musik' | 'keduanya'>('');
+  /** R26: overlays for this job (previewed on the source before Generate). */
+  const [overlays, setOverlays] = useState<JobOverlay[]>([]);
   const [upload, setUpload] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -259,7 +262,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
       setUpload(0);
       const up = await api.importFile(file, { kind: 'project', project_id: projectId }, setUpload);
       setUpload(null);
-      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}) });
+      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}), ...(overlays.length ? { overlay: overlays } : {}) });
       unstarted.current = null;
       setTarget(projectId);
       setCurrent({ project_id: projectId, job_id: j.job_id });
@@ -403,6 +406,19 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
               <input type="checkbox" aria-label="Pakai AI untuk hook" checked={ai} onChange={(e) => setAi(e.target.checked)} /> Pakai AI untuk hook/kata kunci (API key di mesin; tanpa centang = aturan saja, gratis)
             </label>
           </div>
+          <details className="inspFull" open={overlays.length > 0 || undefined}>
+            <summary>
+              <b>Overlay</b> <span className="muted small">logo / watermark / stiker / frame di atas video ({overlays.length})</span>
+            </summary>
+            <JobOverlays
+              api={api}
+              kit={brand}
+              file={file}
+              value={overlays}
+              onChange={setOverlays}
+              onKitSaved={(k) => setBrands((bs) => bs.map((b) => (b.brand_id === k.brand_id ? k : b)))}
+            />
+          </details>
           <div className="row" style={{ gap: 10, alignItems: 'center' }}>
             <button className="btn primary" disabled={role === 'reviewer' || !installed || !file || !brand || !preset || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
               ⚡ Susun draf otomatis

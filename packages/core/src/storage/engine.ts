@@ -17,7 +17,8 @@ import { execFile, spawn } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type BrandKit, brandReferences, exportBrandKit, readBrandFor } from './brand.js';
+import { type BrandKit, assetKunci, brandReferences, exportBrandKit, readBrandFor } from './brand.js';
+import { OVERLAY_DEFAULT, type Overlay, validateOverlay } from './overlay.js';
 import { localDate } from './brandGuard.js';
 import { createLease, releaseLease, setLeaseStatus } from './deps.js';
 import { StorageError } from './errors.js';
@@ -143,7 +144,59 @@ export interface EngineJobInput {
   visual?: { alat: VisualTool } & Record<string, unknown>;
   /** Suara owner (contract §23): written to job.json as the `suara_profil` object. */
   suara_profil?: SuaraProfilSettings;
+  /**
+   * R26 (app only, never in job.json): picture overlays chosen in "Buat video" before Generate,
+   * added to the engine's draft as overlay clips (whole video, or [dari_ms, sampai_ms)).
+   */
+  overlay?: JobOverlay[];
 }
+
+export interface JobOverlay {
+  ref: MediaRef;
+  overlay: Overlay;
+  dari_ms?: number;
+  sampai_ms?: number;
+}
+export const MAX_JOB_OVERLAYS = 10;
+
+/** R26: overlays of a Generate / Batch request (untrusted). */
+export function validateJobOverlays(x: unknown): JobOverlay[] {
+  if (!Array.isArray(x) || x.length > MAX_JOB_OVERLAYS) return bad(`overlay harus daftar maks ${MAX_JOB_OVERLAYS}`);
+  return x.map((raw, i) => {
+    const o = (raw ?? {}) as Record<string, unknown>;
+    const extra = Object.keys(o).filter((k) => !['ref', 'overlay', 'dari_ms', 'sampai_ms'].includes(k));
+    if (extra.length) bad(`overlay[${i}]: field tidak dikenal ${extra.join(', ')}`);
+    const r = (o.ref ?? {}) as Record<string, unknown>;
+    if (!isSafeId(r.media_id) || !isSafeId(r.version_id)) bad(`overlay[${i}].ref tidak valid`);
+    let overlay: Overlay;
+    try {
+      overlay = validateOverlay(o.overlay, `overlay[${i}]`);
+    } catch (e) {
+      return bad(e instanceof Error ? e.message : 'overlay tidak valid');
+    }
+    const ms = (v: unknown, w: string) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 3_600_000 ? Math.round(v) : bad(`overlay[${i}].${w} harus ms 0–1 jam`));
+    const out: JobOverlay = { ref: { media_id: r.media_id as string, version_id: r.version_id as string }, overlay };
+    if (!overlay.sepanjang) {
+      out.dari_ms = ms(o.dari_ms ?? 0, 'dari_ms');
+      out.sampai_ms = ms(o.sampai_ms, 'sampai_ms');
+      if (out.sampai_ms - out.dari_ms < 100) bad(`overlay[${i}]: sampai harus setelah dari (min 0,1 dtk)`);
+    }
+    return out;
+  });
+}
+
+/** R26: job overlays → add_clip ops on a draft that ends at `end` ms (parts past the end are dropped). */
+export function jobOverlayOps(list: readonly JobOverlay[], end: number): Record<string, unknown>[] {
+  if (end < 100) return [];
+  return list.flatMap((o) => {
+    const from = o.overlay.sepanjang ? 0 : Math.min(o.dari_ms ?? 0, end);
+    const to = o.overlay.sepanjang ? end : Math.min(o.sampai_ms ?? end, end);
+    return to - from >= 100 ? [{ op: 'add_clip', track_kind: 'overlay', media: { ...o.ref }, start_ms: from, duration_ms: to - from, overlay: { ...o.overlay } }] : [];
+  });
+}
+
+/** Last clip end of a draft's add_clip ops (overlays excluded). */
+const draftEnd = (ops: readonly Record<string, unknown>[]) => Math.max(0, ...ops.filter((o) => o?.op === 'add_clip' && o.track_kind !== 'overlay').map((o) => Number(o.start_ms ?? 0) + Number(o.duration_ms ?? 0)).filter(Number.isFinite));
 
 export const AUDIO_PILIHAN = ['vo', 'musik', 'keduanya'] as const;
 export type AudioPilihan = (typeof AUDIO_PILIHAN)[number];
@@ -194,7 +247,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (o.mode === 'tts') return validateTtsJob(o);
   if (o.mode === 'visual') return validateVisualJob(o);
   if (o.mode === 'suara_profil') return validateSuaraProfilJob(o);
-  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan', 'overlay'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
   if (o.mode !== 'generate' && o.mode !== 'batch') bad('mode harus generate | batch');
@@ -265,7 +318,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
       ...(batas !== undefined ? { batas_durasi: batas === null ? null : ([(batas as number[])[0], (batas as number[])[1]] as [number, number]) } : {}),
     };
   } else if (o.batch !== undefined) bad('batch hanya untuk mode batch');
-  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}), ...audioPilihan(o.audio_pilihan) };
+  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}), ...audioPilihan(o.audio_pilihan), ...(o.overlay !== undefined ? { overlay: validateJobOverlays(o.overlay) } : {}) };
 }
 
 const PISAH_SRC = /^\$sumber:([A-Za-z0-9_-]{1,40})$/;
@@ -455,7 +508,10 @@ export function brandPlaceholders(kit: BrandKit): Record<string, MediaRef> {
   const out: Record<string, MediaRef> = {};
   const slot: Record<string, string> = { font: '$font:judul', font_caption: '$font:caption', logo: '$logo', logo_light: '$logo:terang', outro: '$penutup' };
   for (const r of brandReferences(kit)) if (slot[r.slot]) out[slot[r.slot]!] = r.ref;
-  for (const a of kit.aset) out[`$${a.jenis}:${a.id}`] = a.ref;
+  for (const a of kit.aset) {
+    out[`$${a.jenis}:${a.id}`] = a.ref;
+    out[assetKunci(a)] = a.ref; // R26: overlay kinds travel as `$lainnya:id`
+  }
   return out;
 }
 
@@ -582,6 +638,15 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ...(input.beatspot ? { beatspot: Object.fromEntries(Object.entries(input.beatspot).filter(([k, v]) => !((k === 'ketukan_per_potong' && v === 'auto') || (k === 'bpm' && v === null)))) } : {}),
     };
     await writeJsonAtomic(path.join(jdir, 'job.json'), job);
+    // R26: overlays stay with the app (the engine never sees them); added when the draft is opened.
+    if (input.overlay?.length) {
+      const reg = await loadRegistry(ws);
+      for (const o of input.overlay) {
+        const v = reg.versions[o.ref.version_id];
+        if (!v || v.media_id !== o.ref.media_id || v.lifecycle !== 'active') bad('Gambar overlay tidak dikenal atau sedang di Trash');
+      }
+      await writeJsonAtomic(path.join(jdir, 'overlay.json'), { schema: 'ms-overlay/1', overlay: input.overlay });
+    }
     const refs: Record<string, MediaRef> = { ...brandPlaceholders(kit) };
     for (const s of input.sources) refs[s.kunci] = s.ref;
     await writeJsonAtomic(path.join(jdir, 'refs.json'), { schema: 'engine-refs/1', brand_id: kit.brand_id, refs });
@@ -891,7 +956,35 @@ export async function loadEnginePlan(ws: Workspace, cfg: EngineConfig | null, pr
     return op;
   });
   if (unknown.size) throw new StorageError('PRECONDITION', `Placeholder tidak dikenal: ${[...unknown].slice(0, 10).join(', ')}`, { unknown: [...unknown].slice(0, 50) });
-  return { ops, rencana, qc, imported };
+  const project = await readProject(ws, projectId).catch(() => null);
+  const ovFile = await readJson<{ overlay?: unknown }>(path.join(jdir, 'overlay.json'));
+  const chosen = ovFile?.overlay !== undefined ? jobOverlayOps(validateJobOverlays(ovFile.overlay), draftEnd(ops as Record<string, unknown>[])) : [];
+  const withChosen = [...(ops as Record<string, unknown>[]), ...chosen];
+  const auto = autoLogoOp(await readBrandFor(ws, project?.brand_id), withChosen);
+  return { ops: auto ? [...withChosen, auto] : withChosen, rencana, qc, imported };
+}
+
+/**
+ * R26: Brand "pasang logo default otomatis" — one whole-video overlay of the default logo (its
+ * corner / size / opacity from the kit), added to every engine draft (Generate, Batch, Beat Spot).
+ * It is an ordinary overlay clip: the editor can move, resize or delete it (one undo). Skipped when
+ * the draft is empty or already shows that logo (overlay or the brand-logo switch).
+ */
+export function autoLogoOp(kit: BrandKit, ops: readonly Record<string, unknown>[]): Record<string, unknown> | null {
+  if (!kit.logo_otomatis || !kit.logo) return null;
+  const end = draftEnd(ops);
+  if (end < 100) return null;
+  const logo = kit.logo;
+  const has = ops.some((o) => (o?.op === 'set_brand_logo' && o.on === true) || (o?.op === 'add_clip' && o.track_kind === 'overlay' && (o.media as MediaRef | null)?.version_id === logo.ref.version_id));
+  if (has) return null;
+  return {
+    op: 'add_clip',
+    track_kind: 'overlay',
+    media: { ...logo.ref },
+    start_ms: 0,
+    duration_ms: Math.round(end),
+    overlay: { ...OVERLAY_DEFAULT, pos: logo.corner, skala: logo.size, opasitas: logo.opacity, layer: 999, sepanjang: true },
+  };
 }
 
 /** Batch Remix table (`out/batch.json`) as written by the engine. */

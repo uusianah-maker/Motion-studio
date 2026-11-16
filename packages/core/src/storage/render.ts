@@ -9,6 +9,7 @@ import { audioFxFilters } from './clipAudio.js';
 import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
 import { readFontInfo } from './fontInfo.js';
 import { type LogoCorner, brandRenderRefs, readBrandFor } from './brand.js';
+import { contentEnd, overlayOrder, overlaySpan } from './overlay.js';
 import os from 'node:os';
 import path from 'node:path';
 import { audit } from './audit.js';
@@ -20,7 +21,7 @@ import type { Actor } from './permissions.js';
 import { MEDIA_AREAS } from './permissions.js';
 import { type PreflightResult, finishRender, startRender, verifyRenderSnapshot } from './preflight.js';
 import { effectiveStyle, layoutText } from './textStyle.js';
-import { type MediaProbe, probeFile } from './probe.js';
+import { type MediaProbe, probeFile, probeImage } from './probe.js';
 import { type CanvasRatio, type Clip, type Timeline, type Track } from './project.js';
 import { loadRegistry } from './registry.js';
 import { type Workspace, projectRel, readProject } from './workspace.js';
@@ -59,7 +60,7 @@ export const safeInsets = (ratio: CanvasRatio): [number, number, number, number]
 const clipsOf = (t: Timeline, kind: string): Clip[] => t.tracks.filter((x) => x.kind === kind).flatMap((x) => x.clips);
 const clipAt = (clips: readonly Clip[], ms: number): Clip | null => clips.find((c) => ms >= c.start_ms && ms < c.end_ms) ?? null;
 
-export const timelineEnd = (t: Timeline): number => Math.max(0, ...t.tracks.flatMap((x) => x.clips.map((c) => c.end_ms)));
+export const timelineEnd = (t: Timeline): number => contentEnd(t.tracks);
 
 export interface VisualSegment {
   /** Frame range [from, to) on the output frame grid. */
@@ -205,6 +206,8 @@ export interface RenderBrand {
   fonts?: Partial<AssFonts>;
   /** Malam 15 Nov: Brand Kit default colour look for video/b-roll clips without their own `look`. */
   look?: LookId | null;
+  /** R26: local file of each overlay media version; `still` = a picture (looped), else a video. */
+  overlays?: ReadonlyMap<string, { path: string; still: boolean }>;
 }
 
 /** Frames of the incoming transition's half (h) per visual segment; 0 = hard cut. Total xfade = 2h. */
@@ -455,18 +458,46 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     // Fonts are looked up by family name among the files copied into the job folder.
     draws.push('ass=filename=captions.ass:fontsdir=.');
   }
-  // X06: Brand Kit logo in a corner, over everything (text included), for the whole video.
+  // R26: picture/video overlays over the text, back to front by layer (same box as the preview's
+  // overlayBox: width % of W, height from the picture, preset corner + margin + nudge).
+  const layers: { input: string; x: string; y: string; enable: string }[] = [];
+  overlayOrder(clipsOf(t, 'overlay')).forEach((c, k) => {
+    const o = c.overlay;
+    const src = c.media ? brand.overlays?.get(c.media.version_id) : undefined;
+    if (!o || !src) throw new StorageError('PRECONDITION', 'Media overlay tidak tersedia untuk render', { clip_id: c.clip_id });
+    const [from, to] = overlaySpan(c, total_ms);
+    if (to <= from) return;
+    const idx = inputCount++;
+    if (src.still) args.push('-loop', '1', '-framerate', String(fps), '-t', s6(total_ms / 1000), '-i', src.path);
+    else args.push('-ss', s6((c.in_ms ?? 0) / 1000), '-t', s6((to - from) / 1000), '-i', src.path);
+    const ow = Math.max(2, Math.round((W * o.skala) / 100 / 2) * 2);
+    const m = Math.round((short * o.margin) / 100);
+    const nx = Math.round(o.dx * W);
+    const ny = Math.round(o.dy * H);
+    const off = (n: number) => (n ? (n > 0 ? `+${n}` : `${n}`) : '');
+    const x = (o.pos === 'c' ? '(W-w)/2' : o.pos.endsWith('l') ? `${m}` : `W-w-${m}`) + off(nx);
+    const y = (o.pos === 'c' ? '(H-h)/2' : o.pos.startsWith('t') ? `${m}` : `H-h-${m}`) + off(ny);
+    // A video overlay starts at its clip's start (its own frames from in_ms); a picture is looped.
+    const time = src.still ? '' : `setpts=PTS-STARTPTS+${s6(from / 1000)}/TB,fps=${fps},`;
+    graph.push(`[${idx}:v:0]${time}scale=${ow}:-2,format=rgba,colorchannelmixer=aa=${o.opasitas.toFixed(2)},setsar=1[ov${k}]`);
+    layers.push({ input: `ov${k}`, x, y, enable: `between(t,${s6(from / 1000)},${s6(to / 1000)})` });
+  });
+  // X06: Brand Kit logo in a corner, over everything (text and overlays included), for the whole video.
   if (brand.logo) {
     const lg = brand.logo;
     const idx = inputCount++;
     args.push('-loop', '1', '-framerate', String(fps), '-t', s6(total_ms / 1000), '-i', lg.path);
     const lw = Math.max(2, Math.round((W * lg.size) / 100 / 2) * 2);
     const m = Math.round(short * 0.04);
-    const x = lg.corner.endsWith('l') ? `${m}` : `W-w-${m}`;
-    const y = lg.corner.startsWith('t') ? `${m}` : `H-h-${m}`;
-    graph.push(draws.length ? `[vcat]${draws.join(',')}[vtxt]` : `[vcat]null[vtxt]`);
     graph.push(`[${idx}:v:0]scale=${lw}:-2,format=rgba,colorchannelmixer=aa=${lg.opacity.toFixed(2)},setsar=1[logo]`);
-    graph.push(`[vtxt][logo]overlay=x=${x}:y=${y}:eof_action=pass:format=auto,format=yuv420p,trim=end_frame=${total_frames}[vout]`);
+    layers.push({ input: 'logo', x: lg.corner.endsWith('l') ? `${m}` : `W-w-${m}`, y: lg.corner.startsWith('t') ? `${m}` : `H-h-${m}`, enable: '' });
+  }
+  if (layers.length) {
+    graph.push(draws.length ? `[vcat]${draws.join(',')}[vl0]` : `[vcat]null[vl0]`);
+    layers.forEach((l, i) => {
+      const last = i === layers.length - 1;
+      graph.push(`[vl${i}][${l.input}]overlay=x=${l.x}:y=${l.y}:eof_action=pass:format=auto${l.enable ? `:enable='${l.enable}'` : ''}${last ? `,format=yuv420p,trim=end_frame=${total_frames}[vout]` : `[vl${i + 1}]`}`);
+    });
   } else graph.push(draws.length ? `[vcat]${draws.join(',')}[vout]` : `[vcat]null[vout]`);
 
   args.push(
@@ -605,7 +636,8 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     const leased = new Set(lease.media.map((m) => m.version_id));
     for (const r of [brandRefs.font, brandRefs.font_caption, brandRefs.logo?.ref]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
     const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.font_caption?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
-    const clipVersions = new Set(project.timeline.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.media ? [c.media.version_id] : []))));
+    const clipVersions = new Set(project.timeline.tracks.flatMap((tr) => (tr.kind === 'overlay' ? [] : tr.clips.flatMap((c) => (c.media ? [c.media.version_id] : [])))));
+    const overlayVersions = new Set(clipsOf(project.timeline, 'overlay').flatMap((c) => (c.media ? [c.media.version_id] : [])));
     const versions = lease.media.map((m) => reg.versions[m.version_id]!);
     const rels = await Promise.all(versions.map((v) => ws.blobs.resolve(v.rel_path, MEDIA_AREAS)));
     tmp = await fsp.mkdtemp(path.join(hooks.tmpRoot ?? os.tmpdir(), RENDER_TMP_PREFIX));
@@ -615,8 +647,18 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       const inputs = new Map<string, PlanInput>();
       const markers = new Set<string>();
       const local = new Map(versions.map((v, i) => [v.version_id, abs[i]!]));
+      const overlays = new Map<string, { path: string; still: boolean }>();
       for (let i = 0; i < versions.length; i++) {
         const v = versions[i]!;
+        if (overlayVersions.has(v.version_id)) {
+          // R26: a picture has no video probe (null); a video overlay keeps its frames.
+          const p = v.probe ?? (await probeFile(abs[i]!));
+          const still = !p || !p.video_codec || p.duration_ms <= 100 || ['png', 'mjpeg', 'webp', 'bmp', 'gif'].includes(p.video_codec);
+          if (still && !(await probeImage(abs[i]!))) throw new StorageError('PRECONDITION', `Overlay "${v.original_name}" bukan gambar/video yang bisa dibaca`, { version_id: v.version_id });
+          overlays.set(v.version_id, { path: abs[i]!, still });
+          for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
+          if (!clipVersions.has(v.version_id)) continue;
+        }
         if (brandOnly.has(v.version_id) && !clipVersions.has(v.version_id)) {
           if (v.version_id === brandRefs.logo?.ref.version_id) for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
           continue; // font / logo: not a timeline clip
@@ -641,7 +683,7 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       if (fr) fonts.regular = fr;
       if (fk) fonts.brand = fk;
       if (fc) fonts.caption = fc;
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null });
+      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));

@@ -6,6 +6,7 @@ import { type TextStyle, effectiveStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 import { type Keyframe, cutKeyframes, sliceKeyframes, validateKeyframes } from './keyframes.js';
 import { needsAss } from './ass.js';
+import { OVERLAY_DEFAULT, type Overlay, contentEnd, patchOverlay, validateOverlay, validateOverlayPatch } from './overlay.js';
 import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateTransition } from './clipLook.js';
 import { type Eq, validateEq } from './clipAudio.js';
 import { FREEZE_MS, MAX_REVERSE_MS, type Rotation, type VDenoise, sliceIn, sourceAt, sourceLength, validateBool, validateRotate, validateSpeed, validateVDenoise } from './clipMotion.js';
@@ -21,17 +22,19 @@ export const MIN_CLIP_MS = 100;
 /** Retained undo steps per project. Older steps are dropped (and stop holding their media). */
 export const UNDO_LIMIT = 50;
 /** Media clips may live on these tracks; text/subtitle/effects carry no media. */
-export const MEDIA_TRACKS: readonly TrackKind[] = ['video', 'broll', 'audio', 'music', 'sfx'];
+export const MEDIA_TRACKS: readonly TrackKind[] = ['video', 'broll', 'overlay', 'audio', 'music', 'sfx'];
 /** Checkpoint E E10: bound the manifest (each edit stores up to UNDO_LIMIT full snapshots). */
 export const MAX_TIMELINE_CLIPS = 2000;
 /** Text clips (overlay / subtitle) carry `text` and never media. */
 export const TEXT_TRACKS: readonly TrackKind[] = ['text', 'subtitle'];
-const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'audio', 'music', 'sfx', 'effects'];
+const TRACK_ORDER: readonly TrackKind[] = ['video', 'broll', 'text', 'subtitle', 'overlay', 'audio', 'music', 'sfx', 'effects'];
+/** R26: overlay layer moves. */
+export const OVERLAY_LAYER_MOVES = ['depan', 'maju', 'mundur', 'belakang'] as const;
 /** Tracks whose clips are sound only (mixed over the picture's sound). */
 export const SOUND_TRACKS: readonly TrackKind[] = ['audio', 'music', 'sfx'];
 
 export type EditOp =
-  | ({ op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[]; keyframes?: Keyframe[] } & ClipExtras)
+  | ({ op: 'add_clip'; track_kind: TrackKind; media?: MediaRef; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: Word[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[]; keyframes?: Keyframe[]; overlay?: Overlay } & ClipExtras)
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -70,7 +73,11 @@ export type EditOp =
   /** R33: a copy right after the clip on its lane (or after the lane's last clip when that spot is taken). */
   | { op: 'duplicate_clip'; clip_id: string }
   /** R35: the same clip on another media version (AI result ↔ original: 'Perjelas', 'Hapus latar'). */
-  | { op: 'set_media'; clip_id: string; media: MediaRef };
+  | { op: 'set_media'; clip_id: string; media: MediaRef }
+  /** R26: position / size / opacity / margin / whole-video of an overlay clip (only the given fields). */
+  | { op: 'set_overlay'; clip_id: string; overlay: Partial<Omit<Overlay, 'sepanjang'>> & { sepanjang?: boolean } }
+  /** R26: stacking order — to the very front/back or one step. */
+  | { op: 'set_overlay_layer'; clip_id: string; to: (typeof OVERLAY_LAYER_MOVES)[number] };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -82,6 +89,15 @@ const bad = (msg: string, details: Record<string, unknown> = {}): never => {
 };
 const isMs = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 24 * 3_600_000;
 const ms = (n: unknown, what: string): number => (isMs(n) ? Math.round(n) : bad(`${what} harus angka ms 0–24 jam`, { [what]: n }));
+/** Turn a plain validation Error into EDIT_INVALID. */
+const guard = <T,>(fn: () => T): T => {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof StorageError) throw e;
+    return bad(e instanceof Error ? e.message : 'tidak valid');
+  }
+};
 const clipId = (x: unknown): string => (isSafeId(x) ? x : bad('clip_id tidak valid'));
 const textOf = (x: unknown): string => (typeof x === 'string' && x.trim().length > 0 && x.length <= MAX_TEXT_LEN ? x : bad(`Teks wajib 1-${MAX_TEXT_LEN} karakter`));
 
@@ -100,7 +116,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
     };
     switch (o.op) {
       case 'add_clip': {
-        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words', 'effect', 'crop', 'blur', 'keyframes', ...EXTRA_FIELDS]);
+        keys(['op', 'track_kind', 'media', 'text', 'style', 'start_ms', 'duration_ms', 'in_ms', 'volume', 'words', 'effect', 'crop', 'blur', 'keyframes', 'overlay', ...EXTRA_FIELDS]);
         if (!TRACK_ORDER.includes(o.track_kind as TrackKind)) bad(`ops[${i}]: track_kind tidak dikenal`);
         let media: MediaRef | undefined;
         if (o.media !== undefined) {
@@ -114,6 +130,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           op: 'add_clip',
           ...extras,
           ...(o.keyframes !== undefined ? { keyframes: validateKeyframes(o.keyframes, `ops[${i}].keyframes`) } : {}),
+          ...(o.overlay !== undefined ? { overlay: guard(() => validateOverlay(o.overlay, `ops[${i}].overlay`)) } : {}),
           track_kind: o.track_kind as TrackKind,
           ...(media ? { media } : {}),
           ...(o.text !== undefined ? { text: textOf(o.text) } : {}),
@@ -261,6 +278,16 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
       case 'duplicate_clip':
         keys(['op', 'clip_id']);
         return { op: 'duplicate_clip', clip_id: clipId(o.clip_id) };
+      case 'set_overlay': {
+        keys(['op', 'clip_id', 'overlay']);
+        const overlay = guard(() => validateOverlayPatch(o.overlay, `ops[${i}].overlay`));
+        if (!Object.keys(overlay).length) bad(`ops[${i}]: overlay kosong`);
+        return { op: 'set_overlay', clip_id: clipId(o.clip_id), overlay };
+      }
+      case 'set_overlay_layer':
+        keys(['op', 'clip_id', 'to']);
+        if (!(OVERLAY_LAYER_MOVES as readonly unknown[]).includes(o.to)) bad(`ops[${i}]: to harus ${OVERLAY_LAYER_MOVES.join(' | ')}`);
+        return { op: 'set_overlay_layer', clip_id: clipId(o.clip_id), to: o.to as (typeof OVERLAY_LAYER_MOVES)[number] };
       case 'delete_clips':
       case 'shift_clips':
       case 'set_style_many': {
@@ -298,6 +325,7 @@ function splitInto(track: Track, index: number, at: number, newClipId: () => str
   if (clip.effect) right.effect = { ...clip.effect };
   if (clip.crop) right.crop = { ...clip.crop };
   if (clip.blur) right.blur = clip.blur.map((b) => ({ ...b }));
+  if (clip.overlay) right.overlay = { ...clip.overlay };
   // Malam 15 Nov: the look/sound carry over; a fade-in and the incoming transition stay on the left
   // half (the clip's start), a fade-out moves to the right half (the clip's end).
   Object.assign(right, copyExtras(clip));
@@ -357,7 +385,7 @@ const withKeys = (c: Clip, k: Keyframe[] | undefined | null): Clip => {
 };
 
 const EQ_FLAT = (e: Eq) => e.bass === 0 && e.mid === 0 && e.treble === 0;
-const timelineEnd = (t: Timeline) => Math.max(0, ...t.tracks.flatMap((tr) => tr.clips.map((c) => c.end_ms)));
+const timelineEnd = (t: Timeline) => contentEnd(t.tracks);
 
 const clone = (t: Timeline): Timeline => ({
   tracks: t.tracks.map((tr) => ({
@@ -374,6 +402,7 @@ const clone = (t: Timeline): Timeline => ({
       ...(c.eq ? { eq: { ...c.eq } } : {}),
       ...(c.transition ? { transition: { ...c.transition } } : {}),
       ...(c.keyframes ? { keyframes: c.keyframes.map((k) => ({ ...k })) } : {}),
+      ...(c.overlay ? { overlay: { ...c.overlay } } : {}),
     })),
   })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
@@ -401,9 +430,12 @@ function assertConsistent(t: Timeline, sourceDuration?: SourceDuration): void {
       if (ids.has(c.clip_id)) bad('clip_id ganda', { clip_id: c.clip_id });
       ids.add(c.clip_id);
       if (c.end_ms - c.start_ms < MIN_CLIP_MS) bad(`Klip minimal ${MIN_CLIP_MS} ms`, { clip_id: c.clip_id });
-      if (c.start_ms < prevEnd) bad('Klip saling tumpang tindih di track yang sama', { clip_id: c.clip_id, track_id: track.track_id });
+      // R26: overlays may overlap in time (the layer decides which is in front).
+      if (c.start_ms < prevEnd && track.kind !== 'overlay') bad('Klip saling tumpang tindih di track yang sama', { clip_id: c.clip_id, track_id: track.track_id });
       if (c.media && !MEDIA_TRACKS.includes(track.kind)) bad(`Media tidak boleh di track ${track.kind}`, { clip_id: c.clip_id });
       if (c.text !== undefined && !TEXT_TRACKS.includes(track.kind)) bad('Teks hanya di track teks/subtitle', { clip_id: c.clip_id });
+      if (track.kind === 'overlay' && (!c.media || !c.overlay)) bad('Klip overlay wajib punya gambar/video dan pengaturan overlay', { clip_id: c.clip_id });
+      if (c.overlay && track.kind !== 'overlay') bad('Pengaturan overlay hanya di track overlay', { clip_id: c.clip_id });
       // Malam 15 Nov: text keyframes are drawn with drawtext; captions word-by-word / animated / highlighted go through libass.
       if (c.keyframes && TEXT_TRACKS.includes(track.kind) && needsAss(effectiveStyle(track.kind as 'text' | 'subtitle', c.style), c)) bad('Keyframe teks belum bisa digabung dengan kata per kata, animasi, atau sorot kata. Matikan itu dulu atau hapus keyframe.', { clip_id: c.clip_id });
       // R23a: reverse keeps every frame of the piece in memory, so its source span is capped.
@@ -468,6 +500,13 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         if (op.keyframes?.length) {
           if (!((op.track_kind === 'video' || op.track_kind === 'broll') && op.media) && !TEXT_TRACKS.includes(op.track_kind)) bad('Keyframe hanya untuk klip video, b-roll, teks, subtitle');
           clip.keyframes = op.keyframes.map((k) => ({ ...k }));
+        }
+        if (op.overlay && op.track_kind !== 'overlay') bad('Pengaturan overlay hanya di track overlay');
+        if (op.track_kind === 'overlay') {
+          if (!op.media) bad('Overlay wajib berisi gambar atau video');
+          // New overlays go in front of the ones already there unless the op says otherwise.
+          const top = Math.max(-1, ...(t.tracks.find((x) => x.kind === 'overlay')?.clips ?? []).map((c) => c.overlay?.layer ?? 0));
+          clip.overlay = op.overlay ? { ...op.overlay } : { ...OVERLAY_DEFAULT, layer: Math.min(999, top + 1) };
         }
         if (op.track_kind === 'effects' && !op.effect) bad('Klip di track efek wajib punya efek (zoom / zoom_through)');
         if (op.words) {
@@ -772,6 +811,24 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         const track = trackFor(t, 'music');
         if (op.on) track.duck = op.level ?? track.duck ?? 0.3;
         else delete track.duck;
+        break;
+      }
+      case 'set_overlay': {
+        const { clip } = locate(t, op.clip_id);
+        if (!clip.overlay) bad('Hanya klip overlay yang punya pengaturan overlay', { clip_id: op.clip_id });
+        clip.overlay = patchOverlay(clip.overlay!, op.overlay);
+        break;
+      }
+      case 'set_overlay_layer': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (!clip.overlay || track.kind !== 'overlay') bad('Hanya klip overlay yang punya urutan lapisan', { clip_id: op.clip_id });
+        // Renumber 0..n-1 back to front, move this one, renumber again (stable, never past 999).
+        const order = [...track.clips].sort((a, b) => a.overlay!.layer - b.overlay!.layer || track.clips.indexOf(a) - track.clips.indexOf(b));
+        const i = order.indexOf(clip);
+        order.splice(i, 1);
+        const j = op.to === 'depan' ? order.length : op.to === 'belakang' ? 0 : op.to === 'maju' ? Math.min(order.length, i + 1) : Math.max(0, i - 1);
+        order.splice(j, 0, clip);
+        order.forEach((c, k) => (c.overlay = { ...c.overlay!, layer: Math.min(999, k) }));
         break;
       }
       case 'set_style': {

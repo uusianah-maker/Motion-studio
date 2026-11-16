@@ -9,6 +9,8 @@ import type { LoadedBrand } from '../brand';
 import type { Api, Clip, Media, Project } from '../api';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { TextOverlay } from './TextOverlay';
+import { OverlayLayer } from './OverlayLayer';
+import { type Overlay, contentEnd } from '../../../../packages/core/dist/storage/overlay.js';
 import { CANVAS_RATIOS, type CanvasRatio, aspectCss, clipAt, formatDuration, safeInsets, sourceSeconds } from '../lib';
 
 type Layer = 'visual' | 'audio';
@@ -35,6 +37,8 @@ export function Preview({
   onMoveText,
   brand = null,
   onBrandLogo,
+  overlayDraft = null,
+  onMoveOverlay,
 }: {
   api: Api;
   project: Project;
@@ -53,6 +57,9 @@ export function Preview({
   /** X06: Brand Kit (logo URL) and the per-project logo switch. */
   brand?: LoadedBrand | null;
   onBrandLogo?: (on: boolean) => void;
+  /** R26: live overlay spec from the inspector, and dragging the selected overlay (one edit on drop). */
+  overlayDraft?: { clip_id: string; overlay: Overlay } | null;
+  onMoveOverlay?: (id: string, dx: number, dy: number) => void;
 }) {
   const ratio: CanvasRatio = project.timeline.canvas?.ratio ?? '9:16';
   const [safe, setSafe] = useState(true);
@@ -82,7 +89,7 @@ export function Preview({
 
   const tracks = project.timeline.tracks;
   const clipsOf = (kind: string) => tracks.filter((t) => t.kind === kind).flatMap((t) => t.clips);
-  const end = Math.max(0, ...tracks.flatMap((t) => t.clips.map((c) => c.end_ms)));
+  const end = contentEnd(tracks); // R26: whole-video overlays follow the video, as in the render
   const t = playhead;
   const visual = clipAt(clipsOf('broll'), t) ?? clipAt(clipsOf('video'), t);
   const audio = clipAt(clipsOf('audio'), t);
@@ -408,6 +415,18 @@ export function Preview({
               kf={c.keyframes?.length ? keyframeAt(c.keyframes, t - c.start_ms) : null}
             />
           ))}
+          <OverlayLayer
+            api={api}
+            clips={clipsOf('overlay')}
+            media={media}
+            time={t}
+            total={end}
+            canvas={canvasPx}
+            selectedId={selectedClipId}
+            draft={overlayDraft}
+            {...(onSelectClip ? { onSelect: onSelectClip } : {})}
+            {...(onMoveOverlay && !busy ? { onMove: onMoveOverlay } : {})}
+          />
           {project.timeline.brand_logo && brand?.kit.logo && brand.logoUrl && (
             <img
               className="brandLogo"

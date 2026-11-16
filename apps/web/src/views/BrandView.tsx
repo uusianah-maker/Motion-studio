@@ -379,7 +379,7 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                   'Logo brand',
                   draft.logo?.ref ?? null,
                   logos,
-                  (r) => set({ logo: r ? { ref: r, corner, size: draft.logo?.size ?? 18, opacity: draft.logo?.opacity ?? 1, show: draft.logo?.show ?? 'sepanjang' } : null }),
+                  (r) => set({ logo: r ? { ref: r, corner, size: draft.logo?.size ?? 18, opacity: draft.logo?.opacity ?? 1, show: draft.logo?.show ?? 'sepanjang' } : null, ...(r ? {} : { logo_otomatis: false }) }),
                   'logo',
                   'image/png,image/jpeg,image/webp',
                   '⇪ Unggah logo',
@@ -413,6 +413,9 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                         <option value="penutup">Hanya penutup</option>
                         <option value="sepanjang+penutup">Sepanjang + penutup</option>
                       </select>
+                    </label>
+                    <label className="inline" title="Logo default ditaruh sebagai overlay di setiap draf baru dari Buat video, Batch Remix, dan Beat Spot. Tetap bisa digeser, diubah, atau dihapus di Editor.">
+                      <input type="checkbox" aria-label="Pasang logo otomatis" checked={draft.logo_otomatis} onChange={(e) => set({ logo_otomatis: e.target.checked })} /> Pasang logo ini otomatis di setiap video (Generate / Batch / Beat Spot)
                     </label>
                   </div>
                 )}

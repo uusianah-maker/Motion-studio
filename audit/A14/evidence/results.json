@@ -1,0 +1,147 @@
+[
+  {
+    "id": "A14-01 Pratinjau caption per kata: ukuran & warna asli (bukan 11 px abu-abu)",
+    "ok": true,
+    "detail": "{\"fs\":13.8038,\"color\":\"rgb(255, 255, 255)\"}"
+  },
+  {
+    "id": "A14-02 Ketik di inspector lalu pilih klip lain: klip lain tidak ikut berubah",
+    "ok": true,
+    "detail": "B=4000"
+  },
+  {
+    "id": "A14-03 Fokus lalu keluar dari \"Kata kunci\" tanpa mengubah: tidak ada revisi / undo kosong",
+    "ok": true,
+    "detail": "rev 1 → 1"
+  },
+  {
+    "id": "A14-04 \"+ Teks\" dua kali di posisi yang sudah terisi: dua klip baru, tanpa error tumpang tindih",
+    "ok": true,
+    "detail": "4 klip teks"
+  },
+  {
+    "id": "A14-22 ⏮ saat diputar: kembali ke awal (00:00), tidak ditimpa jam pemutaran",
+    "ok": true,
+    "detail": "00:00 / 00:13"
+  },
+  {
+    "id": "A14-23 Teks yang di-drag tetap di posisi baru selama penyimpanan berjalan (tidak melompat balik)",
+    "ok": true,
+    "detail": "Δy=60"
+  },
+  {
+    "id": "A14-24 Pindah proyek cepat: jawaban lambat proyek sebelumnya tidak menimpa proyek yang terbuka",
+    "ok": true,
+    "detail": "Uji Audit Editor"
+  },
+  {
+    "id": "A14-14 Ubah ukuran lalu langsung pilih klip lain (<0,45 dtk): perubahan tetap tersimpan",
+    "ok": true,
+    "detail": "null → 12"
+  },
+  {
+    "id": "A14-25 Undo < 0,45 dtk setelah ubah ukuran: ukuran kembali (12), Redo tersedia, perubahan tidak tersimpan lagi",
+    "ok": true,
+    "detail": "ukuran 12, redo true"
+  },
+  {
+    "id": "A14-15 Copilot: centang sebagian yang tidak bisa diterapkan → diberi tahu, \"Terapkan\" mati",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-16 Media: antrean upload tetap terlihat setelah pindah halaman dan selesai semua (tanpa BUSY)",
+    "ok": true,
+    "detail": "2 baris"
+  },
+  {
+    "id": "A14-19 Batch: isian form tetap setelah pindah menu (jumlah, hak pakai, buang otomatis)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-05 Frasa diketik huruf per huruf: fokus tetap di kotak, frasa lengkap",
+    "ok": true,
+    "detail": "HAPUS PERMANEN"
+  },
+  {
+    "id": "A14-06 Permintaan hapus yang gagal / kedaluwarsa: ada \"Tutup\" dan \"Siapkan permintaan baru\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-07 Permintaan baru siap: frasa bisa diketik lagi dan tombol aktif",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-08 Brand: file font salah → pesan jelas \"Pilih file font .ttf atau .otf.\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-08b Brand: upload aset selesai belakangan → nama yang diubah selama upload tetap, aset ikut masuk",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-21 Brand: pindah brand dengan editan belum disimpan → ditanya dulu; \"batal\" = editan tetap",
+    "ok": true,
+    "detail": "Ada perubahan Brand Kit yang belum disimpan. Buang perubahan itu?"
+  },
+  {
+    "id": "A14-09 AI: koneksi ditolak server → isian tetap (bisa diperbaiki), pesan tampil",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-10 AI: batas \"0,5\" (koma) tersimpan sebagai 0,5 USD",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-11 AI: batas kosong tidak bisa disimpan (bukan jadi 0 yang memblokir AI)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-11b Generate: gagal mulai (antrean penuh) lalu diulang → hanya satu proyek baru, bukan satu per percobaan",
+    "ok": true,
+    "detail": "told=true ran=true 4 → 5 → 5"
+  },
+  {
+    "id": "A14-12 Progres mesin: satu cek status gagal (koneksi putus) → tetap lanjut sampai rencana siap",
+    "ok": true,
+    "detail": "gagal=1"
+  },
+  {
+    "id": "A14-26 Generate ditolak karena lagu → \"Tetap lanjut\" menjalankan ulang tanpa cek lagu → rencana siap",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-17 Generate: saat brand dimuat tampil \"Memuat brand…\", bukan \"Buat brand dulu\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-13 HP: frasa diketik per huruf tetap di kotak",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-18 HP Editor: tombol CC media tidak terpotong layar",
+    "ok": true,
+    "detail": "373 / 390"
+  },
+  {
+    "id": "A14-20 HP Media: select & tombol tidak keluar layar (nama proyek panjang)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "A14-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

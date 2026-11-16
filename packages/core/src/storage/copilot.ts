@@ -63,7 +63,7 @@ export const fmtTime = (ms: number) => {
   const sec = Number.isInteger(rest) ? String(rest).padStart(2, '0') : rest.toFixed(1).padStart(4, '0');
   return `${m}:${sec}`;
 };
-const TRACK_NAME: Record<TrackKind, string> = { video: 'video', broll: 'b-roll', text: 'teks', subtitle: 'subtitle', audio: 'audio', music: 'musik', sfx: 'SFX', effects: 'efek' };
+const TRACK_NAME: Record<TrackKind, string> = { video: 'video', broll: 'b-roll', text: 'teks', subtitle: 'subtitle', overlay: 'overlay', audio: 'audio', music: 'musik', sfx: 'SFX', effects: 'efek' };
 const quote = (t: string) => `“${t.length > 40 ? `${t.slice(0, 39)}…` : t}”`;
 
 function findClip(t: Timeline, id: string) {
@@ -137,6 +137,10 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return `Gerak ${ref(op.clip_id)}: ${motionSummary({ ...(op.rotate ? { rotate: op.rotate } : {}), ...(op.flip_h ? { flip_h: true } : {}), ...(op.flip_v ? { flip_v: true } : {}), ...(op.speed !== undefined ? { speed: op.speed } : {}), ...(op.reverse ? { reverse: true } : {}), ...(op.vdenoise && op.vdenoise !== 'off' ? { vdenoise: op.vdenoise } : {}) }) || 'normal'}`;
     case 'set_media':
       return `Ganti file ${ref(op.clip_id)}`;
+    case 'set_overlay':
+      return `Atur overlay ${ref(op.clip_id)}`;
+    case 'set_overlay_layer':
+      return `Lapisan overlay ${ref(op.clip_id)}: ${{ depan: 'paling depan', maju: 'maju satu', mundur: 'mundur satu', belakang: 'paling belakang' }[op.to]}`;
     case 'duplicate_clip':
       return `Duplikat ${ref(op.clip_id)}`;
     case 'delete_clips':

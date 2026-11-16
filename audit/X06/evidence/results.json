@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-12T20:53:49.487Z",
+  "at": "2026-11-16T09:25:02.787Z",
   "passed": 13,
   "total": 13,
   "results": [
@@ -36,7 +36,7 @@
     {
       "id": "X6-07 Logo tampil di pojok kanan atas pratinjau",
       "ok": true,
-      "detail": "x=201 y=11"
+      "detail": "x=179 y=10"
     },
     {
       "id": "X6-08 Inspector: klik swatch warna brand → kotak klip pakai warna brand",

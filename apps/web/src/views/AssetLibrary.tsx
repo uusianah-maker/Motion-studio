@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Api, BrandAsset, BrandKitInput, Media } from '../api';
 
 const KINDS: { id: BrandAsset['jenis']; label: string }[] = [
@@ -6,6 +6,9 @@ const KINDS: { id: BrandAsset['jenis']; label: string }[] = [
   { id: 'musik', label: 'Musik' },
   { id: 'broll', label: 'B-roll' },
   { id: 'logo', label: 'Logo' },
+  { id: 'watermark', label: 'Watermark' },
+  { id: 'stiker', label: 'Stiker' },
+  { id: 'frame', label: 'Frame' },
   { id: 'penutup', label: 'Penutup' },
   { id: 'vo', label: 'VO (suara)' },
   { id: 'lainnya', label: 'Lainnya' },
@@ -18,7 +21,7 @@ const STATUS: { id: BrandAsset['lisensi']['status']; label: string }[] = [
 ];
 /** Event tags the automation engine looks for (KONTRAK-ENGINE / U2). */
 const SUGGESTED: Record<string, string[]> = { sfx: ['teks-muncul', 'kata-kunci', 'transisi', 'penutup'], musik: ['ceria', 'santai', 'energik', 'elegan'], broll: ['detail-bahan', 'try-on', 'packing', 'lifestyle'] };
-const ACCEPT: Record<string, string> = { sfx: 'audio/*,.wav,.mp3,.m4a', musik: 'audio/*,.wav,.mp3,.m4a', broll: 'video/*,image/*', logo: 'image/png,image/jpeg,image/webp', penutup: 'video/*,image/*', vo: 'audio/*,.wav,.mp3,.m4a', lainnya: '*/*' };
+const ACCEPT: Record<string, string> = { sfx: 'audio/*,.wav,.mp3,.m4a', musik: 'audio/*,.wav,.mp3,.m4a', broll: 'video/*,image/*', logo: 'image/png,image/jpeg,image/webp', watermark: 'image/png,image/jpeg,image/webp', stiker: 'image/png,image/jpeg,image/webp', frame: 'image/png,image/jpeg,image/webp', penutup: 'video/*,image/*', vo: 'audio/*,.wav,.mp3,.m4a', lainnya: '*/*' };
 const slug = (s: string) =>
   s
     .toLowerCase()
@@ -28,6 +31,25 @@ const slug = (s: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 36) || 'aset';
 const canAds = (s: BrandAsset['lisensi']['status']) => s === 'milik_sendiri' || s === 'berlisensi';
+/** R26: pictures that go on the overlay track (Editor + Buat video). */
+export const OVERLAY_KINDS: readonly BrandAsset['jenis'][] = ['logo', 'watermark', 'stiker', 'frame'];
+export const KIND_LABEL = (k: BrandAsset['jenis']) => KINDS.find((x) => x.id === k)?.label ?? k;
+
+/** R26: small preview of a picture on a checkerboard (shows PNG transparency). */
+export function AssetThumb({ api, versionId, label, size = 56 }: { api: Api; versionId: string; label: string; size?: number }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api
+      .streamUrl(versionId)
+      .then((r) => live && setUrl(r.url))
+      .catch(() => live && setUrl(null));
+    return () => {
+      live = false;
+    };
+  }, [api, versionId]);
+  return <span className="assetThumb" style={{ width: size, height: size }}>{url ? <img src={url} alt={label} /> : null}</span>;
+}
 
 /**
  * Brand asset library (U2, Brand Kit sheet E): SFX, music, b-roll… with tags and licence status, so
@@ -124,11 +146,26 @@ export function AssetLibrary({
         <input ref={fileRef} type="file" hidden multiple accept={ACCEPT[kind || 'sfx']} aria-label="File aset brand" onChange={(e) => void upload(e.target.files)} />
       </div>
       {error && <div className="notice err small">{error}</div>}
-      {draft.aset.length === 0 && <div className="muted small">Belum ada aset. Pilih jenis lalu unggah (mis. SFX pop + whoosh, musik berlisensi, b-roll produk).</div>}
+      {draft.aset.length === 0 && <div className="muted small">Belum ada aset. Pilih jenis lalu unggah (mis. SFX pop + whoosh, musik berlisensi, b-roll produk, logo/stiker PNG transparan).</div>}
+      {OVERLAY_KINDS.includes(kind as BrandAsset['jenis']) && <div className="muted small">Gambar overlay: pakai PNG transparan supaya latarnya tidak menutupi video. Dipakai di Editor (＋ Overlay) dan di Buat video.</div>}
       {shown.map(({ a, i }) => (
         <div key={i} className="assetRow" role="group" aria-label={`Aset ${a.id}`}>
           <div className="row wrap" style={{ gap: 6 }}>
+            {OVERLAY_KINDS.includes(a.jenis) && <AssetThumb api={api} versionId={a.ref.version_id} label={`Gambar ${a.id}`} />}
             <span className="badge vio">{KINDS.find((k) => k.id === a.jenis)?.label}</span>
+            {a.jenis === 'logo' &&
+              (draft.logo?.ref.version_id === a.ref.version_id ? (
+                <span className="badge ok" aria-label={`${a.id} logo default`}>★ Logo default</span>
+              ) : (
+                <button
+                  className="tiny"
+                  aria-label={`Jadikan ${a.id} logo default`}
+                  title="Logo default = logo Brand Kit (bagian B): dipakai tombol Logo di Editor dan pasang logo otomatis"
+                  onClick={() => set({ logo: { ref: { ...a.ref }, corner: draft.logo?.corner ?? 'tr', size: draft.logo?.size ?? 18, opacity: draft.logo?.opacity ?? 1, show: draft.logo?.show ?? 'sepanjang' } })}
+                >
+                  ☆ Jadikan logo default
+                </button>
+              ))}
             <input aria-label={`ID aset ${i + 1}`} maxLength={40} value={a.id} onChange={(e) => setAsset(i, { id: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} style={{ width: 130 }} />
             <span className="muted small ellipsis" title={names.get(a.ref.version_id) ?? a.ref.version_id}>
               {names.get(a.ref.version_id) ?? 'file'} · ${a.jenis}:{a.id}

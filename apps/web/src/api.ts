@@ -1,6 +1,7 @@
 import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js';
 import type { Adjust, ClipExtras, Denoise, FitMode, LookId, Transition } from '../../../packages/core/dist/storage/clipLook.js';
 import type { Keyframe } from '../../../packages/core/dist/storage/keyframes.js';
+import type { Overlay } from '../../../packages/core/dist/storage/overlay.js';
 /**
  * Typed client for the server API (apps/server). Local mode: URL token (memory/sessionStorage only).
  * Google mode (W09): no token at all; the HttpOnly session cookie travels by itself, and every call
@@ -47,7 +48,7 @@ export type Platform = 'tiktok' | 'instagram' | 'shopee' | 'youtube';
 export interface BrandAsset {
   id: string;
   ref: Ref;
-  jenis: 'sfx' | 'musik' | 'broll' | 'logo' | 'penutup' | 'vo' | 'lainnya';
+  jenis: 'sfx' | 'musik' | 'broll' | 'logo' | 'watermark' | 'stiker' | 'frame' | 'penutup' | 'vo' | 'lainnya';
   nama: string;
   tag: string[];
   lisensi: { status: 'milik_sendiri' | 'berlisensi' | 'tanpa_lisensi' | 'belum_dicek'; bukti: string; iklan: boolean };
@@ -105,6 +106,8 @@ export interface BrandKit {
   font_caption: Ref | null;
   logo: { ref: Ref; corner: 'tl' | 'tr' | 'bl' | 'br'; size: number; opacity: number; show: 'sepanjang' | 'penutup' | 'sepanjang+penutup' } | null;
   logo_light: Ref | null;
+  /** R26: put the default logo on every new video from Generate / Batch / Beat Spot (as an overlay). */
+  logo_otomatis: boolean;
   outro: { ref: Ref | null; detik: number };
   gaya: string;
   grading: string;
@@ -200,13 +203,15 @@ export interface Clip extends ClipExtras {
   /** U3d: part of the source shown + blurred areas (source fractions, source ms). */
   crop?: Crop;
   blur?: BlurRegion[];
+  /** R26: picture/video overlay on the overlay track. */
+  overlay?: Overlay;
 }
 export type Crop = { x: number; y: number; w: number; h: number };
 export type BlurRegion = Crop & { dari_ms: number; sampai_ms: number; radius: number };
 export type ClipEffect = { type: 'zoom'; scale: number; mode: 'cut' | 'smooth'; x: number; y: number } | { type: 'zoom_through'; scale: number; x: number; y: number };
 
 export type EditOp =
-  | ({ op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[]; keyframes?: Keyframe[] } & ClipExtras)
+  | ({ op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[]; keyframes?: Keyframe[]; overlay?: Overlay } & ClipExtras)
   | { op: 'move_clip'; clip_id: string; start_ms: number }
   | { op: 'trim_clip'; clip_id: string; edge: 'start' | 'end'; to_ms: number }
   | { op: 'split_clip'; clip_id: string; at_ms: number }
@@ -231,10 +236,12 @@ export type EditOp =
   | { op: 'shift_clips'; clip_ids: string[]; delta_ms: number }
   | { op: 'set_style_many'; clip_ids: string[]; style: Partial<TextStyle> }
   | { op: 'duplicate_clip'; clip_id: string }
-  | { op: 'set_media'; clip_id: string; media: { media_id: string; version_id: string } };
+  | { op: 'set_media'; clip_id: string; media: { media_id: string; version_id: string } }
+  | { op: 'set_overlay'; clip_id: string; overlay: Partial<Omit<Overlay, 'sepanjang'>> & { sepanjang?: boolean } }
+  | { op: 'set_overlay_layer'; clip_id: string; to: 'depan' | 'maju' | 'mundur' | 'belakang' };
 export interface Track {
   track_id: string;
-  kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';
+  kind: 'video' | 'broll' | 'text' | 'subtitle' | 'overlay' | 'audio' | 'music' | 'sfx' | 'effects';
   clips: Clip[];
   /** X04: media track silenced in preview and render. */
   muted?: boolean;
@@ -641,6 +648,15 @@ export interface EngineStart {
   mode_ops?: 'kompat' | 'u3';
   audio_pilihan?: AudioPilihan;
   batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[]; vo_batch?: string; izinkan_musik_tanpa_lisensi?: boolean; buang_otomatis?: string[] };
+  /** R26: overlays chosen before Generate (app only; added to the draft as overlay clips). */
+  overlay?: JobOverlay[];
+}
+/** R26: one overlay of a "Buat video" job. */
+export interface JobOverlay {
+  ref: { media_id: string; version_id: string };
+  overlay: Overlay;
+  dari_ms?: number;
+  sampai_ms?: number;
 }
 /** Footage backup folders (Storage) + the background verification. */
 export interface BackupInfo {
