@@ -532,6 +532,41 @@ class BeatSpot(unittest.TestCase):
                          ("kreator", "kreator", "umum", "umum", "umum"))
         self.assertTrue(all(p["sumber_orang"] in ("kreator", "umum") for p in lap["potongan"]))
 
+    def test_vo_dari_library_suara_utama_dan_subtitle(self):
+        """§22: VO 22 dtk (lebih panjang dari target 15-20) -> video mengikuti VO, VO di track audio, subtitle dari teks,
+        file VO (wav) tidak dianggap sound."""
+        import json as _json
+        import tempfile
+        import wave
+        with tempfile.TemporaryDirectory() as tmp:
+            vids = []
+            for i in range(4):
+                v = Path(tmp) / f"v{i}.mp4"
+                v.write_bytes(b"x")
+                vids.append({"kunci": f"$sumber:f{i}", "path": str(v)})
+            vo = Path(tmp) / "vo.wav"
+            with wave.open(str(vo), "wb") as w:
+                w.setnchannels(1), w.setsampwidth(2), w.setframerate(16000), w.writeframes(bytes(16000 * 2 * 23))
+            j = self._job(tmp, vids + [{"kunci": "$vo:vo-uji", "path": str(vo)}], {"bpm": 120, "tagline": "Tagline uji"})
+            job = _json.loads((j / "job.json").read_text())
+            job["vo"] = {"media": "$vo:vo-uji"}
+            (j / "job.json").write_text(_json.dumps(job))
+            (j / "vo_index.json").write_text(_json.dumps({"schema": "vo-index/1", "job_id": "x", "teks": "", "kalimat": [
+                {"teks": "Celana ini adem banget.", "mulai": 0.0, "akhir": 10.0, "kata": []},
+                {"teks": "Harganya cuma 99 ribu!", "mulai": 10.3, "akhir": 22.0, "kata": []}]}))
+            palsu = lambda footage, t: {"footage": {f: {"durasi": 12.0} for f in footage}, "shots": shots_bs()}  # noqa: E731
+            self.assertEqual(self.bs.jalankan(j, analisis=palsu), 0)
+            ops = _json.loads((j / "out" / "ops.json").read_text())["ops"]
+            ren = _json.loads((j / "out" / "rencana.json").read_text())
+        audio = [o for o in ops if o.get("track_kind") == "audio"]
+        self.assertEqual([(o["media"], o["start_ms"]) for o in audio], [("$vo:vo-uji", 0)])
+        self.assertFalse(any(o.get("track_kind") == "music" for o in ops))  # vo.wav BUKAN sound
+        video_akhir = max(o["start_ms"] + o["duration_ms"] for o in ops if o.get("track_kind") == "video")
+        self.assertGreaterEqual(video_akhir, 22000)  # gambar menutup seluruh VO
+        sub = [o for o in ops if o.get("track_kind") == "subtitle"]
+        self.assertIn("Harganya", " ".join(o["text"] for o in sub))
+        self.assertEqual(ren["sumber_suara"], "vo_library")
+
     def test_tolak_tanpa_footage(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:

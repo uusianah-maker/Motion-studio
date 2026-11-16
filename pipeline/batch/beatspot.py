@@ -44,6 +44,10 @@ import musik as musik_mod  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import MIN_CLIP_MS  # noqa: E402  (milik venus)
 import gaya as gaya_mod  # noqa: E402  (R18 §17: preset beat, tagline, watermark, audio_pilihan)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import vo_library  # noqa: E402  (§22 VO dari Library)
+from jaga_ops import SISA_MS  # noqa: E402
+from ops import CAPTION_SIZE, kata_klip  # noqa: E402  (konvensi caption Generate/Batch)
 
 EXT_AUDIO = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac"}
 DURASI_DEFAULT = (15.0, 20.0)
@@ -242,6 +246,33 @@ def analisis_shot(footage: dict[str, Path], tmp: Path) -> dict:
     return json.loads(keluar.read_text(encoding="utf-8"))
 
 
+def pasang_vo(ops: list[dict], cfg: dict, idx: dict, video_ms: int, brand: dict, g: dict, ada_sound: bool) -> None:
+    """§22: VO utuh di track `audio` mulai 0; subtitle dari teks VO (tanpa Whisper); sound turun saat VO bicara."""
+    vo_ms = round(float(idx["kalimat"][-1]["akhir"]) * 1000)
+    dur = min(vo_ms - SISA_MS - 1, video_ms)
+    if dur >= MIN_CLIP_MS:
+        ops.append({"op": "add_clip", "track_kind": "audio", "media": cfg["media"], "start_ms": 0, "duration_ms": dur,
+                    "in_ms": 0, "volume": 1.0})
+    if ada_sound:
+        ops.append({"op": "set_ducking", "on": True, "level": 0.3})
+    if not cfg["subtitle"]:
+        return
+    warna = brand.get("warna", {})
+    gaya = {"x": 0.5, "y": 0.72, "size": CAPTION_SIZE, "width": 0.8, "color": (warna.get("caption") or "#ffffff").lower(),
+            "bg": None, "bold": True, "outline": True, "align": "center", "font": "caption", "anim": "pop", "anim_ms": 120}
+    gaya.update(gaya_mod.gaya_caption(g.get("caption") or {}, warna) if warna else {})
+    maks_kata = int(((g.get("caption") or {}).get("maks_kata")) or 3)
+    pages = vo_library.halaman(vo_library.kata_absolut(idx), maks_kata=maks_kata)
+    for i, page in enumerate(pages):
+        a = page[0]["startMs"]
+        b = min(page[-1]["endMs"], pages[i + 1][0]["startMs"] if i + 1 < len(pages) else video_ms, video_ms)
+        if b - a < MIN_CLIP_MS:
+            continue
+        words = kata_klip(page, a, b - a, brand.get("kapital", "kata_kunci"))
+        ops.append({"op": "add_clip", "track_kind": "subtitle", "text": " ".join(w["text"] for w in words), "words": words,
+                    "start_ms": a, "duration_ms": b - a, "style": dict(gaya)})
+
+
 def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
     job = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
     out_dir = job_dir / "out"
@@ -263,7 +294,7 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
     if sound_kunci and sound_kunci not in sumber:
         return tolak(out_dir, f"beatspot.sound {sound_kunci} tidak ada di sumber")
     if not sound_kunci:  # file audio tanpa gambar di sumber = sound tim
-        audio = [k for k, p in sumber.items() if p.suffix.lower() in EXT_AUDIO]
+        audio = [k for k, p in sumber.items() if p.suffix.lower() in EXT_AUDIO and not k.startswith("$vo:")]  # §22: VO bukan sound
         sound_kunci = audio[0] if len(audio) == 1 else None
     footage = {k.partition(":")[2]: p for k, p in sumber.items()
                if k != sound_kunci and p.suffix.lower() not in EXT_AUDIO and k.startswith("$sumber:")}
@@ -273,6 +304,18 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
     if not footage:
         return tolak(out_dir, "tidak ada footage video (orang jalan) di sumber")
 
+    # §22 VO dari Library: VO jadi suara utama di atas sound; video diperpanjang sampai VO selesai.
+    try:
+        cfg_vo = vo_library.konfigurasi(job)
+        idx_vo = None
+        if cfg_vo:
+            p_vo = sumber.get(cfg_vo["media"])
+            if p_vo is None or not p_vo.exists():
+                return tolak(out_dir, f"file VO {cfg_vo['media']} tidak ada di sumber job")
+            idx_vo = vo_library.muat_index(job_dir / cfg_vo["index"], vo_library.durasi_media(p_vo))
+            footage.pop(cfg_vo["media"].partition(":")[2], None)
+    except vo_library.Ditolak as e:
+        return tolak(out_dir, str(e))
     brand_path = job_dir / job.get("brand_kit", "brand_kit.json")
     brand = muat_brand_kit(brand_path) if brand_path.exists() else {}
     brand_raw = json.loads(brand_path.read_text(encoding="utf-8")) if brand_path.exists() else {}
@@ -312,7 +355,8 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
             peringatan.append({"level": "warn", "jenis": "ketukan", "teks": "tanpa sound dan tanpa BPM: dipakai 120 BPM"})
         if not 60 <= bpm <= 200:
             return tolak(out_dir, "beatspot.bpm harus 60-200")
-        ketukan = ketukan_bpm(bpm, target[1] + 5)
+        vo_dtk = float(idx_vo["kalimat"][-1]["akhir"]) if idx_vo else 0.0
+        ketukan = ketukan_bpm(bpm, max(target[1], vo_dtk + 3) + 5)
         sumber_ketukan = "bpm"
     k = langkah(bpm, bs.get("ketukan_per_potong", beat.get("tiap_ketukan", "auto")))
 
@@ -328,6 +372,16 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
     pen_dtk = float(pen.get("detik") or PENUTUP_DEFAULT) if pen.get("aset") else 0.0
     batas_sound = sound["sisa"] if sound else 1e9
     video_maks = min(target[1], batas_sound) - pen_dtk
+    if idx_vo:  # §22: gambar harus menutup seluruh VO (+0,5 dtk); target maks ikut naik bila VO lebih panjang
+        vo_dtk = float(idx_vo["kalimat"][-1]["akhir"])
+        video_maks = max(video_maks, min(vo_dtk + 0.5, batas_sound - pen_dtk))
+        if vo_dtk + 0.5 + pen_dtk > target[1]:
+            peringatan.append({"level": "info", "jenis": "durasi",
+                               "teks": f"VO {vo_dtk:.1f} dtk lebih panjang dari target {target[1]:.0f} dtk: durasi mengikuti VO"})
+            target = (target[0], round(vo_dtk + 0.5 + pen_dtk + 0.5, 1))
+        if sound and vo_dtk > batas_sound:
+            peringatan.append({"level": "warn", "jenis": "durasi",
+                               "teks": f"sound ({batas_sound:.1f} dtk) lebih pendek dari VO ({vo_dtk:.1f} dtk)"})
     potong = titik_potong(ketukan, k, video_maks)
     if len(potong) < 2:
         return tolak(out_dir, "sound terlalu pendek untuk Beat Spot (butuh minimal 2 ketukan sesudah ketukan pertama)")
@@ -345,6 +399,11 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
                                    "tambah footage orang / sound lebih panjang"})
 
     ops, menunggu, pen_dtk = buat_ops(potongan, sound, video_akhir, total, brand, tagline, watermark, pakai_logo)
+    if idx_vo:
+        pasang_vo(ops, cfg_vo, idx_vo, ms(video_akhir), brand, g, bool(sound))
+        if float(idx_vo["kalimat"][-1]["akhir"]) > video_akhir + 0.05:
+            peringatan.append({"level": "warn", "jenis": "footage_kurang",
+                               "teks": "potongan footage tidak cukup menutup seluruh VO: tambah footage orang"})
     total = video_akhir + pen_dtk
     s0 = ketukan[0]
     ketukan_tl = [round(b - s0, 3) for b in ketukan]
@@ -359,6 +418,7 @@ def jalankan(job_dir: Path, analisis=analisis_shot) -> int:
         "audio": {"sfx": 0, "musik": sound["kunci"] if sound else None, "musik_bpm": round(bpm, 1),
                   "alasan_tanpa_musik": None if sound else "tanpa sound: sound tren dipasang tim di TikTok"},
         "cta": tagline or "", "peringatan": peringatan, "ragu": [], "menunggu_u3": menunggu,
+        **({"sumber_suara": "vo_library", "vo": vo_library.laporan(cfg_vo, idx_vo)} if idx_vo else {}),
         "beatspot": {"bpm": round(bpm, 1), "sumber_ketukan": sumber_ketukan, "ketukan_per_potong": k,
                      "potongan": len(potongan), "end_card_dtk": round(pen_dtk, 2), "aset_brand": media_brand},
     }

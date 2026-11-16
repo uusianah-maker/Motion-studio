@@ -846,7 +846,14 @@ Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts`
     - shot pembuka yang sudah dipakai varian lain dengan VO sama ikut dihindari. Dulu pembuka selalu sama, sehingga semua calon ditolak "pembuka sama";
     - `batch.json.calon_ditolak` = hitungan alasan penolakan calon varian.
   - Uji di salinan batch 2026-11-13_video-winning, VO 13,5 dtk: 3/3 varian dengan shot berbeda, validator OK, qc lulus.
-- **Beat Spot**: menyusul.
+- **Beat Spot — sudah jalan** (`batch/beatspot.py`):
+  - VO utuh di track `audio` mulai 0. Bila ada sound, `set_ducking` 0,3 aktif.
+  - Subtitle dibuat dari teks VO: halaman ≤ `caption.maks_kata` kata, gaya caption preset, posisi bawaan y 0,72.
+  - Potongan di ketukan diperpanjang sampai menutup seluruh VO (+0,5 dtk). Bila VO lebih panjang dari target, target maksimum ikut naik dan peringatan `durasi` (info) muncul.
+  - Peringatan bila sound lebih pendek dari VO atau footage tidak cukup (`footage_kurang`).
+  - File VO di `sumber` **tidak** dianggap sound, walaupun itu satu-satunya audio.
+  - Uji di salinan job Beat Spot R18 (preset aysilla-beatspot, footage asli, VO 13,5 dtk): 8 potongan, 18 dtk, 11 subtitle, validator OK. Tes `BeatSpot.test_vo_dari_library_suara_utama_dan_subtitle` lulus.
+- **§22 lengkap**: Generate, Batch, dan Beat Spot sudah jalan. Sisi app (pilihan di 3 halaman + salin index) dikerjakan ucok.
 
 
 ## 23. Profil suara "Suara owner" — `engine suara_profil` (R31, v0.4.6, 16 Nov 2026, yuki; app: Hanagaki) — DRAF, mesin BELUM tersedia
@@ -859,12 +866,14 @@ Tujuannya: owner menambah contoh suaranya, mesin membersihkan dan memeriksa mutu
  "sumber":[{"kunci":"$media:m_abc","path":"D:/…/SHARED_MEDIA/…/v_….mp4"}, …],
  "suara_profil":{"profil":"owner","nama":"Suara owner",
                  "tambah_contoh":["$media:m_abc", …],
+                 "hapus_contoh":["$media:m_old", …],
                  "latih":true,
                  "contoh_kalimat":["Halo kak, ini Loose Pants.", "…", "…"]}}
 ```
 - **`tambah_contoh`**: kunci media yang path-nya diberikan di `sumber`, seperti media lain. Boleh berupa **video atau audio** (mp4/mov/webm/m4a/mp3/wav); mesin mengambil audionya sendiri.
 - File asli **tidak diubah dan tidak dipindah**. Mesin menyalin hasil bersihnya ke folder profil.
 - Contoh yang sudah pernah ditambahkan (sidik SHA-256 sama) dilewati, jadi aman bila dikirim ulang.
+- **`hapus_contoh`** (opsional, usul Hanagaki): kunci contoh yang dibuang dari profil, yaitu file bersih dan sidiknya. Kunci yang tidak dikenal diabaikan. Bila model sudah dilatih, status berubah menjadi `perlu_latih_ulang` sampai `latih: true` dijalankan lagi.
 - **`latih`**: `false` = hanya tambah dan periksa contoh. `true` = latih kalau total durasi bersih ≥ minimum.
 - **`contoh_kalimat`**: maksimal 3 kalimat untuk contoh hasil. Bawaannya 3 kalimat jualan baku.
 
@@ -881,14 +890,15 @@ Tujuannya: owner menambah contoh suaranya, mesin membersihkan dan memeriksa mutu
 
 ### 23.3 Keluaran `out/suara_profil.json` (`suara-profil/1`)
 ```json
-{"schema":"suara-profil/1","status":"siap|kurang_contoh|ditolak","profil":"owner","nama":"Suara owner",
- "contoh":[{"media":"$media:m_abc","durasi":612.4,"durasi_bersih":548.0,"snr_db":31.2,"musik":false,"clipping":false,
+{"schema":"suara-profil/1","status":"siap|kurang_contoh|perlu_latih_ulang|ditolak","profil":"owner","nama":"Suara owner",
+ "contoh":[{"kunci":"$media:m_abc","durasi":612.4,"durasi_bersih":548.0,"snr_db":31.2,"musik":false,"clipping":false,
             "dipakai":true,"alasan":null}],
  "durasi_bersih_total":548.0,"target_dtk":[600,900],"minimal_dtk":300,
  "backend":"applio|openvoice","dilatih_pada":"2026-11-16T20:00:00+07:00","versi_model":3,
  "contoh_hasil":[{"teks":"Halo kak, ini Loose Pants.","file":"out/contoh/01.wav"}, …],
  "alasan":null}
 ```
+- **`contoh[].kunci`** = kunci di `sumber` (`$media:<media_id>`), dipakai app untuk mencocokkan baris. `contoh[]` memuat **semua contoh aktif** di profil, bukan hanya yang dikirim di job ini.
 - **Progres** JSON-lines dikirim per tahap: `ambil_audio`, `bersihkan`, `periksa`, `latih` (dengan `perkiraan_dtk`; Applio ±1–2 jam di GTX 1650), `contoh`.
 - **Kode keluar**:
   - 0 = selesai, termasuk `kurang_contoh` (contoh tersimpan tetapi belum dilatih karena durasi kurang);
