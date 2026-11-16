@@ -25,6 +25,7 @@ from posisi_caption import posisi_otomatis
 from teks_bawaan import atur_hook, baca_kotak, wajah_di
 from ops import susun as susun_ops, tulis as tulis_ops
 from jaga_ops import buang_teks_kosong, cek_durasi, jaga_durasi, rapikan_kata, validasi_motion_studio
+import vo_library  # §22 VO dari Library (yuki)
 
 MAX_WORDS_PER_PAGE = 3
 PAGE_GAP_MS = 250  # jeda antar kata yang memaksa halaman caption baru
@@ -377,6 +378,30 @@ def brand_fonts(bk) -> dict:
     return out
 
 
+def pasang_vo(ops_doc: dict, rencana: dict, bk: dict, args, vo_idx: dict, cut: dict) -> None:
+    """§22: klip VO utuh di track `audio` mulai 0 ms; suara asli footage = --vo-volume-footage (0 = mati)."""
+    ops = ops_doc["ops"]
+    vol = max(0.0, min(1.0, float(args.vo_volume_footage)))
+    for o in ops:
+        if o.get("track_kind") == "video":
+            o["volume"] = vol
+    vo_ms = cut["voMs"]
+    video_ms = max((o["start_ms"] + o["duration_ms"] for o in ops if o.get("track_kind") == "video"), default=vo_ms)
+    from jaga_ops import SISA_MS
+    ops.append({"op": "add_clip", "track_kind": "audio", "media": args.vo_media, "start_ms": 0,
+                "duration_ms": min(vo_ms - SISA_MS - 1, video_ms), "in_ms": 0, "volume": 1.0})
+    if args.vo_path and args.vo_media not in {a.get("kunci") for a in bk.get("aset", [])}:
+        ops_doc.setdefault("aset_lokal", []).append({"kunci": args.vo_media, "path": str(Path(args.vo_path).resolve()).replace("\\", "/")})
+    rencana["sumber_suara"] = "vo_library"
+    rencana["vo"] = {"media": args.vo_media, "durasi": round(vo_ms / 1000, 3), "kalimat": len(vo_idx["kalimat"]),
+                     "suara_footage": vol}
+    rencana["dibuang"] = []
+    if cut["segments"] and len(cut["segments"]) > 1:
+        rencana.setdefault("peringatan", []).append(
+            {"level": "info", "jenis": "footage_kurang",
+             "teks": f"footage lebih pendek dari VO: diulang {len(cut['segments'])}x. Ganti/tambah b-roll di editor bila perlu."})
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("transcript")
@@ -428,13 +453,21 @@ def main() -> None:
                     help="tetap buat rencana walau audio terdeteksi lirik lagu (pilihan manual tim)")
     ap.add_argument("--audio", choices=["vo", "musik", "keduanya"],
                     help="pilihan audio per job (§17.2): vo = tanpa musik")
+    # §22 VO dari Library: VO jadi suara utama (utuh, tanpa Whisper/autocut), caption dari teks VO,
+    # video sumber = gambar (diulang bila lebih pendek). `transcript` berisi kata VO (engine.generate).
+    ap.add_argument("--vo-index", help="vo-index/1 (salinan app) — aktifkan mode VO dari Library")
+    ap.add_argument("--vo-media", help="kunci aset VO, mis. $vo:vo-ays-...")
+    ap.add_argument("--vo-path", help="path file VO (aset_lokal bila tidak ada di Brand Kit)")
+    ap.add_argument("--vo-volume-footage", type=float, default=0.0, help="volume suara asli footage (0 = mati)")
     args = ap.parse_args()
+    vo_idx = json.loads(Path(args.vo_index).read_text(encoding="utf-8")) if args.vo_index else None
 
     tr = json.loads(Path(args.transcript).read_text(encoding="utf-8"))
     bk = muat_brand_kit(args.brandkit)
 
     # Video tanpa ucapan (hanya musik): Whisper mengarang teks, jadi jangan buat rencana.
-    ucapan = cek_ucapan(tr)
+    # §22: VO dari Library = teks sudah diketahui, cek ucapan tidak perlu.
+    ucapan = {"status": "ok", "jenis": "vo_library", "alasan": ""} if vo_idx else cek_ucapan(tr)
     # G1: audio lagu (lirik) ditolak; tim tetap bisa memaksa lanjut (--abaikan-cek-ucapan, hybrid).
     if ucapan.get("jenis") == "lirik" and not args.abaikan_cek_ucapan:
         ucapan = {**ucapan, "status": "ditolak",
@@ -451,8 +484,8 @@ def main() -> None:
         print(f"DITOLAK: {ucapan['alasan']}")
         raise SystemExit(2)
 
-    words = merge_split_words(tr["words"])
-    fixes = apply_kamus(words, bk.get("kamus_kata", {}))
+    words = list(tr["words"]) if vo_idx else merge_split_words(tr["words"])
+    fixes = [] if vo_idx else apply_kamus(words, bk.get("kamus_kata", {}))  # §22: teks VO sudah benar
     banned = mark_banned(words, list(dict.fromkeys(SUPERLATIF_UMUM + bk.get("superlatif_dilarang", []))))
     # Bagian tengah yang dipilih user untuk dibuang (mis. durasi > 30 dtk).
     for rng in args.buang:
@@ -475,7 +508,7 @@ def main() -> None:
             if abs(w["startMs"] - sec * 1000) <= 150:
                 w["hidden"] = True
                 hidden_manual.append({"atSec": round(w["startMs"] / 1000, 2), "kata": w["text"]})
-    cut = run_cut(tr, words)
+    cut = vo_library.cut_vo(vo_idx, tr["durationMs"], FPS, words) if vo_idx else run_cut(tr, words)
 
     captions = [c for c in cut["captions"] if not words[c["_word"]].get("hidden")]
     # Awal kalimat (juga setelah potongan/kata tersembunyi) selalu huruf kapital.
@@ -643,6 +676,8 @@ def main() -> None:
     preset = bk.get("preset", {}).get(args.preset, {}) if args.preset else {}
     rencana, ops_doc, qc = susun_ops(props, report, bk, placement=args.placement, root=Path.cwd(),
                                      mode=args.mode_ops, preset=preset, batas_durasi=args.batas_durasi)
+    if vo_idx:
+        pasang_vo(ops_doc, rencana, bk, args, vo_idx, cut)
     # Pengaman (venus, 14 Nov): tiap klip <= panjang ASLI file sumbernya (lihat jaga_ops.py).
     lokal = {a["kunci"]: a["path"] for a in ops_doc.get("aset_lokal", [])}
     lokal["$sumber"] = str((Path.cwd() / "public" / args.video).resolve())

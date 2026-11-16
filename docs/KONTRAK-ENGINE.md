@@ -765,7 +765,7 @@ Menggantikan §18.4. Semua field baru bersifat aditif, jadi job tts/1 lama tetap
 
 Proses PowerShell dan ffmpeg berjalan dengan prioritas Idle.
 
-## 22. VO dari Library: suara utama dari "Suara dari Teks" (R34 lanjutan, v0.4.5, 16 Nov 2026, yuki — usul ucok) — DRAF untuk disepakati
+## 22. VO dari Library: suara utama dari "Suara dari Teks" (R34 lanjutan, v0.4.5, 16 Nov 2026, yuki — usul ucok; disetujui venus)
 Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts` §21) dipakai sebagai **suara utama** di Video iklan (Generate), Batch Remix, dan Beat Spot. Subtitle diambil dari teks VO yang sudah diketahui, **tanpa Whisper**. Footage dipakai sebagai gambar (b-roll).
 
 ### 22.1 Masukan job (aditif; job tanpa `vo` = perilaku lama)
@@ -813,3 +813,26 @@ Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts`
   - menyalin `vo-index/1` ke `<job_dir>/vo_index.json` + `refs` media VO.
 - **yuki (mesin)**: Batch Remix (`batch/perencana.py`) dan Beat Spot (`batch/beatspot.py`), ditambah helper bersama `pipeline/vo_library.py` (validasi index → kalimat/kata/halaman subtitle).
 - **venus (mesin)**: Generate (`edit.py`/`engine.py`), memakai helper yang sama (dilewati jalur Whisper/autocut).
+
+### 22.4 Status implementasi
+- **Helper** `pipeline/vo_library.py`:
+  - `konfigurasi` (validasi `job.vo`), `muat_index` (validasi `vo-index/1` terhadap durasi file VO);
+  - `kata_absolut` (waktu kata absolut; kalimat tanpa cap waktu kata dibagi rata menurut huruf);
+  - `halaman`, `segmen_footage` (footage diulang mengisi durasi VO), `cut_vo` (pengganti `autocut.run_cut`).
+  - Tes: `tests/test_vo_library.py`.
+- **Generate — sudah jalan**:
+  - `engine generate` dengan `job.vo`:
+    - **tanpa Whisper**: `out/transkrip.json` = kata dari VO, dengan `sumber_suara: "vo_library"`;
+    - footage boleh tanpa suara dan minimal 1 dtk.
+  - `edit.py --vo-index/--vo-media/--vo-path/--vo-volume-footage`:
+    - cek ucapan, kamus, dan autocut dilewati;
+    - caption, hook, kata kunci, efek, SFX §19, musik, CTA, dan watermark tetap memakai aturan Generate;
+    - klip VO di track `audio`; klip `video` diberi `volume` sesuai `suara_footage`.
+  - Kunci VO masuk `aset_lokal` bila tidak ada di Brand Kit ekspor.
+  - `engine ulang` juga memakai jalur VO, dengan transkrip VO yang sudah ada.
+  - Uji di salinan job (VO 3 kalimat, 13,5 dtk), validator Motion Studio OK:
+    - footage IN17 12,9 dtk → 2 klip video;
+    - footage 2 dtk → diulang 7×, dengan peringatan `footage_kurang`;
+    - SFX `harga` muncul di "sembilan puluh sembilan ribu" dan "diskon".
+- **Batch Remix & Beat Spot**: menyusul.
+
