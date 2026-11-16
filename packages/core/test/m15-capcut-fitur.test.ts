@@ -58,7 +58,7 @@ describe('validation + ops (aditif: proyek lama tetap valid)', () => {
       { op: 'add_clip', track_kind: 'text', text: 'x', start_ms: 0, duration_ms: 500, fade_in_ms: 100 },
       { op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 500, look: 'clarendon' },
       { op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 500, adjust: { terang: 500 } },
-      { op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 500, transition: { type: 'spin' } },
+      { op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 500, transition: { type: 'putar_tiga_kali' } }, // (spin became valid in R23d tahap 2)
       { op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 500, transition: { type: 'wipe', ms: 50 } },
       { op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 500, fit_color: 'red' },
       { op: 'set_audio', clip_id: 'a' },
