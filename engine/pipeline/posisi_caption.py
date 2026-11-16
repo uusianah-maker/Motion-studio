@@ -2,7 +2,7 @@
 
 Uji 13 Nov 2026: posisi caption dipukul rata (bawah 0.72 / atas 0.36), sehingga di
 beberapa video caption menutup wajah atau produk. Modul ini mengambil sampel frame
-(1 per detik), mendeteksi wajah (OpenCV Haar, lokal, gratis), lalu memilih pusat
+(1 per detik), mendeteksi wajah (MediaPipe di visual-venv bila ada, cadangan OpenCV Haar; lokal, gratis), lalu memilih pusat
 vertikal caption yang paling jarang mengenai wajah, tidak masuk 15% bawah (tombol
 TikTok/Reels), dan menghindari area produk kalau brief menyebutnya.
 
@@ -12,8 +12,11 @@ Pakai:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 import numpy as np
 
@@ -86,9 +89,48 @@ def pilih_y(wajah_per_frame, default: float = 0.72, area_produk: str | None = No
     return terbaik[0], {"frameDenganWajah": round(ada_wajah, 2), "kandidat": laporan}
 
 
+# R24a (venus 16 Nov): MediaPipe (visual-venv) bila tersedia — lebih akurat untuk wajah berhijab/miring/agak jauh;
+# Haar tetap jadi cadangan (visual-venv tidak ada, gagal, atau terlalu lama karena antre kunci AI).
+VISUAL_PY = os.environ.get("MOTION_VISUAL_PY") or str(Path("D:/VIBECODING/tools/visual-venv/Scripts/python.exe"))
+DETEKSI = Path(__file__).resolve().parent / "visual" / "deteksi.py"
+BATAS_MP_DTK = 120
+
+
+def wajah_mediapipe(video: str, tiap_detik: float, maks: int = 90):
+    """Kotak wajah (y0, y1) per sampel waktu k*tiap_detik dari jalur-posisi MediaPipe, atau None (pakai Haar)."""
+    if os.environ.get("MOTION_POSISI_HAAR") or not Path(VISUAL_PY).exists() or not DETEKSI.exists():
+        return None
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d) / "jalur.json"
+        try:
+            r = subprocess.run([VISUAL_PY, str(DETEKSI), video, str(out), "--jenis", "wajah", "--hz", f"{1 / tiap_detik:.4f}"],
+                               capture_output=True, timeout=BATAS_MP_DTK,
+                               creationflags=0x40 if sys.platform == "win32" else 0)
+        except (subprocess.TimeoutExpired, OSError):
+            return None
+        if r.returncode != 0 or not out.exists():
+            return None
+        doc = json.loads(out.read_text(encoding="utf-8"))
+    n = min(maks, int(doc.get("durasi", 0) / tiap_detik) + 1)
+    hasil = [[] for _ in range(max(n, 1))]
+    for j in doc.get("jalur", []):
+        for p in j["titik"]:
+            k = round(p["t"] / tiap_detik)
+            if 0 <= k < len(hasil) and abs(p["t"] - k * tiap_detik) <= tiap_detik / 2:
+                # sama dengan Haar: wajah + 25% ruang ke atas & bawah (dagu/rambut/hijab)
+                hasil[k].append((max(0.0, p["y"] - 0.25 * p["h"]), min(1.0, p["y"] + 1.25 * p["h"])))
+    return hasil
+
+
 def posisi_otomatis(video: str, default: float = 0.72, area_produk: str | None = None):
-    frames = sampel_frame(video, tiap_detik=1.0 if _durasi(video) <= 90 else _durasi(video) / 90)
-    return pilih_y(deteksi_wajah(frames), default, area_produk)
+    tiap = 1.0 if _durasi(video) <= 90 else _durasi(video) / 90
+    wajah = wajah_mediapipe(video, tiap)
+    metode = "mediapipe"
+    if wajah is None:
+        wajah, metode = deteksi_wajah(sampel_frame(video, tiap_detik=tiap)), "haar"
+    y, lap = pilih_y(wajah, default, area_produk)
+    lap["deteksi"] = metode
+    return y, lap
 
 
 def main() -> None:

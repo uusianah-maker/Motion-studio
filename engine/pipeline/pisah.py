@@ -209,6 +209,9 @@ def jalankan_job(job_dir: Path) -> int:
     cmd = [str(DEMUCS_PY), str(ROOT / "pipeline" / "batch" / "shotlib.py"), batch]
     if job.get("shot_tiktok"):
         cmd.append("--tiktok")
+    bk_job = job_dir / str(job.get("brand_kit") or "brand_kit.json")
+    if bk_job.exists():  # kosakata Whisper dari Brand Kit job (multi-brand), bukan brandkit/aysilla.json repo
+        cmd += ["--brandkit", str(bk_job)]
     lib_path = KONTEN / "2-dipisah" / batch / "shots.json"
     if lib_path.exists():
         lama = set(json.loads(lib_path.read_text(encoding="utf-8"))["footage"])

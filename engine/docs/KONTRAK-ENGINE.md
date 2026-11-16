@@ -446,3 +446,259 @@ Sumber angka: laporan Hanagaki (85 video Aysilla, `BELAJAR/hanagaki/LAPORAN-HANA
 - `audio_pilihan` Batch: `"vo"` = tanpa musik; `"musik"` = tanpa klip VO dan tanpa caption ucapan (susunan gambar tetap mengikuti kalimat); `"keduanya"` = musik + VO + `set_ducking` 0,3. `"musik"`/`"keduanya"` tanpa musik yang boleh dipakai = ditolak (kode 2).
 - Beat Spot: bawaan `beat.bpm` / `beat.tiap_ketukan` dari preset kalau `job.beatspot` tidak mengisinya; tagline dari `teks.tagline`; watermark seperti di atas; preset `jenis: "beat_spot"` + watermark = logo tidak dipasang ("hanya watermark", §17.4). `audio_pilihan: "vo"` = sound tidak dipasang (pola BPM).
 - Progres JSON-lines Batch / Pisah / Beat Spot kini ditulis UTF-8 (di Windows sebelumnya cp1252, karakter seperti "·" rusak di app).
+
+## 18. Visual Tools AI lokal (R24, v0.4.1, 16 Nov 2026, yuki — owner: "Ya, bagikan") — DRAF
+Semua model jalan di PC sendiri, tanpa API berbayar. Hasil AI selalu **usulan** (`"usulan": true`): app menampilkannya sebagai keyframe/jalur yang bisa diubah, dimatikan, atau dihapus manual (hybrid). Job berat jalan dengan prioritas Idle dan maksimal 2 pekerja. Kode ada di `pipeline/visual/`. Python vision = venv terpisah `D:\VIBECODING\tools\visual-venv` (override `MOTION_VISUAL_PY`) supaya OpenCV demucs-venv tidak bentrok. Status: format 18.1–18.2 sudah ada dan dites; 18.3–18.6 menunggu OK instalasi dari venus.
+
+### 18.0 Aturan wajib: lisensi, cache, beban
+Sumber: cek sukma 16 Nov, Motion-studio `docs/R23-R24-LISENSI-KAPASITAS-2026-11-16.md`. Aturan ini ditegakkan di `pipeline/visual/beban.py` dan dites di `AturanBeban`.
+
+1. **Model hapus latar** selalu disebut eksplisit dan harus ada di daftar putih:
+   - `birefnet-general-lite` (MIT, bawaan kita);
+   - `isnet-general-use`, `u2net`, `u2netp`, `u2net_human_seg`, `silueta` (semuanya Apache-2.0).
+   
+   Model lain ditolak dengan kode 2. Bawaan rembg (bria-rmbg) non-komersial, jadi **dilarang**. Backend cloud (withoutbg, atlascloud) juga tidak dipakai.
+2. **Cache model di D:**, tidak di C:
+   - `U2NET_HOME` = `D:\VIBECODING\tools\models`
+   - `HF_HOME` = `…\models\hf`
+   - Model MediaPipe dipanggil dengan path file eksplisit dari folder yang sama.
+   - Folder bisa diganti lewat `MOTION_MODELS_DIR`.
+3. **Beban:**
+   - Hanya **satu** job AI berat sekaligus di seluruh mesin. Kuncinya file global `…\modelsi-berat.lock` (override `MOTION_AI_LOCK`); kunci dari pid yang sudah mati diambil alih. Whisper ikut aturan ini bila pemanggilnya memakai `kunci_ai`.
+   - Prioritas Idle, maksimal 4 thread, maksimal 2 pekerja.
+   - Kalau RAM bebas kurang dari 3 GB, job menunggu dengan progres `{"tahap":"menunggu"}`. Kalau sedang antre di belakang job lain: `{"tahap":"antre"}`.
+   - Klip video untuk hapus latar atau perjelas maksimal **15 detik**. Lebih dari itu ditolak dengan kode 2.
+   - Perkiraan waktu dikirim sebelum mulai: `{"tahap":…, "perkiraan_dtk": N}`. Real-ESRGAN butuh sekitar 15–45 menit per 30 detik video, jadi hanya untuk klip pendek.
+   - BiRefNet hanya di CPU (onnxruntime), tanpa torch.
+4. AutoFlip (legacy, tidak tersedia di pip) tidak dipakai. Reframe memakai implementasi sendiri (§18.2).
+
+### 18.1 Jalur posisi `jalur-posisi/1` (R24a wajah/objek, R24c pelacakan)
+Koordinat = pecahan frame (0..1), kotak kiri-atas + lebar/tinggi, `t` dalam detik (naik).
+```json
+{"schema":"jalur-posisi/1","video":"konten/…/a.mp4","lebar":1920,"tinggi":1080,"fps":30,"durasi":12.4,
+ "sumber":"mediapipe-wajah|mediapipe-objek|lacak-csrt|lacak-kcf|manual","usulan":true,
+ "jalur":[{"id":"wajah-1","jenis":"wajah|objek|lacak","label":"face","titik":[{"t":0.0,"x":0.31,"y":0.18,"w":0.22,"h":0.12,"skor":0.93}]}]}
+```
+- Celah lebih dari 0,5 detik di antara dua titik = subjek hilang. Pada celah itu jalur tidak diinterpolasi, jadi app tidak menempelkan apa pun.
+- Subjek utama = luas × skor × lama tampil. Wajah dibobot ×2.
+
+### 18.2 Reframe `reframe/1` (R24b, pola AutoFlip)
+Hasilnya keyframe jendela crop, **bukan** video jadi.
+```json
+{"schema":"reframe/1","rasio":"9:16","lebar_crop":0.3164,"tinggi_crop":1.0,"mode":"diam|ikut|tengah",
+ "subjek":"wajah-1","usulan":true,"keyframe":[{"t":0.0,"x":0.41,"y":0.0}]}
+```
+- `x`, `y` = kiri-atas jendela, pecahan frame sumber. Di antara keyframe dipakai interpolasi linear; sebelum keyframe pertama dan sesudah keyframe terakhir posisinya tetap.
+- `mode`:
+  - `diam`: subjek muat di satu jendela, jadi cukup 1 keyframe.
+  - `ikut`: kamera mengikuti subjek dengan zona mati 0,06, pan maksimal 0,30 frame/detik, dan penghalusan 0,6 detik. Keyframe disederhanakan dengan RDP, toleransi 0,004.
+  - `tengah`: tidak ada subjek, atau sumber sudah memiliki rasio target.
+- **Ke keyframe app** (`keyframes.ts`: x, y = geser dari tengah −1..1, scale 0.1..4, `at_ms` = waktu di dalam klip). Fungsinya `reframe.ke_keyframe_app(rf, sumber=(sw,sh), kanvas=(W,H), fit, awal_ms)`.
+  - Render app: sumber di-fit ke kanvas dulu, lalu di-scale di sekitar tengah dan digeser x·W, y·H. Faktor fit:
+    - `f = min(W/sw, H/sh)` untuk fit pas, yaitu contain / warna / blur;
+    - `f = max(W/sw, H/sh)` untuk fit `isi` (cover).
+  - Dengan `cw = lebar_crop` dan `ch = tinggi_crop`:
+    - `scale = W / (sw·f·cw)`
+    - `x_app = (0.5 − (x + cw/2)) / cw`
+    - `y_app = (0.5 − (y + ch/2)) / ch`
+    - `at_ms = t·1000 − titik masuk klip (ms sumber)`
+    - `ease = linear`
+  - x_app tidak bergantung pada fit.
+  - |x_app| dipotong ke 1. Di pinggir frame nilai aslinya bisa 1,08. Jendela jadi bergeser sedikit ke tengah, tetapi gambar tetap penuh tanpa bolong hitam.
+  - Paling banyak 20 keyframe (`MAX_KEYFRAMES`). Kalau lebih, RDP dilonggarkan.
+  - Contoh 1920×1080 → 1080×1920, `cw` = 0,3164:
+    - fit `isi`, crop di tengah: x 0, scale 1 (identitas);
+    - fit pas, crop x = 0,6: scale 3,16, x_app −1,0 (dipotong dari −1,08).
+  - Tes `KeyframeApp` mensimulasikan transform render app. Hasilnya: sudut jendela crop jatuh di sudut kanvas, meleset maksimal 3 px.
+
+### 18.3 Perintah (rencana)
+`python pipeline/visual/reframe.py <jalur.json> <keluar.json> [--rasio 9:16] [--subjek id]` sudah ada. Perintah berikut menyusul sesudah OK instalasi:
+- `deteksi` (R24a) → jalur-posisi
+- `lacak` (R24c, kotak awal dari user)
+- `hapus_latar` (R24d, BiRefNet-lite lewat rembg; RMBG BRIA **tidak** dipakai karena non-komersial) → PNG/WebM dengan alpha
+- `perjelas` (R24e, Real-ESRGAN ncnn-vulkan)
+- `tts` (R24f, `pipeline/tts_windows.ps1`, suara Windows offline)
+
+Semua perintah itu menulis progres JSON-lines dalam UTF-8.
+
+### 18.4 TTS voice over `tts/1` (R24f) — sudah jalan
+`engine tts <job_dir>`:
+- Masukan: `job.json` → `"tts": {"kalimat": ["…", "…"], "suara": "Andika", "kecepatan": 1.0}`. `"teks": "…"` boleh dipakai sebagai ganti `kalimat`.
+- Keluaran, hanya di dalam job_dir:
+  - `out/vo/01.wav`, `02.wav`, …
+  - `out/tts.json` = `{"schema":"tts/1","status":"selesai|ditolak","suara","kecepatan","usulan":true,"file":[{"no":1,"teks","file":"out/vo/01.wav","durasi":1.84}],"total_durasi","alasan"?}`
+- Kode keluar:
+  - 2 (ditolak) bila teks kosong, lebih dari 60 kalimat, lebih dari 1000 huruf per kalimat, kecepatan di luar 0,5–2,0, suara tidak terpasang, atau bukan Windows;
+  - 1 bila gagal teknis.
+- Suara offline dari Windows OneCore. Di PC kantor yang ada: Andika (id-ID), dan suara Inggris David, Zira, Mark, George, Susan, Hazel.
+- Prioritas proses Idle. Skrip `tts_windows.ps1` diambil dari folder kode (rilis). Tidak ada yang ditulis ke folder data. App yang memindahkan WAV ke proyek sebagai usulan di track audio.
+
+### 18.5 Venv & model terpasang (16 Nov 2026, OK venus)
+- **visual-venv**: `D:\VIBECODING\tools\visual-venv`, Python 3.12.5, ukuran 730 MB.
+  - Versi dikunci di `pipeline/visual/requirements-visual.txt`: mediapipe 1.2.3, opencv-contrib-python 5.0.0.93 (dengan CSRT/KCF), rembg 2.0.87, onnxruntime 1.32.0 CPU. Tanpa torch.
+  - `.venv` dan `demucs-venv` tidak berubah: `pip freeze` sebelum dan sesudah instalasi identik.
+- **Model**, di `D:\VIBECODING\tools\models`:
+
+| File | Sumber | Lisensi | SHA256 |
+|---|---|---|---|
+| `blaze_face_short_range.tflite` (0,23 MB) | storage.googleapis.com/mediapipe-models …/float16/1 | Apache-2.0 | `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f` |
+| `efficientdet_lite0_int8.tflite` (4,6 MB) | storage.googleapis.com/mediapipe-models …/int8/1 | Apache-2.0 | `0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb` |
+| `BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx` (224 MB) = rembg `birefnet-general-lite` | GitHub ZhengPeng7/BiRefNet rilis v1 | MIT | `5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333` |
+| `realesrgan-ncnn-vulkan-20220424-windows.zip` (45,5 MB) — **belum diekstrak** | GitHub xinntao/Real-ESRGAN rilis v0.2.5.0 | BSD-3 (model) + MIT (ncnn-vulkan) + BSD-3 (ncnn); zip tanpa LICENSE | `abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d` |
+
+### 18.6 Deteksi wajah & objek (R24a) — sudah jalan
+Perintah: `<visual-venv>\Scripts\python pipeline/visual/deteksi.py <video> <keluar.json> [--jenis wajah,objek] [--hz 10] [--label person,handbag,…]`. Hasilnya jalur-posisi/1 (§18.1).
+- **Wajah**: FaceDetector dijalankan di seluruh frame, lalu sekali lagi di potongan kepala tiap orang. Model short-range hanya akurat untuk wajah yang dekat kamera; dengan potongan ini wajah ikut terbesar. Hasil keduanya digabung dengan NMS.
+  - Uji IN17 (576×1024, 12,9 dtk): wajah terdeteksi di 82/129 sampel dengan skor rata-rata ±0,9. Tanpa potongan kepala hanya 5 sampel.
+- **Objek**: ObjectDetector efficientdet_lite0, label COCO. Bawaannya `person`.
+- **Penggabungan jalur**:
+  - Deteksi dipasangkan dengan jalur lama lewat IoU. Kalau gerakannya cepat, dipakai pusat kotak yang dekat dengan ukuran mirip.
+  - Subjek yang hilang sampai 1,5 dtk tetap memakai id yang sama, tetapi celahnya tidak diinterpolasi.
+  - Jalur yang hanya muncul di 1 sampel dibuang.
+- **Waktu**: ±6 dtk untuk klip 13 dtk di CPU, prioritas Idle.
+
+### 18.7 Pelacakan gerak (R24c) — sudah jalan
+Perintah: `<visual-venv>\Scripts\python pipeline/visual/lacak.py <video> <keluar.json> --kotak x,y,w,h [--mulai dtk] [--sampai dtk] [--alat csrt|kcf] [--hz 15]`.
+- **Masukan**: kotak berupa pecahan frame pada detik `--mulai`, digambar user di app.
+- **Hasil**: jalur-posisi/1 dengan satu jalur `lacak-1` (`jenis: "lacak"`), plus `berhenti`: `"selesai"` atau `"objek hilang"`.
+- **Cara kerja**: tracker berjalan di setiap frame, dengan frame diperkecil sampai sisi panjangnya maksimal 640 px.
+  - Saat objek lepas, celah tidak ditulis.
+  - Kalau objek hilang lebih dari 2 dtk, pelacakan berhenti. User bisa memilih kotak lagi dari titik itu.
+- **CSRT** adalah bawaan dan lebih tahan perubahan ukuran. **KCF** lebih cepat.
+- **Uji**:
+  - Wajah IN17: galat pusat ±1% frame dibanding detektor (CSRT 0,011, KCF 0,0065). Objek lepas di detik ke-4–5 saat subjek berbalik. Waktu proses CSRT 7 dtk, KCF 5 dtk.
+  - Tes sintetis `Lacak`: CSRT dan KCF sama-sama mengikuti kotak bergerak dengan galat ≤3%.
+- **Pemakaian di app**: hasil ini untuk menempelkan teks, stiker, atau blur yang ikut objek. Rumus posisinya sama dengan §18.2: pusat kotak dikonversi lewat x_app/y_app. Tampilannya diserahkan ke ucok.
+
+### 18.8 Hapus latar (R24d) — sudah jalan
+Perintah: `<visual-venv>\Scripts\python pipeline/visual/hapus_latar.py <masuk> <folder_keluar> [--model birefnet-general-lite] [--fps 10]`.
+- **Gambar** (.jpg/.png/.webp/.bmp): `<nama>.png` (RGBA) dan `<nama>-masker.png`.
+- **Video** (maksimal 15 dtk; topeng dibuat per frame pada `--fps` 1..30, bawaan 10):
+  - `<nama>-alpha.webm`: VP9 dengan alpha (yuva420p, `alpha_mode=1`), untuk layer di editor;
+  - `<nama>-masker.mp4`: abu-abu, putih = subjek, untuk `alphamerge` di render.
+- **Laporan**: `<folder_keluar>/hapus_latar.json`, berisi `{"schema":"hapus-latar/1","status":"selesai|ditolak","usulan":true,"model","lisensi","jenis","file","masker",…}`. Kode keluar 2 untuk ditolak (model di luar daftar putih, klip lebih dari 15 dtk, fps di luar batas), 1 untuk gagal teknis.
+- **Tanpa unduhan dari rembg.** rembg ternyata mengunduh model dari mirror danielgatis, bukan dari sumber resmi. Satu kali sempat terunduh saat uji coba; filenya identik (SHA sama) dan sudah dihapus. Karena itu inferensi BiRefNet ditulis langsung dengan onnxruntime dan file resmi di §18.5: input tetap 1024×1024, normalisasi ImageNet, lalu sigmoid. Model lain di daftar putih belum dipasang dan ditolak sampai unduhannya mendapat OK.
+- **Kecepatan CPU di PC kantor: ±13 dtk per frame.**
+  - Satu gambar butuh ±13 dtk.
+  - Video 15 dtk pada 10 fps (150 frame) butuh ±33 menit. Pada 5 fps, ±17 menit.
+  - Perkiraan waktu diukur dari frame pertama, lalu dikirim lewat `perkiraan_dtk`.
+  - Hasil uji: orang, celana, dan gantungan terpisah rapi.
+
+## 19. SFX lebih banyak (R29, v0.4.2, 16 Nov 2026, yuki — owner: "SFX itu banyak, kenapa tidak dipakai?")
+Modul `pipeline/sfx_rencana.py` dipakai Generate (`ops.py`, langkah 6b, sesudah efek video) dan Batch Remix (`batch/perencana.py`) dengan aturan yang sama. Modul ini membaca timeline ms-ops/1 yang sudah jadi, lalu **mengganti semua klip track `sfx`**.
+- **Penyebab dulu hanya 1 SFX:** bunyi "pop" hanya untuk `kata_kunci` Brand Kit, dan di Aysilla daftar itu masih kosong. Akibatnya cuma whoosh di hook yang terpasang.
+- **Kejadian**, urut dari prioritas tertinggi:
+
+| Kejadian | SFX |
+|---|---|
+| hook muncul | muncul |
+| CTA | ding |
+| kata harga, yaitu `rp…`, `…rb/k/ribu/jt/%`, diskon, promo, gratis, ongkir, harga, murah, hemat, cuma, cashback, potongan, sale | harga |
+| riser 0,9 dtk sebelum hook (kalau ada ruang) atau sebelum CTA (kepadatan sedang/ramai) | riser; hanya dipakai bersama pasangannya |
+| titik potong klip video, efek `zoom_through`/`flash`/zoom `cut` (punch-in), transisi | whoosh |
+| kata yang di-highlight (kata kunci/angka) | pop |
+| halaman subtitle baru | pengisi, pop pelan, disebar merata |
+
+- **Kepadatan:** field preset baru `sfx.kepadatan`, opsional, bawaannya `"sedang"`.
+
+| Kepadatan | Jarak minimal antar SFX | Jumlah maksimal |
+|---|---|---|
+| `"tanpa"` | — | 0 |
+| `"sedikit"` | 3 dtk | 1 per 6 dtk |
+| `"sedang"` | 1,5 dtk | ±1 per 3 dtk |
+| `"ramai"` | 1 dtk | 1 per 2 dtk |
+
+  Di setiap jendela sepanjang batas jumlah, paling banyak 2 SFX. Whoosh paling banyak separuh jatah dan dipilih tersebar.
+- **Pemilihan bunyi:**
+  - Kategori Kenney (switch/minimize/maximize/…) dipilih berselang-seling, dengan cadangan tag mesin (`transisi`, `kata-kunci`, `teks-muncul`, `penutup`) untuk brand tanpa Kenney.
+  - File yang sama tidak dipakai lagi dalam 3 SFX terakhir.
+  - Bunyi negatif (error/glitch/scratch/question/back/click/tick) tidak dipakai.
+  - `sfx_dilarang` dan `lisensi_iklan: false` dihormati.
+  - Panjang klip = panjang file − `SISA_MS`, supaya tidak dibuang oleh `jaga_durasi`.
+- **Volume:** muncul 0,35 · ding/harga 0,4 · whoosh/pop 0,3 · pengisi 0,22 · riser 0,25. Semuanya di bawah VO (1,0).
+- **Kalau Library brand kosong:** dipakai bunyi bawaan mesin `$sfx:pop` / `$sfx:whoosh`.
+- **Laporan:** `rencana.audio.sfx_rencana` = `{kepadatan, jumlah, berbeda, detail:[{detik, jenis, alasan, media}], bawaan_mesin}`. Di Batch: `varian.sfx_rencana`.
+- **Hybrid:** semua SFX adalah klip biasa di track `sfx`, jadi bisa dihapus, digeser, atau diganti di editor.
+- **Catatan Library Kenney:** tidak ada bunyi kasir atau riser asli. "ding/harga" memakai confirmation/glass/bong, "riser" memakai maximize/scroll. Kalau owner mau bunyi cash/riser sungguhan, perlu aset baru (CC0) di Library.
+- **Uji (salinan job, validator Motion Studio OK):**
+  - Generate AYS-20261116-002 (21 dtk): 1 → 8 SFX, 8 file berbeda.
+  - Generate AYS-20261116-001 (5,4 dtk): 1 → 2 SFX (hook + "promo").
+  - Batch 5 varian (21–63 dtk): 7–20 SFX per varian, 6–10 kategori bunyi.
+
+## 20. Typo subtitle: kosakata, kamus, belajar dari koreksi (R30, v0.4.3, 16 Nov 2026, yuki)
+### 20.1 Kosakata & kamus Brand Kit (R30a)
+- **Generate sudah memakainya:**
+  - `teks.kosakata_whisper` dikirim ke Whisper sebagai `initial_prompt` + `hotwords` (`transcribe.py --brandkit`).
+  - `teks.kamus` dipakai untuk koreksi otomatis sesudah transkrip (`apply_kamus`).
+  - Batch juga menerapkan kamus pada VO (`batch/vo.py`).
+- **Temuan 16 Nov:** di Brand Kit Aysilla di Motion Studio, `kosakata_whisper` = [] dan `kamus` = {}. Padahal file lama `brandkit/aysilla.json` di repo berisi 28 istilah dan 21 koreksi, termasuk "ekot/cekot → checkout", "lus/los → loose", "icila factory → Aysilla Factory". Isi itu belum pernah dipindahkan. Tim perlu mengisinya lewat menu Brand.
+- **Shot Library Batch** dulu mentranskrip memakai `brandkit/aysilla.json` dari repo. **Sudah diperbaiki (multi-brand)**: `engine pisah` mengirim `brand_kit.json` milik job ke `shotlib.py --brandkit`. File repo hanya dipakai bila dijalankan lewat CLI tanpa job. Transkrip yang sudah ada tidak diulang.
+
+### 20.2 Usulan kamus dari koreksi editor (R30b) — `kamus-usulan/1` — ALAT BANTU
+> **Jalur resmi = core `kamusBelajar.ts` (app, venus cbbcc41)**. App yang memegang `belajar.jsonl` dan menambahkan pasangan "otomatis" ke `teks.kamus` di setiap job. `kamus_belajar.py` hanya alat CLI dan referensi; mesin **tidak** memanggilnya. R30 dilanjutkan oleh venus sejak 16 Nov.
+Perintah: `python pipeline/kamus_belajar.py <.motionstudio/brands/<brand_id>/belajar.jsonl> [--brand-kit brand_kit.json] [--min 2]`. Hasilnya satu JSON di stdout.
+```json
+{"schema":"kamus-usulan/1","minimal":2,"koreksi_kata":4,
+ "usulan":[{"salah":"cana","benar":"celana","jumlah":2,"proyek":2,"contoh":[{"sebelum":"mau punya cana","sesudah":"mau punya celana"}],
+            "periksa":false,"kosakata_baru":["celana"]}],
+ "pantau":[…], "sudah_di_kamus":[…]}
+```
+- **Sumber:** catatan R9 dengan `jenis: "koreksi"`, `bagian: "kata"`.
+- **Pencocokan:** teks dibandingkan per kata (difflib). Hanya **penggantian** 1–3 kata yang diambil. Beda huruf besar/kecil, tanda baca, atau kata yang hanya ditambah/dihapus diabaikan.
+- **Pembagian:** pasangan yang muncul ≥ `minimal` kali masuk `usulan`. Yang muncul sekali masuk `pantau`. Yang sudah ada di kamus masuk `sudah_di_kamus`.
+- **`periksa: true`** berarti berbahaya kalau diterapkan secara global. Ini terjadi bila kata salahnya ≤3 huruf, atau kata itu di koreksi lain justru dibiarkan tim.
+- **Hybrid:**
+  - App (ucok) menampilkan usulan di menu Brand.
+  - Tim menyetujui dengan satu klik. App lalu menyimpan `salah → benar` ke `teks.kamus` dan `kosakata_baru` ke `teks.kosakata_whisper`.
+  - Mesin tidak pernah menulis ke Brand Kit.
+- **Data nyata Aysilla, 16 Nov:** 4 koreksi kata. Semua pasangan masih berstatus pantau: "cana → celana", "icy love → Aysilla", "janganlah → Join Live". Perubahan "sekarang → Sekarang" diabaikan.
+
+### 18.9 Perjelas / upscale (R24e) — sudah jalan
+Perintah: `<visual-venv>\Scripts\python pipeline/visual/perjelas.py <masuk> <folder_keluar> [--mode cepat|kualitas] [--skala 2|3|4] [--sisi 1920]`.
+- **Alat**: `D:\VIBECODING\tools\realesrgan\realesrgan-ncnn-vulkan.exe` (override `MOTION_REALESRGAN`), berjalan di GPU Vulkan.
+  - Lisensi: exe MIT, model BSD-3, ncnn BSD-3. Teks lisensinya tersimpan di `LICENSES\`.
+  - `vcomp140d.dll` tidak didistribusikan.
+- **Mode**:
+  - `kualitas` = realesrgan-x4plus, hanya x4. Bawaan untuk gambar.
+  - `cepat` = realesr-animevideov3, x2/x3/x4. Bawaan untuk video.
+- **Hasil**:
+  - Gambar → `<nama>-hd.png`, sisi panjang maksimal 4096.
+  - Video (maksimal 15 dtk) → `<nama>-hd.mp4` (H.264 CRF 18, audio asli disalin), sisi panjang maksimal 1920.
+  - Laporan `perjelas.json` = `{"schema":"perjelas/1","status","usulan":true,"mode","model","skala","dari":[w,h],"jadi":[w,h],…}`. Kode keluar 2 untuk ditolak.
+- **Waktu nyata** di PC kantor (GTX 1650, prioritas Idle, tile 128):
+  - Gambar 576×1024 dengan mode kualitas → 2304×4096 dalam 15 dtk.
+  - Video 2 dtk (60 frame) dengan mode cepat x2 → 1080×1920 dalam **30 dtk** (±0,5 dtk/frame). Klip 15 dtk ≈ 4 menit.
+  - Mode kualitas di video ±13 dtk/frame, sehingga klip 15 dtk ≈ 100 menit. Hanya untuk klip yang sangat pendek.
+  - Perkiraan waktu diukur dari frame pertama; perkiraan ini sedikit berlebih karena sudah termasuk waktu memuat model.
+- **Catatan kualitas**: mode cepat menajamkan mata, alis, dan kain, tetapi kulit agak dihaluskan karena modelnya dilatih untuk animasi. Mode kualitas lebih natural.
+- **Bug yang sudah diperbaiki saat uji**: stderr exe sempat dialirkan ke pipe yang tidak dibaca, sehingga proses tertahan dan butuh ±50 dtk/frame. Sekarang stderr ditulis ke file log.
+
+### 18.10 Perintah `engine visual <job_dir>` — satu pintu (OK venus 16 Nov)
+Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`, bawaannya `D:/VIBECODING/tools/visual-venv/Scripts/python.exe`. Polanya sama dengan `tts`, dan juga jalan dari folder rilis (R20).
+```json
+{"schema":"engine-job/1","visual":{"alat":"deteksi|reframe|lacak|hapus_latar|perjelas","masuk":"konten/…/a.mp4", …}}
+```
+`masuk` boleh relatif ke folder DATA atau absolut.
+
+| `alat` | Parameter (opsional kecuali ditandai) | Hasil di `out/` |
+|---|---|---|
+| `deteksi` | `jenis` ["wajah","objek"], `hz` 10, `label` ["person"] | `jalur.json` (§18.1) |
+| `reframe` | `jalur` (bawaan `out/jalur.json`), `rasio` "9:16", `subjek`; `kanvas` [W,H] + `fit` "pas"\|"isi" + `awal_ms` → ditambah `keyframe_app` siap pakai | `reframe.json` (§18.2) |
+| `lacak` | **`kotak` [x,y,w,h]**, `mulai`, `sampai`, `metode` "csrt"\|"kcf", `hz` 15 | `lacak.json` (§18.7) |
+| `hapus_latar` | `model`, `fps` 10 | `hapus_latar/` (§18.8) |
+| `perjelas` | `mode`, `skala`, `sisi` | `perjelas/` (§18.9) |
+
+- **Progres**: JSON-lines dari alatnya masing-masing.
+- **Kode keluar**: 0 selesai · 2 ditolak (`out/visual.json` berisi alasannya bila job tidak sah) · 1 gagal teknis.
+- **Tes**: `PerintahVisual` di test_engine menjalankan deteksi lalu reframe + keyframe_app dari salinan folder rilis dengan folder data terpisah. Folder data tidak ditulisi.
+
+### 18.11 Posisi caption memakai MediaPipe (R24a, OK venus 16 Nov)
+`posisi_caption.posisi_otomatis` sekarang mendeteksi wajah lewat `visual/deteksi.py --jenis wajah` (visual-venv), memakai titik sampel yang sama seperti sebelumnya (1/dtk, maksimal 90).
+- **Cadangan Haar** dipakai bila visual-venv tidak ada, deteksi gagal, prosesnya lebih dari 120 dtk (misalnya antre kunci AI), atau env `MOTION_POSISI_HAAR=1` diisi.
+- **Laporan**: `posisiCaption.deteksi` = `"mediapipe"` atau `"haar"`.
+- **Uji 3 klip winning**:
+  - IN17: wajah terdeteksi di 69% frame dengan MediaPipe, 54% dengan Haar.
+  - IN1: 94% (MediaPipe) dan 76% (Haar).
+  - IN21 (celana di lantai, tanpa orang): Haar **salah mengira lipatan kain sebagai wajah** dan memindahkan caption ke 0,42. MediaPipe benar: 0 wajah, caption tetap di 0,72.
+- **Waktu**: ±2,3 dtk per klip, dibanding ±0,7 dtk dengan Haar.
+- test_posisi_caption tetap lulus.

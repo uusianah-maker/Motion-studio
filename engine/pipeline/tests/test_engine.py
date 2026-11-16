@@ -58,5 +58,117 @@ class Engine(unittest.TestCase):
             self.assertEqual(engine.DATA, engine.ROOT)
 
 
+
+class PerintahTts(unittest.TestCase):
+    """R24f: engine tts <job_dir> -> out/vo/NN.wav + out/tts.json (tts/1). Jalan juga dari folder rilis (R20)."""
+
+    PIPE = Path(__file__).resolve().parents[1]
+
+    def _jalan(self, engine_py: Path, job: dict, env_data: str | None = None):
+        import os
+        import subprocess
+        d = Path(tempfile.mkdtemp())
+        (d / "job.json").write_text(json.dumps(job), encoding="utf-8")
+        env = {k: v for k, v in os.environ.items() if k != "MOTION_ENGINE_DATA"}
+        if env_data:
+            env["MOTION_ENGINE_DATA"] = env_data
+        r = subprocess.run([sys.executable, str(engine_py), "tts", str(d)], capture_output=True, text=True,
+                           encoding="utf-8", env=env)
+        lap = json.loads((d / "out" / "tts.json").read_text(encoding="utf-8")) if (d / "out" / "tts.json").exists() else None
+        return r, lap, d
+
+    def test_teks_kosong_ditolak(self):
+        r, lap, _ = self._jalan(self.PIPE / "engine.py", {"schema": "engine-job/1", "tts": {"kalimat": ["  ", ""]}})
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertEqual(lap["status"], "ditolak")
+        self.assertIn("kosong", lap["alasan"])
+
+    def test_kecepatan_di_luar_batas_ditolak(self):
+        r, lap, _ = self._jalan(self.PIPE / "engine.py", {"tts": {"teks": "halo", "kecepatan": 5}})
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("kecepatan", lap["alasan"])
+
+    @unittest.skipUnless(sys.platform == "win32", "suara Windows")
+    def test_suara_tidak_ada_ditolak(self):
+        r, lap, _ = self._jalan(self.PIPE / "engine.py", {"tts": {"teks": "halo", "suara": "TidakAdaSuaraIni"}})
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("tidak terpasang", lap["alasan"])
+
+    @unittest.skipUnless(sys.platform == "win32", "suara Windows")
+    def test_dari_folder_rilis_menulis_wav(self):
+        import shutil
+        rilis = Path(tempfile.mkdtemp()) / "mesin"
+        shutil.copytree(self.PIPE, rilis / "pipeline", ignore=shutil.ignore_patterns("__pycache__", "tests"))
+        data = tempfile.mkdtemp()
+        r, lap, d = self._jalan(rilis / "pipeline" / "engine.py",
+                                {"tts": {"kalimat": ["Halo kak.", "Celana ini adem banget."], "suara": "Andika"}},
+                                env_data=data)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(lap["status"], "selesai")
+        self.assertEqual([f["file"] for f in lap["file"]], ["out/vo/01.wav", "out/vo/02.wav"])
+        self.assertTrue(all(f["durasi"] > 0.3 for f in lap["file"]))
+        self.assertTrue((d / "out" / "vo" / "02.wav").exists())
+        self.assertEqual(list(Path(data).iterdir()), [])  # tidak menulis apa pun ke folder data
+        progres = [json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")]
+        self.assertEqual(progres[-1]["tahap"], "selesai")
+
+
+
+class PerintahVisual(unittest.TestCase):
+    """R24: engine visual <job_dir> lewat visual-venv; jalan dari folder rilis + MOTION_ENGINE_DATA (R20)."""
+
+    PIPE = Path(__file__).resolve().parents[1]
+
+    def _jalan(self, engine_py: Path, job: dict, env_data: str | None = None):
+        import os
+        import subprocess
+        d = Path(tempfile.mkdtemp())
+        (d / "job.json").write_text(json.dumps(job), encoding="utf-8")
+        env = {k: v for k, v in os.environ.items() if k != "MOTION_ENGINE_DATA"}
+        if env_data:
+            env["MOTION_ENGINE_DATA"] = env_data
+        r = subprocess.run([sys.executable, str(engine_py), "visual", str(d)], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", env=env)
+        return r, d
+
+    @unittest.skipUnless(Path(engine.VISUAL_PY).exists(), "visual-venv belum dipasang")
+    def test_alat_salah_dan_masuk_kosong_ditolak(self):
+        r, d = self._jalan(self.PIPE / "engine.py", {"visual": {"alat": "sulap"}})
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertEqual(json.loads((d / "out" / "visual.json").read_text(encoding="utf-8"))["status"], "ditolak")
+        r, _ = self._jalan(self.PIPE / "engine.py", {"visual": {"alat": "hapus_latar"}})
+        self.assertEqual(r.returncode, 2)
+        r, _ = self._jalan(self.PIPE / "engine.py", {"visual": {"alat": "lacak", "masuk": __file__, "kotak": [0.1, 0.1]}})
+        self.assertEqual(r.returncode, 2)
+
+    @unittest.skipUnless(Path(engine.VISUAL_PY).exists(), "visual-venv belum dipasang")
+    def test_deteksi_lalu_reframe_dari_folder_rilis(self):
+        import shutil
+        import subprocess
+        rilis = Path(tempfile.mkdtemp()) / "mesin"
+        shutil.copytree(self.PIPE, rilis / "pipeline", ignore=shutil.ignore_patterns("__pycache__", "tests"))
+        data = Path(tempfile.mkdtemp())
+        (data / "konten").mkdir()
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=10:duration=2",
+                        "-pix_fmt", "yuv420p", str(data / "konten" / "uji.mp4")], check=True)
+        r, d = self._jalan(rilis / "pipeline" / "engine.py",
+                           {"visual": {"alat": "deteksi", "masuk": "konten/uji.mp4", "jenis": ["wajah", "objek"], "hz": 5}},
+                           env_data=str(data))
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
+        jl = json.loads((d / "out" / "jalur.json").read_text(encoding="utf-8"))
+        self.assertEqual((jl["schema"], jl["video"], jl["lebar"]), ("jalur-posisi/1", "konten/uji.mp4", 640))
+        job = {"visual": {"alat": "reframe", "jalur": str(d / "out" / "jalur.json"), "kanvas": [1080, 1920], "fit": "isi"}}
+        (d / "job.json").write_text(json.dumps(job), encoding="utf-8")
+        import os
+        env = {**os.environ, "MOTION_ENGINE_DATA": str(data)}
+        r = subprocess.run([sys.executable, str(rilis / "pipeline" / "engine.py"), "visual", str(d)], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", env=env)
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
+        rf = json.loads((d / "out" / "reframe.json").read_text(encoding="utf-8"))
+        self.assertEqual(rf["schema"], "reframe/1")
+        self.assertEqual(rf["keyframe_app"][0]["scale"], 1.0)  # tanpa subjek: tengah, fit isi = identitas
+        self.assertEqual(sorted(p.name for p in data.iterdir()), ["konten"])  # tidak menulis apa pun ke folder data
+
+
 if __name__ == "__main__":
     unittest.main()

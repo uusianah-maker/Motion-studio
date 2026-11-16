@@ -357,6 +357,11 @@ def tulis_thumbs(video: Path, shots: list, thumb_dir: Path) -> dict:
     return hasil
 
 
+# Brand Kit untuk kosakata Whisper (multi-brand, venus 16 Nov): job pisah memberi brand_kit.json job-nya lewat
+# --brandkit; tanpa itu (CLI lama) = brandkit/aysilla.json di folder kode.
+BRANDKIT = ROOT / "brandkit" / "aysilla.json"
+
+
 def ensure_transcript(batch_dir: Path, name: str) -> Path:
     out = batch_dir / "transkrip" / f"{name}.json"
     if not out.exists():
@@ -364,7 +369,7 @@ def ensure_transcript(batch_dir: Path, name: str) -> Path:
         vokal = batch_dir / "vokal" / f"{name}.wav"
         print(f"  transkrip {name} ...", file=sys.stderr)
         subprocess.run([str(MAIN_PY), str(ROOT / "pipeline" / "transcribe.py"), str(vokal), str(out),
-                        "--brandkit", str(ROOT / "brandkit" / "aysilla.json")],
+                        "--brandkit", str(BRANDKIT)],
                        check=True, stdout=subprocess.DEVNULL, cwd=DATA)
     return out
 
@@ -374,8 +379,12 @@ def main() -> None:
     ap.add_argument("batch")
     ap.add_argument("--tiktok", action="store_true", help="semua footage unduhan TikTok: paksa blur watermark + footer")
     ap.add_argument("--hanya", nargs="*", help="proses footage tertentu saja (nama tanpa .mp4)")
+    ap.add_argument("--brandkit", help="brand kit job (kosakata Whisper); bawaan brandkit/aysilla.json")
     ap.add_argument("--thumb-saja", action="store_true", help="lengkapi thumbnail shots.json yang sudah ada tanpa analisis ulang")
     args = ap.parse_args()
+    if args.brandkit:
+        global BRANDKIT
+        BRANDKIT = Path(args.brandkit).resolve()
 
     batch_dir = KONTEN / "2-dipisah" / args.batch
     if args.thumb_saja:

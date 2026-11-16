@@ -35,7 +35,8 @@ import brand_lain  # noqa: E402
 import riwayat as riwayat_mod  # noqa: E402
 from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, efek_video, kata_klip  # noqa: E402  (milik venus, konvensi sama)
-from efek_otomatis import efek_batch, pilih_sfx, saring_sfx  # noqa: E402  (venus: SFX + efek otomatis, sama dengan Generate)
+from efek_otomatis import efek_batch  # noqa: E402  (venus: efek otomatis, sama dengan Generate)
+import sfx_rencana  # noqa: E402  (R29: SFX dari timeline jadi, sama dengan Generate)
 from jaga_ops import buang_teks_kosong, cek_durasi, jaga_durasi, rapikan_kata, validasi_motion_studio  # noqa: E402  (pengaman venus: klip <= panjang file sumber)
 
 from jalur import BATCH_PY  # noqa: E402
@@ -219,26 +220,14 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool, gaya: dict | Non
     for a, b, eff in efek_video(framing, zt, total_ms):
         if b - a >= MIN_CLIP_MS:
             ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": a, "duration_ms": b - a, "effect": eff})
-    kejadian = [(ms(hook["dari"]) + 100, "muncul")] + [(max(0, z - 100), "whoosh") for z in zt]
-    for o in ops:
-        if o.get("track_kind") == "subtitle" and (o.get("style") or {}).get("highlight"):
-            kunci_hl = set(o["style"]["highlight"]["words"])
-            for w in o.get("words", []):
-                if _bersih(w["text"]) in kunci_hl:
-                    kejadian.append((o["start_ms"] + w["start_ms"] - 60, "pop"))
-                    break
-    aset = brand.get("aset", [])
-    for i, (t, jenis) in enumerate(saring_sfx(kejadian, total_ms)):
-        a = pilih_sfx(aset, jenis, i, f"{v['id']}|{v['vo']}", brand.get("sfx_dilarang", []))
-        if a:
-            kunci, dur = a["kunci"], int(a.get("durasi_ms") or 300)
-        else:  # Library brand tidak punya yang pas: SFX bawaan mesin
-            kunci, dur = ("$sfx:pop", 250) if jenis == "pop" else ("$sfx:whoosh", 450)
-        dur = min(dur, total_ms - t)
-        if dur >= MIN_CLIP_MS:
-            ops.append({"op": "add_clip", "track_kind": "sfx", "media": kunci, "start_ms": t, "duration_ms": dur,
-                        "volume": 0.5 if jenis == "pop" else 0.6})
     cta_mulai = max(ms(hook["sampai"]), total_ms - CTA_MS)
+    # R29 (yuki): SFX dari timeline jadi (hook, potong/zoom/flash, kata kunci, harga, CTA, halaman subtitle);
+    # kepadatan preset `sfx.kepadatan` (bawaan sedang). Track text CTA ditambahkan di bawah; waktunya diberikan di sini.
+    ops, lap_sfx = sfx_rencana.pasang(ops, brand.get("aset", []), total_ms, hook_ms=ms(hook["dari"]),
+                                      cta_ms=cta_mulai if v.get("cta") else None,
+                                      kepadatan=sfx_rencana.kepadatan_dari(g), dilarang=brand.get("sfx_dilarang", []),
+                                      seed=f"{v['id']}|{v['vo']}")
+    v["sfx_rencana"] = lap_sfx
     ops.append({"op": "add_clip", "track_kind": "text", "text": v["cta"], "start_ms": cta_mulai,
                 "duration_ms": total_ms - cta_mulai,
                 "style": {"x": 0.5, "y": 0.45, "size": 6.0, "width": 0.84, "color": "#ffffff",

@@ -1,0 +1,48 @@
+﻿# R24 Visual Tools: venv TERPISAH D:\VIBECODING\tools\visual-venv (Python 3.12.5, C:\Python312), env MOTION_VISUAL_PY.
+# Versi dikunci (pip freeze 16 Nov 2026). Pasang: <venv>\Scripts\python -m pip install -r requirements-visual.txt
+# onnxruntime CPU saja; tanpa torch. JANGAN pasang ke .venv / demucs-venv (opencv-contrib 5 bentrok).
+# rembg DILEPAS (venus 16 Nov): ia mengunduh model sendiri dari mirror; inferensi latar langsung via onnxruntime.
+absl-py==2.5.1
+attrs==26.1.0
+certifi==2026.10.23
+cffi==2.1.1
+charset-normalizer==3.5.2
+colorama==0.4.6
+contourpy==1.4.0
+cycler==0.12.1
+flatbuffers==25.12.19
+fonttools==4.68.0
+idna==3.20
+ImageIO==2.38.1
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+kiwisolver==1.5.1
+lazy-loader==0.6
+llvmlite==0.50.0
+matplotlib==3.11.2
+mediapipe==1.2.3
+networkx==3.7
+numba==0.68.1
+numpy==2.5.5
+onnxruntime==1.32.0
+opencv-contrib-python==5.0.0.93
+packaging==26.3
+pillow==13.0.0
+platformdirs==4.14.5
+pooch==1.9.0
+protobuf==7.36.2
+pycparser==3.12
+PyMatting==1.1.16
+pyparsing==3.3.3
+python-dateutil==4.0.0
+referencing==0.37.0
+requests==2.34.2
+rpds-py==2026.9.1
+scikit-image==0.26.0
+scipy==1.18.1
+sounddevice==0.5.6
+tifffile==2026.11.12
+tqdm==4.70.1
+typing_extensions==4.16.0
+tzdata==2026.6
+urllib3==2.8.0

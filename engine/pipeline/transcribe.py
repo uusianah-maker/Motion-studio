@@ -81,9 +81,9 @@ def main() -> None:
 
     vocab = []
     if args.brandkit:
-        from brandkit import muat
+        from brandkit import kosakata_brand, muat
 
-        vocab = muat(args.brandkit).get("kosakata_whisper", [])
+        vocab = kosakata_brand(muat(args.brandkit))
     prompt = INITIAL_PROMPT + (" " + ", ".join(vocab) + "." if vocab else "")
 
     t0 = time.perf_counter()
