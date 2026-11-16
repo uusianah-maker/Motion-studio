@@ -1,0 +1,47 @@
+[
+  {
+    "id": "R36-01 Brand bagian C: daftar koreksi editor (cana, icy love, janganlah)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R36-02 Label: \"otomatis dipakai\" untuk pasangan aman (cana→celana, icy love→Aysilla), \"usulan\" untuk janganlah→Join Live",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R36-03 \"Tambah ke kamus\" → pasangan masuk Kamus (bisa diedit) dan hilang dari daftar belajar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R36-04 \"Abaikan\" → hilang dari daftar, muncul di \"Diabaikan\" (bisa dibatalkan)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R36-05 \"Batal abaikan\" → cana kembali di daftar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R36-06 Simpan → Brand Kit: kamus janganlah→Join Live, kamus_abaikan [cana]",
+    "ok": true,
+    "detail": "{\"kamus\":[{\"salah\":\"janganlah\",\"benar\":\"Join Live\"}],\"abaikan\":[\"cana\"]}"
+  },
+  {
+    "id": "R36-07 GET /api/brands/:id/kamus-belajar sesudah simpan: hanya icy love, abaikan [cana]",
+    "ok": true,
+    "detail": "{\"pasangan\":[{\"salah\":\"icy love\",\"benar\":\"Aysilla\",\"kali\":1,\"terakhir\":1,\"otomatis\":true}],\"abaikan\":[\"cana\"]}"
+  },
+  {
+    "id": "R36-08 Setelah muat ulang: daftar tetap 1 (icy love) + \"Diabaikan: cana\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R36-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

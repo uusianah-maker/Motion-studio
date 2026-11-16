@@ -374,6 +374,7 @@ export function createDemoApi(): Api {
     saveBrand: async (rev, kit) => api.saveBrandById(defaultBrand, rev, kit),
     brands: async () => ({ brands: clone([...brandStore.values()].sort((a, b) => a.name.localeCompare(b.name))), default_id: defaultBrand }),
     brandById: async (id) => clone(brandStore.get(id) ?? fail(404, 'NOT_FOUND', 'Brand tidak ditemukan')),
+    kamusBelajar: async (id) => ({ pasangan: [], abaikan: clone(brandStore.get(id) ?? fail(404, 'NOT_FOUND', 'Brand tidak ditemukan')).kamus_abaikan ?? [] }),
     createBrand: async (kit) => {
       if (!kit.name.trim()) fail(422, 'EDIT_INVALID', 'Brand Kit: nama wajib diisi');
       const kode = (kit.kode || kit.name.slice(0, 3)).toUpperCase();

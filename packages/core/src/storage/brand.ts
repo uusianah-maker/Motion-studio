@@ -164,6 +164,8 @@ export interface BrandKit {
   watermark: { teks: string; y: number; lebar: number; opasitas: number } | null;
   kosakata: string[];
   kamus: { salah: string; benar: string }[];
+  /** R36: learned fixes the team rejected ("Abaikan"): wrong words never applied automatically again. */
+  kamus_abaikan: string[];
   /** R34 (§21): how the TTS should SAY a written word, e.g. "Aysilla" → "Ay-si-la" (text / subtitles keep the writing). */
   pelafalan: { tulisan: string; ucapan: string }[];
   kata_kunci: string[];
@@ -213,6 +215,7 @@ const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
   watermark: null,
   kosakata: [],
   kamus: [],
+  kamus_abaikan: [],
   pelafalan: [],
   kata_kunci: [],
   kapital: 'normal',
@@ -496,6 +499,7 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     tagline: text(o.tagline, 'tagline', 120),
     watermark,
     kosakata: list(o.kosakata, 'kosakata Whisper', 300, 60),
+    kamus_abaikan: [...new Set(list(o.kamus_abaikan, 'kamus diabaikan', 300, 60).map((w) => w.toLowerCase()))],
     kamus: kamus.map((k, i) => {
       const ko = obj(k, `kamus ${i + 1}`, ['salah', 'benar']);
       return { salah: text(ko.salah, `kamus ${i + 1} salah`, 60, false), benar: text(ko.benar, `kamus ${i + 1} benar`, 60, false) };

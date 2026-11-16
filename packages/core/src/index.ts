@@ -52,6 +52,7 @@ export {
   engineConfigFromEnv,
   isJobId,
   listEngineJobs,
+  readKamusBelajar,
   loadEnginePlan,
   prepareEngineJob,
   readBatchDecisions,

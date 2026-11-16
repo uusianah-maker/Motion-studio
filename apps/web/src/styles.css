@@ -467,6 +467,9 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; }
 .presetGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; }
 .presetBtn { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--line); background: #1a1f2e; border-radius: 9px; color: inherit; font-size: 12px; font-weight: 650; }
 .presetBtn:hover:not(:disabled) { background: #242a3d; }
+/* R36: Brand → C words learned from editor corrections. */
+.kamusBelajar { display: grid; gap: 6px; padding: 8px; border: 1px dashed var(--line); border-radius: 8px; }
+.kamusRow .kamusPair s { color: var(--red); }
 /* R27: Library in the Editor (SFX / Transisi / Efek / Teks). */
 .libraryPanel .libList { display: grid; gap: 6px; margin-top: 6px; }
 .libraryPanel .libList input { width: 100%; }

@@ -8,6 +8,15 @@ import type { Overlay } from '../../../packages/core/dist/storage/overlay.js';
  * carries `x-motion-request: 1`, which the server requires (a cross-site page cannot send it).
  */
 
+/** R36: one word pair learned from editor corrections (core kamusBelajar). */
+export interface KamusBelajarPasangan {
+  salah: string;
+  benar: string;
+  kali: number;
+  otomatis: boolean;
+  terakhir: number;
+}
+
 /** X09: one ad variant of a master project. */
 export interface VariantRow {
   project_id: string;
@@ -121,6 +130,8 @@ export interface BrandKit {
   watermark: { teks: string; y: number; lebar: number; opasitas: number } | null;
   kosakata: string[];
   kamus: { salah: string; benar: string }[];
+  /** R36: learned wrong words the team chose to ignore. */
+  kamus_abaikan: string[];
   /** R34: how the TTS says a written word ("Aysilla" → "Ay-si-la"). */
   pelafalan: { tulisan: string; ucapan: string }[];
   kata_kunci: string[];
@@ -881,6 +892,8 @@ export function createApi(token: string | null, base = '') {
     // U1: brands
     brands: () => call<{ brands: BrandKit[]; default_id: string | null }>('GET', '/api/brands'),
     brandById: (id: string) => call<{ brand: BrandKit }>('GET', `/api/brands/${encodeURIComponent(id)}`).then((r) => r.brand),
+    /** R36: pairs learned from editor corrections (+ ignored words). */
+    kamusBelajar: (id: string) => call<{ pasangan: KamusBelajarPasangan[]; abaikan: string[] }>('GET', `/api/brands/${encodeURIComponent(id)}/kamus-belajar`),
     createBrand: (kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', '/api/brands', { json: { kit } }).then((r) => r.brand),
     saveBrandById: (id: string, expected_revision: number, kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', `/api/brands/${encodeURIComponent(id)}`, { json: { expected_revision, kit } }).then((r) => r.brand),
     /** R13: copy a Brand Kit (with presets) as a new brand. */

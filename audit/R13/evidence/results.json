@@ -1,0 +1,27 @@
+[
+  {
+    "id": "R13-01 Kode diketik huruf besar otomatis",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R13-02 Brand baru dibuat dari Brand Kit asal (warna + preset ikut), langsung terbuka",
+    "ok": true,
+    "detail": "KSN · 1 preset"
+  },
+  {
+    "id": "R13-03 Brand asal tidak berubah",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R13-04 Kode yang sudah dipakai ditolak dengan pesan jelas",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R13-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

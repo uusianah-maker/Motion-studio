@@ -17,7 +17,7 @@ import { execFile, spawn } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type BrandKit, assetKunci, brandReferences, exportBrandKit, readBrandFor } from './brand.js';
+import { type BrandKit, assetKunci, brandReferences, exportBrandKit, readBrand, readBrandFor } from './brand.js';
 import { OVERLAY_DEFAULT, type Overlay, validateOverlay } from './overlay.js';
 import { localDate } from './brandGuard.js';
 import { createLease, releaseLease, setLeaseStatus } from './deps.js';
@@ -36,7 +36,7 @@ import { LAYOUT, type Workspace, listProjectIds, projectRel, readProject } from 
 import { writeJsonAtomic } from './jsonStore.js';
 import { audit } from './audit.js';
 import { markEngineOrigin, readLearning } from './learning.js';
-import { kamusBelajar } from './kamusBelajar.js';
+import { type PasanganKamus, kamusBelajar } from './kamusBelajar.js';
 import { type TtsSettings, validateTtsJob } from './tts.js';
 import { validateVisualJob } from './visual.js';
 import { type SuaraProfilSettings, validateSuaraProfilJob } from './suaraOwner.js';
@@ -566,13 +566,28 @@ async function addLearnedKamus(ws: Workspace, kit: BrandKit, brandExport: Record
   try {
     const teks = brandExport.teks as { kamus?: Record<string, string> } | undefined;
     if (!teks || !kit.brand_id) return;
-    const pasangan = kamusBelajar(await readLearning(ws, kit.brand_id), [kit.name, ...kit.kosakata, ...kit.kata_kunci], kit.kamus);
+    const pasangan = learnedFor(kit, await readLearning(ws, kit.brand_id));
     const kamus = { ...(teks.kamus ?? {}) };
     for (const p of pasangan) if (p.otomatis && !(p.salah in kamus)) kamus[p.salah] = p.benar;
     teks.kamus = kamus;
   } catch {
     /* learning must never break a job */
   }
+}
+
+/** R36: what a brand learned from editor corrections, minus the pairs the team chose to ignore. */
+function learnedFor(kit: BrandKit, notes: readonly Record<string, unknown>[]): PasanganKamus[] {
+  const abaikan = new Set((kit.kamus_abaikan ?? []).map((w) => w.toLowerCase()));
+  return kamusBelajar(notes, [kit.name, ...kit.kosakata, ...kit.kata_kunci], kit.kamus).filter((p) => !abaikan.has(p.salah.toLowerCase()));
+}
+
+/**
+ * R36 Brand "Dipelajari dari koreksi editor": learned pairs (`otomatis` = used in the next job,
+ * else `usulan`) and the ignored wrong words. Pairs already in the Brand Kit dictionary are not listed.
+ */
+export async function readKamusBelajar(ws: Workspace, brandId: string): Promise<{ pasangan: PasanganKamus[]; abaikan: string[] }> {
+  const kit = await readBrand(ws, brandId);
+  return { pasangan: learnedFor(kit, await readLearning(ws, kit.brand_id)), abaikan: kit.kamus_abaikan };
 }
 
 /**

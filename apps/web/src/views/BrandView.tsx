@@ -6,6 +6,7 @@ import { nextPresetId } from '../lib';
 import { ErrorNotice } from '../ui';
 import { LOOKS, LOOK_IDS } from '../../../../packages/core/dist/storage/clipLook.js';
 import { AssetLibrary } from './AssetLibrary';
+import { KamusBelajar } from './KamusBelajar';
 
 const FONT_RE = /\.(ttf|otf)$/i;
 const LOGO_RE = /\.(png|jpe?g|webp)$/i;
@@ -517,6 +518,7 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
               <button className="btn small" onClick={() => set({ kamus: [...draft.kamus, { salah: '', benar: '' }] })}>
                 ＋ Pasangan kamus
               </button>
+              <KamusBelajar api={api} brandId={selected === 'new' ? null : (kit?.brand_id ?? null)} revision={kit?.revision ?? null} draft={draft} set={set} />
               {/* R34: pronunciation for "Suara dari Teks" — only the voice changes, text & subtitles keep the writing. */}
               <b className="small">Pelafalan suara (tulisan → cara dibaca)</b>
               <div className="muted small">Dipakai "Suara dari Teks". Teks & subtitle tetap memakai tulisan aslinya.</div>

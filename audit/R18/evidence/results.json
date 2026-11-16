@@ -1,0 +1,42 @@
+[
+  {
+    "id": "R18-01 \"Isi contoh preset Aysilla\" menambah 3 preset (aysilla-harian milik tim tidak ditimpa)",
+    "ok": true,
+    "detail": "3 preset contoh ditambahkan (yang sudah ada tidak ditimpa). Klik Simpan Brand Kit."
+  },
+  {
+    "id": "R18-02 Tersimpan: tagline + watermark, 4 preset; angka contoh (interview caption 0,76 / hook 0,18 / flash) ikut",
+    "ok": true,
+    "detail": "aysilla-harian,aysilla-interview,aysilla-test-produk,aysilla-beatspot"
+  },
+  {
+    "id": "R18-03 Ekspor Brand Kit ke mesin: teks.tagline + visual.watermark (nama field kontrak §17.3)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R18-04 Klik lagi: tidak ada yang ditimpa",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R18-05 Field gaya hasil belajar tampil & bisa diubah (posisi caption preset interview = 0.76)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R18-06 Video iklan: pilihan \"Voice over\" → job.json audio_pilihan \"vo\"",
+    "ok": true,
+    "detail": "\"vo\""
+  },
+  {
+    "id": "R18-07 Beat Spot: preset + \"Keduanya\" → job.json preset aysilla-beatspot, audio_pilihan keduanya, durasi preset 15–18; \"auto\" tidak dikirim",
+    "ok": true,
+    "detail": "{\"preset\":\"aysilla-beatspot\",\"audio\":\"keduanya\",\"bs\":{\"sound\":null,\"durasi\":[15,18],\"tagline\":null,\"urutan_shot\":[],\"kecualikan_shot\":[],\"sumber_orang\":{},\"seed\":1}}"
+  },
+  {
+    "id": "R18-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]
