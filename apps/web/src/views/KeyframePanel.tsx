@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type Keyframe, MAX_KEYFRAMES, keyframeAt } from '../../../../packages/core/dist/storage/keyframes.js';
 import type { Clip, EditOp } from '../api';
 import { parseDecimal } from '../lib';
@@ -59,7 +59,13 @@ export function KeyframePanel({ clip, playhead, submit }: { clip: Clip; playhead
 
 function KfRow({ k, index, len, onChange, onDelete }: { k: Keyframe; index: number; len: number; onChange: (k: Keyframe) => void; onDelete: () => void }) {
   const [v, setV] = useState({ at: (k.at_ms / 1000).toFixed(2), x: pct(k.x), y: pct(k.y), scale: pct(k.scale), opacity: pct(k.opacity) });
-  useEffect(() => setV({ at: (k.at_ms / 1000).toFixed(2), x: pct(k.x), y: pct(k.y), scale: pct(k.scale), opacity: pct(k.opacity) }), [k.at_ms, k.x, k.y, k.scale, k.opacity]);
+  /** What this row last sent: Enter then blur (clicking the ruler / Undo) before the saved keyframe
+   *  came back used to send the same change twice — two undo steps (audit M15-K5). */
+  const sent = useRef<string | null>(null);
+  useEffect(() => {
+    sent.current = null;
+    setV({ at: (k.at_ms / 1000).toFixed(2), x: pct(k.x), y: pct(k.y), scale: pct(k.scale), opacity: pct(k.opacity) });
+  }, [k.at_ms, k.x, k.y, k.scale, k.opacity]);
   const commit = () => {
     const num = (s: string, lo: number, hi: number, dflt: number) => {
       const n = parseDecimal(s);
@@ -73,7 +79,10 @@ function KfRow({ k, index, len, onChange, onDelete }: { k: Keyframe; index: numb
       opacity: num(v.opacity, 0, 100, k.opacity * 100) / 100,
       ease: k.ease,
     };
-    if (JSON.stringify(next) !== JSON.stringify(k)) onChange(next);
+    const json = JSON.stringify(next);
+    if (json === JSON.stringify(k) || json === sent.current) return;
+    sent.current = json;
+    onChange(next);
   };
   const field = (key: keyof typeof v, label: string, title: string) => (
     <label title={title}>

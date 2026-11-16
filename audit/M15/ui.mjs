@@ -156,8 +156,10 @@ try {
   await seek(3800);
   const vop = Number(await video.evaluate((v) => getComputedStyle(v).opacity));
   check('M15-K4 Pratinjau: video memudar mengikuti keyframe', vop < 0.6, String(vop));
+  const undoTitle = await page.getByRole('button', { name: '↶ Undo' }).getAttribute('title');
+  const revK = (await proj()).revision;
   await page.getByRole('button', { name: '↶ Undo' }).click();
-  check('M15-K5 Undo mengembalikan opasitas keyframe', await until(async () => (await vclips())[1].keyframes?.[1]?.opacity === 1));
+  check('M15-K5 Undo mengembalikan opasitas keyframe', await until(async () => (await vclips())[1].keyframes?.[1]?.opacity === 1), `undo="${undoTitle}" rev=${revK} kf=${JSON.stringify((await vclips())[1].keyframes)}`);
   await pick(1);
   await kfp.scrollIntoViewIfNeeded();
   await insp.screenshot({ path: path.join(EVID, 'keyframe.png') });

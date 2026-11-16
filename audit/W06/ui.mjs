@@ -31,6 +31,14 @@ for (const tag of ['Hook', 'Produk']) {
   await svc.importMedia({ sourcePath: p, scope: { kind: 'shared' }, display_name: `${tag}.mp4`, actor: 'user' });
 }
 const proj = async () => core.readProject(await core.openWorkspace(wsRoot), 'lucy');
+const until = async (fn, ms = 8000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (await fn().catch(() => false)) return true;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return false;
+};
 const video = async () => (await proj()).timeline.tracks.find((t) => t.kind === 'video')?.clips ?? [];
 
 const server = await start({ MOTION_WORKSPACE: wsRoot, MOTION_PORT: '0', MOTION_GC: 'off', MOTION_UPLOAD_TMP: work, MOTION_STATE_DIR: path.join(work, 'state') }, () => undefined);
@@ -122,11 +130,16 @@ try {
   const after = (await video()).find((c) => c.media && c.end_ms > 6000).start_ms;
   check('ED-10 → geser 100 ms', after === before + 100, `${before}→${after}`);
 
-  // Overlap is refused by the server and nothing changes.
+  // Owner 16 Nov (hotfix drag): dropped onto its neighbour, the clip stops right against it
+  // instead of being refused for overlapping (no error, one saved step).
   const revBefore = (await proj()).revision;
+  const prodId = (await video()).find((c) => c.start_ms === after).clip_id;
   await dragBy(clip('Produk.mp4'), -(after - 1000) * pxPerMs);
-  await page.getByRole('alert').waitFor();
-  check('ED-11 Tumpang tindih ditolak + pesan jelas', (await page.getByRole('alert').innerText()).includes('tumpang tindih') && (await proj()).revision === revBefore);
+  await until(async () => (await proj()).revision === revBefore + 1);
+  const moved = await video();
+  const prod = moved.find((c) => c.clip_id === prodId);
+  const leftEnd = Math.max(0, ...moved.filter((c) => c !== prod && c.end_ms <= prod.start_ms).map((c) => c.end_ms));
+  check('ED-11 Seret ke tetangga → klip berhenti tepat di tepinya, tanpa tumpang tindih / error', prod.start_ms < after && prod.start_ms === leftEnd && (await page.getByRole('alert').count()) === 0 && (await proj()).revision === revBefore + 1, `${after}→${prod.start_ms} (tepi kiri ${leftEnd})`);
 
   // Someone else changes the project: next edit reloads instead of overwriting.
   const p = await proj();
