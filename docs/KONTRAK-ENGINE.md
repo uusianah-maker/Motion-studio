@@ -624,3 +624,30 @@ Modul `pipeline/sfx_rencana.py` dipakai Generate (`ops.py`, langkah 6b, sesudah 
   - Generate AYS-20261116-002 (21 dtk): 1 → 8 SFX, 8 file berbeda.
   - Generate AYS-20261116-001 (5,4 dtk): 1 → 2 SFX (hook + "promo").
   - Batch 5 varian (21–63 dtk): 7–20 SFX per varian, 6–10 kategori bunyi.
+
+## 20. Typo subtitle: kosakata, kamus, belajar dari koreksi (R30, v0.4.3, 16 Nov 2026, yuki)
+### 20.1 Kosakata & kamus Brand Kit (R30a)
+- **Generate sudah memakainya:**
+  - `teks.kosakata_whisper` dikirim ke Whisper sebagai `initial_prompt` + `hotwords` (`transcribe.py --brandkit`).
+  - `teks.kamus` dipakai untuk koreksi otomatis sesudah transkrip (`apply_kamus`).
+  - Batch juga menerapkan kamus pada VO (`batch/vo.py`).
+- **Temuan 16 Nov:** di Brand Kit Aysilla di Motion Studio, `kosakata_whisper` = [] dan `kamus` = {}. Padahal file lama `brandkit/aysilla.json` di repo berisi 28 istilah dan 21 koreksi, termasuk "ekot/cekot → checkout", "lus/los → loose", "icila factory → Aysilla Factory". Isi itu belum pernah dipindahkan. Tim perlu mengisinya lewat menu Brand.
+- **Shot Library Batch** masih mentranskrip memakai `brandkit/aysilla.json` dari repo, bukan Brand Kit live per brand. Ini catatan untuk dibuat multi-brand.
+
+### 20.2 Usulan kamus dari koreksi editor (R30b) — `kamus-usulan/1`
+Perintah: `python pipeline/kamus_belajar.py <.motionstudio/brands/<brand_id>/belajar.jsonl> [--brand-kit brand_kit.json] [--min 2]`. Hasilnya satu JSON di stdout.
+```json
+{"schema":"kamus-usulan/1","minimal":2,"koreksi_kata":4,
+ "usulan":[{"salah":"cana","benar":"celana","jumlah":2,"proyek":2,"contoh":[{"sebelum":"mau punya cana","sesudah":"mau punya celana"}],
+            "periksa":false,"kosakata_baru":["celana"]}],
+ "pantau":[…], "sudah_di_kamus":[…]}
+```
+- **Sumber:** catatan R9 dengan `jenis: "koreksi"`, `bagian: "kata"`.
+- **Pencocokan:** teks dibandingkan per kata (difflib). Hanya **penggantian** 1–3 kata yang diambil. Beda huruf besar/kecil, tanda baca, atau kata yang hanya ditambah/dihapus diabaikan.
+- **Pembagian:** pasangan yang muncul ≥ `minimal` kali masuk `usulan`. Yang muncul sekali masuk `pantau`. Yang sudah ada di kamus masuk `sudah_di_kamus`.
+- **`periksa: true`** berarti berbahaya kalau diterapkan secara global. Ini terjadi bila kata salahnya ≤3 huruf, atau kata itu di koreksi lain justru dibiarkan tim.
+- **Hybrid:**
+  - App (ucok) menampilkan usulan di menu Brand.
+  - Tim menyetujui dengan satu klik. App lalu menyimpan `salah → benar` ke `teks.kamus` dan `kosakata_baru` ke `teks.kosakata_whisper`.
+  - Mesin tidak pernah menulis ke Brand Kit.
+- **Data nyata Aysilla, 16 Nov:** 4 koreksi kata. Semua pasangan masih berstatus pantau: "cana → celana", "icy love → Aysilla", "janganlah → Join Live". Perubahan "sekarang → Sekarang" diabaikan.
