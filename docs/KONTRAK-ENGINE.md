@@ -651,3 +651,23 @@ Perintah: `python pipeline/kamus_belajar.py <.motionstudio/brands/<brand_id>/bel
   - Tim menyetujui dengan satu klik. App lalu menyimpan `salah → benar` ke `teks.kamus` dan `kosakata_baru` ke `teks.kosakata_whisper`.
   - Mesin tidak pernah menulis ke Brand Kit.
 - **Data nyata Aysilla, 16 Nov:** 4 koreksi kata. Semua pasangan masih berstatus pantau: "cana → celana", "icy love → Aysilla", "janganlah → Join Live". Perubahan "sekarang → Sekarang" diabaikan.
+
+### 18.9 Perjelas / upscale (R24e) — sudah jalan
+Perintah: `<visual-venv>\Scripts\python pipeline/visual/perjelas.py <masuk> <folder_keluar> [--mode cepat|kualitas] [--skala 2|3|4] [--sisi 1920]`.
+- **Alat**: `D:\VIBECODING\tools\realesrgan\realesrgan-ncnn-vulkan.exe` (override `MOTION_REALESRGAN`), berjalan di GPU Vulkan.
+  - Lisensi: exe MIT, model BSD-3, ncnn BSD-3. Teks lisensinya tersimpan di `LICENSES\`.
+  - `vcomp140d.dll` tidak didistribusikan.
+- **Mode**:
+  - `kualitas` = realesrgan-x4plus, hanya x4. Bawaan untuk gambar.
+  - `cepat` = realesr-animevideov3, x2/x3/x4. Bawaan untuk video.
+- **Hasil**:
+  - Gambar → `<nama>-hd.png`, sisi panjang maksimal 4096.
+  - Video (maksimal 15 dtk) → `<nama>-hd.mp4` (H.264 CRF 18, audio asli disalin), sisi panjang maksimal 1920.
+  - Laporan `perjelas.json` = `{"schema":"perjelas/1","status","usulan":true,"mode","model","skala","dari":[w,h],"jadi":[w,h],…}`. Kode keluar 2 untuk ditolak.
+- **Waktu nyata** di PC kantor (GTX 1650, prioritas Idle, tile 128):
+  - Gambar 576×1024 dengan mode kualitas → 2304×4096 dalam 15 dtk.
+  - Video 2 dtk (60 frame) dengan mode cepat x2 → 1080×1920 dalam **30 dtk** (±0,5 dtk/frame). Klip 15 dtk ≈ 4 menit.
+  - Mode kualitas di video ±13 dtk/frame, sehingga klip 15 dtk ≈ 100 menit. Hanya untuk klip yang sangat pendek.
+  - Perkiraan waktu diukur dari frame pertama; perkiraan ini sedikit berlebih karena sudah termasuk waktu memuat model.
+- **Catatan kualitas**: mode cepat menajamkan mata, alis, dan kain, tetapi kulit agak dihaluskan karena modelnya dilatih untuk animasi. Mode kualitas lebih natural.
+- **Bug yang sudah diperbaiki saat uji**: stderr exe sempat dialirkan ke pipe yang tidak dibaca, sehingga proses tertahan dan butuh ±50 dtk/frame. Sekarang stderr ditulis ke file log.

@@ -230,6 +230,30 @@ class HapusLatar(unittest.TestCase):
         self.assertEqual(len(hapus_latar.SHA256["birefnet-general-lite"]), 64)
 
 
+class Perjelas(unittest.TestCase):
+    """R24e: validasi tanpa GPU; uji nyata Real-ESRGAN dicatat di kontrak §18.9."""
+
+    def test_skala_akhir_dibatasi_sisi_dan_genap(self):
+        import perjelas
+        self.assertEqual(perjelas.skala_akhir(576, 1024, 2, 1920), (1080, 1920))
+        self.assertEqual(perjelas.skala_akhir(576, 1024, 4, 4096), (2304, 4096))
+        self.assertEqual(perjelas.skala_akhir(301, 301, 2, 4096), (602, 602))
+        w, h = perjelas.skala_akhir(333, 777, 3, 1000)
+        self.assertTrue(w % 2 == 0 and h % 2 == 0 and max(w, h) <= 1000)
+
+    def test_mode_skala_salah_ditolak(self):
+        import json as _j
+        import tempfile
+        import perjelas
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "a.png"
+            f.write_bytes(b"x")
+            self.assertEqual(perjelas.jalankan(f, Path(d) / "o", "kualitas", 2, None), 2)  # x4plus hanya x4
+            self.assertEqual(perjelas.jalankan(f, Path(d) / "o", "aneh", None, None), 2)
+            self.assertEqual(perjelas.jalankan(f, Path(d) / "o", None, None, 99999), 2)
+            self.assertEqual(_j.loads((Path(d) / "o" / "perjelas.json").read_text(encoding="utf-8"))["status"], "ditolak")
+
+
 def _ada_tracker() -> bool:
     try:
         import cv2
