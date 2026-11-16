@@ -110,6 +110,12 @@ export async function readBeatspotView(ws: Workspace, projectId: string, jobId: 
 }
 
 /** Run Beat Spot again on the same files with the team's settings (a new job; the old one stays). */
+/** R37: the VO choice of an earlier job (job.json `vo`) as job input again. */
+const voOf = (job: Record<string, unknown> | null | undefined): { aset: string; suara_footage: unknown; subtitle: unknown } | null => {
+  const v = job?.vo as { media?: unknown; suara_footage?: unknown; subtitle?: unknown } | undefined;
+  return v && typeof v.media === 'string' && v.media.startsWith('$vo:') ? { aset: v.media.slice(4), suara_footage: v.suara_footage, subtitle: v.subtitle } : null;
+};
+
 export async function rerunBeatspot(ws: Workspace, projectId: string, jobId: string, beatspot: unknown, opts: { now?: number; actor?: 'user' } = {}): Promise<EngineStatus> {
   const { refs, keys, job } = await jobFiles(ws, projectId, jobId);
   if (!keys.length) throw new StorageError('PRECONDITION', 'Job lama tidak lengkap; jalankan Beat Spot baru dari awal');
@@ -121,6 +127,8 @@ export async function rerunBeatspot(ws: Workspace, projectId: string, jobId: str
     beatspot,
     ...(typeof job?.preset === 'string' && job.preset !== 'beatspot' ? { preset: job.preset } : {}),
     ...(typeof job?.audio_pilihan === 'string' ? { audio_pilihan: job.audio_pilihan } : {}),
+    // R37: the same VO from the library (job.json `vo.media` = "$vo:<aset>").
+    ...(voOf(job) ? { vo: voOf(job) } : {}),
   });
   return prepareEngineJob(ws, input, opts);
 }

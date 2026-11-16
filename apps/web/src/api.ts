@@ -666,6 +666,8 @@ export interface EngineStart {
   overlay?: JobOverlay[];
   /** R28: end card for this job — a file, null = none; absent = Brand Kit default. */
   penutup?: { ref: { media_id: string; version_id: string } } | null;
+  /** R37: VO dari Library (§22). */
+  vo?: JobVo;
 }
 /** R26: one overlay of a "Buat video" job. */
 export interface JobOverlay {
@@ -697,6 +699,14 @@ export interface EngineBeatspotStart {
   beatspot: Partial<BeatspotSettings>;
   preset?: string;
   audio_pilihan?: AudioPilihan;
+  /** R37: VO dari Library (§22). */
+  vo?: JobVo;
+}
+/** R37: a brand VO (jenis `vo`) as the main voice of the job (KONTRAK-ENGINE §22). */
+export interface JobVo {
+  aset: string;
+  suara_footage: 'mati' | 'pelan' | 'asli';
+  subtitle: boolean;
 }
 export interface BeatspotCut {
   no: number;

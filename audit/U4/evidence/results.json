@@ -1,6 +1,6 @@
 [
   {
-    "id": "U4-01 Menu PC-16: Generate, Batch, Editor di navigasi utama",
+    "id": "U4-01 Menu R17: \"1. Buat video\" berisi Video iklan + Batch Remix; \"2. Edit\" di navigasi utama",
     "ok": true,
     "detail": ""
   },
@@ -30,7 +30,7 @@
     "detail": ""
   },
   {
-    "id": "U4-06 Setujui = diterapkan ke timeline sebagai satu langkah (video + subtitle kata + musik mesin)",
+    "id": "U4-06 Terapkan = diterapkan ke timeline sebagai satu langkah (video + subtitle kata + musik mesin)",
     "ok": true,
     "detail": "video,subtitle,music"
   },
@@ -67,10 +67,10 @@
   {
     "id": "U5-04 Simpan: 2 baris disetujui jadi proyek varian yang sudah disetujui; yang dicoret tidak",
     "ok": true,
-    "detail": "varian-001 · Hook 1 | UJI · varian-003 · Hook 3"
+    "detail": "UJI · varian-003 · Hook 3 | varian-001 · Hook 1"
   },
   {
-    "id": "U5-05 \"Render varian disetujui\" memasukkan tepat 2 render ke antrean",
+    "id": "U5-05 \"Render varian terpilih\" memasukkan tepat 2 render ke antrean",
     "ok": true,
     "detail": ""
   },
@@ -80,9 +80,14 @@
     "detail": "2 output"
   },
   {
-    "id": "U5-07 Batch sebelumnya bisa dibuka lagi",
+    "id": "U5-07 Batch sebelumnya bisa dibuka lagi (nomor job lanjut per brand: -002)",
     "ok": true,
     "detail": ""
+  },
+  {
+    "id": "U5-08 Varian disetujui: tombol \"Buka di Edit\" membuka varian itu di 2. Edit (yang dicoret tidak punya)",
+    "ok": true,
+    "detail": "Batch 2026-11-13_winning · 2026-11-16 17.16 · varian-001 · Hook 1"
   },
   {
     "id": "U4-10 Layar HP: tidak ada isian yang keluar layar",

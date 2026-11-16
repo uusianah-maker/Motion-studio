@@ -1,0 +1,62 @@
+[
+  {
+    "id": "R37-01 Video iklan: pilihan \"Suara: dari footage | VO dari Library\" (bawaan dari footage)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R37-02 Pilih VO dari Library → VO brand terpilih, Suara footage \"mati\"; Audio \"musik saja\" dikosongkan + dinonaktifkan",
+    "ok": true,
+    "detail": "vo=VO Promo Diskon sf=mati audio= musikDisabled=true"
+  },
+  {
+    "id": "R37-03 ▶ dengar VO yang dipilih",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R37-04 Generate: job.json vo {media $vo:vo-promo, index vo_index.json, suara_footage pelan, subtitle true}; VO di sumber",
+    "ok": true,
+    "detail": "{\"media\":\"$vo:vo-promo\",\"index\":\"vo_index.json\",\"suara_footage\":\"pelan\",\"subtitle\":true}"
+  },
+  {
+    "id": "R37-05 vo_index.json disalin ke folder job (vo-index/1, 2 kalimat)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R37-06 Batch Remix: pilihan VO dari Library ada dan permintaan job membawa vo {aset vo-promo}",
+    "ok": true,
+    "detail": "{\"aset\":\"vo-promo\",\"suara_footage\":\"mati\",\"subtitle\":true}"
+  },
+  {
+    "id": "R37-07 Beat Spot: job.json vo (suara_footage asli) + vo_index.json; VO bukan sumber/sound",
+    "ok": true,
+    "detail": "{\"media\":\"$vo:vo-promo\",\"index\":\"vo_index.json\",\"suara_footage\":\"asli\",\"subtitle\":true}"
+  },
+  {
+    "id": "R37-08 Editor: tab VO menampilkan VO brand",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R37-09 ▶ dengar VO di Editor",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R37-10 ＋ VO + subtitle → klip VO di track Audio (0–3 dtk) + subtitle dari teks VO (Halo kak. / Diskon hari ini.) dalam SATU edit",
+    "ok": true,
+    "detail": "[[\"Halo kak.\",0],[\"Diskon hari ini.\",1500]]"
+  },
+  {
+    "id": "R37-11 Undo → VO dan subtitle hilang bersama (satu langkah)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R37-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

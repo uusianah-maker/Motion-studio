@@ -1,0 +1,52 @@
+[
+  {
+    "id": "R16-01 Menu \"Beat Spot\" membuka halamannya",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R16-02 Dengan sound tim, isian BPM disembunyikan (ketukan dibaca dari sound)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R16-03 Mesin jalan → 4 potongan di ketukan, tempo dari sound tim, nama footage = nama file upload",
+    "ok": true,
+    "detail": "3 · Potongan di ketukan | Tempo | 128 BPM"
+  },
+  {
+    "id": "R16-03b Form awal: orang per footage (bawaan Umum); \"mall 1\" = Kreator → potongannya Kreator, mall-2 tetap Umum",
+    "ok": true,
+    "detail": "1\t0,00\t0,94\tmall-1#00\tmall 1.mp4\tKreator / 2\t0,94\t0,94\tmall-1#01\tmall 1.mp4\tKreator / 3\t1,88\t0,94\tmall-2#00\tmall-2.mp4\tUmum / 4\t2,81\t0,94\tmall-2#01\tmall-2.mp4\tUmum"
+  },
+  {
+    "id": "R16-04 Kartu rencana edit muncul (render ditahan sampai disetujui)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R16-05 Pilihan tim (kecualikan, kreator, urutan) → \"Susun ulang\" membuat job baru sesuai pilihan",
+    "ok": true,
+    "detail": "1\t0,00\t0,94\tmall-2#01\tmall-2.mp4\tUmum / 2\t0,94\t0,94\tmall-1#01\tmall 1.mp4\tKreator / 3\t1,88\t0,94\tmall-2#00\tmall-2.mp4\tKreator"
+  },
+  {
+    "id": "R16-06 Terapkan → draf Beat Spot masuk timeline (3 potongan + sound)",
+    "ok": true,
+    "detail": "video 3, musik 1"
+  },
+  {
+    "id": "R16-07 Riwayat: job pertama tetap bisa dibuka dengan hasilnya sendiri",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R16-08 HP 390px: tanpa scroll samping halaman",
+    "ok": true,
+    "detail": "overflow 0px"
+  },
+  {
+    "id": "R16-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

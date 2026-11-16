@@ -1,10 +1,11 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { pantauDanUnduh } from '../autoUnduh';
 import { fiturOf } from '../fitur';
-import type { Api, BatchDecision, BatchRowStatus, BatchTable, BrandKit, EngineJob, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
+import type { Api, BatchDecision, BatchRowStatus, BatchTable, BrandKit, EngineJob, JobVo, ProjectSummary, RenderJob, Role, ShotLibrary } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
 import { AudioPilihanSelect } from './PresetGaya';
+import { SuaraPilihan } from './SuaraPilihan';
 import { LineBreakdown, PisahPanel, batchLabel, useEngineBatches } from './BatchLibrary';
 import { ENGINE_STATE, EngineProgress, useEngineJob } from './GenerateView';
 
@@ -44,6 +45,8 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [preset, setPreset] = useSessionState('batch.preset', '');
   const [audio, setAudio] = useSessionState<'' | 'vo' | 'musik' | 'keduanya'>('batch.audio', '');
+  /** R37: VO dari Library (null = VO / suara dari footage seperti biasa). */
+  const [vo, setVo] = useSessionState<JobVo | null>('batch.vo', null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [current, setCurrent] = useSessionState<{ project_id: string; job_id: string } | null>('batch.job', null);
@@ -174,6 +177,7 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
         ai: false,
         mode_ops: 'u3',
         ...(audio ? { audio_pilihan: audio } : {}),
+        ...(vo ? { vo } : {}),
         batch: {
           batch: batchName.trim(),
           jumlah,
@@ -353,7 +357,8 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                 <input aria-label="Preset" value={preset} maxLength={60} onChange={(e) => setPreset(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
               )}
             </label>
-            <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="tanpa musik" />
+            <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="tanpa musik" tanpaMusikSaja={!!vo} />
+            <SuaraPilihan api={api} kit={brand} value={vo} onChange={setVo} audio={audio} setAudio={setAudio} />
             <label>
               Akun sendiri (watermark milik brand)
               <input aria-label="Akun sendiri" value={akun} placeholder="@aysillafactoryid" onChange={(e) => setAkun(e.target.value)} />

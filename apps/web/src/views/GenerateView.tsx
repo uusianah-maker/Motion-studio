@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { proyekFitur } from '../fitur';
-import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, JobOverlay, ProjectSummary, Role } from '../api';
+import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, JobOverlay, JobVo, ProjectSummary, Role } from '../api';
 import { JobOverlays } from './JobOverlays';
+import { SuaraPilihan } from './SuaraPilihan';
 import { type PenutupOption, PenutupPicker, type PenutupValue } from './PenutupPicker';
 import { canContinueRefused, pollDelay, readyJobShown } from '../lib';
 import { ErrorNotice } from '../ui';
@@ -175,6 +176,8 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
   const [preset, setPreset] = useState('');
   const [ai, setAi] = useState(false);
   const [audio, setAudio] = useState<'' | 'vo' | 'musik' | 'keduanya'>('');
+  /** R37: VO dari Library (null = suara dari footage). */
+  const [vo, setVo] = useState<JobVo | null>(null);
   /** R26: overlays for this job (previewed on the source before Generate). */
   const [overlays, setOverlays] = useState<JobOverlay[]>([]);
   /** R28: end card for this job (brand default / library / upload / none). */
@@ -267,7 +270,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
       setUpload(0);
       const up = await api.importFile(file, { kind: 'project', project_id: projectId }, setUpload);
       setUpload(null);
-      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}), ...(overlays.length ? { overlay: overlays } : {}), ...(penutup.value === 'none' ? { penutup: null } : penutup.value !== 'default' && penutup.opt ? { penutup: { ref: penutup.opt.ref } } : {}) });
+      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}), ...(vo ? { vo } : {}), ...(overlays.length ? { overlay: overlays } : {}), ...(penutup.value === 'none' ? { penutup: null } : penutup.value !== 'default' && penutup.opt ? { penutup: { ref: penutup.opt.ref } } : {}) });
       unstarted.current = null;
       setTarget(projectId);
       setCurrent({ project_id: projectId, job_id: j.job_id });
@@ -402,7 +405,8 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
                 <input aria-label="Preset" value={preset} maxLength={60} onChange={(e) => setPreset(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
               )}
             </label>
-            <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="musik kalau ada yang boleh" />
+            <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="musik kalau ada yang boleh" tanpaMusikSaja={!!vo} />
+            <SuaraPilihan api={api} kit={brand} value={vo} onChange={setVo} audio={audio} setAudio={setAudio} />
             <label className="inspFull">
               Catatan untuk mesin
               <textarea aria-label="Catatan" rows={2} maxLength={500} value={brief.catatan} onChange={set('catatan')} />

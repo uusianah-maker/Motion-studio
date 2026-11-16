@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { LOOKS, LOOK_IDS, TRANSITIONS, TRANSITION_LABEL, type TransitionType } from '../../../../packages/core/dist/storage/clipLook.js';
 import { TEXT_PRESETS } from '../../../../packages/core/dist/storage/textPresets.js';
+import { voSubtitleOps } from '../../../../packages/core/dist/storage/voText.js';
 import type { Api, BrandKit, Clip, EditOp, Media, Project, Track } from '../api';
 import { useSoundPreview } from '../audioPreview';
 import { presetOp } from './PresetPanel';
 
-type Tab = 'sfx' | 'transisi' | 'efek' | 'teks';
+type Tab = 'sfx' | 'vo' | 'transisi' | 'efek' | 'teks';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'sfx', label: 'SFX' },
+  { id: 'vo', label: 'VO' },
   { id: 'transisi', label: 'Transisi' },
   { id: 'efek', label: 'Efek' },
   { id: 'teks', label: 'Teks' },
@@ -59,6 +61,26 @@ export function LibraryPanel({ api, project, media, kit, playhead, selected, bus
     const len = Math.max(100, Math.min(durOf(ref.version_id) ?? 1000, 30_000));
     edit([{ op: 'add_clip', track_kind: 'sfx', media: ref, start_ms: freeOn(project, 'sfx', playhead, len), duration_ms: len }]);
   };
+  // R37: VO from the library (Brand → Aset jenis VO, made with "Suara dari Teks").
+  const vos = (kit?.aset ?? []).filter((a) => a.jenis === 'vo');
+  const [voBusy, setVoBusy] = useState<string | null>(null);
+  const [voErr, setVoErr] = useState<string | null>(null);
+  const addVo = async (ref: { media_id: string; version_id: string }, withSubs: boolean) => {
+    setVoBusy(ref.version_id);
+    setVoErr(null);
+    try {
+      const index = await api.voIndex(ref.version_id).catch(() => null);
+      const known = durOf(ref.version_id) ?? (index ? Math.round(Math.max(...index.kalimat.map((k) => k.akhir)) * 1000) : undefined);
+      const len = Math.max(100, known ?? 3000);
+      const start = freeOn(project, 'audio', playhead, len);
+      // One edit = one undo: the voice clip and its subtitles (from the known text, no Whisper).
+      edit([{ op: 'add_clip', track_kind: 'audio', media: ref, start_ms: start, duration_ms: len }, ...(withSubs && index ? (voSubtitleOps(index, start, 0, len) as EditOp[]) : [])]);
+    } catch (e) {
+      setVoErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVoBusy(null);
+    }
+  };
   const tTarget = pictureTarget(project, selected, playhead, true);
   const lTarget = pictureTarget(project, selected, playhead, false);
 
@@ -101,6 +123,30 @@ export function LibraryPanel({ api, project, media, kit, playhead, selected, bus
               </span>
               {durOf(a.ref.version_id) !== undefined && <span className="muted small">{ms(durOf(a.ref.version_id)!)}</span>}
               <button className="btn small" disabled={busy} aria-label={`Tambah ${a.id} di playhead`} onClick={() => addSfx(a.ref)}>
+                ＋
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'vo' && (
+        <div role="tabpanel" aria-label="VO" className="libList">
+          {!vos.length && <div className="muted small">Belum ada VO di Aset brand{kit ? ` ${kit.name}` : ''}. Buat lewat menu "Suara dari Teks" (hasilnya otomatis masuk Aset jenis VO).</div>}
+          {voErr && <div className="notice err small">{voErr}</div>}
+          {vos.map((a) => (
+            <div key={a.id} className="libRow" role="group" aria-label={`VO ${a.id}`}>
+              <button className="tiny" aria-label={`${sound.playing === a.ref.version_id ? 'Hentikan' : 'Dengar'} ${a.id}`} aria-pressed={sound.playing === a.ref.version_id} onClick={() => sound.toggle(a.ref.version_id)}>
+                {sound.playing === a.ref.version_id ? '■' : '▶'}
+              </button>
+              <span className="libName" title={a.catatan || a.nama}>
+                {a.nama || a.id}
+              </span>
+              {durOf(a.ref.version_id) !== undefined && <span className="muted small">{ms(durOf(a.ref.version_id)!)}</span>}
+              <button className="btn small" disabled={busy || voBusy === a.ref.version_id} aria-label={`Tambah ${a.id} dengan subtitle`} title="VO di track Audio mulai playhead + subtitle dari teksnya (tanpa Whisper)" onClick={() => void addVo(a.ref, true)}>
+                ＋ VO + subtitle
+              </button>
+              <button className="tiny" disabled={busy || voBusy === a.ref.version_id} aria-label={`Tambah ${a.id} tanpa subtitle`} title="Suara saja" onClick={() => void addVo(a.ref, false)}>
                 ＋
               </button>
             </div>

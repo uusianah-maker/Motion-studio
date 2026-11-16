@@ -113,14 +113,16 @@ export function PresetGaya({ p, i, onChange }: { p: BrandPreset; i: number; onCh
 }
 
 /** Audio for one job (R18 §17.2); '' = engine default. Shared by Video iklan, Batch, Beat Spot. */
-export function AudioPilihanSelect({ value, onChange, bawaan }: { value: '' | 'vo' | 'musik' | 'keduanya'; onChange: (v: '' | 'vo' | 'musik' | 'keduanya') => void; bawaan: string }) {
+export function AudioPilihanSelect({ value, onChange, bawaan, tanpaMusikSaja = false }: { value: '' | 'vo' | 'musik' | 'keduanya'; onChange: (v: '' | 'vo' | 'musik' | 'keduanya') => void; bawaan: string; /** R37: a library VO is used → "musik saja" is not allowed. */ tanpaMusikSaja?: boolean }) {
   return (
     <label>
       Audio
       <select aria-label="Audio" value={value} onChange={(e) => onChange(e.target.value as '' | 'vo' | 'musik' | 'keduanya')}>
         <option value="">Otomatis ({bawaan})</option>
         <option value="vo">Voice over (tanpa musik)</option>
-        <option value="musik">Musik (tanpa voice over)</option>
+        <option value="musik" disabled={tanpaMusikSaja}>
+          Musik (tanpa voice over){tanpaMusikSaja ? ' — tidak bisa dengan VO dari Library' : ''}
+        </option>
         <option value="keduanya">Keduanya (musik di bawah voice over)</option>
       </select>
     </label>

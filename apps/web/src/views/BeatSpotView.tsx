@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { proyekFitur } from '../fitur';
-import type { Api, BeatspotSettings, BeatspotView, BrandKit, DiffItem, EditPlan, EngineJob, EngineQc, EngineRencana, ProjectSummary, Role } from '../api';
+import type { Api, BeatspotSettings, BeatspotView, BrandKit, DiffItem, EditPlan, EngineJob, EngineQc, EngineRencana, JobVo, ProjectSummary, Role } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
 import { AudioPilihanSelect } from './PresetGaya';
+import { SuaraPilihan } from './SuaraPilihan';
 import { ENGINE_STATE, EngineProgress, PlanCard, useEngineJob } from './GenerateView';
 
 /**
@@ -50,6 +51,8 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const [tagline, setTagline] = useState('');
   const [preset, setPreset] = useState('');
   const [audio, setAudio] = useState<'' | 'vo' | 'musik' | 'keduanya'>('');
+  /** R37: VO dari Library over the beat-cut footage (null = without). */
+  const [vo, setVo] = useState<JobVo | null>(null);
   const [upload, setUpload] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -160,6 +163,7 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
         sources,
         ...(preset ? { preset } : {}),
         ...(audio ? { audio_pilihan: audio } : {}),
+        ...(vo ? { vo } : {}),
         beatspot: {
           // Only "kreator" needs saying: "umum" is the engine's default.
           sumber_orang: Object.fromEntries(footage.map((_, i) => [ids[i]!, orang[i] ?? 'umum'] as const).filter(([, v]) => v === 'kreator')),
@@ -338,7 +342,8 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
                   ))}
                 </select>
               </label>
-              <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="sound tim kalau ada" />
+              <AudioPilihanSelect value={audio} onChange={setAudio} bawaan="sound tim kalau ada" tanpaMusikSaja={!!vo} />
+              <SuaraPilihan api={api} kit={brand} value={vo} onChange={setVo} audio={audio} setAudio={setAudio} />
               <label className="inspFull">
                 Tagline end card (kosong = dari Brand Kit)
                 <input aria-label="Tagline" value={tagline} maxLength={120} onChange={(e) => setTagline(e.target.value)} />

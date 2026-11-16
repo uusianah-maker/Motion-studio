@@ -92,7 +92,7 @@ try {
   await page.getByRole('heading', { name: 'Uji Library' }).waitFor();
   const L = page.getByRole('region', { name: 'Library efek' });
   const tabs = await L.getByRole('tab').allInnerTexts();
-  check('R27-03 Panel Library di Editor: tab SFX, Transisi, Efek, Teks', tabs.join('|') === 'SFX|Transisi|Efek|Teks', tabs.join('|'));
+  check('R27-03 Panel Library di Editor: tab SFX, VO, Transisi, Efek, Teks', tabs.join('|') === 'SFX|VO|Transisi|Efek|Teks', tabs.join('|'));
   const sfxPanel = L.getByRole('tabpanel', { name: 'SFX' });
   check('R27-04 Tab SFX berisi SFX dari Aset brand (2)', (await sfxPanel.getByRole('group', { name: /^SFX / }).count()) === 2);
   await sfxPanel.getByLabel('Cari SFX').fill('transisi');

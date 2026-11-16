@@ -37,7 +37,8 @@ import { writeJsonAtomic } from './jsonStore.js';
 import { audit } from './audit.js';
 import { markEngineOrigin, readLearning } from './learning.js';
 import { type PasanganKamus, kamusBelajar } from './kamusBelajar.js';
-import { type TtsSettings, validateTtsJob } from './tts.js';
+import { type TtsSettings, readVoIndex, validateTtsJob } from './tts.js';
+import type { VoIndex } from './voText.js';
 import { validateVisualJob } from './visual.js';
 import { type SuaraProfilSettings, validateSuaraProfilJob } from './suaraOwner.js';
 import { VISUAL_RESULT, type VisualTool } from './visualCalc.js';
@@ -155,6 +156,45 @@ export interface EngineJobInput {
    * `$penutup`), so the engine contract is unchanged.
    */
   penutup?: { ref: MediaRef } | null;
+  /**
+   * R37 "VO dari Library" (contract §22): a brand VO asset (jenis `vo`, from "Suara dari Teks") is the
+   * main voice; footage becomes pictures. job.json gets `vo: {media: "$vo:<id>", index, suara_footage,
+   * subtitle}` and the app copies the VO's `vo-index/1` file to `<job>/vo_index.json`.
+   */
+  vo?: JobVo;
+}
+
+export const SUARA_FOOTAGE = ['mati', 'pelan', 'asli'] as const;
+export interface JobVo {
+  /** Brand asset id (jenis `vo`). */
+  aset: string;
+  suara_footage: (typeof SUARA_FOOTAGE)[number];
+  subtitle: boolean;
+}
+
+/** R37: the job's VO choice (untrusted). The engine refuses `audio_pilihan: "musik"` with a VO (§22.1). */
+export function validateJobVo(x: unknown, audio: unknown): JobVo {
+  const o = (x ?? {}) as Record<string, unknown>;
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) bad('vo harus objek');
+  const extra = Object.keys(o).filter((k) => !['aset', 'suara_footage', 'subtitle'].includes(k));
+  if (extra.length) bad(`vo: field tidak dikenal ${extra.join(', ')}`);
+  if (typeof o.aset !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(o.aset)) bad('vo.aset: pilih VO dari Aset brand');
+  const sf = o.suara_footage ?? 'mati';
+  if (!(SUARA_FOOTAGE as readonly unknown[]).includes(sf)) bad(`vo.suara_footage harus ${SUARA_FOOTAGE.join(' | ')}`);
+  if (o.subtitle !== undefined && typeof o.subtitle !== 'boolean') bad('vo.subtitle harus true/false');
+  if (audio === 'musik') bad('VO dari Library tidak bisa digabung dengan Audio "musik saja" — pilih VO atau VO + musik');
+  return { aset: o.aset as string, suara_footage: sf as JobVo['suara_footage'], subtitle: o.subtitle !== false };
+}
+
+/** R37: the VO's brand asset + its sentence/word index, checked before the job is made. */
+async function jobVoFiles(ws: Workspace, kit: BrandKit, vo: JobVo): Promise<{ ref: MediaRef; index: VoIndex }> {
+  const a = kit.aset.find((x) => x.id === vo.aset);
+  if (!a) bad(`VO "${vo.aset}" belum terdaftar sebagai aset brand ${kit.name}. Daftarkan dulu di Brand → Aset (jenis VO).`);
+  if (a!.jenis !== 'vo') bad(`Aset "${vo.aset}" bukan VO (jenisnya ${a!.jenis}).`);
+  const index = await readVoIndex(ws, a!.ref.version_id);
+  if (!index || index.schema !== 'vo-index/1' || !Array.isArray(index.kalimat) || !index.kalimat.length) bad(`VO "${vo.aset}" tidak punya teks & waktu kalimat (bukan hasil "Suara dari Teks"), jadi tidak bisa dipakai sebagai VO utama.`);
+  if (index!.kalimat.length > 60) bad(`VO "${vo.aset}" lebih dari 60 kalimat (batas mesin).`);
+  return { ref: a!.ref, index: index! };
 }
 
 /** R28: the job's end-card choice (untrusted). */
@@ -284,7 +324,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (o.mode === 'tts') return validateTtsJob(o);
   if (o.mode === 'visual') return validateVisualJob(o);
   if (o.mode === 'suara_profil') return validateSuaraProfilJob(o);
-  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan', 'overlay', 'penutup'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan', 'overlay', 'penutup', 'vo'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
   if (o.mode !== 'generate' && o.mode !== 'batch') bad('mode harus generate | batch');
@@ -355,7 +395,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
       ...(batas !== undefined ? { batas_durasi: batas === null ? null : ([(batas as number[])[0], (batas as number[])[1]] as [number, number]) } : {}),
     };
   } else if (o.batch !== undefined) bad('batch hanya untuk mode batch');
-  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}), ...audioPilihan(o.audio_pilihan), ...(o.overlay !== undefined ? { overlay: validateJobOverlays(o.overlay) } : {}), ...(o.penutup !== undefined ? { penutup: validateJobPenutup(o.penutup) } : {}) };
+  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}), ...audioPilihan(o.audio_pilihan), ...(o.overlay !== undefined ? { overlay: validateJobOverlays(o.overlay) } : {}), ...(o.penutup !== undefined ? { penutup: validateJobPenutup(o.penutup) } : {}), ...(o.vo !== undefined && o.vo !== null ? { vo: validateJobVo(o.vo, o.audio_pilihan) } : {}) };
 }
 
 const PISAH_SRC = /^\$sumber:([A-Za-z0-9_-]{1,40})$/;
@@ -458,7 +498,7 @@ export function validateBeatspotSettings(x: unknown, keys: string[]): BeatspotSe
  * + optionally the team's sound (video or audio) → cuts on the beat, logo + end card.
  */
 function validateBeatspotJob(o: Record<string, unknown>): EngineJobInput {
-  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'beatspot', 'preset', 'audio_pilihan'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'beatspot', 'preset', 'audio_pilihan', 'vo'].includes(k));
   // R18 §17: an optional Brand Kit preset (its beat defaults apply where the team set nothing).
   const preset = o.preset === undefined || o.preset === null || o.preset === '' ? 'beatspot' : typeof o.preset === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(o.preset) ? o.preset : bad('preset tidak valid');
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
@@ -484,6 +524,7 @@ function validateBeatspotJob(o: Record<string, unknown>): EngineJobInput {
     brief: { produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' },
     ai: false,
     beatspot,
+    ...(o.vo !== undefined && o.vo !== null ? { vo: validateJobVo(o.vo, o.audio_pilihan) } : {}),
   };
 }
 
@@ -608,6 +649,8 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
   const project = await readProject(ws, input.project_id);
   const kit = await readBrandFor(ws, project.brand_id);
   if (!kit.kode) throw new StorageError('PRECONDITION', 'Brand proyek belum punya kode (Brand Kit → A)');
+  // R37: the VO must be a brand asset with its index (checked before any job folder exists).
+  const voFiles = input.vo ? await jobVoFiles(ws, kit, input.vo) : null;
   const now = opts.now ?? ws.clock.now();
   const day = localDate(now).replace(/-/g, '');
   const dir = jobAbs(ws, input.project_id);
@@ -666,6 +709,8 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
         sumber.push({ kunci: s.kunci, path: dest.replace(/\\/g, '/') });
       }
     } else for (const s of input.sources) sumber.push({ kunci: s.kunci, path: (await localPath(ws, s.ref)).replace(/\\/g, '/') });
+    // R37 §22.1: Generate also lists the VO file in `sumber` (the engine validates the index against it).
+    if (input.vo && voFiles && input.mode === 'generate') sumber.push({ kunci: `$vo:${input.vo.aset}`, path: (await localPath(ws, voFiles.ref)).replace(/\\/g, '/') });
     const brandExport = await exportBrandKit(ws, kit.brand_id, { paths: true });
     await addLearnedKamus(ws, kit, brandExport);
     const penutupRefs: Record<string, MediaRef> = {};
@@ -689,9 +734,12 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ...(input.tts ? { tts: input.tts } : {}),
       ...(input.suara_profil ? { suara_profil: input.suara_profil } : {}),
       ...(input.visual ? { visual: await visualJob(ws, input, sumber[0]?.path) } : {}),
+      ...(input.vo ? { vo: { media: `$vo:${input.vo.aset}`, index: 'vo_index.json', suara_footage: input.vo.suara_footage, subtitle: input.vo.subtitle } } : {}),
       ...(input.beatspot ? { beatspot: Object.fromEntries(Object.entries(input.beatspot).filter(([k, v]) => !((k === 'ketukan_per_potong' && v === 'auto') || (k === 'bpm' && v === null)))) } : {}),
     };
     await writeJsonAtomic(path.join(jdir, 'job.json'), job);
+    // R37: the engine never reads .motionstudio — the VO index travels inside the job folder.
+    if (voFiles) await writeJsonAtomic(path.join(jdir, 'vo_index.json'), voFiles.index);
     // R26: overlays stay with the app (the engine never sees them); added when the draft is opened.
     if (input.overlay?.length) {
       const reg = await loadRegistry(ws);
