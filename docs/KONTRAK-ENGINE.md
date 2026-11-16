@@ -532,3 +532,27 @@ Semua perintah itu menulis progres JSON-lines dalam UTF-8.
   - 1 bila gagal teknis.
 - Suara offline dari Windows OneCore. Di PC kantor yang ada: Andika (id-ID), dan suara Inggris David, Zira, Mark, George, Susan, Hazel.
 - Prioritas proses Idle. Skrip `tts_windows.ps1` diambil dari folder kode (rilis). Tidak ada yang ditulis ke folder data. App yang memindahkan WAV ke proyek sebagai usulan di track audio.
+
+### 18.5 Venv & model terpasang (16 Nov 2026, OK venus)
+- **visual-venv**: `D:\VIBECODING\tools\visual-venv`, Python 3.12.5, ukuran 730 MB.
+  - Versi dikunci di `pipeline/visual/requirements-visual.txt`: mediapipe 1.2.3, opencv-contrib-python 5.0.0.93 (dengan CSRT/KCF), rembg 2.0.87, onnxruntime 1.32.0 CPU. Tanpa torch.
+  - `.venv` dan `demucs-venv` tidak berubah: `pip freeze` sebelum dan sesudah instalasi identik.
+- **Model**, di `D:\VIBECODING\tools\models`:
+
+| File | Sumber | Lisensi | SHA256 |
+|---|---|---|---|
+| `blaze_face_short_range.tflite` (0,23 MB) | storage.googleapis.com/mediapipe-models …/float16/1 | Apache-2.0 | `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f` |
+| `efficientdet_lite0_int8.tflite` (4,6 MB) | storage.googleapis.com/mediapipe-models …/int8/1 | Apache-2.0 | `0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb` |
+| `BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx` (224 MB) = rembg `birefnet-general-lite` | GitHub ZhengPeng7/BiRefNet rilis v1 | MIT | `5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333` |
+| `realesrgan-ncnn-vulkan-20220424-windows.zip` (45,5 MB) — **belum diekstrak** | GitHub xinntao/Real-ESRGAN rilis v0.2.5.0 | BSD-3 (model) + MIT (ncnn-vulkan) + BSD-3 (ncnn); zip tanpa LICENSE | `abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d` |
+
+### 18.6 Deteksi wajah & objek (R24a) — sudah jalan
+Perintah: `<visual-venv>\Scripts\python pipeline/visual/deteksi.py <video> <keluar.json> [--jenis wajah,objek] [--hz 10] [--label person,handbag,…]`. Hasilnya jalur-posisi/1 (§18.1).
+- **Wajah**: FaceDetector dijalankan di seluruh frame, lalu sekali lagi di potongan kepala tiap orang. Model short-range hanya akurat untuk wajah yang dekat kamera; dengan potongan ini wajah ikut terbesar. Hasil keduanya digabung dengan NMS.
+  - Uji IN17 (576×1024, 12,9 dtk): wajah terdeteksi di 82/129 sampel dengan skor rata-rata ±0,9. Tanpa potongan kepala hanya 5 sampel.
+- **Objek**: ObjectDetector efficientdet_lite0, label COCO. Bawaannya `person`.
+- **Penggabungan jalur**:
+  - Deteksi dipasangkan dengan jalur lama lewat IoU. Kalau gerakannya cepat, dipakai pusat kotak yang dekat dengan ukuran mirip.
+  - Subjek yang hilang sampai 1,5 dtk tetap memakai id yang sama, tetapi celahnya tidak diinterpolasi.
+  - Jalur yang hanya muncul di 1 sampel dibuang.
+- **Waktu**: ±6 dtk untuk klip 13 dtk di CPU, prioritas Idle.

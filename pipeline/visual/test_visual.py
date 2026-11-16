@@ -42,6 +42,16 @@ class JalurPosisi(unittest.TestCase):
         self.assertEqual([len(j["titik"]) for j in jalur], [10, 10])
         self.assertLess(jalur[0]["titik"][0]["x"], 0.5)
 
+    def test_gerak_cepat_dan_hilang_sebentar_tetap_satu_id(self):
+        # wajah bergeser 0,05 per sampel (IoU < 0,2) lalu hilang 0,8 dtk: tetap satu jalur, celah tidak diinterpolasi
+        per = [(t / 10, [(0.1 + t * 0.05, 0.2, 0.08, 0.08, 0.9)]) for t in range(6)]
+        per += [(t / 10, []) for t in range(6, 14)]
+        per += [(1.4, [(0.38, 0.2, 0.08, 0.08, 0.9)]), (1.5, [(0.39, 0.2, 0.08, 0.08, 0.9)])]
+        jalur = jp.gabung_deteksi(per, "wajah", "face", "wajah")
+        self.assertEqual(len(jalur), 1)
+        self.assertEqual(len(jalur[0]["titik"]), 8)
+        self.assertIsNone(jp.kotak_di(jalur[0], 1.0))
+
     def test_subjek_utama_yang_dominan(self):
         d = doc_jalur([jp.titik(0, .1, .1, .1, .1), jp.titik(5, .1, .1, .1, .1)])
         d["jalur"].append({"id": "objek-1", "jenis": "objek", "label": "person",

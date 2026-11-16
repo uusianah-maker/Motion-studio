@@ -108,14 +108,16 @@ def gabung_deteksi(per_frame: list[tuple[float, list[tuple]]], jenis: str, label
     jalur: list[dict] = []
     aktif: list[dict] = []
     for t, kotak2 in per_frame:
-        aktif = [j for j in aktif if t - j["titik"][-1]["t"] <= maks_celah]
+        # Jalur yang hilang sebentar (<= 3x celah) masih boleh disambung: id tetap sama, celahnya tetap
+        # tercatat (kotak_di tidak menginterpolasi celah > maks_celah).
+        aktif = [j for j in aktif if t - j["titik"][-1]["t"] <= 3 * maks_celah]
         bebas = list(aktif)
         for k in sorted(kotak2, key=lambda k: -k[4]):
             p = titik(t, *k)
             if p["w"] <= 0 or p["h"] <= 0:
                 continue
-            terbaik = max(bebas, key=lambda j: iou(j["titik"][-1], p), default=None)
-            if terbaik is not None and iou(terbaik["titik"][-1], p) >= iou_min:
+            terbaik = max(bebas, key=lambda j: cocok(j["titik"][-1], p, iou_min), default=None)
+            if terbaik is not None and cocok(terbaik["titik"][-1], p, iou_min) > 0:
                 terbaik["titik"].append(p)
                 bebas.remove(terbaik)
             else:
@@ -123,6 +125,20 @@ def gabung_deteksi(per_frame: list[tuple[float, list[tuple]]], jenis: str, label
                 jalur.append(j)
                 aktif.append(j)
     return jalur
+
+
+def cocok(a: dict, b: dict, iou_min: float = 0.2) -> float:
+    """Skor cocok titik terakhir jalur `a` dengan deteksi baru `b` (0 = bukan subjek yang sama).
+    IoU dulu; cadangan untuk gerak cepat: pusat dekat (<= 0,75 x sisi terbesar) dan ukuran mirip (0,5..2x)."""
+    v = iou(a, b)
+    if v >= iou_min:
+        return v
+    sisi = max(a["w"], a["h"])
+    jarak = ((a["x"] + a["w"] / 2 - b["x"] - b["w"] / 2) ** 2 + (a["y"] + a["h"] / 2 - b["y"] - b["h"] / 2) ** 2) ** 0.5
+    rasio = (b["w"] * b["h"]) / (a["w"] * a["h"]) if a["w"] * a["h"] > 0 else 0
+    if jarak <= 0.75 * sisi and 0.5 <= rasio <= 2.0:
+        return 0.01 * (1 - jarak / (0.75 * sisi + 1e-9)) + 1e-6
+    return 0.0
 
 
 def iou(a: dict, b: dict) -> float:
