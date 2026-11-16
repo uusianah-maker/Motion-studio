@@ -204,10 +204,19 @@ class Owner:
         return [{"id": f"owner:{d.get('nama') or 'Suara owner'}", "nama": d.get("nama") or "Suara owner", "bahasa": "id-ID",
                  "gender": None, "backend": "owner", "siap": True}] if d else []
 
-    def ucapkan(self, item, suara, kecepatan):
-        if not self._profil():
+    def ucapkan(self, item, suara, kecepatan, profil: dict | None = None, rentang: tuple[int, int] = (10, 58)):
+        """TTS Windows (suara dasar, + pelafalan) lalu dikonversi ke suara owner di suara-venv. Durasi tetap sama,
+        jadi batas kata dari Windows tetap berlaku untuk subtitle."""
+        d = profil or self._profil()
+        if not d:
             raise Ditolak("Suara owner belum siap: tambah contoh suara dan latih profil dulu (§23)")
-        raise RuntimeError("konversi Suara owner belum terpasang (suara-venv Applio/OpenVoice sedang disiapkan)")
+        import suara_profil as sp
+        with tempfile.TemporaryDirectory() as t:
+            dasar = [(teks, Path(t) / f"dasar_{i:02d}.wav") for i, (teks, _) in enumerate(item)]
+            cues = Windows().ucapkan(dasar, d.get("suara_dasar") or "Andika", kecepatan)
+            sp.jalan_mesin("ubah", {"model_dir": str(sp.folder_profil("owner") / "model"),
+                                    "masuk": [str(p) for _, p in dasar], "keluar": [str(p) for _, p in item]}, rentang)
+        return cues
 
 
 BACKEND = {"windows": Windows(), "owner": Owner()}

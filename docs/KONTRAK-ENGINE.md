@@ -927,5 +927,37 @@ Tujuannya: owner menambah contoh suaranya, mesin membersihkan dan memeriksa mutu
   - video IN17 asli (bercampur musik): **ditolak "ada musik latar"**;
   - stem musik: ditolak.
   - Tes: `tests/test_suara_profil.py` 3/3.
-- **Belum**: langkah `latih` dan `contoh_hasil`, karena suara-venv (Applio 3.7.1 + OpenVoice V2, torch 2.11 cu128) masih dipasang. Selama itu, `latih: true` dengan contoh ≥ 5 menit menghasilkan kode 1 dengan pesan "mesin latih suara belum terpasang", tetapi contoh tetap tersimpan dan sudah diperiksa.
-- **Backend `owner`** sudah terdaftar di `tts.py`, tetapi baru muncul di `daftar_suara` setelah profil berstatus siap (`siap: true`).
+- **Latih + contoh hasil (16 Nov sore)**: `pipeline/suara_mesin.py`, dijalankan dengan suara-venv oleh `suara_profil.py` dan `tts.py`, di bawah kunci AI global, prioritas Idle, dan tunggu RAM.
+  - **`latih: true`, durasi bersih 30 dtk – < 5 menit** → backend `openvoice` (uji cepat ±2 menit). Status `siap`; `alasan` berisi catatan "uji cepat … tambah contoh sampai minimal 5 menit untuk hasil utama Applio".
+  - **≥ 5 menit** → backend `applio` (RVC v2 40 kHz, HiFi-GAN, rmvpe + contentvec, 150 epoch, batch 4, fp32). Langkahnya: preprocess → fitur → latih → index. Model akhir disalin ke `model/applio/owner.{pth,index}`, sedangkan checkpoint kerja dihapus.
+  - Keduanya juga menyimpan embedding OpenVoice (`model/openvoice_se.pth`) dan nada tengah owner (`model/info.json` `f0_hz`).
+  - **< 30 dtk** → `kurang_contoh` (kode 0), seperti sebelumnya.
+  - Sesudah latih: `versi_model` +1, `perlu_latih_ulang: false`, lalu 3 `contoh_hasil` dibuat di `out/contoh/NN.wav` lewat jalur yang sama dengan `tts`.
+- **`owner:Suara owner` di §21**:
+  - TTS dasar Windows (`profil.suara_dasar`, bawaan Andika, + pelafalan) → dikonversi ke suara owner (Applio: pitch otomatis dari selisih nada tengah; OpenVoice: tone color tau 0,3) → WAV 48 kHz, lalu LUFS seperti biasa.
+  - Durasi tidak berubah, jadi batas kata dari Windows tetap dipakai untuk subtitle.
+- **Uji (sampel SINTETIS = suara Windows Zira, bukan rekaman orang)**:
+  - OpenVoice 71 dtk bersih: 136 dtk sampai selesai, termasuk 3 contoh hasil.
+  - Kemiripan warna suara ke target naik dari 0,57 (Andika dasar) ke 0,91; nada tengah 147 → 182 Hz (target 182 Hz); durasi 3,62 → 3,61 dtk.
+  - Applio uji asap (5 sampel sintetis, 5,9 menit bersih, **3 epoch**, GTX 1650): 825 dtk dari awal sampai 3 contoh hasil. Kemiripan 0,57 → 0,91; nada 147 → 194 Hz; durasi tetap. Model akhir + index ±108 MB.
+  - Perkiraan 150 epoch (±1–2 jam) belum diukur dengan data asli; akan dicatat saat rekaman owner masuk.
+  - `engine tts` dengan `owner:Suara owner`: muncul di `daftar_suara` setelah profil siap. Subtitle dari batas kata Windows tetap pas.
+  - Selama latih, kunci AI global dipegang, jadi job AI berat lain antre (sesuai §18.0).
+- **Batasan**: OpenVoice tidak mengubah intonasi/logat, hanya warna suara. Hasil utama tetap Applio dengan rekaman owner 10–15 menit.
+
+### 23.6 Bobot model (R31, unduh 16 Nov, OK venus)
+Disimpan di `<TOOLS>/models/suara/`, hanya dari Hugging Face resmi. `suara_mesin.py` mengecek SHA256 sebelum dipakai dan tidak pernah mengunduh saat jalan (`HF_HUB_OFFLINE=1`). Prasyarat Applio (rmvpe, contentvec) di-*hardlink* ke folder Applio.
+
+| File | Asal | Ukuran | SHA256 | Lisensi |
+|---|---|---|---|---|
+| `f0G40k.pth`, `f0D40k.pth` | HF `IAHispano/Applio` `Resources/pretrained_v2/` (pretrained RVC v2, asal RVC-Project `lj1995/VoiceConversionWebUI`) | 69,7 / 136,3 MB | `3b2c44035e782c4b14ddc0bede9e2f4a724d025cd073f736d4f43708453adfcb` / `6b6ab091e70801b28e3f41f335f2fc5f3f35c75b39ae2628d419644ec2b0fa09` | MIT (repo HF Applio & lj1995) |
+| `rmvpe.pt` | HF `IAHispano/Applio` `Resources/predictors/` (bobot RMVPE yang dirilis RVC-Project) | 172,8 MB | `6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193` | ⚠ Kode RMVPE `Dream-High/RMVPE` Apache-2.0; bobotnya disebar RVC-Project (MIT). Tidak ada lisensi terpisah khusus bobot → **ditandai, boleh untuk uji internal** (venus) |
+| `contentvec/pytorch_model.bin` + `config.json` | HF `IAHispano/Applio` `Resources/embedders/contentvec/` | 360,8 MB | `d8dd400e054ddf4e6be75dab5a2549db748cc99e756a097c496c099f65a4854e` | MIT (`auspicious3000/contentvec`) |
+| `openvoice_v2/checkpoint.pth` + `config.json` | HF `myshell-ai/OpenVoiceV2` `converter/` | 125,2 MB | `9652c27e92b6b2a91632590ac9962ef7ae2b712e5c5b7f4c34ec55ee2b37ab9e` | MIT |
+
+SHA256 yang sama tertulis di `SHA` dalam `pipeline/suara_mesin.py`.
+- **Paket**: `pipeline/requirements-suara.txt`. Applio 3.7.1 (commit `6f69726b`) dan OpenVoice (commit `74a1d147`, dipasang `--no-deps`).
+- **Tidak dipakai/diblokir**:
+  - `edge-tts` **dilepas** dari suara-venv dan `import edge_tts` diblokir di `suara_mesin.py`, karena mengirim teks ke server Microsoft.
+  - Watermark OpenVoice (`wavmark`, mengunduh model) dan `openvoice.api` tidak dipakai; konverternya dipanggil langsung.
+  - UI Gradio Applio, `pypresence`, pemeriksa versi, dan pengunduh prasyarat Applio tidak dipanggil.

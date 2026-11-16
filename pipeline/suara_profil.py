@@ -8,8 +8,8 @@ Profil (satu per workspace): <DATA>/konten/suara/owner/{profil.json, contoh/*.wa
 Keluaran: out/suara_profil.json (suara-profil/1). Kode: 0 selesai (termasuk kurang_contoh), 2 ditolak, 1 gagal teknis.
 
 Langkah sekarang: ambil audio (video/audio) -> mono 40 kHz -> buang sunyi > 0,6 dtk -> periksa mutu (SNR, clipping,
-musik latar) -> simpan contoh bersih. Latih (Applio/OpenVoice, suara-venv) dipasang terpisah: selama belum ada,
-`latih: true` dengan contoh cukup = gagal teknis "mesin latih belum terpasang" (contoh tetap tersimpan).
+musik latar) -> simpan contoh bersih. `latih: true`: >= 5 menit bersih -> Applio (RVC), 30 dtk..5 menit -> uji cepat
+OpenVoice, < 30 dtk -> kurang_contoh. Mesinnya suara_mesin.py di suara-venv (kunci AI global, Idle); lalu 3 contoh hasil.
 """
 
 from __future__ import annotations
@@ -27,7 +27,9 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "batch"))
-from jalur import DATA  # noqa: E402  (R20: data di MOTION_ENGINE_DATA)
+from jalur import DATA, TOOLS, venv_py  # noqa: E402  (R20: data di MOTION_ENGINE_DATA)
+
+SUARA_PY = Path(os.environ.get("MOTION_SUARA_PY") or venv_py(TOOLS / "suara-venv"))
 
 PROFIL = ("owner",)  # satu profil; profil lain perlu keputusan owner
 SR = 40000
@@ -154,10 +156,59 @@ def simpan_profil(folder: Path, d: dict) -> None:
     os.replace(tmp, folder / "profil.json")
 
 
-def latih(folder: Path, data: dict, kalimat: list[str]) -> list[dict]:
-    """Pelatihan Applio/OpenVoice (suara-venv). Belum terpasang -> gagal teknis yang jelas."""
-    raise RuntimeError("mesin latih suara belum terpasang (suara-venv Applio/OpenVoice sedang disiapkan); "
-                       "contoh suara sudah tersimpan dan diperiksa")
+def jalan_mesin(perintah: str, isi: dict, rentang: tuple[int, int] = (0, 100)) -> dict:
+    """suara_mesin.py di suara-venv (Idle), di bawah kunci AI global; persen progres dipetakan ke `rentang` pemanggil."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "visual"))
+    import beban
+    if not SUARA_PY.exists():
+        raise RuntimeError(f"mesin suara belum terpasang ({SUARA_PY.parent.parent.name} tidak ada)")
+    hasil: dict = {}
+    with tempfile.TemporaryDirectory() as d, beban.kunci_ai(f"suara_{perintah}"):
+        beban.tunggu_ram()
+        f = Path(d) / "perintah.json"
+        f.write_text(json.dumps(isi, ensure_ascii=False), encoding="utf-8")
+        env = {**os.environ, "MOTION_TOOLS_DIR": str(TOOLS), "PYTHONIOENCODING": "utf-8"}
+        p = subprocess.Popen([str(SUARA_PY), str(Path(__file__).resolve().parent / "suara_mesin.py"), perintah, str(f)],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+                             env=env, creationflags=IDLE if os.name == "nt" else 0)
+        for baris in p.stdout:  # type: ignore[union-attr]
+            try:
+                j = json.loads(baris)
+            except ValueError:
+                continue
+            if j.get("tahap") == "hasil":
+                hasil = j.get("hasil") or {}
+            elif j.get("tahap") != "gagal":
+                j["persen"] = rentang[0] + round((rentang[1] - rentang[0]) * int(j.get("persen") or 0) / 100)
+                print(json.dumps(j, ensure_ascii=False), flush=True)
+        err = p.stderr.read()  # type: ignore[union-attr]
+        if p.wait() != 0:
+            raise RuntimeError(f"mesin suara ({perintah}) gagal: {err.strip()[-400:]}")
+    return hasil
+
+
+def latih(folder: Path, data: dict, kalimat: list[str], out: Path) -> list[dict]:
+    """Latih profil (Applio bila >= 5 menit bersih, OpenVoice bila uji cepat), lalu buat contoh hasil."""
+    pakai = [folder / c["file"] for c in data["contoh"].values() if c["dipakai"]]
+    pakai = list(dict.fromkeys(pakai))  # kunci berbeda, file sama
+    total = sum(c["durasi_bersih"] for c in data["contoh"].values() if c["dipakai"])
+    backend = "applio" if total >= MINIMAL_DTK else "openvoice"
+    perkiraan = 5400 if backend == "applio" else 120
+    progres("latih", 70, f"melatih profil suara ({backend})", perkiraan_dtk=perkiraan)
+    model = folder / "model"
+    info = jalan_mesin("latih", {"contoh": [str(p) for p in pakai], "model_dir": str(model), "backend": backend,
+                                 "epoch": int(os.environ.get("MOTION_SUARA_EPOCH") or 150)}, (70, 95))  # env hanya untuk uji asap
+    data.update(versi_model=int(data.get("versi_model") or 0) + 1, backend=info.get("backend", backend),
+                dilatih_pada=time.strftime("%Y-%m-%dT%H:%M:%S"), perlu_latih_ulang=False,
+                suara_dasar=data.get("suara_dasar") or "Andika")
+    simpan_profil(folder, data)
+    progres("contoh", 95, "membuat contoh hasil")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import tts
+    (out / "contoh").mkdir(parents=True, exist_ok=True)
+    item = [(k, out / "contoh" / f"{i:02d}.wav") for i, k in enumerate(kalimat, 1)]
+    tts.Owner().ucapkan([(tts.susun_ucapan(k, {})[0], p) for k, p in item], "Suara owner", 1.0, profil=data, rentang=(95, 99))
+    return [{"teks": k, "file": f"out/contoh/{p.name}"} for k, p in item]
 
 
 def laporan(data: dict, status: str, alasan: str | None = None, contoh_hasil=None) -> dict:
@@ -242,13 +293,16 @@ def jalankan(job_dir: Path) -> int:
         if cfg.get("latih"):
             if not any(c["dipakai"] for c in data["contoh"].values()):
                 raise Ditolak("tidak ada contoh yang lolos mutu untuk dilatih")
-            if total >= MINIMAL_DTK:
-                progres("latih", 70, "melatih profil suara", perkiraan_dtk=5400)
-                hasil = latih(folder, data, [str(k) for k in (cfg.get("contoh_kalimat") or KALIMAT_BAWAAN)][:3])
-                lap = laporan(data, status_dari(data), contoh_hasil=hasil)
+            if total >= MINIMAL_UJI_DTK:
+                hasil = latih(folder, data, [str(k) for k in (cfg.get("contoh_kalimat") or KALIMAT_BAWAAN)][:3], out)
+                catatan = None if data.get("backend") == "applio" else (
+                    f"uji cepat OpenVoice ({total / 60:.1f} menit bersih); tambah contoh sampai minimal "
+                    f"{MINIMAL_DTK // 60} menit untuk hasil utama Applio")
+                lap = laporan(data, status_dari(data), catatan, contoh_hasil=hasil)
             else:
                 lap = laporan(data, "kurang_contoh",
-                              f"durasi bersih {total / 60:.1f} menit; minimal {MINIMAL_DTK // 60} menit untuk dilatih "
+                              f"durasi bersih {total:.0f} dtk; minimal {MINIMAL_UJI_DTK} dtk untuk uji cepat dan "
+                              f"minimal {MINIMAL_DTK // 60} menit untuk hasil utama "
                               f"(target {TARGET_DTK[0] // 60}-{TARGET_DTK[1] // 60} menit)")
         else:
             lap = laporan(data, status_dari(data))

@@ -2,7 +2,7 @@
 # torch/torchaudio dari https://download.pytorch.org/whl/cu128 (GTX 1650, sm_75).
 # Applio 3.7.1 (MIT) di <TOOLS>/applio, commit 6f69726b140c615c8cc6831a7db8b7c5e48ba8af, requirements-engine (tanpa Gradio/pypresence).
 # OpenVoice (MIT) di <TOOLS>/openvoice, commit 74a1d147b17a8c3092dd5430504bd83ef6c7eb23, dipasang --no-deps (pip install -e).
-# edge-tts ikut terpasang dari Applio tapi TIDAK dipakai engine (mengirim teks ke server luar).
+# edge-tts DILEPAS (pip uninstall) setelah instalasi Applio: tidak boleh dipakai (mengirim teks ke server luar).
 # Pasang ulang: pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.11.0+cu128 torchaudio==2.11.0+cu128
 #              lalu pip install -r requirements-suara.txt
 absl-py==2.5.1
@@ -25,7 +25,6 @@ coloredlogs==15.0.1
 contourpy==1.4.0
 cycler==0.12.1
 decorator==5.3.1
-edge-tts==7.3.1
 einops==0.8.2
 faiss-cpu==1.14.3
 fastapi==0.163.1

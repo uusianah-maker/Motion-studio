@@ -147,6 +147,9 @@ def kunci_ai(nama: str, maks_tunggu: float = 3600, jeda: float = 5, file: Path |
                 isi = json.loads(f.read_text(encoding="utf-8") or "{}")
             except (OSError, ValueError):
                 isi = {}
+            if int(isi.get("pid", 0)) == os.getpid():  # sudah dipegang proses ini (mis. latih -> contoh hasil)
+                yield
+                return
             if not _pid_hidup(int(isi.get("pid", 0))):
                 try:
                     f.unlink()
