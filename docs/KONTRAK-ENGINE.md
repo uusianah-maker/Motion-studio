@@ -671,3 +671,22 @@ Perintah: `<visual-venv>\Scripts\python pipeline/visual/perjelas.py <masuk> <fol
   - Perkiraan waktu diukur dari frame pertama; perkiraan ini sedikit berlebih karena sudah termasuk waktu memuat model.
 - **Catatan kualitas**: mode cepat menajamkan mata, alis, dan kain, tetapi kulit agak dihaluskan karena modelnya dilatih untuk animasi. Mode kualitas lebih natural.
 - **Bug yang sudah diperbaiki saat uji**: stderr exe sempat dialirkan ke pipe yang tidak dibaca, sehingga proses tertahan dan butuh ±50 dtk/frame. Sekarang stderr ditulis ke file log.
+
+### 18.10 Perintah `engine visual <job_dir>` — satu pintu (OK venus 16 Nov)
+Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`, bawaannya `D:/VIBECODING/tools/visual-venv/Scripts/python.exe`. Polanya sama dengan `tts`, dan juga jalan dari folder rilis (R20).
+```json
+{"schema":"engine-job/1","visual":{"alat":"deteksi|reframe|lacak|hapus_latar|perjelas","masuk":"konten/…/a.mp4", …}}
+```
+`masuk` boleh relatif ke folder DATA atau absolut.
+
+| `alat` | Parameter (opsional kecuali ditandai) | Hasil di `out/` |
+|---|---|---|
+| `deteksi` | `jenis` ["wajah","objek"], `hz` 10, `label` ["person"] | `jalur.json` (§18.1) |
+| `reframe` | `jalur` (bawaan `out/jalur.json`), `rasio` "9:16", `subjek`; `kanvas` [W,H] + `fit` "pas"\|"isi" + `awal_ms` → ditambah `keyframe_app` siap pakai | `reframe.json` (§18.2) |
+| `lacak` | **`kotak` [x,y,w,h]**, `mulai`, `sampai`, `metode` "csrt"\|"kcf", `hz` 15 | `lacak.json` (§18.7) |
+| `hapus_latar` | `model`, `fps` 10 | `hapus_latar/` (§18.8) |
+| `perjelas` | `mode`, `skala`, `sisi` | `perjelas/` (§18.9) |
+
+- **Progres**: JSON-lines dari alatnya masing-masing.
+- **Kode keluar**: 0 selesai · 2 ditolak (`out/visual.json` berisi alasannya bila job tidak sah) · 1 gagal teknis.
+- **Tes**: `PerintahVisual` di test_engine menjalankan deteksi lalu reframe + keyframe_app dari salinan folder rilis dengan folder data terpisah. Folder data tidak ditulisi.
