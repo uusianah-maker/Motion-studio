@@ -1,6 +1,7 @@
 ﻿# R24 Visual Tools: venv TERPISAH D:\VIBECODING\tools\visual-venv (Python 3.12.5, C:\Python312), env MOTION_VISUAL_PY.
 # Versi dikunci (pip freeze 16 Nov 2026). Pasang: <venv>\Scripts\python -m pip install -r requirements-visual.txt
 # onnxruntime CPU saja; tanpa torch. JANGAN pasang ke .venv / demucs-venv (opencv-contrib 5 bentrok).
+# rembg DILEPAS (venus 16 Nov): ia mengunduh model sendiri dari mirror; inferensi latar langsung via onnxruntime.
 absl-py==2.5.1
 attrs==26.1.0
 certifi==2026.10.23
@@ -35,7 +36,6 @@ PyMatting==1.1.16
 pyparsing==3.3.3
 python-dateutil==4.0.0
 referencing==0.37.0
-rembg==2.0.87
 requests==2.34.2
 rpds-py==2026.9.1
 scikit-image==0.26.0
