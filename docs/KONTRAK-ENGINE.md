@@ -522,6 +522,7 @@ Hasilnya keyframe jendela crop, **bukan** video jadi.
 Semua perintah itu menulis progres JSON-lines dalam UTF-8.
 
 ### 18.4 TTS voice over `tts/1` (R24f) — sudah jalan
+> Diperluas di **§21** (R34 Suara dari Teks): daftar suara, pelafalan, gabungan, cap waktu kata, -16 LUFS.
 `engine tts <job_dir>`:
 - Masukan: `job.json` → `"tts": {"kalimat": ["…", "…"], "suara": "Andika", "kecepatan": 1.0}`. `"teks": "…"` boleh dipakai sebagai ganti `kalimat`.
 - Keluaran, hanya di dalam job_dir:
@@ -702,3 +703,52 @@ Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`,
   - IN21 (celana di lantai, tanpa orang): Haar **salah mengira lipatan kain sebagai wajah** dan memindahkan caption ke 0,42. MediaPipe benar: 0 wajah, caption tetap di 0,72.
 - **Waktu**: ±2,3 dtk per klip, dibanding ±0,7 dtk dengan Haar.
 - test_posisi_caption tetap lulus.
+
+## 21. Suara dari Teks — `engine tts` diperluas (R34, v0.4.4, 16 Nov 2026, yuki; app: ucok)
+Menggantikan §18.4. Semua field baru bersifat aditif, jadi job tts/1 lama tetap jalan (default: jeda 300 ms, -16 LUFS).
+
+**Masukan** `job.json → tts`:
+```json
+{"kalimat":["Halo kak, ini Loose Pants.","Harganya cuma 99 ribu!"], "suara":"windows:Andika", "kecepatan":1.0,
+ "jeda_ms":300, "pelafalan":{"Loose Pants":"lus pens"}, "lufs":-16}
+```
+- `teks` boleh dipakai sebagai ganti `kalimat`.
+- `suara` = id dari daftar suara. `"Andika"` tanpa awalan berarti `windows:Andika`.
+- Batas nilai: kecepatan 0,5–2,0; jeda 0–3000 ms; lufs -30..-8; maksimal 60 kalimat; maksimal 1000 huruf per kalimat.
+- Nilai di luar batas atau backend yang tidak ada menghasilkan kode 2 (ditolak).
+
+**Daftar suara**: `{"tts":{"daftar_suara":true}}` → `out/tts.json` = `{"schema":"tts/1","status":"selesai","suara":[{"id":"windows:Andika","nama":"Microsoft Andika","bahasa":"id-ID","gender":"Male","backend":"windows"}, …]}`. Di PC kantor tersedia Andika (id-ID) dan suara Inggris David, Zira, Mark, George, Susan, Hazel.
+
+**Kamus pelafalan per brand**: field Brand Kit baru `teks.pelafalan` {tulisan: ucapan}, digabung dengan `tts.pelafalan` dari job (job yang menang).
+- Frasa terpanjang dicocokkan lebih dulu (maksimal 4 kata), tidak peka huruf besar/kecil maupun tanda baca. Tanda baca di ujung kata tetap ikut, supaya intonasi terjaga.
+- Yang berubah hanya ucapan. `teks` dan `kata[].teks` tetap memakai tulisan asli, untuk subtitle.
+
+**Keluaran** (hanya di dalam job_dir):
+- `out/vo/01.wav …` per kalimat, ditambah `out/vo/gabungan.wav` (kalimat + jeda).
+- Format WAV 48 kHz mono 16-bit.
+- Semua file memakai **satu gain** yang sama, sehingga gabungan = target LUFS. Limiter di -1 dBTP. Hasil uji: -16,4 LUFS, -1,0 dBTP.
+```json
+{"schema":"tts/1","status":"selesai","suara":"windows:Andika","backend":"windows","kecepatan":1,"jeda_ms":300,"lufs":-16,"usulan":true,
+ "gabungan":{"file":"out/vo/gabungan.wav","durasi":10.33},
+ "file":[{"no":1,"teks":"Halo kak, ini Loose Pants.","diucapkan":"Halo kak, ini lus pens.","file":"out/vo/01.wav","durasi":4.13,
+          "mulai":0.0,"akhir":4.13,"kata":[{"teks":"Halo","mulai":0.101,"akhir":0.416}, …]}],
+ "total_durasi":10.33}
+```
+- `file[].mulai/akhir` = posisi kalimat di gabungan. `kata[].mulai/akhir` = posisi kata relatif terhadap file kalimatnya. Waktu kata di gabungan = `file.mulai + kata.mulai`.
+- **Cap waktu kata tanpa Whisper**: diambil dari batas kata Windows (`IncludeWordBoundaryMetadata`).
+  - Windows hanya memberi waktu mulai kata, jadi akhir kata = awal kata berikutnya.
+  - Kata terakhir berakhir di akhir audio dikurangi sisa sunyi (maksimal 0,25 dtk).
+  - Frasa hasil pelafalan dibagi rata menurut panjang hurufnya.
+- Hybrid: VO adalah usulan. App menaruhnya di Media/Aset brand, lalu tim memakai, memotong, atau menggantinya.
+
+**Backend yang bisa ditambah**: `pipeline/tts.py → BACKEND` = {"windows"}.
+- Backend baru (TTS neural Indonesia, atau R31 "Suara owner" = TTS lalu dikonversi RVC/OpenVoice) cukup menyediakan `daftar()` dan `ucapkan(item, suara, kecepatan) → batas kata per kalimat`.
+- Id suaranya `"<backend>:<nama>"`, misalnya `owner:Suara owner`.
+- Format keluaran tetap sama.
+- Kalau backend tidak memberi batas kata, waktu kata akan diisi dari perkiraan atau Whisper (menyusul).
+
+**Skrip** `tts_windows.ps1` (tetap kompatibel dengan cara lama):
+- `-Daftar -Laporan s.json` untuk daftar suara;
+- `-Masuk m.json -Laporan h.json` untuk banyak kalimat dalam satu proses: teks dibaca dari file UTF-8 (aman untuk tanda kutip), hasilnya berisi batas kata.
+
+Proses PowerShell dan ffmpeg berjalan dengan prioritas Idle.
