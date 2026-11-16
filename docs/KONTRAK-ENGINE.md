@@ -632,9 +632,10 @@ Modul `pipeline/sfx_rencana.py` dipakai Generate (`ops.py`, langkah 6b, sesudah 
   - `teks.kamus` dipakai untuk koreksi otomatis sesudah transkrip (`apply_kamus`).
   - Batch juga menerapkan kamus pada VO (`batch/vo.py`).
 - **Temuan 16 Nov:** di Brand Kit Aysilla di Motion Studio, `kosakata_whisper` = [] dan `kamus` = {}. Padahal file lama `brandkit/aysilla.json` di repo berisi 28 istilah dan 21 koreksi, termasuk "ekot/cekot → checkout", "lus/los → loose", "icila factory → Aysilla Factory". Isi itu belum pernah dipindahkan. Tim perlu mengisinya lewat menu Brand.
-- **Shot Library Batch** masih mentranskrip memakai `brandkit/aysilla.json` dari repo, bukan Brand Kit live per brand. Ini catatan untuk dibuat multi-brand.
+- **Shot Library Batch** dulu mentranskrip memakai `brandkit/aysilla.json` dari repo. **Sudah diperbaiki (multi-brand)**: `engine pisah` mengirim `brand_kit.json` milik job ke `shotlib.py --brandkit`. File repo hanya dipakai bila dijalankan lewat CLI tanpa job. Transkrip yang sudah ada tidak diulang.
 
-### 20.2 Usulan kamus dari koreksi editor (R30b) — `kamus-usulan/1`
+### 20.2 Usulan kamus dari koreksi editor (R30b) — `kamus-usulan/1` — ALAT BANTU
+> **Jalur resmi = core `kamusBelajar.ts` (app, venus cbbcc41)**. App yang memegang `belajar.jsonl` dan menambahkan pasangan "otomatis" ke `teks.kamus` di setiap job. `kamus_belajar.py` hanya alat CLI dan referensi; mesin **tidak** memanggilnya. R30 dilanjutkan oleh venus sejak 16 Nov.
 Perintah: `python pipeline/kamus_belajar.py <.motionstudio/brands/<brand_id>/belajar.jsonl> [--brand-kit brand_kit.json] [--min 2]`. Hasilnya satu JSON di stdout.
 ```json
 {"schema":"kamus-usulan/1","minimal":2,"koreksi_kata":4,
