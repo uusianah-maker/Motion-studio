@@ -18,6 +18,7 @@ import { VisualToolsPanel } from './VisualToolsPanel';
 import { voSubtitleOps } from '../../../../packages/core/dist/storage/voText.js';
 import type { VoIndex } from '../api';
 import { freeSlot } from './PresetPanel';
+import { LibraryPanel } from './LibraryPanel';
 import { ProjectMenu } from './ProjectMenu';
 import { CutReviewDialog } from './CutReviewDialog';
 import { VariantsDialog } from './VariantsDialog';
@@ -774,6 +775,9 @@ export function EditorView({
               onOverlayDraft={setOverlayDraft}
               flushRef={inspectorFlush}
             />
+          )}
+          {project && !reviewer && (
+            <LibraryPanel api={api} project={project} media={media} kit={brand?.kit ?? null} playhead={playhead} selected={sel} busy={locked} edit={(ops) => void edit(ops)} clipName={clipName} />
           )}
           {project && (
             <PresetPanel

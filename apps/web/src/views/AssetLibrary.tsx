@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Api, BrandAsset, BrandKitInput, Media } from '../api';
+import { useSoundPreview } from '../audioPreview';
 
 const KINDS: { id: BrandAsset['jenis']; label: string }[] = [
   { id: 'sfx', label: 'SFX' },
@@ -77,6 +78,8 @@ export function AssetLibrary({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** R27: ▶ listen to SFX / music / VO before using them. */
+  const sound = useSoundPreview(api);
   const names = new Map(media.map((m) => [m.current_version_id, m.display_name]));
   const shown = draft.aset.map((a, i) => ({ a, i })).filter(({ a }) => (!kind || a.jenis === kind) && (!q.trim() || a.tag.some((t) => t.includes(q.trim().toLowerCase())) || a.id.includes(q.trim().toLowerCase())));
   const setAsset = (i: number, patch: Partial<BrandAsset>) => set({ aset: draft.aset.map((a, j) => (j === i ? { ...a, ...patch } : a)) });
@@ -152,6 +155,11 @@ export function AssetLibrary({
         <div key={i} className="assetRow" role="group" aria-label={`Aset ${a.id}`}>
           <div className="row wrap" style={{ gap: 6 }}>
             {OVERLAY_KINDS.includes(a.jenis) && <AssetThumb api={api} versionId={a.ref.version_id} label={`Gambar ${a.id}`} />}
+            {(a.jenis === 'sfx' || a.jenis === 'musik' || a.jenis === 'vo') && (
+              <button className="tiny" aria-label={`${sound.playing === a.ref.version_id ? 'Hentikan' : 'Dengar'} aset ${a.id}`} aria-pressed={sound.playing === a.ref.version_id} onClick={() => sound.toggle(a.ref.version_id)}>
+                {sound.playing === a.ref.version_id ? '■' : '▶'}
+              </button>
+            )}
             <span className="badge vio">{KINDS.find((k) => k.id === a.jenis)?.label}</span>
             {a.jenis === 'logo' &&
               (draft.logo?.ref.version_id === a.ref.version_id ? (

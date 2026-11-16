@@ -1,0 +1,87 @@
+[
+  {
+    "id": "R27-01 Brand → Aset: ▶ dengar memutar SFX (tombol jadi ■ Hentikan)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-02 Klik lagi → berhenti (kembali ▶)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-03 Panel Library di Editor: tab SFX, Transisi, Efek, Teks",
+    "ok": true,
+    "detail": "SFX|Transisi|Efek|Teks"
+  },
+  {
+    "id": "R27-04 Tab SFX berisi SFX dari Aset brand (2)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-05 Cari per tag \"transisi\" → hanya whoosh",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-06 Chip tag #teks-muncul → hanya pop",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-07 ▶ dengar di Editor memutar SFX itu",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-08 ＋ SFX → klip SFX di playhead (0 dtk), panjang = file (3 dtk), satu revisi",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-09 ＋ SFX kedua di tempat terisi → di slot bebas berikutnya (3 dtk), tidak error tumpang tindih",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-10 Tab Transisi menunjukkan sasaran: klip yang masuk di 2,0 dtk",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-11 Pasang Spin → klip B transisi spin 500 ms (satu revisi)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-12 Undo → transisi hilang (satu langkah)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-13 Zoom kuat → klip efek zoom 1,5× 1 dtk di playhead",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-14 Filter Vintage → klip di playhead (A) memakai look vintage",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-15 \"Tanpa filter\" → look dihapus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-16 Teks CTA → klip teks CTA dengan gaya preset",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R27-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]
