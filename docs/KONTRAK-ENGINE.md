@@ -764,3 +764,52 @@ Menggantikan §18.4. Semua field baru bersifat aditif, jadi job tts/1 lama tetap
 - `-Masuk m.json -Laporan h.json` untuk banyak kalimat dalam satu proses: teks dibaca dari file UTF-8 (aman untuk tanda kutip), hasilnya berisi batas kata.
 
 Proses PowerShell dan ffmpeg berjalan dengan prioritas Idle.
+
+## 22. VO dari Library: suara utama dari "Suara dari Teks" (R34 lanjutan, v0.4.5, 16 Nov 2026, yuki — usul ucok) — DRAF untuk disepakati
+Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts` §21) dipakai sebagai **suara utama** di Video iklan (Generate), Batch Remix, dan Beat Spot. Subtitle diambil dari teks VO yang sudah diketahui, **tanpa Whisper**. Footage dipakai sebagai gambar (b-roll).
+
+### 22.1 Masukan job (aditif; job tanpa `vo` = perilaku lama)
+```json
+{"vo": {"media": "$vo:vo-ays-20261116-004", "index": "vo_index.json", "suara_footage": "mati", "subtitle": true}}
+```
+- **`media`**: kunci aset VO.
+  - App memetakannya ke path file lewat `refs.json` / `sumber` seperti media lain.
+  - Untuk Generate, kunci ini juga dimasukkan ke `sumber` sebagai `{"kunci":"$vo:…","path":…}`.
+- **`index`**: nama file di dalam `<job_dir>`.
+  - App **menyalin** `.motionstudio/vo/<version>.json` (`vo-index/1`) ke sana. Mesin tidak membaca `.motionstudio`.
+  - Isinya `kalimat[]` dengan `mulai/akhir` (detik di file VO) dan `kata[]` (detik, relatif terhadap kalimatnya). Format ini sama dengan §21 `file[]` dan dengan `voText.ts`.
+- **`suara_footage`**: `"mati"` (bawaan) | `"pelan"` (suara asli footage dipertahankan di 15 %, misalnya suasana) | `"asli"`.
+- **`subtitle`**: bawaan `true`.
+- **Ditolak (kode 2)** bila:
+  - index tidak ada atau tidak sah (bukan `vo-index/1`, tanpa kalimat, `akhir` > durasi file + 0,1 dtk, lebih dari 60 kalimat);
+  - media VO tidak ada;
+  - `audio_pilihan: "musik"` dipakai bersama `vo` (bertentangan).
+
+### 22.2 Keluaran (ms-ops/1, sama untuk ketiga mode)
+- **Track `audio`**:
+  - satu klip VO utuh mulai 0 ms (`in_ms` 0, durasi = durasi VO), volume 1,0;
+  - jeda antar kalimat ikut dari file (sudah diatur `jeda_ms` saat TTS).
+- **Track `subtitle`**:
+  - dari index; satu kalimat dipecah menjadi halaman sesuai aturan caption mode/preset (`caption.maks_kata`, bawaan 3–4 kata);
+  - `words` diambil dari `kata[]`, dengan waktu = `kalimat.mulai + kata.mulai`;
+  - teks = tulisan asli (pelafalan §21 tidak tampil di layar);
+  - kata kunci, angka, dan harga di-highlight seperti biasa;
+  - koreksi kamus **tidak** diterapkan karena teksnya sudah benar.
+- **Track `video` (footage sebagai b-roll)**:
+  - footage disusun mengisi durasi VO. Potongan mengikuti batas kalimat: satu kalimat = 1–2 shot, `shot.maks_dtk` preset dihormati;
+  - suara footage mengikuti `suara_footage` (`set_audio` / volume);
+  - Generate: dari footage sumber, dengan bagian diam/kosong dibuang lewat deteksi gerak/adegan, bukan transkrip;
+  - Batch: Shot Library, dipilih lewat matcher dengan **teks kalimat VO** sebagai pengganti kalimat vokal;
+  - Beat Spot: potongan tetap di ketukan (§16); VO diletakkan di atas sound dengan `set_ducking` 0,3 bila `audio_pilihan: "keduanya"`.
+- **Hook, CTA, SFX (§19), musik, dan watermark/penutup** mengikuti aturan mode masing-masing.
+  - Hook bawaan = kalimat VO pertama, atau kalimat terkuat bila preset `hook.dari_kalimat_kuat`.
+  - SFX `harga`/`pop` otomatis ikut dari kata-kata di subtitle.
+- **Laporan**: `rencana.json` → `"sumber_suara": "vo_library"`, `"vo": {"media", "durasi", "kalimat": n}`. Peringatan bila footage lebih pendek dari VO (footage diulang/diperpanjang, `jenis: "footage_kurang"`).
+- **Hybrid**: VO, subtitle, dan shot adalah klip biasa, jadi bisa digeser, dipotong, atau diganti di editor. Saat memotong VO di editor, app memakai `voSubtitleOps` untuk menyusun ulang subtitle.
+
+### 22.3 Pembagian kerja (usul, mohon dikonfirmasi venus/ucok)
+- **ucok (app)**:
+  - pilihan "VO dari Library" di halaman Video iklan, Batch, dan Beat Spot;
+  - menyalin `vo-index/1` ke `<job_dir>/vo_index.json` + `refs` media VO.
+- **yuki (mesin)**: Batch Remix (`batch/perencana.py`) dan Beat Spot (`batch/beatspot.py`), ditambah helper bersama `pipeline/vo_library.py` (validasi index → kalimat/kata/halaman subtitle).
+- **venus (mesin)**: Generate (`edit.py`/`engine.py`), memakai helper yang sama (dilewati jalur Whisper/autocut).
