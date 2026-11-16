@@ -99,6 +99,17 @@ try {
   check('R23D-09 Pratinjau pull out: gambar masuk mulai membesar lalu kembali normal', scale > 1.05, tp);
   await page.getByRole('button', { name: '↶ Undo' }).click();
   check('R23D-10 Undo → kembali ke Zoom in', await until(async () => (await second()).transition?.type === 'zoom_in'));
+
+  // Tahap 2: Spin + Glitch (own xfade expressions).
+  check('R23D-11 Spin tersimpan', await choose('spin'));
+  await seek(2000);
+  const ts = await video.evaluate((v) => getComputedStyle(v).transform);
+  check('R23D-12 Pratinjau Spin: gambar berputar + mengecil di titik potong', ts !== 'none' && !ts.startsWith('matrix(1, 0, 0, 1'), ts);
+  await page.screenshot({ path: path.join(EVID, 'spin.png') });
+  check('R23D-13 Glitch tersimpan', await choose('glitch'));
+  await seek(2000);
+  const fg = await video.evaluate((v) => getComputedStyle(v).filter);
+  check('R23D-14 Pratinjau Glitch: warna bergeser (hue-rotate) di titik potong', /hue-rotate/.test(fg), fg);
   check('R23D-99 0 error JS', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('R23D-XX run selesai tanpa exception', false, String(e).split('\n').slice(0, 3).join(' '));

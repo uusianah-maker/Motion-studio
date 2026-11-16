@@ -363,7 +363,7 @@ export function Preview({
             style={{
               ...zoomStyle,
               ...cropStyle,
-              ...(css?.filter || trans?.blur ? { filter: `${css?.filter ?? ''}${trans?.blur ? ` blur(${trans.blur.toFixed(1)}px)` : ''}`.trim() } : {}),
+              ...(css?.filter || trans?.blur || trans?.glitch ? { filter: `${css?.filter ?? ''}${trans?.blur ? ` blur(${trans.blur.toFixed(1)}px)` : ''}${trans?.glitch ? ` hue-rotate(${Math.round(trans.glitch * 90)}deg) saturate(${(1 + trans.glitch).toFixed(2)})` : ''}`.trim() } : {}),
               ...(fit === 'isi' ? { objectFit: 'cover' as const } : {}),
               ...(fit === 'blur' ? { background: 'transparent' } : fit === 'warna' && visual?.fit_color ? { background: visual.fit_color } : {}),
               ...(trans?.opacity !== undefined || kf.opacity !== undefined ? { opacity: (trans?.opacity ?? 1) * (kf.opacity ?? 1) } : {}),

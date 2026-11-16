@@ -66,16 +66,43 @@ export const NO_TONE: LookTone = { sepia: 0, grain: 0 };
 export type LookId = keyof typeof LOOKS;
 export const LOOK_IDS = Object.keys(LOOKS) as LookId[];
 
-export const TRANSITIONS = ['dissolve', 'geser_kiri', 'geser_kanan', 'wipe', 'flash', 'hitam', 'zoom_in', 'blur', 'pull_out'] as const;
+export const TRANSITIONS = ['dissolve', 'geser_kiri', 'geser_kanan', 'wipe', 'flash', 'hitam', 'zoom_in', 'blur', 'pull_out', 'spin', 'glitch'] as const;
 export type TransitionType = (typeof TRANSITIONS)[number];
 export interface Transition {
   type: TransitionType;
   ms: number;
 }
-export const TRANSITION_LABEL: Record<TransitionType, string> = { dissolve: 'Dissolve (larut)', geser_kiri: 'Geser ke kiri', geser_kanan: 'Geser ke kanan', wipe: 'Wipe (sapu)', flash: 'Flash putih', hitam: 'Fade ke hitam', zoom_in: 'Zoom in', blur: 'Blur', pull_out: 'Pull out (zoom out)' };
+export const TRANSITION_LABEL: Record<TransitionType, string> = { dissolve: 'Dissolve (larut)', geser_kiri: 'Geser ke kiri', geser_kanan: 'Geser ke kanan', wipe: 'Wipe (sapu)', flash: 'Flash putih', hitam: 'Fade ke hitam', zoom_in: 'Zoom in', blur: 'Blur', pull_out: 'Pull out (zoom out)', spin: 'Spin (putar)', glitch: 'Glitch' };
 export const TRANSITION_MS: readonly [number, number] = [200, 1500];
 /** FFmpeg xfade names (R23d: `pull_out` is our own custom expression, see `xfadeTransition`). */
-export const XFADE: Record<TransitionType, string> = { dissolve: 'fade', geser_kiri: 'slideleft', geser_kanan: 'slideright', wipe: 'wipeleft', flash: 'fadewhite', hitam: 'fadeblack', zoom_in: 'zoomin', blur: 'hblur', pull_out: 'custom' };
+export const XFADE: Record<TransitionType, string> = { dissolve: 'fade', geser_kiri: 'slideleft', geser_kanan: 'slideright', wipe: 'wipeleft', flash: 'fadewhite', hitam: 'fadeblack', zoom_in: 'zoomin', blur: 'hblur', pull_out: 'custom', spin: 'custom', glitch: 'custom' };
+// R23d tahap 2 — own expressions. t = 1 − P runs 0 → 1 across the transition; plane-wise sampling
+// (chroma planes have the same aspect, so rotations stay round); outside the picture = black.
+const T = '(1-P)';
+const perPlane = (f: (p: string) => string) => `if(eq(PLANE,0),${f('0')},if(eq(PLANE,1),${f('1')},${f('2')}))`;
+/** Spin: one full turn — the outgoing picture turns away and shrinks (≤ 1/2,5), the incoming one turns in. */
+export const SPIN_TURNS = 1;
+const spinTh = `(2*PI*${SPIN_TURNS}*${T})`;
+const spinS = `(1+1.5*sin(PI*${T}))`;
+const spinX = `(W/2+${spinS}*((X-W/2)*cos(${spinTh})+(Y-H/2)*sin(${spinTh})))`;
+const spinY = `(H/2+${spinS}*((Y-H/2)*cos(${spinTh})-(X-W/2)*sin(${spinTh})))`;
+const SPIN_EXPR = `if(between(${spinX},0,W-1)*between(${spinY},0,H-1),if(gt(P,0.5),${perPlane((p) => `a${p}(floor(${spinX}),floor(${spinY}))`)},${perPlane((p) => `b${p}(floor(${spinX}),floor(${spinY}))`)}),if(eq(PLANE,0),16,128))`;
+/** Glitch: 12 horizontal bands jump sideways (new jump 24× per transition), colour planes split; strongest at the cut. */
+const gBand = 'floor(Y*12/H)';
+const gStep = `floor(${T}*24)`;
+const gSeed = `(sin(${gBand}*12.9898+${gStep}*78.233)*43758.5453)`;
+const gRnd = `(${gSeed}-floor(${gSeed}))`;
+const gAmp = `(sin(PI*${T})*W*0.12)`;
+const gX = (extra: string) => `clip(floor(X+${gAmp}*(2*${gRnd}-1)${extra}),0,W-1)`;
+const gPick = (who: string) => `if(eq(PLANE,0),${who}0(${gX('')},Y),if(eq(PLANE,1),${who}1(${gX(`+${gAmp}*0.25`)},Y),${who}2(${gX(`-${gAmp}*0.25`)},Y)))`;
+const GLITCH_EXPR = `if(gt(P,0.5),${gPick('a')},${gPick('b')})`;
+/** Same pseudo-random jump as the render, for the preview (band 0, the picture's top band). */
+export function glitchJump(t: number): number {
+  const step = Math.floor(t * 24);
+  const seed = Math.sin(0 * 12.9898 + step * 78.233) * 43758.5453;
+  return 2 * (seed - Math.floor(seed)) - 1;
+}
+
 /** R23d pull out: the incoming picture starts 1,5× zoomed in and pulls back to normal while it fades in. */
 export const PULL_OUT_ZOOM = 0.5;
 
@@ -85,6 +112,8 @@ export const PULL_OUT_ZOOM = 0.5;
  * registers would be shared between threads).
  */
 export function xfadeTransition(type: TransitionType): string {
+  if (type === 'spin') return `custom:expr='${SPIN_EXPR}'`;
+  if (type === 'glitch') return `custom:expr='${GLITCH_EXPR}'`;
   if (type !== 'pull_out') return XFADE[type];
   const x = `floor(W/2+(X-W/2)/(1+${PULL_OUT_ZOOM}*P))`;
   const y = `floor(H/2+(Y-H/2)/(1+${PULL_OUT_ZOOM}*P))`;
@@ -294,7 +323,7 @@ export function duckFilter(ranges: readonly [number, number][], level: number, s
  * Preview approximation of an incoming transition at a cut (`p` 0..1 across the transition window,
  * 0.5 = the cut; before 0.5 the outgoing clip is on screen, after it the incoming one).
  */
-export function transitionCss(type: TransitionType, p: number): { opacity?: number; transform?: string; clipPath?: string; flash?: number; black?: number; blur?: number } {
+export function transitionCss(type: TransitionType, p: number): { opacity?: number; transform?: string; clipPath?: string; flash?: number; black?: number; blur?: number; glitch?: number } {
   const q = Math.max(0, Math.min(1, p));
   switch (type) {
     case 'dissolve':
@@ -318,6 +347,12 @@ export function transitionCss(type: TransitionType, p: number): { opacity?: numb
     case 'pull_out':
       // The outgoing picture fades, then the incoming one pulls back from 1,5× to 1×.
       return q < 0.5 ? { opacity: 1 - 0.65 * (2 * q) } : { transform: `scale(${(1 + PULL_OUT_ZOOM * (2 - 2 * q)).toFixed(3)})` };
+    case 'spin':
+      // Same turn and shrink as the render's expression.
+      return { transform: `rotate(${(360 * SPIN_TURNS * q).toFixed(1)}deg) scale(${(1 / (1 + 1.5 * Math.sin(Math.PI * q))).toFixed(3)})` };
+    case 'glitch':
+      // The whole picture jumps like the render's top band; colours shift a little.
+      return { transform: `translateX(${(Math.sin(Math.PI * q) * 12 * glitchJump(q)).toFixed(2)}%)`, glitch: Math.sin(Math.PI * q) };
   }
 }
 

@@ -2,7 +2,7 @@
   {
     "id": "R23D-01 Pilihan transisi: + Fade ke hitam, Zoom in, Blur, Pull out (zoom out)",
     "ok": true,
-    "detail": "Tanpa (potong langsung) | Dissolve (larut) | Geser ke kiri | Geser ke kanan | Wipe (sapu) | Flash putih | Fade ke hitam | Zoom in | Blur | Pull out (zoom out) | Zoom-through (tambah efek di track Efek)"
+    "detail": "Tanpa (potong langsung) | Dissolve (larut) | Geser ke kiri | Geser ke kanan | Wipe (sapu) | Flash putih | Fade ke hitam | Zoom in | Blur | Pull out (zoom out) | Spin (putar) | Glitch | Zoom-through (tambah efek di track Efek)"
   },
   {
     "id": "R23D-02 Fade ke hitam tersimpan",
@@ -48,6 +48,26 @@
     "id": "R23D-10 Undo → kembali ke Zoom in",
     "ok": true,
     "detail": ""
+  },
+  {
+    "id": "R23D-11 Spin tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23D-12 Pratinjau Spin: gambar berputar + mengecil di titik potong",
+    "ok": true,
+    "detail": "matrix(-0.4, 0, 0, -0.4, 0, 0)"
+  },
+  {
+    "id": "R23D-13 Glitch tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23D-14 Pratinjau Glitch: warna bergeser (hue-rotate) di titik potong",
+    "ok": true,
+    "detail": "hue-rotate(90deg) saturate(2)"
   },
   {
     "id": "R23D-99 0 error JS",
