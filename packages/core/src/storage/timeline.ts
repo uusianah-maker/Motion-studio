@@ -80,7 +80,9 @@ export type EditOp =
   /** R26: stacking order — to the very front/back or one step. */
   | { op: 'set_overlay_layer'; clip_id: string; to: (typeof OVERLAY_LAYER_MOVES)[number] }
   /** R23e: chroma key of an overlay clip (null = off). */
-  | { op: 'set_chroma'; clip_id: string; chroma: Chroma | null };
+  | { op: 'set_chroma'; clip_id: string; chroma: Chroma | null }
+  /** R38b: a transition stinger centred on the cut of the video lane nearest to `at_ms` (overlay clip). */
+  | { op: 'place_stinger'; media: MediaRef; at_ms: number; duration_ms: number; alpha?: boolean };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -282,6 +284,15 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
       case 'duplicate_clip':
         keys(['op', 'clip_id']);
         return { op: 'duplicate_clip', clip_id: clipId(o.clip_id) };
+      case 'place_stinger': {
+        keys(['op', 'media', 'at_ms', 'duration_ms', 'alpha']);
+        const m = (o.media ?? {}) as Record<string, unknown>;
+        if (!isSafeId(m.media_id) || !isSafeId(m.version_id) || Object.keys(m).length !== 2) bad(`ops[${i}]: media tidak valid`);
+        const d = ms(o.duration_ms, 'duration_ms');
+        if (d < MIN_CLIP_MS || d > 10_000) bad(`ops[${i}]: durasi stinger ${MIN_CLIP_MS / 1000}–10 detik`);
+        if (o.alpha !== undefined && typeof o.alpha !== 'boolean') bad(`ops[${i}]: alpha harus true/false`);
+        return { op: 'place_stinger', media: { media_id: m.media_id as string, version_id: m.version_id as string }, at_ms: ms(o.at_ms, 'at_ms'), duration_ms: d, ...(o.alpha !== undefined ? { alpha: o.alpha as boolean } : {}) };
+      }
       case 'set_chroma':
         keys(['op', 'clip_id', 'chroma']);
         return { op: 'set_chroma', clip_id: clipId(o.clip_id), chroma: o.chroma === null ? null : guard(() => validateChroma(o.chroma, `ops[${i}].chroma`)) };
@@ -824,6 +835,24 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         const track = trackFor(t, 'music');
         if (op.on) track.duck = op.level ?? track.duck ?? 0.3;
         else delete track.duck;
+        break;
+      }
+      case 'place_stinger': {
+        // Cuts = where one video clip ends and the next one starts (not the very start).
+        const cuts = (t.tracks.find((x) => x.kind === 'video')?.clips ?? []).map((c) => c.start_ms).filter((ms) => ms > 0);
+        if (!cuts.length) bad('Belum ada titik potong di lajur video untuk transisi');
+        const cut = cuts.reduce((a, b) => (Math.abs(b - op.at_ms) < Math.abs(a - op.at_ms) ? b : a));
+        const start = Math.max(0, cut - Math.round(op.duration_ms / 2));
+        const clip: Clip = {
+          clip_id: newClipId(),
+          start_ms: start,
+          end_ms: start + op.duration_ms,
+          media: { ...op.media },
+          in_ms: 0,
+          // Full canvas; a stinger without alpha is drawn with Screen (its black = transparent).
+          overlay: { ...OVERLAY_DEFAULT, pos: 'c', skala: 100, margin: 0, layer: 900, stinger: true, ...(op.alpha ? {} : { blend: 'screen' as const }) },
+        };
+        trackFor(t, 'overlay').clips.push(clip);
         break;
       }
       case 'set_chroma': {

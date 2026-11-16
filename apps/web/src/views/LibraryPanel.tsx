@@ -21,6 +21,9 @@ const ZOOMS: { id: string; label: string; hint: string; effect: Extract<EditOp, 
   { id: 'zoom-cut', label: 'Zoom langsung 1,3×', hint: 'Lompat zoom (cut) tanpa gerak', effect: { type: 'zoom', scale: 1.3, mode: 'cut', x: 0.5, y: 0.5 } },
   { id: 'zoom-through', label: 'Zoom-through', hint: 'Zoom tembus untuk ganti adegan', effect: { type: 'zoom_through', scale: 1.4, x: 0.5, y: 0.5 } },
 ];
+/** R38b: a pixel format with an alpha channel → the stinger is drawn as is; else Screen (black = see-through). */
+export const hasAlpha = (pixFmt: string | null | undefined) => !!pixFmt && /^(yuva|rgba|bgra|argb|abgr|gbrap|ya[81])/.test(pixFmt);
+const STINGER_MAX = 10_000;
 const ms = (n: number) => `${(n / 1000).toFixed(1).replace('.', ',')} dtk`;
 
 /** First start ≥ `from` where `len` fits on the `kind` lane (lanes never overlap, overlays excepted). */
@@ -80,6 +83,14 @@ export function LibraryPanel({ api, project, media, kit, playhead, selected, bus
     } finally {
       setVoBusy(null);
     }
+  };
+  // R38b: stingers = video assets of the brand tagged "stinger"/"transisi" (or an asset kind "transisi").
+  const stingers = (kit?.aset ?? []).filter((a) => (a.jenis as string) === 'transisi' || a.tag.some((t) => t === 'stinger' || t === 'transisi')).filter((a) => a.jenis !== 'sfx' && a.jenis !== 'musik' && a.jenis !== 'vo');
+  const versionOf = (vid: string) => media.flatMap((m) => m.versions).find((v) => v.version_id === vid);
+  const placeStinger = (ref: { media_id: string; version_id: string }) => {
+    const v = versionOf(ref.version_id);
+    const len = Math.max(100, Math.min(v?.probe?.duration_ms ?? 1000, STINGER_MAX));
+    edit([{ op: 'place_stinger', media: ref, at_ms: tTarget?.start_ms ?? playhead, duration_ms: len, ...(hasAlpha(v?.probe?.pix_fmt) ? { alpha: true } : {}) }]);
   };
   const tTarget = pictureTarget(project, selected, playhead, true);
   const lTarget = pictureTarget(project, selected, playhead, false);
@@ -178,6 +189,23 @@ export function LibraryPanel({ api, project, media, kit, playhead, selected, bus
               Tanpa transisi (potong biasa)
             </button>
           )}
+          <b className="small">Stinger (video transisi)</b>
+          {!stingers.length && <div className="muted small">Belum ada stinger. Unggah video transisi di Brand → Aset dengan tag "stinger"; tanpa alpha dipasang dengan mode Screen (hitam = tembus).</div>}
+          {stingers.map((a) => {
+            const v = versionOf(a.ref.version_id);
+            return (
+              <div key={a.id} className="libRow" role="group" aria-label={`Stinger ${a.id}`}>
+                <span className="libName">
+                  {a.nama || a.id}
+                  <span className="muted small"> · {hasAlpha(v?.probe?.pix_fmt) ? 'alpha' : 'Screen'}</span>
+                </span>
+                {v?.probe?.duration_ms !== undefined && <span className="muted small">{ms(Math.min(v.probe.duration_ms, STINGER_MAX))}</span>}
+                <button className="btn small" disabled={busy || !tTarget} aria-label={`Pasang stinger ${a.id}`} title="Di tengah potongan terdekat (track Overlay)" onClick={() => placeStinger(a.ref)}>
+                  ＋
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 

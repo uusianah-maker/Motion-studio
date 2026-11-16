@@ -1,0 +1,62 @@
+[
+  {
+    "id": "R38B-01 Klip overlay → \"Mode campur\" di Inspector (Normal default)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-02 Pilihan Normal, Screen, Lighten, Multiply, Overlay",
+    "ok": true,
+    "detail": "normal,screen,lighten,multiply,overlay"
+  },
+  {
+    "id": "R38B-03 Pilih Screen → overlay.blend = screen tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-04 Pratinjau: mix-blend-mode screen",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-05 Ganti Multiply → tersimpan + pratinjau ikut",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-06 Undo → kembali Screen",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-07 Tab Transisi: stinger brand (tag \"stinger\") tampil, mode Screen (tanpa alpha)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-08 Pasang → klip overlay stinger di tengah potongan 2,0 dtk (1,7–2,3), layar penuh, Screen",
+    "ok": true,
+    "detail": "1700-2300 screen"
+  },
+  {
+    "id": "R38B-09 Inspector stinger: catatan transisi + mode campur bisa diubah (hybrid)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-10 Undo → stinger hilang",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-11 Render dengan blend + stinger selesai",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

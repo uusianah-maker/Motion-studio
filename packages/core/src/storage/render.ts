@@ -466,7 +466,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   }
   // R26: picture/video overlays over the text, back to front by layer (same box as the preview's
   // overlayBox: width % of W, height from the picture, preset corner + margin + nudge).
-  const layers: { input: string; x: string; y: string; enable: string }[] = [];
+  const layers: { input: string; x: string; y: string; enable: string; blend?: string; opacity?: number }[] = [];
   overlayOrder(clipsOf(t, 'overlay')).forEach((c, k) => {
     const o = c.overlay;
     const src = c.media ? brand.overlays?.get(c.media.version_id) : undefined;
@@ -487,8 +487,20 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     const time = src.still ? '' : `setpts=PTS-STARTPTS+${s6(from / 1000)}/TB,fps=${fps},`;
     // R23e: chroma key before the scale (agreed with wawok, R26 chain).
     const key = c.chroma ? `${chromaFilter(c.chroma)},` : '';
+    const enable = `between(t,${s6(from / 1000)},${s6(to / 1000)})`;
+    if (o.blend && o.blend !== 'normal') {
+      // R38b: a blend mode needs a full-canvas layer: pad with the mode's neutral colour (no change
+      // where the effect is not), held from t = 0 so the blend never waits for it.
+      const neutral = o.blend === 'multiply' ? 'white' : o.blend === 'overlay' ? '0x808080' : 'black';
+      const px = (o.pos === 'c' ? '(ow-iw)/2' : o.pos.endsWith('l') ? `${m}` : `ow-iw-${m}`) + off(nx);
+      const py = (o.pos === 'c' ? '(oh-ih)/2' : o.pos.startsWith('t') ? `${m}` : `oh-ih-${m}`) + off(ny);
+      const hold = src.still ? '' : `setpts=PTS-STARTPTS,fps=${fps},tpad=start_duration=${s6(from / 1000)}:color=${neutral},`;
+      graph.push(`[${idx}:v:0]${hold}${key}scale=${ow}:-2,format=rgb24,pad=${W}:${H}:${px}:${py}:color=${neutral},setsar=1,format=gbrp[ov${k}]`);
+      layers.push({ input: `ov${k}`, x, y, enable, blend: o.blend, opacity: o.opasitas });
+      return;
+    }
     graph.push(`[${idx}:v:0]${time}${key}scale=${ow}:-2,format=rgba,colorchannelmixer=aa=${o.opasitas.toFixed(2)},setsar=1[ov${k}]`);
-    layers.push({ input: `ov${k}`, x, y, enable: `between(t,${s6(from / 1000)},${s6(to / 1000)})` });
+    layers.push({ input: `ov${k}`, x, y, enable });
   });
   // X06: Brand Kit logo in a corner, over everything (text and overlays included), for the whole video.
   if (brand.logo) {
@@ -504,7 +516,14 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     graph.push(draws.length ? `[vcat]${draws.join(',')}[vl0]` : `[vcat]null[vl0]`);
     layers.forEach((l, i) => {
       const last = i === layers.length - 1;
-      graph.push(`[vl${i}][${l.input}]overlay=x=${l.x}:y=${l.y}:eof_action=pass:format=auto${l.enable ? `:enable='${l.enable}'` : ''}${last ? `,format=yuv420p,trim=end_frame=${total_frames}[vout]` : `[vl${i + 1}]`}`);
+      const tail = last ? `,format=yuv420p,trim=end_frame=${total_frames}[vout]` : `[vl${i + 1}]`;
+      if (l.blend) {
+        // R38b: picture below FIRST (CSS mix-blend-mode semantics, e.g. overlay keys on the backdrop).
+        graph.push(`[vl${i}]format=gbrp[vb${i}]`);
+        graph.push(`[vb${i}][${l.input}]blend=all_mode=${l.blend}:all_opacity=${(l.opacity ?? 1).toFixed(2)}:enable='${l.enable}',format=yuv420p${tail}`);
+        return;
+      }
+      graph.push(`[vl${i}][${l.input}]overlay=x=${l.x}:y=${l.y}:eof_action=pass:format=auto${l.enable ? `:enable='${l.enable}'` : ''}${tail}`);
     });
   } else graph.push(draws.length ? `[vcat]${draws.join(',')}[vout]` : `[vcat]null[vout]`);
 

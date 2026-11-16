@@ -97,6 +97,8 @@ function OverlayItem({ api, clip, spec, media, time, canvas, selected, onSelect,
     ...(spec.pos === 'c' ? { left: '50%', top: '50%' } : {}),
     ...(spec.pos !== 'c' ? { [spec.pos.endsWith('l') ? 'left' : 'right']: `${m}px`, [spec.pos.startsWith('t') ? 'top' : 'bottom']: `${m}px` } : {}),
     transform: `${spec.pos === 'c' ? 'translate(-50%, -50%) ' : ''}translate(${dx * canvas.w}px, ${dy * canvas.h}px)`,
+    // R38b (ucok): blend mode = the render's ffmpeg blend.
+    ...(spec.blend && spec.blend !== 'normal' ? { mixBlendMode: spec.blend } : {}),
   };
   const clamp = (v: number) => Math.max(-1, Math.min(1, Math.round(v * 10000) / 10000));
   const handlers =

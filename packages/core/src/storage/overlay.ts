@@ -9,6 +9,10 @@
  */
 
 export const OVERLAY_POS = ['tl', 'tr', 'bl', 'br', 'c'] as const;
+/** R38b (ucok): blend modes of an overlay (video effects: light leak, dust…). Same names as CSS mix-blend-mode. */
+export const OVERLAY_BLENDS = ['normal', 'screen', 'lighten', 'multiply', 'overlay'] as const;
+export type OverlayBlend = (typeof OVERLAY_BLENDS)[number];
+export const OVERLAY_BLEND_LABEL: Record<OverlayBlend, string> = { normal: 'Normal', screen: 'Screen (terangkan)', lighten: 'Lighten', multiply: 'Multiply (gelapkan)', overlay: 'Overlay (kontras)' };
 export type OverlayPos = (typeof OVERLAY_POS)[number];
 export const OVERLAY_POS_LABEL: Record<OverlayPos, string> = { tl: 'Kiri atas', tr: 'Kanan atas', bl: 'Kiri bawah', br: 'Kanan bawah', c: 'Tengah' };
 
@@ -29,6 +33,10 @@ export interface Overlay {
   layer: number;
   /** Whole video (0 → end), whatever the clip's own start/end. */
   sepanjang?: true;
+  /** R38b: how it mixes with the picture below (absent = normal). */
+  blend?: OverlayBlend;
+  /** R38b: a transition stinger (placed centred on a cut; marker for the editor). */
+  stinger?: true;
 }
 
 export const OVERLAY_DEFAULT: Overlay = { pos: 'tr', dx: 0, dy: 0, skala: 18, opasitas: 1, margin: 4, layer: 0 };
@@ -44,7 +52,7 @@ function num(x: unknown, where: string, [lo, hi]: readonly [number, number], dig
 export function validateOverlay(x: unknown, where = 'overlay'): Overlay {
   const o = (typeof x === 'object' && x !== null && !Array.isArray(x) ? x : null) as Record<string, unknown> | null;
   if (!o) throw new Error(`${where} harus object`);
-  const extra = Object.keys(o).filter((k) => !['pos', 'dx', 'dy', 'skala', 'opasitas', 'margin', 'layer', 'sepanjang'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['pos', 'dx', 'dy', 'skala', 'opasitas', 'margin', 'layer', 'sepanjang', 'blend', 'stinger'].includes(k));
   if (extra.length) throw new Error(`${where}: field tidak dikenal ${extra.join(', ')}`);
   return { ...OVERLAY_DEFAULT, ...validateOverlayPatch(o, where, true) } as Overlay;
 }
@@ -53,7 +61,7 @@ export function validateOverlay(x: unknown, where = 'overlay'): Overlay {
 export function validateOverlayPatch(x: unknown, where = 'overlay', full = false): Partial<Overlay> & { sepanjang?: true } {
   const o = (typeof x === 'object' && x !== null && !Array.isArray(x) ? x : null) as Record<string, unknown> | null;
   if (!o) throw new Error(`${where} harus object`);
-  const extra = Object.keys(o).filter((k) => !['pos', 'dx', 'dy', 'skala', 'opasitas', 'margin', 'layer', 'sepanjang'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['pos', 'dx', 'dy', 'skala', 'opasitas', 'margin', 'layer', 'sepanjang', 'blend', 'stinger'].includes(k));
   if (extra.length) throw new Error(`${where}: field tidak dikenal ${extra.join(', ')}`);
   const out: Partial<Overlay> = {};
   const need = (k: string) => {
@@ -73,6 +81,14 @@ export function validateOverlayPatch(x: unknown, where = 'overlay', full = false
     if (!Number.isInteger(o.layer)) throw new Error(`${where}.layer harus bilangan bulat`);
     out.layer = num(o.layer, `${where}.layer`, OVERLAY_LIMITS.layer, 0);
   }
+  if (o.blend !== undefined) {
+    if (!(OVERLAY_BLENDS as readonly unknown[]).includes(o.blend)) throw new Error(`${where}.blend harus ${OVERLAY_BLENDS.join(' | ')}`);
+    out.blend = o.blend as OverlayBlend;
+  }
+  if (o.stinger !== undefined) {
+    if (typeof o.stinger !== 'boolean') throw new Error(`${where}.stinger harus true/false`);
+    (out as Record<string, unknown>).stinger = o.stinger; // patch: false switches it off
+  }
   if (o.sepanjang !== undefined) {
     if (typeof o.sepanjang !== 'boolean') throw new Error(`${where}.sepanjang harus true/false`);
     if (o.sepanjang) out.sepanjang = true;
@@ -83,8 +99,10 @@ export function validateOverlayPatch(x: unknown, where = 'overlay', full = false
 
 /** Apply a patch (`sepanjang: false` removes the flag). */
 export function patchOverlay(cur: Overlay, patch: Partial<Overlay> | Record<string, unknown>): Overlay {
-  const next = { ...cur, ...patch } as Overlay & { sepanjang?: boolean };
+  const next = { ...cur, ...patch } as Overlay & { sepanjang?: boolean; stinger?: boolean };
   if (!next.sepanjang) delete next.sepanjang;
+  if (!next.stinger) delete next.stinger;
+  if (next.blend === 'normal') delete next.blend;
   return next as Overlay;
 }
 

@@ -303,6 +303,7 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   duplicate_clip: 'Duplikat klip',
   set_media: 'Ganti file klip',
   set_chroma: 'Chroma key',
+  place_stinger: 'Transisi stinger',
   set_overlay: 'Atur overlay',
   set_overlay_layer: 'Urutan lapisan overlay',
 };

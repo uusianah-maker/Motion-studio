@@ -251,6 +251,7 @@ export type EditOp =
   | { op: 'duplicate_clip'; clip_id: string }
   | { op: 'set_media'; clip_id: string; media: { media_id: string; version_id: string } }
   | { op: 'set_chroma'; clip_id: string; chroma: { warna: string; toleransi: number; halus: number } | null }
+  | { op: 'place_stinger'; media: { media_id: string; version_id: string }; at_ms: number; duration_ms: number; alpha?: boolean }
   | { op: 'set_overlay'; clip_id: string; overlay: Partial<Omit<Overlay, 'sepanjang'>> & { sepanjang?: boolean } }
   | { op: 'set_overlay_layer'; clip_id: string; to: 'depan' | 'maju' | 'mundur' | 'belakang' };
 export interface Track {

@@ -135,6 +135,8 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return op.keyframes.length ? `Keyframe ${ref(op.clip_id)}: ${op.keyframes.length} titik` : `Hapus keyframe ${ref(op.clip_id)}`;
     case 'set_motion':
       return `Gerak ${ref(op.clip_id)}: ${motionSummary({ ...(op.rotate ? { rotate: op.rotate } : {}), ...(op.flip_h ? { flip_h: true } : {}), ...(op.flip_v ? { flip_v: true } : {}), ...(op.speed !== undefined ? { speed: op.speed } : {}), ...(op.reverse ? { reverse: true } : {}), ...(op.vdenoise && op.vdenoise !== 'off' ? { vdenoise: op.vdenoise } : {}) }) || 'normal'}`;
+    case 'place_stinger':
+      return `Transisi stinger di potongan dekat ${fmtTime(op.at_ms)}`;
     case 'set_chroma':
       return op.chroma ? `Chroma key ${ref(op.clip_id)} (${op.chroma.warna})` : `Matikan chroma key ${ref(op.clip_id)}`;
     case 'set_media':
