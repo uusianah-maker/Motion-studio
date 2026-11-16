@@ -556,3 +556,16 @@ Perintah: `<visual-venv>\Scripts\python pipeline/visual/deteksi.py <video> <kelu
   - Subjek yang hilang sampai 1,5 dtk tetap memakai id yang sama, tetapi celahnya tidak diinterpolasi.
   - Jalur yang hanya muncul di 1 sampel dibuang.
 - **Waktu**: ±6 dtk untuk klip 13 dtk di CPU, prioritas Idle.
+
+### 18.7 Pelacakan gerak (R24c) — sudah jalan
+Perintah: `<visual-venv>\Scripts\python pipeline/visual/lacak.py <video> <keluar.json> --kotak x,y,w,h [--mulai dtk] [--sampai dtk] [--alat csrt|kcf] [--hz 15]`.
+- **Masukan**: kotak berupa pecahan frame pada detik `--mulai`, digambar user di app.
+- **Hasil**: jalur-posisi/1 dengan satu jalur `lacak-1` (`jenis: "lacak"`), plus `berhenti`: `"selesai"` atau `"objek hilang"`.
+- **Cara kerja**: tracker berjalan di setiap frame, dengan frame diperkecil sampai sisi panjangnya maksimal 640 px.
+  - Saat objek lepas, celah tidak ditulis.
+  - Kalau objek hilang lebih dari 2 dtk, pelacakan berhenti. User bisa memilih kotak lagi dari titik itu.
+- **CSRT** adalah bawaan dan lebih tahan perubahan ukuran. **KCF** lebih cepat.
+- **Uji**:
+  - Wajah IN17: galat pusat ±1% frame dibanding detektor (CSRT 0,011, KCF 0,0065). Objek lepas di detik ke-4–5 saat subjek berbalik. Waktu proses CSRT 7 dtk, KCF 5 dtk.
+  - Tes sintetis `Lacak`: CSRT dan KCF sama-sama mengikuti kotak bergerak dengan galat ≤3%.
+- **Pemakaian di app**: hasil ini untuk menempelkan teks, stiker, atau blur yang ikut objek. Rumus posisinya sama dengan §18.2: pusat kotak dikonversi lewat x_app/y_app. Tampilannya diserahkan ke ucok.

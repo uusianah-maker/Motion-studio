@@ -201,5 +201,53 @@ class AturanBeban(unittest.TestCase):
             beban.cek_durasi_klip(15.5)
 
 
+def _ada_tracker() -> bool:
+    try:
+        import cv2
+        return hasattr(cv2, "TrackerCSRT") or hasattr(cv2, "TrackerCSRT_create")
+    except ImportError:
+        return False
+
+
+class Lacak(unittest.TestCase):
+    """R24c. Tes video sintetis butuh opencv-contrib (visual-venv); di .venv dilewati."""
+
+    def test_kotak_dari_validasi(self):
+        import beban
+        import lacak
+        self.assertEqual(lacak.kotak_dari("0.1,0.2,0.3,0.4"), (0.1, 0.2, 0.3, 0.4))
+        for salah in ("0.1,0.2,0.3", "a,b,c,d", "0.9,0.1,0.3,0.1", "0.1,0.1,0.005,0.1"):
+            with self.assertRaises(beban.Ditolak, msg=salah):
+                lacak.kotak_dari(salah)
+
+    @unittest.skipUnless(_ada_tracker(), "perlu opencv-contrib (visual-venv)")
+    def test_kotak_bergerak_terlacak(self):
+        import tempfile
+        import cv2
+        import numpy as np
+        import lacak
+        with tempfile.TemporaryDirectory() as d:
+            v = Path(d) / "uji.mp4"
+            W, H, fps = 640, 360, 30
+            vw = cv2.VideoWriter(str(v), cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
+            rng = np.random.default_rng(1)
+            latar = rng.integers(0, 60, (H, W, 3), dtype=np.uint8)
+            for i in range(60):  # 2 dtk: kotak bertekstur bergerak kiri -> kanan
+                f = latar.copy()
+                x = 40 + i * 6
+                f[150:210, x:x + 60] = 200
+                f[165:195, x + 15:x + 45] = (0, 0, 255)
+                vw.write(f)
+            vw.release()
+            for alat in ("csrt", "kcf"):
+                doc = lacak.lacak(v, (40 / W, 150 / H, 60 / W, 60 / H), alat=alat, hz=10, progres=lambda *a, **k: None)
+                ts = doc["jalur"][0]["titik"]
+                self.assertGreaterEqual(len(ts), 15, alat)
+                p = ts[-1]
+                x_harap = (40 + round(p["t"] * fps) * 6 + 30) / W
+                self.assertAlmostEqual(p["x"] + p["w"] / 2, x_harap, delta=0.03, msg=alat)
+                self.assertEqual(jp.validasi({**doc, "video": "x"}), [])
+
+
 if __name__ == "__main__":
     unittest.main()
