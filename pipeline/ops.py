@@ -44,6 +44,7 @@ def _durasi_file_ms(path: Path) -> int | None:
 
 # SFX bawaan mesin -> tag kejadian di library aset brand (urutan = prioritas).
 from efek_otomatis import STEM_KE_JENIS, pilih_sfx  # noqa: E402
+import sfx_rencana  # noqa: E402  (R29)
 
 TAG_SFX = {"pop": ["kata-kunci", "teks-muncul"], "whoosh": ["transisi", "teks-muncul"]}
 
@@ -298,28 +299,9 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
                     "style": {"x": 0.5, "y": 0.93, "size": 2.6, "width": 0.9, "color": "#ffffff", "bg": None, "bold": False,
                               "outline": True, "align": "center", "font": "default"}})
 
-    # 5. SFX di track `sfx` (U3a) dengan volume; dari library brand, kalau tidak ada: SFX bawaan mesin.
+    # 5. SFX: dipasang SESUDAH efek video (langkah 6b, R29 sfx_rencana) karena titik potong/zoom ikut jadi kejadian.
     aset_lokal = {}
-    sfx = sorted(props.get("sfx", []), key=lambda s: s["atMs"])
     seed = str((props.get("hook") or {}).get("text", "")) if isinstance(props.get("hook"), dict) else str(props.get("hook") or "")
-    for i, s in enumerate(sfx):
-        stem = Path(s["src"]).stem
-        # SFX Library brand dengan durasi pas + bervariasi (efek_otomatis); dulu aset pertama = klik 12 ms -> dibuang.
-        brand = pilih_sfx(bk.get("aset", []), STEM_KE_JENIS.get(stem, "pop"), i, seed, bk.get("sfx_dilarang", []))
-        if brand:
-            kunci, dur = brand["kunci"], brand.get("durasi_ms") or 300
-        else:
-            p = (root / "public" / s["src"]).resolve()
-            kunci = "$sfx:" + Path(s["src"]).stem
-            dur = _durasi_file_ms(p) or 300
-        batas = (sfx[i + 1]["atMs"] if i + 1 < len(sfx) else s["atMs"] + dur) - s["atMs"]
-        dur = min(dur, batas, max(video_ms - s["atMs"], 0))
-        if dur < MIN_CLIP_MS:
-            continue
-        if not brand:
-            aset_lokal[kunci] = str(p).replace("\\", "/")
-        ops.append({"op": "add_clip", "track_kind": "sfx", "media": kunci, "start_ms": s["atMs"], "duration_ms": dur,
-                    "volume": s.get("volume", 1)})
 
     # 5b. Musik latar di track `music` (U3b): hanya instrumental + boleh iklan + tidak dilarang.
     #     Tiga lajur suara berbunyi bersamaan: audio (VO/suara), music, sfx.
@@ -343,6 +325,16 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         framing = punch_in(framing, [o for o in ops if o.get("track_kind") == "video"], float(maks_shot) * 1000)
     for e in efek_video(framing, props.get("zoomThroughs") or [], video_ms):
         ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": e[0], "duration_ms": e[1] - e[0], "effect": e[2]})
+
+    # 6b. R29 SFX lebih banyak (yuki): kejadian dari timeline jadi (hook, potong/zoom/transisi, kata kunci, harga,
+    #     CTA, halaman subtitle), kepadatan dari preset `sfx.kepadatan` (bawaan sedang), volume di bawah VO.
+    hook_ms = hook.get("startMs", 0) if hook and hook.get("text") and hook_end - hook.get("startMs", 0) >= MIN_CLIP_MS else None
+    ops, lap_sfx = sfx_rencana.pasang(ops, bk.get("aset", []), video_ms + penutup_ms, hook_ms=hook_ms,
+                                      cta_ms=cta_mulai if cta_tampil else None,
+                                      kepadatan=sfx_rencana.kepadatan_dari(preset), dilarang=bk.get("sfx_dilarang", []),
+                                      seed=seed)
+    for kunci in lap_sfx["bawaan_mesin"]:  # Library brand tidak punya yang pas: SFX bawaan mesin (public/sfx)
+        aset_lokal[kunci] = str((root / "public" / "sfx" / f"{kunci.split(':', 1)[1]}.wav").resolve()).replace("\\", "/")
 
     # §17.3 watermark teks kecil sepanjang video (opsional Brand Kit).
     # Motion Studio hanya punya SATU track teks: watermark mengisi celah di antara hook/CTA/disclaimer
@@ -401,6 +393,7 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         "kata_kunci": [{"teks": k["text"], "detik": round(k["atMs"] / 1000, 2)} for k in laporan.get("kataKunci", [])],
         "efek": [{"jenis": "kotak_kaca", "dari": 0, "sampai": hook_end / 1000}] if hook else [],
         "audio": {"sfx": sum(1 for o in ops if o.get("media", "").startswith("$sfx:")),
+                  "sfx_rencana": lap_sfx,
                   "musik": (musik or {}).get("nama") or (musik or {}).get("kunci"),
                   "lisensi_musik": (musik or {}).get("sumber_lisensi") or (musik or {}).get("status_lisensi"),
                   "alasan_tanpa_musik" if not musik else "catatan_musik": alasan_musik,

@@ -583,3 +583,44 @@ Perintah: `<visual-venv>\Scripts\python pipeline/visual/hapus_latar.py <masuk> <
   - Video 15 dtk pada 10 fps (150 frame) butuh ±33 menit. Pada 5 fps, ±17 menit.
   - Perkiraan waktu diukur dari frame pertama, lalu dikirim lewat `perkiraan_dtk`.
   - Hasil uji: orang, celana, dan gantungan terpisah rapi.
+
+## 19. SFX lebih banyak (R29, v0.4.2, 16 Nov 2026, yuki — owner: "SFX itu banyak, kenapa tidak dipakai?")
+Modul `pipeline/sfx_rencana.py` dipakai Generate (`ops.py`, langkah 6b, sesudah efek video) dan Batch Remix (`batch/perencana.py`) dengan aturan yang sama. Modul ini membaca timeline ms-ops/1 yang sudah jadi, lalu **mengganti semua klip track `sfx`**.
+- **Penyebab dulu hanya 1 SFX:** bunyi "pop" hanya untuk `kata_kunci` Brand Kit, dan di Aysilla daftar itu masih kosong. Akibatnya cuma whoosh di hook yang terpasang.
+- **Kejadian**, urut dari prioritas tertinggi:
+
+| Kejadian | SFX |
+|---|---|
+| hook muncul | muncul |
+| CTA | ding |
+| kata harga, yaitu `rp…`, `…rb/k/ribu/jt/%`, diskon, promo, gratis, ongkir, harga, murah, hemat, cuma, cashback, potongan, sale | harga |
+| riser 0,9 dtk sebelum hook (kalau ada ruang) atau sebelum CTA (kepadatan sedang/ramai) | riser; hanya dipakai bersama pasangannya |
+| titik potong klip video, efek `zoom_through`/`flash`/zoom `cut` (punch-in), transisi | whoosh |
+| kata yang di-highlight (kata kunci/angka) | pop |
+| halaman subtitle baru | pengisi, pop pelan, disebar merata |
+
+- **Kepadatan:** field preset baru `sfx.kepadatan`, opsional, bawaannya `"sedang"`.
+
+| Kepadatan | Jarak minimal antar SFX | Jumlah maksimal |
+|---|---|---|
+| `"tanpa"` | — | 0 |
+| `"sedikit"` | 3 dtk | 1 per 6 dtk |
+| `"sedang"` | 1,5 dtk | ±1 per 3 dtk |
+| `"ramai"` | 1 dtk | 1 per 2 dtk |
+
+  Di setiap jendela sepanjang batas jumlah, paling banyak 2 SFX. Whoosh paling banyak separuh jatah dan dipilih tersebar.
+- **Pemilihan bunyi:**
+  - Kategori Kenney (switch/minimize/maximize/…) dipilih berselang-seling, dengan cadangan tag mesin (`transisi`, `kata-kunci`, `teks-muncul`, `penutup`) untuk brand tanpa Kenney.
+  - File yang sama tidak dipakai lagi dalam 3 SFX terakhir.
+  - Bunyi negatif (error/glitch/scratch/question/back/click/tick) tidak dipakai.
+  - `sfx_dilarang` dan `lisensi_iklan: false` dihormati.
+  - Panjang klip = panjang file − `SISA_MS`, supaya tidak dibuang oleh `jaga_durasi`.
+- **Volume:** muncul 0,35 · ding/harga 0,4 · whoosh/pop 0,3 · pengisi 0,22 · riser 0,25. Semuanya di bawah VO (1,0).
+- **Kalau Library brand kosong:** dipakai bunyi bawaan mesin `$sfx:pop` / `$sfx:whoosh`.
+- **Laporan:** `rencana.audio.sfx_rencana` = `{kepadatan, jumlah, berbeda, detail:[{detik, jenis, alasan, media}], bawaan_mesin}`. Di Batch: `varian.sfx_rencana`.
+- **Hybrid:** semua SFX adalah klip biasa di track `sfx`, jadi bisa dihapus, digeser, atau diganti di editor.
+- **Catatan Library Kenney:** tidak ada bunyi kasir atau riser asli. "ding/harga" memakai confirmation/glass/bong, "riser" memakai maximize/scroll. Kalau owner mau bunyi cash/riser sungguhan, perlu aset baru (CC0) di Library.
+- **Uji (salinan job, validator Motion Studio OK):**
+  - Generate AYS-20261116-002 (21 dtk): 1 → 8 SFX, 8 file berbeda.
+  - Generate AYS-20261116-001 (5,4 dtk): 1 → 2 SFX (hook + "promo").
+  - Batch 5 varian (21–63 dtk): 7–20 SFX per varian, 6–10 kategori bunyi.
