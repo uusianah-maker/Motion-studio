@@ -32,6 +32,7 @@ export function InspectorPanel({
   onDraft,
   onOverlayDraft,
   asetFonts = [],
+  luts = [],
   onSavePreset,
   readOnly = false,
   lockReason = null,
@@ -52,6 +53,8 @@ export function InspectorPanel({
   onDraft: (d: { clip_id: string; style: Partial<TextStyle> } | null) => void;
   /** R38a: Aset fonts the text can use (Brand → Aset, jenis Font). */
   asetFonts?: { value: string; label: string }[];
+  /** R38b(2): LUT assets of the brand library (own + shared), for the clip's colour LUT. */
+  luts?: { ref: { media_id: string; version_id: string }; label: string }[];
   /** R38a: "Simpan sebagai preset" for a text / subtitle clip (saved in Brand → Aset). */
   onSavePreset?: (nama: string) => Promise<void>;
   /** R26: live overlay spec while a slider moves (preview only). */
@@ -333,7 +336,7 @@ export function InspectorPanel({
           </span>
         </div>
       )}
-      {sound && <ClipLookPanel key={clip.clip_id} clip={clip} kind={clip.kind} submit={submit} duck={duck} brandLook={brand?.filter_bawaan ? LOOKS[brand.filter_bawaan].label : null} />}
+      {sound && <ClipLookPanel key={clip.clip_id} clip={clip} kind={clip.kind} submit={submit} duck={duck} brandLook={brand?.filter_bawaan ? LOOKS[brand.filter_bawaan].label : null} api={api} luts={luts} brandLut={brand?.lut_bawaan ? (luts.find((l) => l.ref.version_id === brand.lut_bawaan!.version_id)?.label ?? 'LUT brand') : null} />}
       {sound && <AudioFxPanel clip={clip} kind={clip.kind} submit={submit} />}
       {clip.media && (clip.kind === 'video' || clip.kind === 'broll') && <MotionPanel clip={clip} playhead={playhead} submit={submit} api={api} />}
       {((clip.media && (clip.kind === 'video' || clip.kind === 'broll')) || isText) && <KeyframePanel clip={clip} playhead={playhead} submit={submit} />}

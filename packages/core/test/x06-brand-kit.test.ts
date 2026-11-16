@@ -159,7 +159,7 @@ describe('X06 Brand Kit', () => {
     const noFont = buildRenderPlan(t, inputs, { ...DEFAULT_RENDER, short_side: 360 }, 'C:/f/arialbd.ttf', 'C:/f/arial.ttf');
     expect(noFont.graph).not.toContain('fontk');
     expect(noFont.graph).not.toContain('overlay');
-    expect(brandRenderRefs({ tracks: [] }, { ...EMPTY_BRAND, logo: { ref: { media_id: 'm', version_id: 'v' }, corner: 'tl', size: 10, opacity: 1, show: 'sepanjang' } })).toEqual({ font: null, font_caption: null, logo: null });
+    expect(brandRenderRefs({ tracks: [] }, { ...EMPTY_BRAND, logo: { ref: { media_id: 'm', version_id: 'v' }, corner: 'tl', size: 10, opacity: 1, show: 'sepanjang' } })).toEqual({ font: null, font_caption: null, logo: null, lut: null });
   });
 
   it.skipIf(!hasFfmpeg || !sysFont)('real render: logo lands in its corner, brand-font text renders, logo + font leased with the clip', async () => {

@@ -1,7 +1,7 @@
 import { LUT_LIMITS, parseCube } from './lut.js';
 import { type TextStyle, validateStyle } from './textStyle.js';
 import { promises as fsp } from 'node:fs';
-import { LOOK_IDS, type LookId } from './clipLook.js';
+import { LOOK_IDS, type LookId, effectiveLut } from './clipLook.js';
 import path from 'node:path';
 import { audit } from './audit.js';
 import { type BrandGuard, EMPTY_GUARD, validateGuard } from './brandGuard.js';
@@ -901,10 +901,12 @@ export async function deleteBrand(ws: Workspace, input: { brand_id: string; acto
   });
 }
 
-/** Media a render of `t` needs from the kit: logo when switched on, each font a text uses. */
-export function brandRenderRefs(t: Timeline, k: BrandKit): { font: MediaRef | null; font_caption: MediaRef | null; logo: BrandLogo | null } {
+/** Media a render of `t` needs from the kit: logo when switched on, each font a text uses, the default LUT (R38b) when a picture clip follows it. */
+export function brandRenderRefs(t: Timeline, k: BrandKit): { font: MediaRef | null; font_caption: MediaRef | null; logo: BrandLogo | null; lut: MediaRef | null } {
   const uses = (f: 'brand' | 'caption') => t.tracks.some((tr) => (tr.kind === 'text' || tr.kind === 'subtitle') && tr.clips.some((c) => c.text?.trim() && c.style?.font === f));
-  return { font: uses('brand') ? k.font : null, font_caption: uses('caption') ? k.font_caption : null, logo: t.brand_logo && k.logo ? k.logo : null };
+  const lut = k.lut_bawaan;
+  const lutUsed = !!lut && t.tracks.some((tr) => (tr.kind === 'video' || tr.kind === 'broll') && tr.clips.some((c) => c.media && !c.lut && effectiveLut(c, lut) !== null));
+  return { font: uses('brand') ? k.font : null, font_caption: uses('caption') ? k.font_caption : null, logo: t.brand_logo && k.logo ? k.logo : null, lut: lutUsed ? lut : null };
 }
 
 // ------------------------------------------------------------------ export for the engine

@@ -6,6 +6,7 @@ import { nextPresetId } from '../lib';
 import { ErrorNotice } from '../ui';
 import { LOOKS, LOOK_IDS } from '../../../../packages/core/dist/storage/clipLook.js';
 import { AssetLibrary } from './AssetLibrary';
+import { LutSwatch } from './LutSwatch';
 import { KamusBelajar } from './KamusBelajar';
 
 const FONT_RE = /\.(ttf|otf)$/i;
@@ -453,7 +454,38 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
                     ))}
                   </select>
                 </label>
+                {/* R38b(2): Brand default LUT (.cube from Aset) — clips without their own LUT follow it. */}
+                {(() => {
+                  const luts = [...draft.aset, ...(loaded?.library.aset ?? [])].filter((x, i, all) => x.jenis === 'lut' && all.findIndex((y) => y.ref.version_id === x.ref.version_id) === i);
+                  if (!luts.length && !draft.lut_bawaan) return null;
+                  return (
+                    <label title="LUT .cube dari Aset untuk semua klip video/b-roll proyek brand ini, kecuali klip dengan LUT sendiri atau filter &quot;Tanpa filter&quot;.">
+                      LUT bawaan video
+                      <select
+                        aria-label="LUT bawaan video"
+                        value={draft.lut_bawaan?.version_id ?? ''}
+                        onChange={(e) => {
+                          const hit = luts.find((x) => x.ref.version_id === e.target.value);
+                          set({ lut_bawaan: hit ? { ...hit.ref } : null });
+                        }}
+                      >
+                        <option value="">Tanpa LUT</option>
+                        {luts.map((x) => (
+                          <option key={x.ref.version_id} value={x.ref.version_id}>
+                            {x.nama || x.id}
+                          </option>
+                        ))}
+                        {draft.lut_bawaan && !luts.some((x) => x.ref.version_id === draft.lut_bawaan!.version_id) && <option value={draft.lut_bawaan.version_id}>LUT (tidak ada di Aset)</option>}
+                      </select>
+                    </label>
+                  );
+                })()}
               </div>
+              {draft.lut_bawaan && (
+                <div role="group" aria-label="Contoh LUT bawaan">
+                  <LutSwatch api={api} versionId={draft.lut_bawaan.version_id} />
+                </div>
+              )}
             </Section>
 
             <Section id="c" title="C. Teks & bahasa">

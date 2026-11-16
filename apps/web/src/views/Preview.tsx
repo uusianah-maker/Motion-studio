@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { blurAt, placeOnCanvas } from '../../../../packages/core/dist/storage/framing.js';
 import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
 import { keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
-import { DEFAULT_DUCK, duckGainAt, effectiveLook, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
+import { DEFAULT_DUCK, duckGainAt, effectiveLook, effectiveLut, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import { orientCss, sourceAt } from '../../../../packages/core/dist/storage/clipMotion.js';
 import { applyAudioFx, resumeAudioFx } from '../audioFx';
+import { useLutValues } from '../lutPreview';
 import { type LoadedBrand, ensureAsetFont } from '../brand';
 import { fontRef } from '../../../../packages/core/dist/storage/textStyle.js';
 import type { Api, Clip, Media, Project } from '../api';
@@ -280,7 +281,11 @@ export function Preview({
   const blurs = srcSize ? blurAt(visual?.blur, srcNow) : [];
   // Malam 15 Nov: colour look (+ Brand Kit default), fit and the incoming transition of the picture.
   const lk = visual ? effectiveLook(visual, brand?.kit.filter_bawaan ?? null) : null;
-  const css = lk ? lookCss(lk.adjust, lk.mono, lk.tone) : null;
+  const look = lk ? lookCss(lk.adjust, lk.mono, lk.tone) : null;
+  // R38b(2): colour LUT (clip > Brand default) as an SVG colour matrix after the look (render: lut3d).
+  const lutRef = visual?.media ? effectiveLut(visual, brand?.kit.lut_bawaan ?? null) : null;
+  const lutVals = useLutValues(api, lutRef?.version_id);
+  const css = look && lutVals ? { ...look, filter: `${look.filter} url(#lutPreview)`.trim() } : look;
   const fit = visual?.fit;
   const allVisual = [...clipsOf('video'), ...clipsOf('broll')];
   const halfMs = (c: Clip, prev: Clip | null) => (c.transition ? Math.min(c.transition.ms / 2, c.end_ms - c.start_ms, prev ? prev.end_ms - prev.start_ms : 0) : 0);
@@ -381,6 +386,13 @@ export function Preview({
       </div>
       <div className="canvasArea">
         <div className="canvas live" ref={canvasRef} style={{ aspectRatio: aspectCss(ratio) }} aria-label="Area pratinjau">
+          {lutVals && (
+            <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+              <filter id="lutPreview" colorInterpolationFilters="sRGB">
+                <feColorMatrix type="matrix" values={lutVals} />
+              </filter>
+            </svg>
+          )}
           {fit === 'blur' && visual?.media && <canvas ref={bgRef} className="fitBlurBg" aria-hidden="true" style={{ ...(css?.filter ? { filter: `blur(12px) ${css.filter}` } : {}), ...(kf.transform ? { transform: `${kf.transform} scale(1.08)` } : {}), ...(kf.opacity !== undefined ? { opacity: kf.opacity } : {}) }} />}
           <video
             ref={videoRef}
@@ -392,6 +404,7 @@ export function Preview({
             className={visual?.media && !unsupported ? '' : 'off'}
             data-look={visual?.look ?? brand?.kit.filter_bawaan ?? undefined}
             data-fit={fit ?? undefined}
+            data-lut={lutVals ? lutRef?.version_id : undefined}
             style={{
               ...zoomStyle,
               ...cropStyle,

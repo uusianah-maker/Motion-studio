@@ -1,7 +1,7 @@
 import { promises as fsp } from 'node:fs';
 import { framingFilters } from './framing.js';
 import { zoomExpr } from './effects.js';
-import { DEFAULT_DUCK, type LookId, denoiseFilter, duckFilter, effectiveLook, fadeFilter, fitFilters, lookFilters, speechRanges, xfadeTransition } from './clipLook.js';
+import { DEFAULT_DUCK, type LookId, denoiseFilter, duckFilter, effectiveLook, effectiveLut, fadeFilter, fitFilters, lookFilters, speechRanges, xfadeTransition } from './clipLook.js';
 export { speechRanges } from './clipLook.js';
 import { kfExpr, keyframeFilters } from './keyframes.js';
 import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
@@ -210,6 +210,9 @@ export interface RenderBrand {
   look?: LookId | null;
   /** R38a: Aset fonts in the job folder by version id (file name there, e.g. `fonta_v_x.ttf`). */
   aset_fonts?: ReadonlyMap<string, string>;
+  /** R38b: Brand default LUT + every LUT file copied into the job folder (version → file name). */
+  lut?: { media_id: string; version_id: string } | null;
+  luts?: ReadonlyMap<string, string>;
   /** R26: local file of each overlay media version; `still` = a picture (looped), else a video. */
   overlays?: ReadonlyMap<string, { path: string; still: boolean }>;
 }
@@ -332,7 +335,10 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const c = seg.clip!;
       // Malam 15 Nov: colour look (+ the brand's default look) on the source picture, then the fit.
       const lk = effectiveLook(c, brand.look ?? null);
-      const look = lookFilters(lk.adjust, lk.mono, lk.tone);
+      // R38b: colour LUT (clip > Brand default; look "none" switches the default off) after the look.
+      const lutRef = effectiveLut(c, brand.lut ?? null);
+      const lutFile = lutRef ? brand.luts?.get(lutRef.version_id) : undefined;
+      const look = [lookFilters(lk.adjust, lk.mono, lk.tone), lutFile ? `lut3d=file=${lutFile}:interp=trilinear` : ''].filter(Boolean).join(',');
       // R23a: direction (after crop/blur, which are in source coordinates), reverse, speed, still, picture noise.
       const motion = [...orientFilters(c), ...(c.reverse ? ['reverse', 'setpts=PTS-STARTPTS'] : []), ...(sp !== 1 ? [`setpts=PTS/${s6(sp)}`] : [])].map((f) => `${f},`).join('');
       const vden = vdenoiseFilter(c.vdenoise);
@@ -665,14 +671,14 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     const kit = await readBrandFor(ws, project.brand_id);
     const brandRefs = brandRenderRefs(project.timeline, kit);
     const leased = new Set(lease.media.map((m) => m.version_id));
-    for (const r of [brandRefs.font, brandRefs.font_caption, brandRefs.logo?.ref]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
+    for (const r of [brandRefs.font, brandRefs.font_caption, brandRefs.logo?.ref, brandRefs.lut]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
     const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.font_caption?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
     const clipVersions = new Set(project.timeline.tracks.flatMap((tr) => (tr.kind === 'overlay' ? [] : tr.clips.flatMap((c) => (c.media ? [c.media.version_id] : [])))));
     const overlayVersions = new Set(clipsOf(project.timeline, 'overlay').flatMap((c) => (c.media ? [c.media.version_id] : [])));
     // R38a: Aset fonts of texts and colour LUTs are leased with the clips but are not timeline media.
     const asetFontRefs = [...clipsOf(project.timeline, 'text'), ...clipsOf(project.timeline, 'subtitle')].flatMap((c) => (c.text?.trim() && fontRef(c.style?.font) ? [fontRef(c.style?.font)!] : []));
     const asetFontVersions = new Set(asetFontRefs.map((r) => r.version_id));
-    const lutVersions = new Set(project.timeline.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.lut ? [c.lut.version_id] : []))));
+    const lutVersions = new Set([...project.timeline.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.lut ? [c.lut.version_id] : []))), ...(brandRefs.lut ? [brandRefs.lut.version_id] : [])]);
     const versions = lease.media.map((m) => reg.versions[m.version_id]!);
     const rels = await Promise.all(versions.map((v) => ws.blobs.resolve(v.rel_path, MEDIA_AREAS)));
     tmp = await fsp.mkdtemp(path.join(hooks.tmpRoot ?? os.tmpdir(), RENDER_TMP_PREFIX));
@@ -737,7 +743,16 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
         const fi = await info(file);
         if (fi) (fonts.aset ??= {})[r.version_id] = fi;
       }
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays, aset_fonts: asetFonts });
+      // R38b: LUT files → job folder (lut3d reads them by a plain relative name).
+      const luts = new Map<string, string>();
+      for (const vid of lutVersions) {
+        const file = local.get(vid);
+        if (!file) throw new StorageError('PRECONDITION', 'File LUT tidak tersedia untuk render', { version_id: vid });
+        const name = `lut_${vid}.cube`;
+        await fsp.copyFile(file, path.join(jobDir, name));
+        luts.set(vid, name);
+      }
+      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays, aset_fonts: asetFonts, lut: brandRefs.lut, luts });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));

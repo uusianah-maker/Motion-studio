@@ -825,6 +825,7 @@ export function EditorView({
               api={api}
               onDraft={setStyleDraft}
               onOverlayDraft={setOverlayDraft}
+              luts={(brand?.library.aset ?? []).filter((a) => a.jenis === 'lut').map((a) => ({ ref: a.ref, label: `${a.nama || a.id}${a.dari ? ` · ${a.dari}` : ''}` }))}
               asetFonts={(brand?.library.aset ?? []).filter((a) => a.jenis === 'font').map((a) => ({ value: fontOfRef(a.ref), label: `${a.nama || a.id}${a.dari ? ` · ${a.dari}` : ''}` }))}
               {...((sel.kind === 'text' || sel.kind === 'subtitle') && sel.text && !reviewer && project.status !== 'archived' ? { onSavePreset: (nama: string) => savePreset(nama, sel) } : {})}
               flushRef={inspectorFlush}

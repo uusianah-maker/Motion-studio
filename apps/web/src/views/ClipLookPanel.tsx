@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ADJUST_KEYS, ADJUST_RANGE, type Adjust, DEFAULT_DUCK, LOOKS, LOOK_IDS, NO_ADJUST, TRANSITIONS, TRANSITION_LABEL, TRANSITION_MS, type TransitionType } from '../../../../packages/core/dist/storage/clipLook.js';
-import type { Clip, EditOp, Track } from '../api';
+import type { Api, Clip, EditOp, Track } from '../api';
+import { LutSwatch } from './LutSwatch';
 import { parseDecimal } from '../lib';
 
 const ADJUST_LABEL: Record<keyof Adjust, string> = { terang: 'Terang', kontras: 'Kontras', saturasi: 'Saturasi', suhu: 'Suhu warna', tajam: 'Ketajaman', vignette: 'Vignette' };
@@ -11,7 +12,8 @@ const sec = (ms: number | undefined) => ((ms ?? 0) / 1000).toFixed(1);
  * gambar (tampilan di canvas, filter warna, adjust) dan transisi masuk untuk klip yang dipilih.
  * Every change is one edit = one undo step (sliders save when released).
  */
-export function ClipLookPanel({ clip, kind, submit, duck, brandLook }: { clip: Clip; kind: Track['kind']; submit: (ops: EditOp[]) => void; duck: number | undefined; brandLook: string | null }) {
+type LutOption = { ref: { media_id: string; version_id: string }; label: string };
+export function ClipLookPanel({ clip, kind, submit, duck, brandLook, api = null, luts = [], brandLut = null }: { clip: Clip; kind: Track['kind']; submit: (ops: EditOp[]) => void; duck: number | undefined; brandLook: string | null; api?: Api | null; luts?: LutOption[]; brandLut?: string | null }) {
   const visual = kind === 'video' || kind === 'broll';
   const [fin, setFin] = useState(sec(clip.fade_in_ms));
   const [fout, setFout] = useState(sec(clip.fade_out_ms));
@@ -147,6 +149,29 @@ export function ClipLookPanel({ clip, kind, submit, duck, brandLook }: { clip: C
                 ))}
               </select>
             </label>
+            {/* R38b(2): colour LUT (.cube from Brand → Aset), rendered with lut3d after the filter. */}
+            {(luts.length > 0 || clip.lut || brandLut) && (
+              <label>
+                LUT warna
+                <select
+                  aria-label="LUT warna"
+                  value={clip.lut?.version_id ?? ''}
+                  onChange={(e) => {
+                    const hit = luts.find((l) => l.ref.version_id === e.target.value);
+                    submit([{ op: 'set_picture', clip_id: clip.clip_id, lut: hit ? { ...hit.ref } : null }]);
+                  }}
+                >
+                  <option value="">{brandLut ? (clip.look === 'none' ? `Tanpa LUT (filter "Tanpa filter" mematikan ${brandLut})` : `Ikuti brand (${brandLut})`) : 'Tanpa LUT'}</option>
+                  {luts.map((l) => (
+                    <option key={l.ref.version_id} value={l.ref.version_id}>
+                      {l.label}
+                    </option>
+                  ))}
+                  {clip.lut && !luts.some((l) => l.ref.version_id === clip.lut!.version_id) && <option value={clip.lut.version_id}>LUT (tidak ada di brand ini)</option>}
+                </select>
+              </label>
+            )}
+            {clip.lut && api && <LutSwatch api={api} versionId={clip.lut.version_id} />}
           </div>
           <div className="inspGrid" role="group" aria-label="Adjust gambar">
             {ADJUST_KEYS.map((k) => (

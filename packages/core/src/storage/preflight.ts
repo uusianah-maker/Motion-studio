@@ -101,6 +101,7 @@ export async function renderPreflight(
   if (brand.font) refs.push(brand.font);
   if (brand.font_caption) refs.push(brand.font_caption);
   if (brand.logo) refs.push(brand.logo.ref);
+  if (brand.lut) refs.push(brand.lut);
 
   for (const ref of refs) {
     if (seen.has(ref.version_id)) continue;

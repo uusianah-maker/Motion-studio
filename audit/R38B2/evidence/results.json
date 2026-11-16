@@ -1,0 +1,67 @@
+[
+  {
+    "id": "R38B2-01 Inspector klip video → \"LUT warna\" berisi LUT Aset brand",
+    "ok": true,
+    "detail": "Tanpa LUT|Negatif|Serba Biru"
+  },
+  {
+    "id": "R38B2-02 Pilih Negatif → clip.lut tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-03 Pratinjau: filter LUT (matriks warna) terpasang di video",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-04 Matriks pratinjau LUT negatif = −1 di diagonal, offset 1",
+    "ok": true,
+    "detail": "-1 0 0 0 1 0 -1 0 0 1 0 0 -1 0 1 0 0 0 1 0"
+  },
+  {
+    "id": "R38B2-05 Swatch sebelum/sesudah (persis = lut3d) di Inspector",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-06 Undo → LUT klip hilang, pratinjau tanpa LUT",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-07 Brand: \"LUT bawaan video\" + swatch",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-08 Simpan → kit.lut_bawaan tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-09 Pratinjau mengikuti LUT bawaan brand",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-10 Inspector: pilihan \"Ikuti brand (Serba Biru)\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-11 Filter \"Tanpa filter\" → LUT bawaan mati di klip itu",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38B2-12 Render: LUT bawaan brand dipasang (lut3d → merah jadi biru)",
+    "ok": true,
+    "detail": "[0,0,204]"
+  },
+  {
+    "id": "R38B2-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]
