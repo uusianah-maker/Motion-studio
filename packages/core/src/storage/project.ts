@@ -1,4 +1,5 @@
 import { StorageError } from './errors.js';
+import { type Chroma, validateChroma } from './chroma.js';
 import { type BlurRegion, type Crop, validateBlur, validateCrop } from './framing.js';
 import { type ClipEffect, validateEffect } from './effects.js';
 import { type Word, validateWords } from './words.js';
@@ -58,6 +59,8 @@ export interface Clip extends ClipExtras {
   keyframes?: Keyframe[];
   /** R26: picture overlay on the `overlay` track (position, size, opacity, layer, whole video). */
   overlay?: Overlay;
+  /** R23e: chroma key (green screen) of an overlay clip. */
+  chroma?: Chroma;
 }
 
 export const CANVAS_RATIOS = ['9:16', '3:4', '1:1', '16:9'] as const;
@@ -310,6 +313,15 @@ function validateTracks(timeline: Obj, where: string): Track[] {
           if (k.length) clip.keyframes = k;
         } catch (e) {
           fail(`${cw}.keyframes`, e instanceof Error ? e.message : 'tidak valid');
+        }
+      }
+      // R23e: chroma key of an overlay clip.
+      if (co.chroma !== undefined) {
+        if (kind !== 'overlay' || !clip.media) fail(`${cw}.chroma`, 'chroma key hanya untuk klip media di track overlay');
+        try {
+          clip.chroma = validateChroma(co.chroma, `${cw}.chroma`);
+        } catch (e) {
+          fail(`${cw}.chroma`, e instanceof Error ? e.message : 'tidak valid');
         }
       }
       if (co.overlay !== undefined || kind === 'overlay') {

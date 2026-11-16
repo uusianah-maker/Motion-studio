@@ -6,6 +6,7 @@ import { type TextStyle, effectiveStyle, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 import { type Keyframe, cutKeyframes, sliceKeyframes, validateKeyframes } from './keyframes.js';
 import { needsAss } from './ass.js';
+import { type Chroma, validateChroma } from './chroma.js';
 import { OVERLAY_DEFAULT, type Overlay, contentEnd, patchOverlay, validateOverlay, validateOverlayPatch } from './overlay.js';
 import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateTransition } from './clipLook.js';
 import { type Eq, validateEq } from './clipAudio.js';
@@ -77,7 +78,9 @@ export type EditOp =
   /** R26: position / size / opacity / margin / whole-video of an overlay clip (only the given fields). */
   | { op: 'set_overlay'; clip_id: string; overlay: Partial<Omit<Overlay, 'sepanjang'>> & { sepanjang?: boolean } }
   /** R26: stacking order — to the very front/back or one step. */
-  | { op: 'set_overlay_layer'; clip_id: string; to: (typeof OVERLAY_LAYER_MOVES)[number] };
+  | { op: 'set_overlay_layer'; clip_id: string; to: (typeof OVERLAY_LAYER_MOVES)[number] }
+  /** R23e: chroma key of an overlay clip (null = off). */
+  | { op: 'set_chroma'; clip_id: string; chroma: Chroma | null };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -279,6 +282,9 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
       case 'duplicate_clip':
         keys(['op', 'clip_id']);
         return { op: 'duplicate_clip', clip_id: clipId(o.clip_id) };
+      case 'set_chroma':
+        keys(['op', 'clip_id', 'chroma']);
+        return { op: 'set_chroma', clip_id: clipId(o.clip_id), chroma: o.chroma === null ? null : guard(() => validateChroma(o.chroma, `ops[${i}].chroma`)) };
       case 'set_overlay': {
         keys(['op', 'clip_id', 'overlay']);
         const overlay = guard(() => validateOverlayPatch(o.overlay, `ops[${i}].overlay`));
@@ -327,6 +333,7 @@ function splitInto(track: Track, index: number, at: number, newClipId: () => str
   if (clip.crop) right.crop = { ...clip.crop };
   if (clip.blur) right.blur = clip.blur.map((b) => ({ ...b }));
   if (clip.overlay) right.overlay = { ...clip.overlay };
+  if (clip.chroma) right.chroma = { ...clip.chroma };
   // Malam 15 Nov: the look/sound carry over; a fade-in and the incoming transition stay on the left
   // half (the clip's start), a fade-out moves to the right half (the clip's end).
   Object.assign(right, copyExtras(clip));
@@ -404,6 +411,7 @@ const clone = (t: Timeline): Timeline => ({
       ...(c.transition ? { transition: { ...c.transition } } : {}),
       ...(c.keyframes ? { keyframes: c.keyframes.map((k) => ({ ...k })) } : {}),
       ...(c.overlay ? { overlay: { ...c.overlay } } : {}),
+      ...(c.chroma ? { chroma: { ...c.chroma } } : {}),
     })),
   })),
   ...(t.canvas ? { canvas: { ...t.canvas } } : {}),
@@ -816,6 +824,13 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         const track = trackFor(t, 'music');
         if (op.on) track.duck = op.level ?? track.duck ?? 0.3;
         else delete track.duck;
+        break;
+      }
+      case 'set_chroma': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (track.kind !== 'overlay' || !clip.media) bad('Chroma key hanya untuk klip di track overlay', { clip_id: op.clip_id });
+        if (op.chroma) clip.chroma = { ...op.chroma };
+        else delete clip.chroma;
         break;
       }
       case 'set_overlay': {

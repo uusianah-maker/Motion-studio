@@ -6,6 +6,7 @@ export { speechRanges } from './clipLook.js';
 import { kfExpr, keyframeFilters } from './keyframes.js';
 import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
 import { stabilPath, stabilReady } from './stabil.js';
+import { chromaFilter } from './chroma.js';
 import { audioFxFilters } from './clipAudio.js';
 import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
 import { readFontInfo } from './fontInfo.js';
@@ -484,7 +485,9 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     const y = (o.pos === 'c' ? '(H-h)/2' : o.pos.startsWith('t') ? `${m}` : `H-h-${m}`) + off(ny);
     // A video overlay starts at its clip's start (its own frames from in_ms); a picture is looped.
     const time = src.still ? '' : `setpts=PTS-STARTPTS+${s6(from / 1000)}/TB,fps=${fps},`;
-    graph.push(`[${idx}:v:0]${time}scale=${ow}:-2,format=rgba,colorchannelmixer=aa=${o.opasitas.toFixed(2)},setsar=1[ov${k}]`);
+    // R23e: chroma key before the scale (agreed with wawok, R26 chain).
+    const key = c.chroma ? `${chromaFilter(c.chroma)},` : '';
+    graph.push(`[${idx}:v:0]${time}${key}scale=${ow}:-2,format=rgba,colorchannelmixer=aa=${o.opasitas.toFixed(2)},setsar=1[ov${k}]`);
     layers.push({ input: `ov${k}`, x, y, enable: `between(t,${s6(from / 1000)},${s6(to / 1000)})` });
   });
   // X06: Brand Kit logo in a corner, over everything (text and overlays included), for the whole video.

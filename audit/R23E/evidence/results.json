@@ -1,0 +1,57 @@
+[
+  {
+    "id": "R23E-01 Klip overlay → grup \"Chroma key\" di Inspector",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-02 Aktifkan → chroma hijau #00ff00 tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-03 Pratinjau: overlay digambar lewat kanvas chroma",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-04 Pratinjau: latar hijau transparan, subjek merah tetap (rumus = render)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-05 Preset \"Biru\" → warna kunci #0000ff",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-06 Toleransi 30% tersimpan (satu simpan setelah berhenti)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-07 Pipet warna (EyeDropper browser) tersedia",
+    "ok": true,
+    "detail": "true"
+  },
+  {
+    "id": "R23E-08 Undo → toleransi kembali",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-09 Matikan → chroma hilang, overlay biasa lagi",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-10 Render tetap jalan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23E-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

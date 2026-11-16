@@ -1,3 +1,4 @@
+import { chromaAlpha, chromaKeyUV } from '../../../../packages/core/dist/storage/chroma.js';
 import { useEffect, useRef, useState } from 'react';
 import { overlayOrder, overlaySpan } from '../../../../packages/core/dist/storage/overlay.js';
 import type { Overlay } from '../../../../packages/core/dist/storage/overlay.js';
@@ -124,5 +125,50 @@ function OverlayItem({ api, clip, spec, media, time, canvas, selected, onSelect,
   const cls = `overlayImg${selected ? ' sel' : ''}${onSelect || (selected && onMove) ? ' drag' : ''}`;
   const common = { className: cls, style: { ...style, zIndex: 3 }, 'data-overlay': clip.clip_id, 'data-pos': spec.pos, 'data-layer': spec.layer, ...handlers };
   if (!url) return <span {...common} aria-hidden="true" />;
+  // R23e (ucok): chroma key — a hidden source, keyed onto a canvas with the render's own formula.
+  if (clip.chroma) return <ChromaOverlay url={url} isVideo={isVideo} videoRef={videoRef} chroma={clip.chroma} common={common} />;
   return isVideo ? <video ref={videoRef} src={url} muted playsInline preload="auto" aria-label="Overlay video" {...common} /> : <img src={url} alt="Overlay" draggable={false} {...common} />;
+}
+
+/** R23e: the overlay with its key colour made transparent (FFmpeg chromakey's rule, chroma.ts). */
+function ChromaOverlay({ url, isVideo, videoRef, chroma, common }: { url: string; isVideo: boolean; videoRef: React.RefObject<HTMLVideoElement | null>; chroma: { warna: string; toleransi: number; halus: number }; common: Record<string, unknown> & { style: React.CSSProperties } }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const key = chromaKeyUV(chroma.warna);
+    const draw = () => {
+      const src = (isVideo ? videoRef.current : imgRef.current) as HTMLVideoElement | HTMLImageElement | null;
+      const cv = canvasRef.current;
+      const w0 = src ? ('videoWidth' in src ? src.videoWidth : src.naturalWidth) : 0;
+      const h0 = src ? ('videoHeight' in src ? src.videoHeight : src.naturalHeight) : 0;
+      if (src && cv && w0 && h0) {
+        const k = Math.min(1, 360 / w0);
+        const w = Math.max(1, Math.round(w0 * k));
+        const h = Math.max(1, Math.round(h0 * k));
+        if (cv.width !== w || cv.height !== h) {
+          cv.width = w;
+          cv.height = h;
+        }
+        const ctx = cv.getContext('2d', { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(src, 0, 0, w, h);
+          const img = ctx.getImageData(0, 0, w, h);
+          const d = img.data;
+          for (let i = 0; i < d.length; i += 4) d[i + 3] = Math.round(d[i + 3]! * chromaAlpha(d[i]!, d[i + 1]!, d[i + 2]!, key, chroma));
+          ctx.putImageData(img, 0, 0);
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [isVideo, videoRef, chroma.warna, chroma.toleransi, chroma.halus]);
+  const hidden: React.CSSProperties = { position: 'absolute', width: 2, height: 2, opacity: 0, pointerEvents: 'none' };
+  return (
+    <>
+      {isVideo ? <video ref={videoRef} src={url} muted playsInline preload="auto" aria-hidden="true" style={hidden} /> : <img ref={imgRef} src={url} alt="" aria-hidden="true" style={hidden} />}
+      <canvas ref={canvasRef} aria-label="Overlay chroma key" data-chroma={chroma.warna} {...common} style={{ ...common.style, height: 'auto' }} />
+    </>
+  );
 }

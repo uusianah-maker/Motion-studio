@@ -8,6 +8,7 @@ import { ClipLookPanel } from './ClipLookPanel';
 import { KeyframePanel } from './KeyframePanel';
 import { MotionPanel } from './MotionPanel';
 import { AudioFxPanel } from './AudioFxPanel';
+import { ChromaPanel } from './ChromaPanel';
 import { OverlayPanel } from './OverlayPanel';
 import type { Overlay } from '../../../../packages/core/dist/storage/overlay.js';
 import { LOOKS } from '../../../../packages/core/dist/storage/clipLook.js';
@@ -247,6 +248,7 @@ export function InspectorPanel({
           {sourceMs !== undefined ? ` dari ${formatDuration(sourceMs)}` : ''}
         </div>
       )}
+      {isOverlay && clip.media && <ChromaPanel clip={clip} submit={submit} />}
       {isOverlay && clip.overlay && <OverlayPanel clip={clip} submit={submit} {...(onOverlayDraft ? { onDraft: onOverlayDraft } : {})} />}
       {sound && (
         <div className="inspGrid">
