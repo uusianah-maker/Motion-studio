@@ -185,6 +185,17 @@ def halaman(kata: list[dict], maks_kata: int = 3, jeda_ms: int = 250, maks_ms: i
     return pages
 
 
+HOOK_MAKS_KATA = 12  # keputusan venus 16 Nov: naskah VO ditulis sengaja, kalimat pertama = pembuka
+
+
+def hook_vo(index: dict) -> str | None:
+    """Hook mode VO: kalimat pertama UTUH bila <= 12 kata (tanpa tanda baca akhir), selain itu None (aturan lama)."""
+    teks = " ".join(str(index["kalimat"][0]["teks"]).split())
+    if not teks or len(teks.split()) > HOOK_MAKS_KATA:
+        return None
+    return re.sub(r"[.,;:!?…]+$", "", teks)
+
+
 def laporan(cfg: dict, index: dict) -> dict:
     return {"media": cfg["media"], "durasi": round(float(index["kalimat"][-1]["akhir"]), 3),
             "kalimat": len(index["kalimat"]), "suara_footage": cfg["suara_footage"]}

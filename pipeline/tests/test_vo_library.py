@@ -158,5 +158,15 @@ class BatchVO(unittest.TestCase):
         self.assertAlmostEqual(rv["durasi_ucapan"], 1.2 + 2.0 + vo_mod.JEDA)
 
 
+
+class HookVO(unittest.TestCase):
+    def test_kalimat_pertama_utuh_maks_12_kata(self):
+        self.assertEqual(V.hook_vo(idx()), "Halo kak")
+        panjang = idx([{"teks": " ".join(["kata"] * 13) + ".", "mulai": 0, "akhir": 3, "kata": []}])
+        self.assertIsNone(V.hook_vo(panjang))
+        dua_belas = idx([{"teks": "Celana Loose Pants ini adem banget dipakai seharian buat kerja dan kuliah!", "mulai": 0, "akhir": 3, "kata": []}])
+        self.assertEqual(V.hook_vo(dua_belas), "Celana Loose Pants ini adem banget dipakai seharian buat kerja dan kuliah")
+
+
 if __name__ == "__main__":
     unittest.main()

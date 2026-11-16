@@ -520,6 +520,9 @@ def main() -> None:
     p_hook = preset_awal.get("hook") or {}
     doubts_hook = []
     hook, hook_note = plan_hook(captions, bk.get("kata_kunci", []) + [p["nama"] for p in bk.get("produk", [])])
+    hook_vo = vo_library.hook_vo(vo_idx) if vo_idx and not args.hook_text else None
+    if hook_vo:  # §22 (venus 16 Nov): kalimat pertama VO utuh bila <= 12 kata; tetap bisa diubah di editor
+        hook["text"], hook_note = hook_vo[:1].upper() + hook_vo[1:], None
     if args.hook_text:
         # Judul pilihan user tetap harus dari ucapan: semua katanya wajib ada di transkrip.
         spoken = {norm(c["text"]) for c in captions}
@@ -527,7 +530,7 @@ def main() -> None:
         if missing:
             raise SystemExit(f"--hook-text memuat kata yang tidak diucapkan: {missing}")
         hook["text"], hook_note = args.hook_text, None
-    if p_hook.get("dari_kalimat_kuat") and not args.hook_text:
+    if p_hook.get("dari_kalimat_kuat") and not args.hook_text and not hook_vo:
         # §17.1: hook dari kalimat terkuat (angka/harga/rating/"!"); tetap kata yang diucapkan.
         kuat = kalimat_kuat(captions)
         if kuat and not _kuat(hook["text"]):

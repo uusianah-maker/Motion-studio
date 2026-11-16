@@ -552,7 +552,8 @@ def jalankan(job_dir: Path) -> int:
             cta_teks = cta.rstrip(".!")
         idx = len(varian) + 1
         v = {"id": f"varian-{idx:03d}", "vo": rv["vo"], "rv": rv, "susunan": sus, "musik": m,
-             "durasi": sus["durasi"], "hook": {"teks": gaya_mod.teks_hook(rv, gaya.get("hook") or {}), "dari": 0.0,
+             "durasi": sus["durasi"], "hook": {"teks": (vo_library.hook_vo(idx_vo) if cfg_vo else None)
+                                               or gaya_mod.teks_hook(rv, gaya.get("hook") or {}), "dari": 0.0,
                                                "sampai": round(hook_sampai, 2)},
              "cta": cta_teks, "_shots": shots,
              "_pembuka": pembuka, "_per_kalimat": per_kalimat}

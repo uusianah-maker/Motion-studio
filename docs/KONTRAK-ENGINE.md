@@ -802,7 +802,7 @@ Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts`
   - Batch: Shot Library, dipilih lewat matcher dengan **teks kalimat VO** sebagai pengganti kalimat vokal;
   - Beat Spot: potongan tetap di ketukan (§16); VO diletakkan di atas sound dengan `set_ducking` 0,3 bila `audio_pilihan: "keduanya"`.
 - **Hook, CTA, SFX (§19), musik, dan watermark/penutup** mengikuti aturan mode masing-masing.
-  - Hook bawaan = kalimat VO pertama, atau kalimat terkuat bila preset `hook.dari_kalimat_kuat`.
+  - **Hook (keputusan venus 16 Nov)**: kalimat pertama VO dipakai **utuh** bila ≤ 12 kata, tanpa tanda baca akhir, karena naskah VO ditulis sengaja dan kalimat pertamanya adalah pembuka. Aturan ini mengalahkan `hook.dari_kalimat_kuat` dan batas `hook.baris` preset. Kalimat yang lebih panjang memakai aturan hook mode masing-masing. Hook tetap bisa diubah di editor (`vo_library.hook_vo`; berlaku di Generate & Batch, Beat Spot tidak punya hook).
   - SFX `harga`/`pop` otomatis ikut dari kata-kata di subtitle.
 - **Laporan**: `rencana.json` → `"sumber_suara": "vo_library"`, `"vo": {"media", "durasi", "kalimat": n}`. Peringatan bila footage lebih pendek dari VO (footage diulang/diperpanjang, `jenis: "footage_kurang"`).
 - **Hybrid**: VO, subtitle, dan shot adalah klip biasa, jadi bisa digeser, dipotong, atau diganti di editor. Saat memotong VO di editor, app memakai `voSubtitleOps` untuk menyusun ulang subtitle.
