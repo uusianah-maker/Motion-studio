@@ -1,0 +1,62 @@
+[
+  {
+    "id": "R23B-01 Inspector klip video punya grup \"EQ dan suara\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23B-02 \"Perjelas suara\" tersimpan di klip",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23B-03 Pratinjau: suara video lewat highpass 80 Hz + EQ suara + kompresor (Web Audio)",
+    "ok": true,
+    "detail": "hp80 peaking250:-2 peaking3000:3 comp"
+  },
+  {
+    "id": "R23B-04 Web Audio tersedia (dipakai pratinjau)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23B-05 Preset \"Bass\" mengisi slider (bass +6, treble −1)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23B-06 Slider treble digeser → tersimpan, preset jadi \"Atur sendiri\" (hybrid)",
+    "ok": true,
+    "detail": "{\"bass\":6,\"mid\":0,\"treble\":2}"
+  },
+  {
+    "id": "R23B-07 Kecepatan musik 2× → durasi 3→1,5 dtk, klip musik berikutnya ikut maju",
+    "ok": true,
+    "detail": "[[0,1500],[1500,2500]]"
+  },
+  {
+    "id": "R23B-08 Satu perubahan = satu revisi (satu undo)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23B-09 Pratinjau musik: playbackRate 2 + EQ (lowshelf 100 Hz +6, highshelf 8 kHz +2)",
+    "ok": true,
+    "detail": "rate 2 · lowshelf100:6 highshelf8000:2"
+  },
+  {
+    "id": "R23B-10 Undo mengembalikan kecepatan musik",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23B-11 Preset \"Datar\" menghapus EQ",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23B-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

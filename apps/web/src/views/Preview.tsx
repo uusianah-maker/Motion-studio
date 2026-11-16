@@ -4,6 +4,7 @@ import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
 import { keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
 import { DEFAULT_DUCK, duckGainAt, effectiveLook, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import { orientCss, sourceAt } from '../../../../packages/core/dist/storage/clipMotion.js';
+import { applyAudioFx, resumeAudioFx } from '../audioFx';
 import type { LoadedBrand } from '../brand';
 import type { Api, Clip, Media, Project } from '../api';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
@@ -230,6 +231,14 @@ export function Preview({
     if (audioRef.current) audioRef.current.volume = audioGain;
     if (sfxRef.current) sfxRef.current.volume = sfxGain;
   }, [visualGain, audioGain, sfxGain, musicGain]);
+  // R23b: EQ + "Perjelas suara" of each playing clip (Web Audio, same numbers as the render).
+  const fxKey = [visual, audio, sfx, music].map((c) => (c ? `${c.clip_id}:${JSON.stringify(c.eq ?? null)}:${c.voice ? 1 : 0}` : '-')).join('|');
+  useEffect(() => {
+    applyAudioFx(videoRef.current, visual);
+    applyAudioFx(audioRef.current, audio);
+    applyAudioFx(sfxRef.current, sfx);
+    applyAudioFx(musicRef.current, music);
+  }, [fxKey]);
 
   const v = versionOf(visual);
   // U3d: crop + blurred areas of the visual clip (same geometry as the render).
@@ -403,7 +412,7 @@ export function Preview({
         <button className="tiny" onClick={() => setPlayhead(0)} aria-label="Ke awal">
           ⏮
         </button>
-        <button className="play" onClick={() => setPlaying(!playing)} aria-label={playing ? 'Jeda' : 'Putar'} disabled={end === 0}>
+        <button className="play" onClick={() => (resumeAudioFx(), setPlaying(!playing))} aria-label={playing ? 'Jeda' : 'Putar'} disabled={end === 0}>
           {playing ? '❚❚' : '▶'}
         </button>
         <span className="time">

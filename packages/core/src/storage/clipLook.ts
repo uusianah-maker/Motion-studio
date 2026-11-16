@@ -9,6 +9,7 @@
  */
 import { StorageError } from './errors.js';
 import { MOTION_FIELDS, type MotionFields, copyMotion, readMotion } from './clipMotion.js';
+import { type Eq, isFlatEq, validateEq } from './clipAudio.js';
 
 // ------------------------------------------------------------------ types
 
@@ -280,8 +281,12 @@ export interface ClipExtras extends MotionFields {
   look?: LookId | 'none';
   /** Video/b-roll: transition INTO this clip from the picture before it. */
   transition?: Transition;
+  /** R23b: simple bass / mid / treble EQ (dB) of a media clip's sound. */
+  eq?: Eq;
+  /** R23b: "Perjelas suara" (highpass + voice EQ + light compressor + loudnorm). */
+  voice?: boolean;
 }
-export const SOUND_FIELDS = ['fade_in_ms', 'fade_out_ms', 'denoise'] as const;
+export const SOUND_FIELDS = ['fade_in_ms', 'fade_out_ms', 'denoise', 'eq', 'voice'] as const;
 export const PICTURE_FIELDS = ['fit', 'fit_color', 'adjust', 'look', 'transition'] as const;
 export const EXTRA_FIELDS = [...SOUND_FIELDS, ...PICTURE_FIELDS, ...MOTION_FIELDS] as const;
 
@@ -306,6 +311,14 @@ export function readExtras(o: Record<string, unknown>, where: string, kind: stri
     const d = validateDenoise(o.denoise, `${where}.denoise`);
     if (d !== 'off') out.denoise = d;
   }
+  if (o.eq !== undefined) {
+    const e = validateEq(o.eq, `${where}.eq`);
+    if (!isFlatEq(e)) out.eq = e;
+  }
+  if (o.voice !== undefined) {
+    if (typeof o.voice !== 'boolean') bad(`${where}.voice harus true/false`);
+    if (o.voice) out.voice = true;
+  }
   if (o.fit !== undefined) out.fit = validateFit(o.fit, `${where}.fit`);
   if (o.fit_color !== undefined) out.fit_color = validateColor(o.fit_color, `${where}.fit_color`);
   if (o.adjust !== undefined) {
@@ -314,7 +327,7 @@ export function readExtras(o: Record<string, unknown>, where: string, kind: stri
   }
   if (o.look !== undefined) out.look = validateLook(o.look, `${where}.look`);
   if (o.transition !== undefined) out.transition = validateTransition(o.transition, `${where}.transition`);
-  Object.assign(out, readMotion(o, where, visual && hasMedia));
+  Object.assign(out, readMotion(o, where, visual && hasMedia, hasMedia));
   return out;
 }
 
@@ -324,6 +337,8 @@ export function copyExtras(c: ClipExtras): ClipExtras {
     ...(c.fade_in_ms ? { fade_in_ms: c.fade_in_ms } : {}),
     ...(c.fade_out_ms ? { fade_out_ms: c.fade_out_ms } : {}),
     ...(c.denoise ? { denoise: c.denoise } : {}),
+    ...(c.eq ? { eq: { ...c.eq } } : {}),
+    ...(c.voice ? { voice: true } : {}),
     ...(c.fit ? { fit: c.fit } : {}),
     ...(c.fit_color ? { fit_color: c.fit_color } : {}),
     ...(c.adjust ? { adjust: { ...c.adjust } } : {}),

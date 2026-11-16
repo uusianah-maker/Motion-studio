@@ -50,7 +50,7 @@ describe('R23a ops: validasi, panjang klip, peta sumber', () => {
       { op: 'set_motion', clip_id: 'a', flip_h: 'ya' },
       { op: 'freeze_frame', clip_id: 'a', at_ms: 0, duration_ms: 50 },
       { op: 'freeze_frame', clip_id: 'a', at_ms: 0, duration_ms: 20_000 },
-      { op: 'add_clip', track_kind: 'music', media: V, start_ms: 0, duration_ms: 500, speed: 2 },
+      { op: 'add_clip', track_kind: 'music', media: V, start_ms: 0, duration_ms: 500, reverse: true }, // R23b: speed IS allowed on sound clips
       { op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 500, freeze: true, speed: 2 },
     ]) expect(code(() => validateOps([bad])), JSON.stringify(bad)).toMatch(/^EDIT_INVALID/);
     const t = build([
@@ -58,7 +58,7 @@ describe('R23a ops: validasi, panjang klip, peta sumber', () => {
       { op: 'add_clip', track_kind: 'audio', media: V, start_ms: 0, duration_ms: 2000 },
     ]);
     const aud = t.tracks.find((x) => x.kind === 'audio')!.clips[0]!.clip_id;
-    expect(code(() => applyOps(t, validateOps([{ op: 'set_motion', clip_id: aud, rotate: 90 }]), ids))).toMatch(/hanya untuk klip video\/b-roll/);
+    expect(code(() => applyOps(t, validateOps([{ op: 'set_motion', clip_id: aud, rotate: 90 }]), ids))).toMatch(/hanya bisa diubah kecepatannya/); // R23b: a sound clip only has a speed
   });
 
   it('speed changes the clip length (same source), later clips follow; 1 = off; undo restores', () => {

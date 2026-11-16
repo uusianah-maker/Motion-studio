@@ -7,6 +7,7 @@ import { formatDuration, parseDecimal } from '../lib';
 import { ClipLookPanel } from './ClipLookPanel';
 import { KeyframePanel } from './KeyframePanel';
 import { MotionPanel } from './MotionPanel';
+import { AudioFxPanel } from './AudioFxPanel';
 import { LOOKS } from '../../../../packages/core/dist/storage/clipLook.js';
 
 export type SelectedClip = Clip & { kind: Track['kind'] };
@@ -303,6 +304,7 @@ export function InspectorPanel({
         </div>
       )}
       {clip.media && <ClipLookPanel key={clip.clip_id} clip={clip} kind={clip.kind} submit={submit} duck={duck} brandLook={brand?.filter_bawaan ? LOOKS[brand.filter_bawaan].label : null} />}
+      {clip.media && <AudioFxPanel clip={clip} kind={clip.kind} submit={submit} />}
       {clip.media && (clip.kind === 'video' || clip.kind === 'broll') && <MotionPanel clip={clip} playhead={playhead} submit={submit} />}
       {((clip.media && (clip.kind === 'video' || clip.kind === 'broll')) || isText) && <KeyframePanel clip={clip} playhead={playhead} submit={submit} />}
       {clip.media && onCutReview && (

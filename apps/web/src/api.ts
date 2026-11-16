@@ -219,7 +219,7 @@ export type EditOp =
   | { op: 'set_framing'; clip_id: string; crop?: Crop | null; blur?: BlurRegion[] }
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'music' | 'sfx'; muted: boolean }
   | { op: 'set_loudness'; lufs: number | null }
-  | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off' }
+  | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off'; eq?: { bass: number; mid: number; treble: number } | null; voice?: boolean }
   | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
   | { op: 'set_ducking'; on: boolean; level?: number }
   | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }

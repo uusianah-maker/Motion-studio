@@ -7,6 +7,7 @@ import { isSafeId } from './ids.js';
 import { type Keyframe, cutKeyframes, sliceKeyframes, validateKeyframes } from './keyframes.js';
 import { needsAss } from './ass.js';
 import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateTransition } from './clipLook.js';
+import { type Eq, validateEq } from './clipAudio.js';
 import { FREEZE_MS, MAX_REVERSE_MS, type Rotation, type VDenoise, sliceIn, sourceAt, sourceLength, validateBool, validateRotate, validateSpeed, validateVDenoise } from './clipMotion.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
 
@@ -50,7 +51,7 @@ export type EditOp =
   /** U3: final loudness (LUFS) or null = leave the mix as is. */
   | { op: 'set_loudness'; lufs: number | null }
   /** Malam 15 Nov: sound of a media clip — fades (0 = none) and noise reduction. */
-  | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off' }
+  | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off'; eq?: Eq | null; voice?: boolean }
   /** Malam 15 Nov: picture of a video/b-roll clip; null clears a field. */
   | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
   /** Malam 15 Nov: music ducking under speech; `level` = music gain while someone speaks. */
@@ -190,14 +191,17 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         return { op: 'set_style', clip_id: clipId(o.clip_id), style };
       }
       case 'set_audio': {
-        keys(['op', 'clip_id', 'fade_in_ms', 'fade_out_ms', 'denoise']);
-        if (o.fade_in_ms === undefined && o.fade_out_ms === undefined && o.denoise === undefined) bad(`ops[${i}]: isi fade_in_ms, fade_out_ms dan/atau denoise`);
+        keys(['op', 'clip_id', 'fade_in_ms', 'fade_out_ms', 'denoise', 'eq', 'voice']);
+        if (o.fade_in_ms === undefined && o.fade_out_ms === undefined && o.denoise === undefined && o.eq === undefined && o.voice === undefined) bad(`ops[${i}]: isi fade_in_ms, fade_out_ms, denoise, eq dan/atau voice`);
+        if (o.voice !== undefined && typeof o.voice !== 'boolean') bad(`ops[${i}]: voice harus true/false`);
         return {
           op: 'set_audio',
           clip_id: clipId(o.clip_id),
           ...(o.fade_in_ms !== undefined ? { fade_in_ms: validateFadeMs(o.fade_in_ms, `ops[${i}].fade_in_ms`) } : {}),
           ...(o.fade_out_ms !== undefined ? { fade_out_ms: validateFadeMs(o.fade_out_ms, `ops[${i}].fade_out_ms`) } : {}),
           ...(o.denoise !== undefined ? { denoise: validateDenoise(o.denoise, `ops[${i}].denoise`) } : {}),
+          ...(o.eq !== undefined ? { eq: o.eq === null ? null : validateEq(o.eq, `ops[${i}].eq`) } : {}),
+          ...(o.voice !== undefined ? { voice: o.voice as boolean } : {}),
         };
       }
       case 'set_picture': {
@@ -318,6 +322,7 @@ const withKeys = (c: Clip, k: Keyframe[] | undefined | null): Clip => {
   return out;
 };
 
+const EQ_FLAT = (e: Eq) => e.bass === 0 && e.mid === 0 && e.treble === 0;
 const timelineEnd = (t: Timeline) => Math.max(0, ...t.tracks.flatMap((tr) => tr.clips.map((c) => c.end_ms)));
 
 const clone = (t: Timeline): Timeline => ({
@@ -332,6 +337,7 @@ const clone = (t: Timeline): Timeline => ({
       ...(c.crop ? { crop: { ...c.crop } } : {}),
       ...(c.blur ? { blur: c.blur.map((b) => ({ ...b })) } : {}),
       ...(c.adjust ? { adjust: { ...c.adjust } } : {}),
+      ...(c.eq ? { eq: { ...c.eq } } : {}),
       ...(c.transition ? { transition: { ...c.transition } } : {}),
       ...(c.keyframes ? { keyframes: c.keyframes.map((k) => ({ ...k })) } : {}),
     })),
@@ -591,6 +597,14 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
           if (op.denoise === 'off') delete clip.denoise;
           else clip.denoise = op.denoise;
         }
+        if (op.eq !== undefined) {
+          if (op.eq === null || EQ_FLAT(op.eq)) delete clip.eq;
+          else clip.eq = { ...op.eq };
+        }
+        if (op.voice !== undefined) {
+          if (op.voice) clip.voice = true;
+          else delete clip.voice;
+        }
         break;
       }
       case 'set_picture': {
@@ -617,7 +631,10 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
       }
       case 'set_motion': {
         const { track, clip } = locate(t, op.clip_id);
-        if (!clip.media || (track.kind !== 'video' && track.kind !== 'broll')) bad('Putar, balik, kecepatan dan mundur hanya untuk klip video/b-roll', { clip_id: op.clip_id });
+        const visual = track.kind === 'video' || track.kind === 'broll';
+        // R23b: a sound clip (audio / music / sfx) only has a speed.
+        const onlySpeed = op.rotate === undefined && op.flip_h === undefined && op.flip_v === undefined && op.reverse === undefined && op.vdenoise === undefined;
+        if (!clip.media || (!visual && !(SOUND_TRACKS.includes(track.kind) && onlySpeed))) bad(visual || !clip.media ? 'Putar, balik, kecepatan dan mundur hanya untuk klip video/b-roll' : 'Klip suara hanya bisa diubah kecepatannya', { clip_id: op.clip_id });
         if (clip.freeze && (op.speed !== undefined || op.reverse !== undefined)) bad('Potongan diam tidak punya kecepatan/mundur', { clip_id: op.clip_id });
         if (op.rotate !== undefined) {
           if (op.rotate) clip.rotate = op.rotate;

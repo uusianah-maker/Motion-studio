@@ -5,6 +5,7 @@ import { DEFAULT_DUCK, type LookId, XFADE, denoiseFilter, duckFilter, effectiveL
 export { speechRanges } from './clipLook.js';
 import { kfExpr, keyframeFilters } from './keyframes.js';
 import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
+import { audioFxFilters } from './clipAudio.js';
 import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
 import { readFontInfo } from './fontInfo.js';
 import { type LogoCorner, brandRenderRefs, readBrandFor } from './brand.js';
@@ -341,7 +342,8 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     if (hasA && !c0?.freeze) {
       const c = seg.clip!;
       const skip = (pre - holdStart) * samplesPerFrame;
-      const fx = [denoiseFilter(c.denoise), fadeFilter(c, c.end_ms - c.start_ms, startMs - c.start_ms)].filter(Boolean).map((f) => `,${f}`).join('');
+      // R23b: voice enhancement + EQ after the noise reduction, before the fades.
+      const fx = [denoiseFilter(c.denoise), ...audioFxFilters(c, AFMT), fadeFilter(c, c.end_ms - c.start_ms, startMs - c.start_ms)].filter(Boolean).map((f) => `,${f}`).join('');
       // R23a: reversed / sped-up sound (areverse + atempo chain), the pre-roll cut off afterwards.
       const head = moving ? `asetpts=PTS-STARTPTS,${AFMT}${c.reverse ? ',areverse' : ''}${atempoChain(sp).map((f) => `,${f}`).join('')}${skip ? `,atrim=start_sample=${skip}` : ''},asetpts=PTS-STARTPTS` : `${skip ? `atrim=start_sample=${skip},` : ''}asetpts=PTS-STARTPTS,${AFMT}`;
       graph.push(`[${idx}:a:0]${head}${gainFilter(gainOf(c))}${fx},apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${k}]`);
@@ -390,11 +392,13 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     const endFrame = Math.min(total_frames, Math.round((c.end_ms * fps) / 1000));
     if (!src?.probe.audio_codec || endFrame <= startFrame || gainOf(c) === 0) continue;
     const durMs = ((endFrame - startFrame) * 1000) / fps;
-    const idx = input(src, c.in_ms ?? 0, durMs);
+    // R23b: a sped-up / slowed-down sound clip reads speed × its length of source (atempo chain).
+    const sp = c.speed ?? 1;
+    const idx = input(src, c.in_ms ?? 0, durMs * sp);
     const delay = Math.round((startFrame * 1000) / fps);
     const isMusic = trackOf.get(c.clip_id)?.kind === 'music';
-    const fx = [denoiseFilter(c.denoise), fadeFilter(c, c.end_ms - c.start_ms), isMusic ? duckFilter(duckRanges, duckLevel, delay) : ''].filter(Boolean).map((f) => `,${f}`).join('');
-    graph.push(`[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(c))}${fx},apad,atrim=end_sample=${(endFrame - startFrame) * samplesPerFrame},adelay=delays=${delay}:all=1[m${mixes.length}]`);
+    const fx = [denoiseFilter(c.denoise), ...audioFxFilters(c, AFMT), fadeFilter(c, c.end_ms - c.start_ms), isMusic ? duckFilter(duckRanges, duckLevel, delay) : ''].filter(Boolean).map((f) => `,${f}`).join('');
+    graph.push(`[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${atempoChain(sp).map((f) => `,${f}`).join('')}${gainFilter(gainOf(c))}${fx},apad,atrim=end_sample=${(endFrame - startFrame) * samplesPerFrame},adelay=delays=${delay}:all=1[m${mixes.length}]`);
     mixes.push(`[m${mixes.length}]`);
   }
   // U3: the final loudness (timeline.loudness_lufs) is applied after encoding, in two passes

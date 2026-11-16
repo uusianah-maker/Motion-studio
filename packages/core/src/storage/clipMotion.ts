@@ -43,10 +43,10 @@ export const validateSpeed = (v: unknown, where: string): number =>
   typeof v === 'number' && Number.isFinite(v) && v >= SPEED_RANGE[0] && v <= SPEED_RANGE[1] ? Math.round(v * 100) / 100 : bad(`${where} harus angka ${SPEED_RANGE[0]}–${SPEED_RANGE[1]}`);
 export const validateVDenoise = (v: unknown, where: string): VDenoise | 'off' => (v === 'off' || VDENOISE_LEVELS.includes(v as VDenoise) ? (v as VDenoise | 'off') : bad(`${where} harus off | ringan | sedang`));
 
-/** Read the motion fields of an untrusted clip / add_clip op (only on video/b-roll media clips). */
-export function readMotion(o: Record<string, unknown>, where: string, visualMedia: boolean): MotionFields {
+/** Read the motion fields of an untrusted clip / add_clip op: video/b-roll media clips; R23b: `speed` on any media clip. */
+export function readMotion(o: Record<string, unknown>, where: string, visualMedia: boolean, hasMedia = visualMedia): MotionFields {
   const out: MotionFields = {};
-  for (const k of MOTION_FIELDS) if (o[k] !== undefined && !visualMedia) bad(`${where}.${k}: hanya untuk klip video/b-roll`);
+  for (const k of MOTION_FIELDS) if (o[k] !== undefined && !visualMedia && !(k === 'speed' && hasMedia)) bad(`${where}.${k}: hanya untuk klip video/b-roll`);
   if (o.rotate !== undefined) {
     const r = validateRotate(o.rotate, `${where}.rotate`);
     if (r) out.rotate = r;
