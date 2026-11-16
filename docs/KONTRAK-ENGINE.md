@@ -856,7 +856,7 @@ Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts`
 - **§22 lengkap**: Generate, Batch, dan Beat Spot sudah jalan. Sisi app (pilihan di 3 halaman + salin index) dikerjakan ucok.
 
 
-## 23. Profil suara "Suara owner" — `engine suara_profil` (R31, v0.4.6, 16 Nov 2026, yuki; app: Hanagaki) — DRAF, mesin BELUM tersedia
+## 23. Profil suara "Suara owner" — `engine suara_profil` (R31, v0.4.6, 16 Nov 2026, yuki; app: Hanagaki; OK venus)
 Tujuannya: owner menambah contoh suaranya, mesin membersihkan dan memeriksa mutunya, lalu melatih profil. Sesudah siap, `owner:Suara owner` muncul di daftar suara §21. Pengucapannya: TTS Andika (+ pelafalan) lalu dikonversi ke suara owner (OpenVoice V2 tone converter untuk uji cepat, Applio/RVC untuk hasil utama; keduanya MIT).
 - **Satu profil saja**: `owner`. Menambah profil suara orang lain perlu keputusan owner, dan mesin menolak id profil lain dengan kode 2.
 
@@ -916,5 +916,16 @@ Tujuannya: owner menambah contoh suaranya, mesin membersihkan dan memeriksa mutu
   - Selama belum siap, `owner:Suara owner` tidak muncul. `tts` dengan suara itu ditolak dengan kode 2.
 
 ### 23.5 Status
-- **Mesin belum tersedia** (16 Nov): venv `<TOOLS>/suara-venv` (Applio 3.7.1 + OpenVoice V2, torch 2.11 cu128) sedang dipasang, dan rekaman owner belum masuk.
-- App boleh dibuat dulu dengan status "mesin belum tersedia" bila `engine suara_profil` mengembalikan kode 1 dengan pesan `perintah tidak dikenal`.
+- **Sudah jalan**: `engine suara_profil` (`pipeline/suara_profil.py`, berjalan di .venv). Fungsinya:
+  - ambil audio dari video/audio, ubah ke mono 40 kHz;
+  - deteksi ucapan dari energi terhadap lantai derau, jeda dipendekkan ke maksimal 0,6 dtk;
+  - hitung SNR dan clipping;
+  - deteksi musik latar: sela ucapan tetap berbunyi di atas -45 dBFS dan bersifat bernada (spectral flatness < 0,2);
+  - dedup dengan SHA-256, `hapus_contoh`, `perlu_latih_ulang`, `kurang_contoh`.
+- **Uji audio asli** (hanya dibaca):
+  - vokal IN17 hasil Demucs: SNR 28,8 dB, **dipakai**;
+  - video IN17 asli (bercampur musik): **ditolak "ada musik latar"**;
+  - stem musik: ditolak.
+  - Tes: `tests/test_suara_profil.py` 3/3.
+- **Belum**: langkah `latih` dan `contoh_hasil`, karena suara-venv (Applio 3.7.1 + OpenVoice V2, torch 2.11 cu128) masih dipasang. Selama itu, `latih: true` dengan contoh ≥ 5 menit menghasilkan kode 1 dengan pesan "mesin latih suara belum terpasang", tetapi contoh tetap tersimpan dan sudah diperiksa.
+- **Backend `owner`** sudah terdaftar di `tts.py`, tetapi baru muncul di `daftar_suara` setelah profil berstatus siap (`siap: true`).

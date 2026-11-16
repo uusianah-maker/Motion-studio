@@ -185,7 +185,32 @@ class Windows:
         return [(h.get("kata") or []) if isinstance(h.get("kata"), list) else [h["kata"]] for h in hasil]
 
 
-BACKEND = {"windows": Windows()}
+class Owner:
+    """R31 §23: "Suara owner" = TTS Windows lalu konversi ke suara owner. Muncul di daftar HANYA bila profil siap."""
+    nama = "owner"
+
+    def _profil(self) -> dict | None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "batch"))
+        from jalur import DATA
+        p = DATA / "konten" / "suara" / "owner" / "profil.json"
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return d if d.get("versi_model") and not d.get("perlu_latih_ulang") else None
+
+    def daftar(self) -> list[dict]:
+        d = self._profil()
+        return [{"id": f"owner:{d.get('nama') or 'Suara owner'}", "nama": d.get("nama") or "Suara owner", "bahasa": "id-ID",
+                 "gender": None, "backend": "owner", "siap": True}] if d else []
+
+    def ucapkan(self, item, suara, kecepatan):
+        if not self._profil():
+            raise Ditolak("Suara owner belum siap: tambah contoh suara dan latih profil dulu (§23)")
+        raise RuntimeError("konversi Suara owner belum terpasang (suara-venv Applio/OpenVoice sedang disiapkan)")
+
+
+BACKEND = {"windows": Windows(), "owner": Owner()}
 
 
 def urai_suara(s: str | None) -> tuple[str, str]:

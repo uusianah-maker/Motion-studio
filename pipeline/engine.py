@@ -10,6 +10,8 @@
                               logo + end card (pipeline/batch/beatspot.py); out/beatspot.json = laporan potongan
   engine tts      <job_dir>   R24f voice over offline (suara Windows, mis. Andika): job.tts.kalimat -> out/vo/NN.wav,
                               laporan out/tts.json (schema tts/1); pipeline/tts.py (modul yuki)
+  engine suara_profil <job_dir> R31 §23 profil "Suara owner": tambah/hapus contoh, periksa mutu, latih
+                              (pipeline/suara_profil.py, modul yuki); out/suara_profil.json (suara-profil/1)
   engine visual   <job_dir>   R24 Visual Tools (modul yuki, visual-venv MOTION_VISUAL_PY): job.visual.alat = deteksi |
                               reframe | lacak | hapus_latar | perjelas -> out/ (pipeline/visual/jalankan.py, §18)
   engine daftar_batch         daftar batch untuk dropdown (read-only, tanpa job_dir);
@@ -345,6 +347,13 @@ def tts(job_dir: Path) -> int:
     return teruskan([PY, "pipeline/tts.py", str(job_dir)])
 
 
+def suara_profil(job_dir: Path) -> int:
+    if not (job_dir / "job.json").exists():
+        raise FileNotFoundError(f"job.json tidak ada di {job_dir}")
+    # suara_profil.py menulis progres JSON-lines + out/suara_profil.json sendiri; kode 2 = ditolak.
+    return teruskan([PY, "pipeline/suara_profil.py", str(job_dir)])
+
+
 def visual(job_dir: Path) -> int:
     if not (job_dir / "job.json").exists():
         raise FileNotFoundError(f"job.json tidak ada di {job_dir}")
@@ -388,7 +397,7 @@ def cek_alat() -> int:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
-    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "beatspot", "tts", "visual", "daftar_batch", "cek"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "beatspot", "tts", "visual", "suara_profil", "daftar_batch", "cek"):
         log(__doc__)
         return 1
     cmd = sys.argv[1]
@@ -402,7 +411,7 @@ def main() -> int:
     job_dir = Path(sys.argv[2]).resolve()
     try:
         return {"generate": generate, "ulang": ulang, "batch": batch, "pisah": pisah, "transfer": transfer,
-                "beatspot": beatspot, "tts": tts, "visual": visual}[cmd](job_dir)
+                "beatspot": beatspot, "tts": tts, "visual": visual, "suara_profil": suara_profil}[cmd](job_dir)
     except Exception as e:  # noqa: BLE001 - gagal teknis: kode 1, pesan ke progres
         log(f"GAGAL: {e!r}")
         progres("gagal", 100, str(e)[:300])
