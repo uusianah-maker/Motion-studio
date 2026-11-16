@@ -1,0 +1,42 @@
+[
+  {
+    "id": "R23G-01 Panel Alat AI punya \"Auto reframe (9:16)\" + pilihan ikuti wajah / orang",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23G-02 Deteksi → reframe jalan berurutan (2 job mesin) → keyframe dipasang",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23G-03 Klip punya keyframe posisi + skala dari mesin (x 0,58 → 0; skala 3,16)",
+    "ok": true,
+    "detail": "[{\"at_ms\":0,\"x\":0.58,\"y\":0,\"scale\":3.16,\"opacity\":1,\"ease\":\"linear\"},{\"at_ms\":2000,\"x\":0,\"y\":0,\"scale\":3.16,\"opacity\":1,\"ease\":\"linear\"}]"
+  },
+  {
+    "id": "R23G-04 Dua job mesin: deteksi lalu reframe (pakai jalur deteksi)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23G-05 Pratinjau mengikuti keyframe (diperbesar)",
+    "ok": true,
+    "detail": "matrix(3.16, 0, 0, 3.16, 132.276, 0)"
+  },
+  {
+    "id": "R23G-06 \"Hapus keyframe reframe\" → keyframe hilang (usulan, hybrid)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23G-07 Undo → keyframe reframe kembali",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23G-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { visualEstimate } from '../../../../packages/core/dist/storage/visualCalc.js';
+import { reframeCanvas, reframeKeyframes, visualEstimate } from '../../../../packages/core/dist/storage/visualCalc.js';
 import type { Api, Clip, EditOp, VisualView } from '../api';
 import { useEngineJob } from './GenerateView';
 
@@ -12,7 +12,7 @@ const menit = (s: number) => (s < 60 ? `±${Math.max(1, Math.round(s))} dtk` : `
  * cancellable) on THIS PC. The result lands in Media; "Pakai di klip ini" swaps the clip's file
  * (one undo), "Kembalikan asli" swaps it back — the AI result is only a suggestion (hybrid).
  */
-export function VisualToolsPanel({ api, projectId, clip, video, durasiS, locked, edit }: { api: Api; projectId: string; clip: Clip; video: boolean; durasiS: number; locked: boolean; edit: (ops: EditOp[]) => Promise<void> | void }) {
+export function VisualToolsPanel({ api, projectId, clip, video, durasiS, locked, edit, ratio = '9:16' }: { api: Api; projectId: string; clip: Clip; video: boolean; durasiS: number; locked: boolean; edit: (ops: EditOp[]) => Promise<void> | void; ratio?: string }) {
   const [kualitas, setKualitas] = useState<'cepat' | 'tinggi'>(video ? 'cepat' : 'tinggi');
   const [mode, setMode] = useState<'cepat' | 'kualitas'>(video ? 'cepat' : 'kualitas');
   const [current, setCurrent] = useState<{ job_id: string; alat: 'hapus_latar' | 'perjelas' } | null>(null);
@@ -54,6 +54,7 @@ export function VisualToolsPanel({ api, projectId, clip, video, durasiS, locked,
         <b>Alat AI</b>
         <span className="muted small">di PC ini, tanpa biaya</span>
       </div>
+      {video && <ReframeTool api={api} projectId={projectId} clip={clip} ratio={ratio} locked={locked} tooLong={tooLong} edit={edit} />}
       {tooLong && <div className="notice warn small">Klip video maksimal 15 dtk untuk alat AI. Potong klipnya dulu.</div>}
       <div className="inspGrid" role="group" aria-label="Hapus latar">
         <label>
@@ -113,5 +114,81 @@ export function VisualToolsPanel({ api, projectId, clip, video, durasiS, locked,
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * R23g / R35b Auto reframe (KONTRAK-ENGINE §18.2/§18.10): detect the face/subject, then the engine's
+ * AutoFlip-style crop path → keyframes on THIS clip (position + scale). The keyframes are a
+ * suggestion: move / delete them in "Keyframe (gerak)", or remove them all here (one undo).
+ */
+function ReframeTool({ api, projectId, clip, ratio, locked, tooLong, edit }: { api: Api; projectId: string; clip: Clip; ratio: string; locked: boolean; tooLong: boolean; edit: (ops: EditOp[]) => Promise<void> | void }) {
+  const [jenis, setJenis] = useState<'wajah' | 'objek'>('wajah');
+  const [step, setStep] = useState<{ fase: 'deteksi' | 'reframe'; job_id: string } | null>(null);
+  const [done, setDone] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { job } = useEngineJob(api, step ? projectId : null, step?.job_id ?? null);
+  useEffect(() => {
+    if (!step || job?.job_id !== step.job_id) return;
+    if (job.state === 'gagal' || job.state === 'ditolak') {
+      setError(`${step.fase === 'deteksi' ? 'Deteksi' : 'Reframe'} ${job.state}: ${job.alasan ?? ''}`);
+      setStep(null);
+      return;
+    }
+    if (job.state !== 'siap' || !clip.media) return;
+    if (step.fase === 'deteksi') {
+      void api
+        .engineVisual(projectId, clip.media, { alat: 'reframe', jalur_job: step.job_id, rasio: ratio, kanvas: reframeCanvas(ratio), fit: clip.fit === 'isi' ? 'isi' : 'pas', awal_ms: clip.in_ms ?? 0 })
+        .then((j) => setStep({ fase: 'reframe', job_id: j.job_id }), (e) => (setError(String((e as Error).message ?? e)), setStep(null)));
+    } else {
+      void api.visualResult(projectId, step.job_id).then(
+        async (r) => {
+          const kfs = reframeKeyframes(r.data?.keyframe_app, clip.end_ms - clip.start_ms);
+          setStep(null);
+          if (!kfs.length) return setError('Tidak ada wajah/subjek yang bisa diikuti di klip ini');
+          await edit([{ op: 'set_keyframes', clip_id: clip.clip_id, keyframes: kfs }]);
+          setDone(kfs.length);
+        },
+        (e) => (setError(String((e as Error).message ?? e)), setStep(null)),
+      );
+    }
+  }, [job?.state, job?.job_id]);
+  const start = async () => {
+    if (!clip.media) return;
+    setError(null);
+    setDone(null);
+    try {
+      const j = await api.engineVisual(projectId, clip.media, { alat: 'deteksi', jenis: [jenis] });
+      setStep({ fase: 'deteksi', job_id: j.job_id });
+    } catch (e) {
+      setError(String((e as Error).message ?? e));
+    }
+  };
+  const busy = !!step;
+  return (
+    <div className="inspGrid" role="group" aria-label="Auto reframe">
+      <label>
+        Auto reframe ({ratio})
+        <select aria-label="Ikuti" value={jenis} onChange={(e) => setJenis(e.target.value as 'wajah' | 'objek')}>
+          <option value="wajah">Ikuti wajah</option>
+          <option value="objek">Ikuti orang / objek</option>
+        </select>
+      </label>
+      <div className="inspFull">
+        <span className="muted small">{busy ? (step!.fase === 'deteksi' ? `Mendeteksi… ${job?.persen ?? 0}%` : `Menyusun bingkai… ${job?.persen ?? 0}%`) : 'Bingkai otomatis mengikuti subjek'}</span>
+        <button type="button" className="btn small" disabled={locked || busy || tooLong} onClick={() => void start()}>
+          🎯 Auto reframe
+        </button>
+      </div>
+      {error && <div className="notice warn small">{error}</div>}
+      {done !== null && (
+        <div className="notice ok small" role="status" aria-label="Hasil reframe">
+          {done} keyframe dipasang (atur di &quot;Keyframe (gerak)&quot;).{' '}
+          <button type="button" className="btn small" disabled={locked} onClick={() => void Promise.resolve(edit([{ op: 'set_keyframes', clip_id: clip.clip_id, keyframes: [] }])).then(() => setDone(null))}>
+            Hapus keyframe reframe
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

@@ -18,3 +18,35 @@ export function visualEstimate(alat: VisualTool, opts: { video: boolean; durasi_
   return Math.round(opts.durasi_s * 0.25 + 3);
 }
 
+
+// ------------------------------------------------------------------ R23g / R35b auto reframe
+
+const RATIO_PARTS: Record<string, [number, number]> = { '9:16': [9, 16], '3:4': [3, 4], '1:1': [1, 1], '16:9': [16, 9] };
+/** Canvas pixels for a ratio at 1080 on the short side (what reframe's `kanvas` expects). */
+export function reframeCanvas(ratio: string): [number, number] {
+  const [a, b] = RATIO_PARTS[ratio] ?? [9, 16];
+  return a <= b ? [1080, Math.round((1080 * b) / a / 2) * 2] : [Math.round((1080 * a) / b / 2) * 2, 1080];
+}
+
+type Kf = { at_ms: number; x: number; y: number; scale: number; opacity: number; ease: 'linear' | 'ease' };
+/**
+ * The engine's `keyframe_app` (§18.2, times relative to the clip's in-point) → keyframes for a clip
+ * of `lenMs`: a keyframe before 0 becomes the value at 0 (the last one before), those after the end
+ * are dropped, times strictly rising, at most 20 (MAX_KEYFRAMES).
+ */
+export function reframeKeyframes(raw: unknown, lenMs: number): Kf[] {
+  const list = (Array.isArray(raw) ? raw : []) as Record<string, unknown>[];
+  const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+  const kfs: Kf[] = list
+    .filter((k) => k && typeof k.at_ms === 'number')
+    .map((k) => ({ at_ms: Math.round(k.at_ms as number), x: num(k.x, -1, 1, 0), y: num(k.y, -1, 1, 0), scale: num(k.scale, 0.1, 4, 1), opacity: num(k.opacity, 0, 1, 1), ease: (k.ease === 'ease' ? 'ease' : 'linear') as Kf['ease'] }))
+    .sort((a, b) => a.at_ms - b.at_ms);
+  const before = kfs.filter((k) => k.at_ms < 0).at(-1);
+  const inside = kfs.filter((k) => k.at_ms >= 0 && k.at_ms <= lenMs);
+  if (before && !inside.some((k) => k.at_ms === 0)) inside.unshift({ ...before, at_ms: 0 });
+  const out = inside.filter((k, i, a) => i === 0 || k.at_ms > a[i - 1]!.at_ms);
+  if (out.length <= 20) return out;
+  // Too many: keep the first, the last and an even spread between.
+  const step = (out.length - 1) / 19;
+  return Array.from({ length: 20 }, (_, i) => out[Math.round(i * step)]!);
+}

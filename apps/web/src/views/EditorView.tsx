@@ -767,6 +767,7 @@ export function EditorView({
               durasiS={(versionOf(sel.media.version_id)?.probe?.duration_ms ?? 0) / 1000}
               locked={locked}
               edit={(ops) => edit(ops)}
+              ratio={project.timeline.canvas?.ratio ?? '9:16'}
             />
           )}
           {group.length > 1 && project && <MultiPanel clips={group} busy={busy} readOnly={locked} onEdit={(ops) => void edit(ops).then(() => ops[0]?.op === 'delete_clips' && setPicked([]))} onClear={() => setPicked([])} />}
