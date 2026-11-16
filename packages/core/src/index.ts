@@ -38,6 +38,7 @@ export { type BlurRegion, type Crop, fillCrop, validateBlur, validateCrop } from
 export { type Keyframe, keyframeAt } from './storage/keyframes.js';
 export { type Adjust, type ClipExtras, LOOKS, LOOK_IDS, type LookId, TRANSITIONS, type Transition, effectiveLook } from './storage/clipLook.js';
 export { FREEZE_MS, MAX_REVERSE_MS, type MotionFields, type Rotation, SPEED_RANGE, type VDenoise, atempoChain, orientFilters, sliceIn, sourceAt, sourceLength } from './storage/clipMotion.js';
+export { PLAN_MODES, type PendingPlan, pendingPlan } from './storage/rencanaTertunda.js';
 export { PROXY_AUDIO_KBPS, PROXY_SHORT_SIDE, PROXY_VIDEO_KBPS, type ProxyResult, makeProxy, needsProxy, proxyPath, proxyReady } from './storage/proxy.js';
 export { type EngineOrigin, type LearningNote, LEARN_FILE, appendLearning, correctionsFrom, engineOrigin, learnFile, markEngineOrigin, readLearning } from './storage/learning.js';
 export { type Author, MAX_COMMENTS, type ReviewComment, type ReviewDecision, type ReviewState, addComment, decideReview, precheckReview, readReview, resolveComment, reviewState } from './storage/review.js';

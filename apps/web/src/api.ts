@@ -959,6 +959,8 @@ export function createApi(token: string | null, base = '') {
       call<{ state: ReviewInfo['state']; variant_approved?: boolean }>('POST', `/api/projects/${encodeURIComponent(id)}/review`, { json: { expected_revision, status, ...(note ? { note } : {}) } }),
     // U6 engine runner
     engineInfo: () => call<{ installed: boolean; running: number; waiting: number }>('GET', '/api/engine'),
+    /** R25: projects whose newest Generate plan is ready but not applied. */
+    rencanaTertunda: () => call<{ tertunda: { project_id: string; job_id: string; mode: EngineJob['mode'] }[] }>('GET', '/api/engine/rencana-tertunda').then((r) => r.tertunda),
     engineJobs: (id: string) => call<{ jobs: EngineJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs`).then((r) => r.jobs),
     engineStart: (id: string, body: EngineStart) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: body }).then((r) => r.job),
     engineJob: (id: string, jobId: string) => call<{ job: EngineJob; log: string | null }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}`),

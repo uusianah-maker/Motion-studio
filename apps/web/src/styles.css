@@ -463,3 +463,6 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; }
 .approvalVideo { width: 100%; max-height: 62vh; background: #000; border-radius: 8px; }
 kbd { font-size: 10px; border: 1px solid #ffffff44; border-radius: 4px; padding: 0 4px; margin-left: 4px; }
 @media (max-width: 760px) { .approvalGrid { grid-template-columns: 1fr; } .approvalList { max-height: 30vh; } }
+
+/* R25: project list label for an engine plan that is ready but not applied. */
+.project small.pendingPlan { color: var(--warn, #f5b14c); }

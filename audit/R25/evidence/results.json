@@ -1,0 +1,52 @@
+[
+  {
+    "id": "R25-01 Daftar proyek: label \"Rencana belum diterapkan\" hanya di proyek itu",
+    "ok": true,
+    "detail": "🎬 · Aysilla Konten Uji · Video iklan · Revisi 0 · 16 Nov 2026, 14.11 · ● Rencana belum diterapkan"
+  },
+  {
+    "id": "R25-02 Edit: banner \"Rencana mesin siap (job AYS-…)\" di proyek berlinimasa kosong",
+    "ok": true,
+    "detail": "Rencana mesin siap (job AYS-20261116-001) — belum diterapkan ke timeline. Terapkan ke timeline Lihat rencana"
+  },
+  {
+    "id": "R25-03 Proyek tanpa job mesin: tanpa banner",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R25-04 \"Lihat rencana\" membuka 1. Buat video → Video iklan dengan kartu rencana job itu",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R25-05 \"Terapkan ke timeline\" dari banner = satu edit (video + subtitle + musik mesin)",
+    "ok": true,
+    "detail": "video,subtitle,music"
+  },
+  {
+    "id": "R25-06 Sesudah diterapkan: banner hilang, klip tampil di linimasa",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R25-07 Label daftar proyek hilang sesudah diterapkan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R25-08 API rencana-tertunda kosong sesudah diterapkan",
+    "ok": true,
+    "detail": "{\"tertunda\":[]}"
+  },
+  {
+    "id": "R25-09 Undo → linimasa kosong lagi, banner muncul lagi (hybrid)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R25-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

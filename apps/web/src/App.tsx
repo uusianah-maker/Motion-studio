@@ -109,6 +109,9 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
+  // R25: projects with an engine plan that is ready but not applied (label in the list).
+  const [tertunda, setTertunda] = useState<ReadonlySet<string>>(new Set());
+  const [genFokus, setGenFokus] = useState<{ project_id: string; job_id: string; n: number } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const narrow = useMediaQuery('(max-width: 900px)');
@@ -121,6 +124,13 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
   }, [view]);
   const keep = (id: View, node: ReactNode) => (visited.has(id) || view === id ? <div style={view === id ? undefined : { display: 'none' }} aria-hidden={view !== id}>{node}</div> : null);
 
+  const refreshTertunda = useCallback(() => {
+    void api.rencanaTertunda().then((r) => setTertunda(new Set(r.map((x) => x.project_id))), () => undefined);
+  }, [api]);
+  // A job may finish while another page is open: the list label is re-read whenever Edit opens.
+  useEffect(() => {
+    if (view === 'editor') refreshTertunda();
+  }, [view, refreshTertunda]);
   const loadProjects = useCallback(async () => {
     try {
       const list = await api.projects();
@@ -128,10 +138,11 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
       setProjects(list);
       setSelected((cur) => cur ?? list.find((p) => !p.error)?.project_id ?? null);
       setError(null);
+      refreshTertunda();
     } catch (e) {
       setError(e);
     }
-  }, [api]);
+  }, [api, refreshTertunda]);
 
   useEffect(() => {
     void loadProjects();
@@ -163,7 +174,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
   };
 
   const sideList = (
-    <ProjectList projects={projects} selected={selected} onSelect={(id) => { setSelected(id); setView('editor'); }} onCreate={createProject} onImport={importProject} />
+    <ProjectList projects={projects} selected={selected} onSelect={(id) => { setSelected(id); setView('editor'); }} onCreate={createProject} onImport={importProject} tertunda={tertunda} />
   );
 
   return (
@@ -214,10 +225,10 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
       {view === 'editor' && !narrow && <aside className="side" aria-label="Proyek">{sideList}</aside>}
       <div className="page">
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
-        {view === 'editor' && <EditorView api={api} role={role} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} />}
+        {view === 'editor' && <EditorView api={api} role={role} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} onLihatRencana={(pid, job) => { setGenFokus({ project_id: pid, job_id: job, n: Date.now() }); setView('generate'); }} />}
         {view === 'buat' && <BuatVideoView onOpen={(f: BuatFitur) => setView(f)} />}
         {BUAT.includes(view) && <BuatTabs current={view as BuatFitur} onOpen={(f) => setView(f)} onHub={() => setView('buat')} />}
-        {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
+        {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} fokus={genFokus} />)}
         {keep('batch', <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} active={view === 'batch'} />)}
         {keep('beatspot', <BeatSpotView api={api} role={role} projects={projects ?? []} active={view === 'beatspot'} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
         {keep('transfer', <MotionTransferView api={api} role={role} projects={projects ?? []} active={view === 'transfer'} onProjectsChanged={() => void loadProjects()} />)}

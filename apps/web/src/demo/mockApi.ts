@@ -769,6 +769,7 @@ export function createDemoApi(): Api {
     },
     engineInfo: async () => ({ installed: false, running: 0, waiting: 0 }),
     engineJobs: async () => [],
+    rencanaTertunda: async () => [],
     engineStart: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
     engineJob: async () => fail(404, 'NOT_FOUND', 'Job mesin tidak ditemukan'),
     engineContinue: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),

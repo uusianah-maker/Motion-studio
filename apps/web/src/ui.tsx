@@ -96,6 +96,7 @@ export function ProjectList({
   onSelect,
   onCreate,
   onImport,
+  tertunda,
 }: {
   projects: ProjectSummary[] | null;
   selected: string | null;
@@ -103,6 +104,8 @@ export function ProjectList({
   onCreate: (name: string) => Promise<void>;
   /** X05: import an exported project file (JSON). */
   onImport?: (file: File) => Promise<void>;
+  /** R25: projects whose engine plan is ready but not applied yet. */
+  tertunda?: ReadonlySet<string>;
 }) {
   const [q, setQ] = useState('');
   const [name, setName] = useState('');
@@ -137,6 +140,7 @@ export function ProjectList({
             ? 'Manifest rusak — tidak bisa dibuka'
             : `${FITUR_LABEL[fiturOf(p)]} · ${p.variant ? `V${p.variant.number}${p.variant.state === 'approved' ? ' ✓' : ''} · ` : ''}${p.status === 'archived' ? 'Arsip · ' : ''}Revisi ${p.revision} · ${formatDate(p.updated_at)}`}
         </small>
+        {tertunda?.has(p.project_id) && <small className="pendingPlan">● Rencana belum diterapkan</small>}
       </span>
     </button>
   );

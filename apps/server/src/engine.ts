@@ -13,6 +13,7 @@ import {
   listEngineBatches,
   listProjectIds,
   listEngineJobs,
+  pendingPlan,
   loadEnginePlan,
   prepareEngineJob,
   readBatchDecisions,
@@ -149,6 +150,21 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
       method: 'GET',
       path: '/api/engine',
       handle: async () => ({ installed: !!opts.config, running: running ? 1 : 0, waiting: queue.length }),
+    },
+    {
+      // R25: projects whose newest Generate plan is ready but not applied (label in the lists).
+      method: 'GET',
+      path: '/api/engine/rencana-tertunda',
+      handle: async () => {
+        const tertunda: { project_id: string; job_id: string; mode: EngineMode }[] = [];
+        for (const id of await listProjectIds(ws)) {
+          const m = await readProject(ws, id).catch(() => null);
+          if (!m) continue;
+          const p = pendingPlan(m, await listEngineJobs(ws, id));
+          if (p) tertunda.push({ project_id: id, job_id: p.job_id, mode: p.mode });
+        }
+        return { tertunda };
+      },
     },
     {
       method: 'GET',

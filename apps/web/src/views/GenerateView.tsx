@@ -158,7 +158,7 @@ export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }:
   );
 }
 
-export function GenerateView({ api, role = 'owner', projects, onOpenProject, onProjectsChanged }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void; onProjectsChanged?: () => void }) {
+export function GenerateView({ api, role = 'owner', projects, onOpenProject, onProjectsChanged, fokus = null }: { api: Api; role?: Role; projects: ProjectSummary[]; onOpenProject: (id: string) => void; onProjectsChanged?: () => void; /** R25: show this project's job + plan (from the Editor banner). */ fokus?: { project_id: string; job_id: string; n: number } | null }) {
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [brands, setBrands] = useState<BrandKit[]>([]);
   /** Audit 14 Nov (sukma): "not loaded yet" is not "no brand". */
@@ -182,6 +182,13 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
   const [applied, setApplied] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { job, log, error: jobError } = useEngineJob(api, current?.project_id ?? null, current?.job_id ?? null);
+  useEffect(() => {
+    if (!fokus) return;
+    setTarget(fokus.project_id);
+    setCurrent({ project_id: fokus.project_id, job_id: fokus.job_id });
+    setPlan(null);
+    setApplied(null);
+  }, [fokus?.n]);
 
   useEffect(() => {
     void api.engineInfo().then((r) => setInstalled(r.installed), setError);

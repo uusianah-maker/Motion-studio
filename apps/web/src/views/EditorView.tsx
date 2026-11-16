@@ -8,6 +8,7 @@ import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
+import { RencanaBanner } from './RencanaBanner';
 import { freeSlot } from './PresetPanel';
 import { ProjectMenu } from './ProjectMenu';
 import { CutReviewDialog } from './CutReviewDialog';
@@ -68,6 +69,7 @@ export function EditorView({
   onSaved,
   onProjectCreated,
   onProjectsChanged,
+  onLihatRencana,
 }: {
   api: Api;
   /** U7: reviewers see everything read-only (comment + Lulus/Revisi only); editors cannot approve. */
@@ -78,6 +80,8 @@ export function EditorView({
   onProjectCreated?: (id: string) => Promise<void> | void;
   /** X09: variants were created/approved — refresh the project list. */
   onProjectsChanged?: () => void;
+  /** R25: open the engine plan of a project on the Video iklan page. */
+  onLihatRencana?: (projectId: string, jobId: string) => void;
 }) {
   const [project, setProject] = useState<Project | null>(null);
   const [media, setMedia] = useState<Media[]>([]);
@@ -451,6 +455,7 @@ export function EditorView({
             </div>
           </div>
         )}
+        {project && <RencanaBanner key={project.project_id} api={api} project={project} role={role} busy={busy} run={(fn) => run(fn).then(() => onProjectsChanged?.())} {...(onLihatRencana ? { onLihat: onLihatRencana } : {})} />}
         {project?.status === 'archived' && (
           <div style={{ padding: '12px 16px 0' }}>
             <div className="notice warn" role="status">
