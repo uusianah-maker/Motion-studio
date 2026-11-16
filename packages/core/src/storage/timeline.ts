@@ -7,6 +7,7 @@ import { isSafeId } from './ids.js';
 import { type Keyframe, cutKeyframes, sliceKeyframes, validateKeyframes } from './keyframes.js';
 import { needsAss } from './ass.js';
 import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateTransition } from './clipLook.js';
+import { FREEZE_MS, MAX_REVERSE_MS, type Rotation, type VDenoise, sliceIn, sourceAt, sourceLength, validateBool, validateRotate, validateSpeed, validateVDenoise } from './clipMotion.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
 
 /**
@@ -55,7 +56,12 @@ export type EditOp =
   /** Malam 15 Nov: music ducking under speech; `level` = music gain while someone speaks. */
   | { op: 'set_ducking'; on: boolean; level?: number }
   /** Malam 15 Nov: keyframes of a video/b-roll/text/subtitle clip ([] = none). */
-  | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] };
+  | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }
+  /** R23a: direction / speed / reverse / picture noise of a video/b-roll clip. A new speed changes the
+   * clip's length; later clips on the same track move with it. 0 / false / 'off' / 1 = off. */
+  | { op: 'set_motion'; clip_id: string; rotate?: Rotation | 0; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: VDenoise | 'off' }
+  /** R23a: insert a still of the frame at `at_ms` for `duration_ms`; later clips on that track move right. */
+  | { op: 'freeze_frame'; clip_id: string; at_ms: number; duration_ms: number };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -212,6 +218,28 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
       case 'set_keyframes':
         keys(['op', 'clip_id', 'keyframes']);
         return { op: 'set_keyframes', clip_id: clipId(o.clip_id), keyframes: validateKeyframes(o.keyframes, `ops[${i}].keyframes`) };
+      case 'set_motion': {
+        const fields = ['rotate', 'flip_h', 'flip_v', 'speed', 'reverse', 'vdenoise'] as const;
+        keys(['op', 'clip_id', ...fields]);
+        if (fields.every((k) => o[k] === undefined)) bad(`ops[${i}]: isi minimal satu dari ${fields.join(', ')}`);
+        const w = (k: string) => `ops[${i}].${k}`;
+        return {
+          op: 'set_motion',
+          clip_id: clipId(o.clip_id),
+          ...(o.rotate !== undefined ? { rotate: validateRotate(o.rotate, w('rotate')) } : {}),
+          ...(o.flip_h !== undefined ? { flip_h: validateBool(o.flip_h, w('flip_h')) } : {}),
+          ...(o.flip_v !== undefined ? { flip_v: validateBool(o.flip_v, w('flip_v')) } : {}),
+          ...(o.speed !== undefined ? { speed: validateSpeed(o.speed, w('speed')) } : {}),
+          ...(o.reverse !== undefined ? { reverse: validateBool(o.reverse, w('reverse')) } : {}),
+          ...(o.vdenoise !== undefined ? { vdenoise: validateVDenoise(o.vdenoise, w('vdenoise')) } : {}),
+        };
+      }
+      case 'freeze_frame': {
+        keys(['op', 'clip_id', 'at_ms', 'duration_ms']);
+        const d = ms(o.duration_ms, 'duration_ms');
+        if (d < FREEZE_MS[0] || d > FREEZE_MS[1]) bad(`ops[${i}]: lama bekukan ${FREEZE_MS[0] / 1000}–${FREEZE_MS[1] / 1000} detik`);
+        return { op: 'freeze_frame', clip_id: clipId(o.clip_id), at_ms: ms(o.at_ms, 'at_ms'), duration_ms: d };
+      }
       case 'set_ducking':
         keys(['op', 'on', 'level']);
         if (typeof o.on !== 'boolean') bad(`ops[${i}]: on harus true/false`);
@@ -248,8 +276,12 @@ function splitInto(track: Track, index: number, at: number, newClipId: () => str
   delete right.transition;
   delete clip.fade_out_ms;
   if (clip.media) {
+    // R23a: with speed / reverse / freeze each half keeps its own part of the source span.
+    const rel = at - clip.start_ms;
+    const len = clip.end_ms - clip.start_ms;
     right.media = { ...clip.media };
-    right.in_ms = (clip.in_ms ?? 0) + (at - clip.start_ms);
+    right.in_ms = sliceIn(clip, rel, len);
+    clip.in_ms = sliceIn(clip, 0, rel);
   }
   if (clip.words) {
     // Each half keeps the words spoken in it (text follows the words).
@@ -334,9 +366,11 @@ function assertConsistent(t: Timeline, sourceDuration?: SourceDuration): void {
       if (c.text !== undefined && !TEXT_TRACKS.includes(track.kind)) bad('Teks hanya di track teks/subtitle', { clip_id: c.clip_id });
       // Malam 15 Nov: text keyframes are drawn with drawtext; captions word-by-word / animated / highlighted go through libass.
       if (c.keyframes && TEXT_TRACKS.includes(track.kind) && needsAss(effectiveStyle(track.kind as 'text' | 'subtitle', c.style), c)) bad('Keyframe teks belum bisa digabung dengan kata per kata, animasi, atau sorot kata. Matikan itu dulu atau hapus keyframe.', { clip_id: c.clip_id });
+      // R23a: reverse keeps every frame of the piece in memory, so its source span is capped.
+      if (c.reverse && sourceLength(c) > MAX_REVERSE_MS) bad(`Klip mundur maksimal ${MAX_REVERSE_MS / 1000} detik sumber (sekarang ${(sourceLength(c) / 1000).toFixed(1).replace('.', ',')} dtk). Potong klipnya dulu.`, { clip_id: c.clip_id });
       if (c.media && sourceDuration) {
         const total = sourceDuration(c.media);
-        if (total !== undefined && (c.in_ms ?? 0) + (c.end_ms - c.start_ms) > total) {
+        if (total !== undefined && (c.freeze ? (c.in_ms ?? 0) >= total : (c.in_ms ?? 0) + sourceLength(c) > total + 1)) {
           bad(`Klip melebihi panjang video sumber (${(total / 1000).toFixed(1)} dtk)`, { clip_id: c.clip_id });
         }
       }
@@ -414,12 +448,18 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
       case 'trim_clip': {
         const { clip } = locate(t, op.clip_id);
         if (op.edge === 'end') {
+          // R23a: a reversed clip's source start moves when its end is trimmed.
+          if (clip.media && clip.reverse) {
+            const nextIn = sliceIn(clip, 0, op.to_ms - clip.start_ms);
+            if (nextIn < 0) bad('Tidak bisa memperpanjang klip mundur melewati awal sumbernya', { clip_id: clip.clip_id });
+            clip.in_ms = nextIn;
+          }
           clip.end_ms = op.to_ms;
         } else {
           const delta = op.to_ms - clip.start_ms;
           // Trimming the start also moves the source in-point, so the picture stays in place.
           if (clip.media) {
-            const nextIn = (clip.in_ms ?? 0) + delta;
+            const nextIn = sliceIn(clip, delta, clip.end_ms - clip.start_ms);
             if (nextIn < 0) bad('Tidak bisa memperpanjang klip sebelum awal sumbernya', { clip_id: clip.clip_id });
             clip.in_ms = nextIn;
           }
@@ -462,7 +502,7 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
             else if (c.start_ms >= from && c.end_ms <= to) continue; // entirely inside the cut
             else if (c.start_ms < from && c.end_ms > to) {
               if (c.media) {
-                const right: Clip = { ...c, clip_id: newClipId(), start_ms: from, end_ms: c.end_ms - len, in_ms: (c.in_ms ?? 0) + (to - c.start_ms) };
+                const right: Clip = { ...c, clip_id: newClipId(), start_ms: from, end_ms: c.end_ms - len, in_ms: sliceIn(c, to - c.start_ms, c.end_ms - c.start_ms) };
                 if (c.style) right.style = { ...c.style };
                 right.media = { ...c.media };
                 if (c.crop) right.crop = { ...c.crop };
@@ -470,7 +510,7 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
                 if (c.adjust) right.adjust = { ...c.adjust };
                 if (c.transition) delete right.transition;
                 delete right.fade_in_ms;
-                const left: Clip = { ...c, end_ms: from };
+                const left: Clip = { ...c, end_ms: from, in_ms: sliceIn(c, 0, from - c.start_ms) };
                 delete left.fade_out_ms;
                 if (c.keyframes) {
                   const lk = sliceKeyframes(c.keyframes, 0, from - c.start_ms);
@@ -482,8 +522,8 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
                 }
                 out.push(left, right);
               } else out.push(withKeys(withWords({ ...c, end_ms: c.end_ms - len }, c.words ? cutWords(c.words, from - c.start_ms, to - c.start_ms) : undefined), c.keyframes ? cutKeyframes(c.keyframes, from - c.start_ms, to - c.start_ms, c.end_ms - c.start_ms) : null));
-            } else if (c.start_ms < from) out.push(withWords({ ...c, end_ms: from }, c.words ? sliceWords(c.words, 0, from - c.start_ms) : undefined));
-            else out.push(withKeys(withWords({ ...c, start_ms: from, end_ms: c.end_ms - len, ...(c.media ? { in_ms: (c.in_ms ?? 0) + (to - c.start_ms) } : {}) }, c.words ? sliceWords(c.words, to - c.start_ms, c.end_ms - c.start_ms) : undefined), c.keyframes ? sliceKeyframes(c.keyframes, to - c.start_ms, c.end_ms - c.start_ms) : null));
+            } else if (c.start_ms < from) out.push(withWords({ ...c, end_ms: from, ...(c.media && c.reverse ? { in_ms: sliceIn(c, 0, from - c.start_ms) } : {}) }, c.words ? sliceWords(c.words, 0, from - c.start_ms) : undefined));
+            else out.push(withKeys(withWords({ ...c, start_ms: from, end_ms: c.end_ms - len, ...(c.media ? { in_ms: sliceIn(c, to - c.start_ms, c.end_ms - c.start_ms) } : {}) }, c.words ? sliceWords(c.words, to - c.start_ms, c.end_ms - c.start_ms) : undefined), c.keyframes ? sliceKeyframes(c.keyframes, to - c.start_ms, c.end_ms - c.start_ms) : null));
           }
           tr.clips = out.filter((c) => c.end_ms - c.start_ms >= MIN_CLIP_MS);
         }
@@ -573,6 +613,67 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         if (!((track.kind === 'video' || track.kind === 'broll') && clip.media) && !TEXT_TRACKS.includes(track.kind)) bad('Keyframe hanya untuk klip video, b-roll, teks, subtitle', { clip_id: op.clip_id });
         if (op.keyframes.length) clip.keyframes = op.keyframes.map((k) => ({ ...k }));
         else delete clip.keyframes;
+        break;
+      }
+      case 'set_motion': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (!clip.media || (track.kind !== 'video' && track.kind !== 'broll')) bad('Putar, balik, kecepatan dan mundur hanya untuk klip video/b-roll', { clip_id: op.clip_id });
+        if (clip.freeze && (op.speed !== undefined || op.reverse !== undefined)) bad('Potongan diam tidak punya kecepatan/mundur', { clip_id: op.clip_id });
+        if (op.rotate !== undefined) {
+          if (op.rotate) clip.rotate = op.rotate;
+          else delete clip.rotate;
+        }
+        for (const k of ['flip_h', 'flip_v', 'reverse'] as const) {
+          if (op[k] === undefined) continue;
+          if (op[k]) clip[k] = true;
+          else delete clip[k];
+        }
+        if (op.vdenoise !== undefined) {
+          if (op.vdenoise === 'off') delete clip.vdenoise;
+          else clip.vdenoise = op.vdenoise;
+        }
+        if (op.speed !== undefined && op.speed !== (clip.speed ?? 1)) {
+          // Same source span, new length on the timeline; the clips after it on this track follow.
+          const len = clip.end_ms - clip.start_ms;
+          const next = Math.max(MIN_CLIP_MS, Math.round((len * (clip.speed ?? 1)) / op.speed));
+          const delta = next - len;
+          const k = next / len;
+          for (const c of track.clips) {
+            if (c === clip || c.start_ms < clip.end_ms) continue;
+            c.start_ms += delta;
+            c.end_ms += delta;
+          }
+          clip.end_ms = clip.start_ms + next;
+          if (op.speed === 1) delete clip.speed;
+          else clip.speed = op.speed;
+          if (clip.keyframes) clip.keyframes = clip.keyframes.map((x) => ({ ...x, at_ms: Math.min(next, Math.round(x.at_ms * k)) }));
+          if (clip.fade_in_ms) clip.fade_in_ms = Math.min(clip.fade_in_ms, next);
+          if (clip.fade_out_ms) clip.fade_out_ms = Math.min(clip.fade_out_ms, next);
+        }
+        break;
+      }
+      case 'freeze_frame': {
+        const { track, clip, index } = locate(t, op.clip_id);
+        if (!clip.media || (track.kind !== 'video' && track.kind !== 'broll')) bad('Bekukan frame hanya untuk klip video/b-roll', { clip_id: op.clip_id });
+        if (op.at_ms < clip.start_ms || op.at_ms >= clip.end_ms) bad('Playhead harus di dalam klip yang dibekukan', { clip_id: op.clip_id });
+        // Snap to the clip's edge when a split there would leave a sliver.
+        const at = op.at_ms - clip.start_ms < MIN_CLIP_MS ? clip.start_ms : clip.end_ms - op.at_ms < MIN_CLIP_MS ? clip.end_ms : op.at_ms;
+        // The frame shown at the playhead (the last frame when snapped to the clip's end).
+        const frameMs = Math.max(0, Math.round(sourceAt(clip, Math.min(at - clip.start_ms, clip.end_ms - clip.start_ms - 1))));
+        const src = { ...clip };
+        if (at > clip.start_ms && at < clip.end_ms) splitInto(track, index, at, newClipId);
+        for (const c of track.clips) {
+          if (c.start_ms < at) continue;
+          c.start_ms += op.duration_ms;
+          c.end_ms += op.duration_ms;
+        }
+        // Looks like the clip it came from (framing, look, direction); no sound, no motion.
+        const still: Clip = { clip_id: newClipId(), start_ms: at, end_ms: at + op.duration_ms, media: { ...src.media! }, in_ms: frameMs, freeze: true, volume: 0 };
+        if (src.crop) still.crop = { ...src.crop };
+        if (src.blur) still.blur = src.blur.map((b) => ({ ...b }));
+        if (src.adjust) still.adjust = { ...src.adjust };
+        for (const k of ['fit', 'fit_color', 'look', 'rotate', 'flip_h', 'flip_v', 'vdenoise'] as const) if (src[k] !== undefined) (still as unknown as Record<string, unknown>)[k] = src[k];
+        track.clips.push(still);
         break;
       }
       case 'set_ducking': {

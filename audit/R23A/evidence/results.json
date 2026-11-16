@@ -1,0 +1,97 @@
+[
+  {
+    "id": "R23A-01 Inspector klip video punya grup \"Arah dan kecepatan\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23A-02 Kecepatan 2× → durasi klip 2→1 dtk, klip sesudahnya ikut maju",
+    "ok": true,
+    "detail": "0-1000 1000-3000 3000-15000"
+  },
+  {
+    "id": "R23A-03 Pratinjau: video diputar 2× (playbackRate), posisi sumber = 2 × waktu",
+    "ok": true,
+    "detail": "rate 2"
+  },
+  {
+    "id": "R23A-04 Undo mengembalikan kecepatan + durasi (satu langkah)",
+    "ok": true,
+    "detail": "0-2000 2000-4000 4000-16000"
+  },
+  {
+    "id": "R23A-05 Ketik kecepatan 0,25× → durasi 8 dtk; opsi \"Tanpa suara\" muncul (kecepatan ekstrem)",
+    "ok": true,
+    "detail": "0-8000 8000-10000 10000-22000"
+  },
+  {
+    "id": "R23A-06 \"Tanpa suara\" = volume klip 0",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23A-07 Putar 90° tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23A-08 Pratinjau: video diputar 90° (kotak ditukar lebar↔tinggi, transform rotate)",
+    "ok": true,
+    "detail": "rotate(90deg) · 230×409 di 230×409"
+  },
+  {
+    "id": "R23A-09 Balik kiri-kanan tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23A-10 Noise gambar \"Ringan\" tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23A-11 Mundur untuk klip 12 dtk dikunci + pesan batas 10 dtk",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23A-12 Mundur klip 2 dtk tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23A-13 Pratinjau mundur: di 0,5 dtk klip, sumber di 3,5 dtk (dari akhir); video diam, suara dimatikan",
+    "ok": true,
+    "detail": "currentTime 3.50"
+  },
+  {
+    "id": "R23A-14 Bekukan 1,5 dtk di playhead: potongan diam disisipkan, klip sesudahnya bergeser 1,5 dtk",
+    "ok": true,
+    "detail": "0-2000 2000-3000 3000-4500F 4500-5500 5500-17500"
+  },
+  {
+    "id": "R23A-15 Potongan diam memakai frame di playhead (mundur: sumber 3 dtk)",
+    "ok": true,
+    "detail": "in_ms 3000"
+  },
+  {
+    "id": "R23A-16 Render nyata selesai, durasi = linimasa",
+    "ok": true,
+    "detail": "17.50 dtk vs 17.5"
+  },
+  {
+    "id": "R23A-17 Render: putar 90° + balik kiri-kanan sesuai pratinjau (merah kiri, biru kanan)",
+    "ok": true,
+    "detail": "kiri 219,29,30 · kanan 30,28,218"
+  },
+  {
+    "id": "R23A-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R23A-18 HP 390 px: tanpa scroll samping",
+    "ok": true,
+    "detail": "0px"
+  }
+]

@@ -295,6 +295,8 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_picture: 'Tampilan gambar',
   set_ducking: 'Ducking musik',
   set_keyframes: 'Keyframe',
+  set_motion: 'Putar / kecepatan / mundur',
+  freeze_frame: 'Bekukan frame',
 };
 
 /** Short human label for the undo history ("Geser klip", "3 perubahan"). */

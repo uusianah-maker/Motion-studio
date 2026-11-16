@@ -1,3 +1,4 @@
+import { sourceAt } from '../../../packages/core/dist/storage/clipMotion.js';
 /** Pure helpers (no DOM, no network) so they can be unit-tested in Node. */
 
 const TOKEN_RE = /^[0-9a-f]{64}$/;
@@ -120,6 +121,10 @@ export interface ClipSpan {
   hasMedia?: boolean;
   /** Length of the source media when known (W07): trim-end never runs past it. */
   sourceMs?: number;
+  /** R23a: the source runs `speed` x; a reversed clip reads it backwards; a still has no source limit. */
+  speed?: number;
+  reverse?: boolean;
+  freeze?: boolean;
 }
 
 export const snap = (ms: number, step = SNAP_MS): number => Math.max(0, Math.round(ms / step) * step);
@@ -134,11 +139,17 @@ export function dragSpan(mode: DragMode, c: ClipSpan, deltaMs: number): { start_
     const start = snap(Math.max(0, c.start_ms + deltaMs));
     return { start_ms: start, end_ms: start + len };
   }
+  // R23a: limits in timeline ms = source room / speed (a reversed clip grows towards the source start
+  // at its end and towards the source end at its start).
+  const media = c.hasMedia && !c.freeze;
+  const s = c.speed ?? 1;
+  const inMs = c.in_ms ?? 0;
+  const roomAfter = c.sourceMs !== undefined ? (c.sourceMs - inMs - len * s) / s : Infinity;
   if (mode === 'trim-end') {
-    const latest = c.hasMedia && c.sourceMs !== undefined ? c.start_ms + c.sourceMs - (c.in_ms ?? 0) : Infinity;
+    const latest = !media ? Infinity : c.reverse ? c.end_ms + inMs / s : c.end_ms + roomAfter;
     return { start_ms: c.start_ms, end_ms: Math.min(latest, Math.max(c.start_ms + MIN_CLIP_MS, snap(c.end_ms + deltaMs))) };
   }
-  const earliest = c.hasMedia ? c.start_ms - (c.in_ms ?? 0) : 0;
+  const earliest = !media ? 0 : c.reverse ? c.start_ms - roomAfter : c.start_ms - inMs / s;
   const start = Math.min(c.end_ms - MIN_CLIP_MS, Math.max(Math.max(0, earliest), snap(c.start_ms + deltaMs)));
   return { start_ms: start, end_ms: c.end_ms };
 }
@@ -186,7 +197,9 @@ export function clipAt<T extends { start_ms: number; end_ms: number }>(clips: re
 }
 
 /** Position inside the source media (seconds) for timeline time `t`. */
-export const sourceSeconds = (c: { start_ms: number; in_ms?: number }, t: number): number => ((c.in_ms ?? 0) + (t - c.start_ms)) / 1000;
+/** R23a: speed / reverse / freeze follow the same source mapping as the render (core clipMotion). */
+export const sourceSeconds = (c: { start_ms: number; end_ms?: number; in_ms?: number; speed?: number; reverse?: boolean; freeze?: boolean }, t: number): number =>
+  sourceAt({ end_ms: c.end_ms ?? t, ...c }, t - c.start_ms) / 1000;
 
 /**
  * Safe area as insets in % of the canvas (top, right, bottom, left). 9:16 keeps clear of the

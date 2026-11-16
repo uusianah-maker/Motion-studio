@@ -3,6 +3,7 @@ import { blurAt, placeOnCanvas } from '../../../../packages/core/dist/storage/fr
 import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
 import { keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
 import { DEFAULT_DUCK, duckGainAt, effectiveLook, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
+import { orientCss, sourceAt } from '../../../../packages/core/dist/storage/clipMotion.js';
 import type { LoadedBrand } from '../brand';
 import type { Api, Clip, Media, Project } from '../api';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
@@ -131,13 +132,18 @@ export function Preview({
         }
       }
       const want = sourceSeconds(clip, at);
-      const tolerance = isPlaying ? 0.3 : 0.04;
+      // R23a: speed = playback rate (pitch kept, like atempo); a reversed or frozen clip is not played
+      // but stepped: the element stays paused and is seeked to the right frame on every tick.
+      const stepped = layer === 'visual' && (!!clip.reverse || !!clip.freeze);
+      const rate = clip.speed ?? 1;
+      if (!stepped && el.playbackRate !== rate) el.playbackRate = rate;
+      const tolerance = isPlaying && !stepped ? 0.3 * Math.max(1, rate) : 0.04;
       // Before metadata the element cannot seek; the next sync (every frame while playing, or on
       // the next playhead change) corrects it once it is ready.
       if (el.readyState < 1) el.addEventListener('loadedmetadata', () => (el.currentTime = want), { once: true });
       else if (Math.abs(el.currentTime - want) > tolerance) el.currentTime = want;
-      if (isPlaying && el.paused) el.play().catch(() => undefined);
-      if (!isPlaying && !el.paused) el.pause();
+      if (isPlaying && !stepped && el.paused) el.play().catch(() => undefined);
+      if ((!isPlaying || stepped) && !el.paused) el.pause();
     },
     [urlFor],
   );
@@ -213,7 +219,8 @@ export function Preview({
   const musicTrack = tracks.find((tr) => tr.kind === 'music');
   const duck = musicTrack?.duck;
   const duckRanges = duck !== undefined ? speechRanges(project.timeline, (c) => !!versionOf(c as Clip)?.probe?.audio_codec) : [];
-  const visualGain = gainOf(visual);
+  // R23a: a reversed clip is silent in the preview (its backwards sound is in the render).
+  const visualGain = visual?.reverse ? 0 : gainOf(visual);
   const audioGain = gainOf(audio);
   const sfxGain = gainOf(sfx);
   const musicGain = Math.round(gainOf(music) * (duck !== undefined ? duckGainAt(duckRanges, duck ?? DEFAULT_DUCK, t) : 1) * 1000) / 1000;
@@ -228,7 +235,7 @@ export function Preview({
   // U3d: crop + blurred areas of the visual clip (same geometry as the render).
   const srcSize = v?.probe?.width && v.probe.height ? { w: v.probe.width, h: v.probe.height } : null;
   const crop = visual?.crop;
-  const srcNow = visual ? (visual.in_ms ?? 0) + (t - visual.start_ms) : 0;
+  const srcNow = visual ? sourceAt(visual, t - visual.start_ms) : 0;
   const blurs = srcSize ? blurAt(visual?.blur, srcNow) : [];
   // Malam 15 Nov: colour look (+ Brand Kit default), fit and the incoming transition of the picture.
   const lk = visual ? effectiveLook(visual, brand?.kit.filter_bawaan ?? null) : null;
@@ -255,14 +262,24 @@ export function Preview({
     const cv = bgRef.current;
     const el = videoRef.current;
     if (!cv || !el || fit !== 'blur') return;
+    const rot = visual?.rotate;
+    const flipH = !!visual?.flip_h;
+    const flipV = !!visual?.flip_v;
     const draw = () => {
       const ctx = cv.getContext('2d');
       if (!ctx || !el.videoWidth) return;
       cv.width = 90;
       cv.height = Math.round((90 * canvasPx.h) / Math.max(1, canvasPx.w));
-      const k = Math.max(cv.width / el.videoWidth, cv.height / el.videoHeight);
+      const swap = rot === 90 || rot === 270;
+      const [vw, vh] = swap ? [el.videoHeight, el.videoWidth] : [el.videoWidth, el.videoHeight];
+      const k = Math.max(cv.width / vw, cv.height / vh);
       ctx.filter = `blur(3px) brightness(0.94)`;
-      ctx.drawImage(el, (cv.width - el.videoWidth * k) / 2, (cv.height - el.videoHeight * k) / 2, el.videoWidth * k, el.videoHeight * k);
+      ctx.save();
+      ctx.translate(cv.width / 2, cv.height / 2);
+      ctx.rotate(((rot ?? 0) * Math.PI) / 180);
+      ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+      ctx.drawImage(el, (-el.videoWidth * k) / 2, (-el.videoHeight * k) / 2, el.videoWidth * k, el.videoHeight * k);
+      ctx.restore();
     };
     draw();
     el.addEventListener('seeked', draw);
@@ -272,6 +289,10 @@ export function Preview({
       el.removeEventListener('loadeddata', draw);
     };
   });
+  // R23a: rotation / flips are the innermost transform; for 90°/270° the element box swaps width
+  // and height first, so "contain" fits the turned picture into the canvas like the render.
+  const orient = visual?.media ? orientCss(visual) : { transform: '', swap: false };
+  const swapBox = orient.swap ? { width: `${canvasPx.h}px`, height: `${canvasPx.w}px`, left: `${(canvasPx.w - canvasPx.h) / 2}px`, top: `${(canvasPx.h - canvasPx.w) / 2}px`, right: 'auto', bottom: 'auto' } : {};
   const zoomStyle = zoom !== 1 && fx?.effect ? { transform: `scale(${zoom})`, transformOrigin: `${fx.effect.x * 100}% ${fx.effect.y * 100}%` } : {};
   const cropStyle = crop ? ({ objectViewBox: `inset(${crop.y * 100}% ${(1 - crop.x - crop.w) * 100}% ${(1 - crop.y - crop.h) * 100}% ${crop.x * 100}%)` } as Record<string, string>) : {};
   const unsupported = v && v.preview === false ? `Codec ${v.probe?.video_codec ?? '?'} belum bisa dipratinjau di browser (tetap bisa dirender).` : null;
@@ -322,8 +343,11 @@ export function Preview({
               ...(fit === 'blur' ? { background: 'transparent' } : fit === 'warna' && visual?.fit_color ? { background: visual.fit_color } : {}),
               ...(trans?.opacity !== undefined || kf.opacity !== undefined ? { opacity: (trans?.opacity ?? 1) * (kf.opacity ?? 1) } : {}),
               ...(trans?.clipPath ? { clipPath: trans.clipPath } : {}),
-              ...(trans?.transform || kf.transform ? { transform: `${trans?.transform ?? ''} ${'transform' in zoomStyle ? zoomStyle.transform : ''} ${kf.transform ?? ''}`.trim() } : {}),
+              ...(trans?.transform || kf.transform || orient.transform ? { transform: `${trans?.transform ?? ''} ${'transform' in zoomStyle ? zoomStyle.transform : ''} ${kf.transform ?? ''} ${orient.transform}`.trim() } : {}),
+              ...swapBox,
             }}
+            data-orient={orient.transform || undefined}
+            data-rate={visual?.speed ?? undefined}
           />
           {css && css.warmth !== 0 && visual?.media && <div className="lookWash" aria-hidden="true" data-warmth={css.warmth.toFixed(2)} style={{ background: css.warmth > 0 ? '#ff9a3c' : '#3c8cff', opacity: Math.abs(css.warmth) * 0.28 }} />}
           {css && css.vignette > 0 && visual?.media && <div className="lookVignette" aria-hidden="true" style={{ background: `radial-gradient(ellipse at center, transparent ${Math.round(70 - css.vignette * 50)}%, rgba(0,0,0,${(css.vignette * 0.9).toFixed(2)}) 100%)` }} />}

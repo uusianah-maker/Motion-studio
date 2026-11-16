@@ -4,6 +4,7 @@ import { zoomExpr } from './effects.js';
 import { DEFAULT_DUCK, type LookId, XFADE, denoiseFilter, duckFilter, effectiveLook, fadeFilter, fitFilters, lookFilters, speechRanges } from './clipLook.js';
 export { speechRanges } from './clipLook.js';
 import { kfExpr, keyframeFilters } from './keyframes.js';
+import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
 import { type AssFonts, DEFAULT_FONT_INFO, buildAss, needsAss } from './ass.js';
 import { readFontInfo } from './fontInfo.js';
 import { type LogoCorner, brandRenderRefs, readBrandFor } from './brand.js';
@@ -278,18 +279,41 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     const total = frames + pre + post;
     totals.push(total);
     // Source position of the piece (with the pre-roll); before the source start = hold the first frame.
-    let srcFrom = seg.clip ? (seg.clip.in_ms ?? 0) + (startMs - seg.clip.start_ms) - (pre * 1000) / fps : 0;
+    // R23a: the source runs `speed` × faster; a reversed piece reads its span backwards and a frozen
+    // one reads a single frame — both hold their first frame for the transition pre-roll.
+    const c0 = seg.clip;
+    const sp = c0?.speed ?? 1;
+    const relStart = c0 ? startMs - c0.start_ms : 0;
+    const inMs = c0?.in_ms ?? 0;
     let holdStart = 0;
-    if (srcFrom < 0) {
-      holdStart = Math.min(pre, Math.ceil((-srcFrom * fps) / 1000 - 1e-6));
-      srcFrom = Math.max(0, srcFrom + (holdStart * 1000) / fps);
+    let srcFrom = 0;
+    let srcDur = 0;
+    if (c0?.freeze) {
+      holdStart = pre;
+      srcFrom = inMs;
+      srcDur = Math.max(100, (3 * 1000) / fps);
+    } else if (c0?.reverse) {
+      holdStart = pre;
+      const len = c0.end_ms - c0.start_ms;
+      const relEnd = relStart + ((frames + post) * 1000) / fps;
+      const to = inMs + (len - relStart) * sp;
+      srcFrom = Math.max(0, inMs + (len - relEnd) * sp);
+      srcDur = Math.max(0, to - srcFrom);
+    } else if (c0) {
+      srcFrom = inMs + (relStart - (pre * 1000) / fps) * sp;
+      if (srcFrom < 0) {
+        holdStart = Math.min(pre, Math.ceil((-srcFrom * fps) / (1000 * sp) - 1e-6));
+        srcFrom = Math.max(0, srcFrom + ((holdStart * 1000) / fps) * sp);
+      }
+      srcDur = (((total - holdStart) * 1000) / fps) * sp;
     }
+    const moving = !!c0 && (sp !== 1 || !!c0.reverse || !!c0.freeze);
     let idx = -1;
-    if (src && seg.clip && (hasV || hasA)) idx = input(src, srcFrom, ((total - holdStart) * 1000) / fps);
+    if (src && seg.clip && (hasV || hasA)) idx = input(src, srcFrom, srcDur);
     // U3d: blur areas + crop of the source before it is fitted onto the canvas.
     const framing =
       hasV && seg.clip
-        ? framingFilters({ crop: seg.clip.crop, blur: seg.clip.blur, srcStartMs: srcFrom, durMs: ((total - holdStart) * 1000) / fps, shortSide: Math.min(src!.probe.width ?? 1080, src!.probe.height ?? 1080), inLabel: `fi${k}`, outLabel: `fo${k}`, id: `s${k}` })
+        ? framingFilters({ crop: seg.clip.crop, blur: seg.clip.blur, srcStartMs: srcFrom, durMs: srcDur, shortSide: Math.min(src!.probe.width ?? 1080, src!.probe.height ?? 1080), inLabel: `fi${k}`, outLabel: `fo${k}`, id: `s${k}` })
         : null;
     if (framing) graph.push(`[${idx}:v:0]setpts=PTS-STARTPTS[fi${k}]`, ...framing);
     if (hasV) {
@@ -297,10 +321,13 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       // Malam 15 Nov: colour look (+ the brand's default look) on the source picture, then the fit.
       const lk = effectiveLook(c, brand.look ?? null);
       const look = lookFilters(lk.adjust, lk.mono);
-      const head = `${framing ? `[fo${k}]` : `[${idx}:v:0]setpts=PTS-STARTPTS,`}fps=${fps}${look ? `,${look}` : ''}`;
+      // R23a: direction (after crop/blur, which are in source coordinates), reverse, speed, still, picture noise.
+      const motion = [...orientFilters(c), ...(c.reverse ? ['reverse', 'setpts=PTS-STARTPTS'] : []), ...(sp !== 1 ? [`setpts=PTS/${s6(sp)}`] : [])].map((f) => `${f},`).join('');
+      const vden = vdenoiseFilter(c.vdenoise);
+      const head = `${framing ? `[fo${k}]` : `[${idx}:v:0]setpts=PTS-STARTPTS,`}${motion}fps=${fps}${c.freeze ? ',trim=end_frame=1' : ''}${vden ? `,${vden}` : ''}${look ? `,${look}` : ''}`;
       const tail = `setsar=1,format=yuv420p${holdStart ? `,tpad=start_mode=clone:start=${holdStart}` : ''},tpad=stop_mode=clone:stop=${total},trim=end_frame=${total},setpts=PTS-STARTPTS[v${k}]`;
       // Malam 15 Nov: keyframes move/scale/fade the fitted canvas picture (clip time at t = 0: srcFrom − in).
-      const kf = c.keyframes?.length ? keyframeFilters(c.keyframes, { W, H, fps, frames: total - holdStart, offMs: srcFrom - (c.in_ms ?? 0), id: `s${k}`, inLabel: `kp${k}`, outLabel: `kq${k}` }) : null;
+      const kf = c.keyframes?.length ? keyframeFilters(c.keyframes, { W, H, fps, frames: total - holdStart, offMs: relStart - ((pre - holdStart) * 1000) / fps, id: `s${k}`, inLabel: `kp${k}`, outLabel: `kq${k}` }) : null;
       const fitted = (label: string) => (kf ? [`[${label}]setsar=1[kp${k}]`, ...kf, `[kq${k}]${tail}`] : [`[${label}]${tail}`]);
       if (c.fit === 'isi' || c.fit === 'blur') {
         graph.push(`${head}[fp${k}]`, ...fitFilters(c.fit, c.fit_color, W, H, `s${k}`, `fp${k}`, `ff${k}`), ...fitted(`ff${k}`));
@@ -311,11 +338,13 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
         else graph.push(`${fit},${tail}`);
       }
     } else graph.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${s6(durMs / 1000)},format=yuv420p,setsar=1,trim=end_frame=${frames}[v${k}]`);
-    if (hasA) {
+    if (hasA && !c0?.freeze) {
       const c = seg.clip!;
       const skip = (pre - holdStart) * samplesPerFrame;
       const fx = [denoiseFilter(c.denoise), fadeFilter(c, c.end_ms - c.start_ms, startMs - c.start_ms)].filter(Boolean).map((f) => `,${f}`).join('');
-      graph.push(`[${idx}:a:0]${skip ? `atrim=start_sample=${skip},` : ''}asetpts=PTS-STARTPTS,${AFMT}${gainFilter(gainOf(c))}${fx},apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${k}]`);
+      // R23a: reversed / sped-up sound (areverse + atempo chain), the pre-roll cut off afterwards.
+      const head = moving ? `asetpts=PTS-STARTPTS,${AFMT}${c.reverse ? ',areverse' : ''}${atempoChain(sp).map((f) => `,${f}`).join('')}${skip ? `,atrim=start_sample=${skip}` : ''},asetpts=PTS-STARTPTS` : `${skip ? `atrim=start_sample=${skip},` : ''}asetpts=PTS-STARTPTS,${AFMT}`;
+      graph.push(`[${idx}:a:0]${head}${gainFilter(gainOf(c))}${fx},apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${k}]`);
     } else graph.push(`anullsrc=r=${AUDIO_RATE}:cl=stereo,${AFMT},atrim=end_sample=${samples}[a${k}]`);
   });
   graph.push(`${segments.map((_, k) => `[a${k}]`).join('')}concat=n=${segments.length}:v=0:a=1[acat]`);

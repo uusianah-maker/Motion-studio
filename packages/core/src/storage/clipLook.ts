@@ -8,6 +8,7 @@
  * Every field is optional: old projects and old engine ops stay valid without them.
  */
 import { StorageError } from './errors.js';
+import { MOTION_FIELDS, type MotionFields, copyMotion, readMotion } from './clipMotion.js';
 
 // ------------------------------------------------------------------ types
 
@@ -262,7 +263,8 @@ export function transitionCss(type: TransitionType, p: number): { opacity?: numb
 // ------------------------------------------------------------------ fields on a clip
 
 /** The new optional clip fields (all additive). */
-export interface ClipExtras {
+/** R23a: + motion fields (rotate/flip/speed/reverse/freeze/vdenoise, see clipMotion.ts). */
+export interface ClipExtras extends MotionFields {
   /** Sound fades of a media clip (ms). */
   fade_in_ms?: number;
   fade_out_ms?: number;
@@ -281,7 +283,7 @@ export interface ClipExtras {
 }
 export const SOUND_FIELDS = ['fade_in_ms', 'fade_out_ms', 'denoise'] as const;
 export const PICTURE_FIELDS = ['fit', 'fit_color', 'adjust', 'look', 'transition'] as const;
-export const EXTRA_FIELDS = [...SOUND_FIELDS, ...PICTURE_FIELDS] as const;
+export const EXTRA_FIELDS = [...SOUND_FIELDS, ...PICTURE_FIELDS, ...MOTION_FIELDS] as const;
 
 /**
  * Read the extra fields of an untrusted clip / add_clip op. `kind` is the track, `hasMedia` whether
@@ -312,6 +314,7 @@ export function readExtras(o: Record<string, unknown>, where: string, kind: stri
   }
   if (o.look !== undefined) out.look = validateLook(o.look, `${where}.look`);
   if (o.transition !== undefined) out.transition = validateTransition(o.transition, `${where}.transition`);
+  Object.assign(out, readMotion(o, where, visual && hasMedia));
   return out;
 }
 
@@ -326,5 +329,6 @@ export function copyExtras(c: ClipExtras): ClipExtras {
     ...(c.adjust ? { adjust: { ...c.adjust } } : {}),
     ...(c.look ? { look: c.look } : {}),
     ...(c.transition ? { transition: { ...c.transition } } : {}),
+    ...copyMotion(c),
   };
 }

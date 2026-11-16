@@ -1,4 +1,5 @@
 import { StorageError } from './errors.js';
+import { motionSummary } from './clipMotion.js';
 import { CANVAS_RATIOS, type CanvasRatio, MAX_TEXT_LEN, type TrackKind } from './project.js';
 import { COLOR_WORDS, type PresetId, TONES, presetById } from './textPresets.js';
 import type { TextStyle } from './textStyle.js';
@@ -132,6 +133,10 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return `Ubah tampilan gambar ${ref(op.clip_id)}`;
     case 'set_keyframes':
       return op.keyframes.length ? `Keyframe ${ref(op.clip_id)}: ${op.keyframes.length} titik` : `Hapus keyframe ${ref(op.clip_id)}`;
+    case 'set_motion':
+      return `Gerak ${ref(op.clip_id)}: ${motionSummary({ ...(op.rotate ? { rotate: op.rotate } : {}), ...(op.flip_h ? { flip_h: true } : {}), ...(op.flip_v ? { flip_v: true } : {}), ...(op.speed !== undefined ? { speed: op.speed } : {}), ...(op.reverse ? { reverse: true } : {}), ...(op.vdenoise && op.vdenoise !== 'off' ? { vdenoise: op.vdenoise } : {}) }) || 'normal'}`;
+    case 'freeze_frame':
+      return `Bekukan frame ${ref(op.clip_id)} di ${fmtTime(op.at_ms)} selama ${(op.duration_ms / 1000).toFixed(1).replace('.', ',')} dtk`;
     case 'set_ducking':
       return op.on ? `Ducking musik aktif (musik turun ke ${Math.round((op.level ?? 0.3) * 100)}% saat ada suara bicara)` : 'Ducking musik mati';
   }
