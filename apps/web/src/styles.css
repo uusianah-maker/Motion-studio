@@ -473,3 +473,6 @@ kbd { font-size: 10px; border: 1px solid #ffffff44; border-radius: 4px; padding:
 
 /* R23d: fade-to-black transition in the preview. */
 .transBlack { position: absolute; inset: 0; background: #000; pointer-events: none; }
+
+/* R32: delete button in the Inspector header. */
+.inspHead .inspDelete { margin-left: auto; }

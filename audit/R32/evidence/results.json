@@ -1,0 +1,52 @@
+[
+  {
+    "id": "R32-01 Preset CTA menambah klip teks",
+    "ok": true,
+    "detail": "Cek keranjang kuning sekarang!"
+  },
+  {
+    "id": "R32-02 Klip CTA terhapus lewat tombol 🗑 Hapus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R32-03 Klip Teks terhapus lewat tombol Del (fokus tidak tersangkut di kolom teks Inspector)",
+    "ok": true,
+    "detail": "0 teks tersisa · "
+  },
+  {
+    "id": "R32-04 Klip Subtitle terhapus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R32-05 Undo mengembalikan subtitle",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R32-06 Teks dipilih dari kotak di pratinjau → terhapus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R32-07 Ubah gaya CTA (Tebal) lalu Del → klip terhapus (fokus INPUT:checkbox)",
+    "ok": true,
+    "detail": "0 teks tersisa · "
+  },
+  {
+    "id": "R32-08 Ubah gaya CTA (Ukuran teks) lalu Del → klip terhapus (fokus INPUT:range)",
+    "ok": true,
+    "detail": "0 teks tersisa · "
+  },
+  {
+    "id": "R32-09 Tombol 🗑 di Inspector menghapus klip teks",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R32-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

@@ -53,7 +53,16 @@ function ClipVisual({ api, clip, kind, inMs, lenMs }: { api: Api; clip: Clip; ki
   return null;
 }
 
-const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
+/**
+ * Keyboard shortcuts stay off only while the user is really typing text. R32: a checkbox, slider,
+ * colour picker or select in the Inspector that still has focus no longer swallows Del / S / arrows
+ * (the team changed a CTA's style, pressed Del and nothing happened).
+ */
+const TEXT_INPUTS = new Set(['text', 'search', 'email', 'number', 'tel', 'url', 'password', '']);
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t instanceof HTMLInputElement && TEXT_INPUTS.has(t.type)));
+/** A select keeps its own arrow keys (choosing an option); Del / S still edit the timeline. */
+const ownsArrows = (t: EventTarget | null) => t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && t.type === 'range');
 
 /**
  * Editor (W06): manual timeline editing — select, move, trim, split, delete, undo/redo.
@@ -194,6 +203,14 @@ export function EditorView({
   /** X05: an archived project is read-only — every edit control is off (the server refuses too). */
   const reviewer = role === 'reviewer';
   const locked = busy || project?.status === 'archived' || reviewer;
+  // R32: why editing (delete, split, …) is off right now, and how to turn it back on.
+  const lockReason = reviewer
+    ? 'Peran Reviewer hanya bisa melihat & berkomentar. Minta Owner menjadikan Anda Editor.'
+    : project?.status === 'archived'
+      ? 'Proyek diarsipkan (hanya-baca). Klik "Aktifkan lagi" di atas untuk mengedit.'
+      : busy
+        ? 'Sedang menyimpan perubahan…'
+        : null;
 
   const tracks = project?.timeline.tracks ?? [];
   const allClips = tracks.flatMap((t) => t.clips.map((c) => ({ ...c, kind: t.kind })));
@@ -283,7 +300,7 @@ export function EditorView({
       } else if (k === 's' && canSplit) {
         e.preventDefault();
         void edit([{ op: 'split_clip', clip_id: sel.clip_id, at_ms: playhead }]);
-      } else if (k === 'arrowleft' || k === 'arrowright') {
+      } else if ((k === 'arrowleft' || k === 'arrowright') && !ownsArrows(e.target)) {
         e.preventDefault();
         const d = (k === 'arrowleft' ? -1 : 1) * (e.shiftKey ? 1000 : 100);
         void edit([{ op: 'move_clip', clip_id: sel.clip_id, start_ms: Math.max(0, sel.start_ms + d) }]);
@@ -519,6 +536,7 @@ export function EditorView({
               playhead={playhead}
               {...(project.status !== 'archived' && !reviewer ? { onCutReview: () => setCutClip(sel) } : {})}
               onEdit={(ops) => edit(ops)}
+              lockReason={lockReason}
               onDraft={setStyleDraft}
               flushRef={inspectorFlush}
             />
@@ -632,7 +650,7 @@ export function EditorView({
           <button className="smallbtn" disabled={locked || !canSplit} onClick={() => sel && edit([{ op: 'split_clip', clip_id: sel.clip_id, at_ms: playhead }])} title="Split klip terpilih di playhead (S)">
             ✂ Split
           </button>
-          <button className="smallbtn" disabled={locked || !sel} onClick={() => sel && edit([{ op: 'delete_clip', clip_id: sel.clip_id }])} title="Hapus klip terpilih (Del)">
+          <button className="smallbtn" disabled={locked || !sel} onClick={() => sel && edit([{ op: 'delete_clip', clip_id: sel.clip_id }])} title={lockReason ?? (sel ? 'Hapus klip terpilih (Del)' : 'Pilih klip dulu di linimasa atau pratinjau')}>
             🗑 Hapus
           </button>
           <span className="zoomCtl" role="group" aria-label="Zoom linimasa">

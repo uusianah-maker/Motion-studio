@@ -27,6 +27,7 @@ export function InspectorPanel({
   onEdit,
   onDraft,
   readOnly = false,
+  lockReason = null,
   brand = null,
   onCutReview,
   sourceSize = null,
@@ -45,6 +46,8 @@ export function InspectorPanel({
   flushRef?: { current: (() => Promise<void>) | null };
   /** X05: archived project — everything is shown but nothing can be changed. */
   readOnly?: boolean;
+  /** R32: why the clip cannot be changed / deleted right now (shown, with how to unlock). */
+  lockReason?: string | null;
   /** X06: Brand Kit colours + whether it has a font. */
   brand?: BrandKit | null;
   /** X07: open "Deteksi jeda & adegan" for this media clip. */
@@ -210,7 +213,12 @@ export function InspectorPanel({
         <span className="muted small ellipsis" title={name}>
           {name}
         </span>
+        {/* R32: delete right here, for every kind of clip (text / CTA / subtitle included). */}
+        <button type="button" className="smallbtn inspDelete" disabled={busy || readOnly} title={lockReason ?? 'Hapus klip ini (Del)'} aria-label="Hapus klip ini" onClick={() => submit([{ op: 'delete_clip', clip_id: clip.clip_id }])}>
+          🗑
+        </button>
       </div>
+      {lockReason && !busy && <div className="notice warn small" role="status" aria-label="Kenapa terkunci">{lockReason}</div>}
 
       <div className="inspGrid">
         <label>
