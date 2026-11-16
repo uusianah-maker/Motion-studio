@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { proyekFitur } from '../fitur';
 import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, JobOverlay, ProjectSummary, Role } from '../api';
 import { JobOverlays } from './JobOverlays';
+import { type PenutupOption, PenutupPicker, type PenutupValue } from './PenutupPicker';
 import { canContinueRefused, pollDelay, readyJobShown } from '../lib';
 import { ErrorNotice } from '../ui';
 import { AudioPilihanSelect } from './PresetGaya';
@@ -176,6 +177,8 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
   const [audio, setAudio] = useState<'' | 'vo' | 'musik' | 'keduanya'>('');
   /** R26: overlays for this job (previewed on the source before Generate). */
   const [overlays, setOverlays] = useState<JobOverlay[]>([]);
+  /** R28: end card for this job (brand default / library / upload / none). */
+  const [penutup, setPenutup] = useState<{ value: PenutupValue; opt: PenutupOption | null }>({ value: 'default', opt: null });
   const [upload, setUpload] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -206,6 +209,8 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
   useEffect(() => {
     setPreset((p) => (brand?.presets.some((x) => x.id === p) ? p : (brand?.presets[0]?.id ?? 'standar')));
   }, [brand]);
+  // R28: another brand = its own end cards; back to its default.
+  useEffect(() => setPenutup({ value: 'default', opt: null }), [brandId]);
 
   const loadHistory = useCallback(async (projectId: string) => {
     try {
@@ -262,7 +267,7 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
       setUpload(0);
       const up = await api.importFile(file, { kind: 'project', project_id: projectId }, setUpload);
       setUpload(null);
-      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}), ...(overlays.length ? { overlay: overlays } : {}) });
+      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}), ...(overlays.length ? { overlay: overlays } : {}), ...(penutup.value === 'none' ? { penutup: null } : penutup.value !== 'default' && penutup.opt ? { penutup: { ref: penutup.opt.ref } } : {}) });
       unstarted.current = null;
       setTarget(projectId);
       setCurrent({ project_id: projectId, job_id: j.job_id });
@@ -405,6 +410,10 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
             <label className="inline">
               <input type="checkbox" aria-label="Pakai AI untuk hook" checked={ai} onChange={(e) => setAi(e.target.checked)} /> Pakai AI untuk hook/kata kunci (API key di mesin; tanpa centang = aturan saja, gratis)
             </label>
+          </div>
+          <div className="inspFull" style={{ marginTop: 8 }}>
+            <b>Video penutup</b> <span className="muted small">end card di akhir video (mesin menaruh CTA/tagline di atasnya)</span>
+            <PenutupPicker api={api} kit={brand} value={penutup.value} onChange={(value, opt) => setPenutup({ value, opt })} onKitSaved={(k) => setBrands((bs) => bs.map((b) => (b.brand_id === k.brand_id ? k : b)))} />
           </div>
           <details className="inspFull" open={overlays.length > 0 || undefined}>
             <summary>

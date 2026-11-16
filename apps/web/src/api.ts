@@ -650,6 +650,8 @@ export interface EngineStart {
   batch?: { batch: string; jumlah: number; tujuan: string; hak_pakai_jelas?: boolean; akun_sendiri?: string[]; vo_batch?: string; izinkan_musik_tanpa_lisensi?: boolean; buang_otomatis?: string[] };
   /** R26: overlays chosen before Generate (app only; added to the draft as overlay clips). */
   overlay?: JobOverlay[];
+  /** R28: end card for this job — a file, null = none; absent = Brand Kit default. */
+  penutup?: { ref: { media_id: string; version_id: string } } | null;
 }
 /** R26: one overlay of a "Buat video" job. */
 export interface JobOverlay {

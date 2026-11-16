@@ -1,0 +1,57 @@
+[
+  {
+    "id": "R28-01 Aset Penutup: yang dipakai Brand Kit bertanda ★ Penutup default",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R28-02 \"Jadikan penutup default\" → slot Penutup Brand Kit = penutup-b (tersimpan)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R28-03 Pilihan penutup: default brand, dari Aset (Penutup A), Tanpa penutup",
+    "ok": true,
+    "detail": "Penutup default brand|Penutup A|Tanpa penutup"
+  },
+  {
+    "id": "R28-04 Pratinjau penutup default tampil (video)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R28-05 Job dengan \"Penutup A\" → brand_kit.json job: $penutup = file A (kontrak mesin sama, job.json tanpa field baru)",
+    "ok": true,
+    "detail": "{\"aset\":\"$penutup\",\"detik\":2}"
+  },
+  {
+    "id": "R28-06 Job \"Tanpa penutup\" → penutup.aset null, tanpa $penutup",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R28-07 Unggah penutup baru di Buat video → tersimpan di Aset (Penutup) + langsung terpilih",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R28-08 Dialog ＋ Penutup: yang terpilih awal = penutup default brand",
+    "ok": true,
+    "detail": "Penutup B"
+  },
+  {
+    "id": "R28-09 Penutup ditaruh sesudah klip terakhir (2,0 dtk), panjang = file (1,5 dtk), satu revisi",
+    "ok": true,
+    "detail": "[[0,2000],[2000,3500]]"
+  },
+  {
+    "id": "R28-10 Undo → penutup hilang (satu langkah)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R28-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

@@ -7,6 +7,7 @@ import { ClipThumbs, ClipWave, useMediaVisuals } from './TimelineVisuals';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import { OverlayPicker, type OverlayPick } from './OverlayPicker';
+import { PenutupDialog, type PenutupOption } from './PenutupPicker';
 import { type Overlay, contentEnd } from '../../../../packages/core/dist/storage/overlay.js';
 import { waitingForProxy } from '../proxyWait';
 import { fitMove, fitTrim, gapAt } from '../dragFit';
@@ -133,6 +134,8 @@ export function EditorView({
   const brand = useBrand(api, { brandId: project?.brand_id ?? null, reload: brandReload });
   /** R26: "＋ Overlay" picker and the inspector's live overlay spec. */
   const [overlayOpen, setOverlayOpen] = useState(false);
+  /** R28: "＋ Penutup" dialog. */
+  const [penutupOpen, setPenutupOpen] = useState(false);
   const [overlayDraft, setOverlayDraft] = useState<{ clip_id: string; overlay: Overlay } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   /** R33: several clips picked together (empty = the single `selected` clip only). */
@@ -559,6 +562,24 @@ export function EditorView({
     const start = whole ? 0 : Math.round(playhead / 100) * 100;
     void edit([{ op: 'add_clip', track_kind: 'overlay', media: p.ref, start_ms: start, duration_ms: whole ? end : TEXT_CLIP_MS, ...(whole ? { overlay: { pos: p.jenis === 'logo' ? 'tr' : p.jenis === 'frame' ? 'c' : 'br', dx: 0, dy: 0, skala: p.jenis === 'frame' ? 100 : p.jenis === 'logo' ? 18 : 30, opasitas: p.jenis === 'watermark' ? 0.6 : 1, margin: p.jenis === 'frame' ? 0 : 4, layer: Math.min(999, Math.max(-1, ...overlayLayers()) + 1), sepanjang: true } } : {}) }]);
   };
+  /** R28: the end card goes right after the last clip of the video track (its own length). */
+  const addPenutup = async (o: PenutupOption) => {
+    setPenutupOpen(false);
+    if (!project) return;
+    let v = versionOf(o.ref.version_id);
+    if (!v?.probe) {
+      const fresh = await api.media({ scope: 'all' }).catch(() => media);
+      setMedia(fresh);
+      v = fresh.flatMap((m) => m.versions).find((x) => x.version_id === o.ref.version_id);
+    }
+    const p = v?.probe;
+    if (!p?.video_codec || p.duration_ms < 100 || /\.(png|jpe?g|webp)$/i.test(v?.original_name ?? '')) {
+      setNotice('Penutup di Editor harus video (MP4/MOV/WebM). Gambar penutup tetap dipakai mesin lewat Buat video.');
+      return;
+    }
+    const end = Math.max(0, ...(tracks.find((t) => t.kind === 'video')?.clips.map((c) => c.end_ms) ?? [0]));
+    void edit([{ op: 'add_clip', track_kind: 'video', media: o.ref, start_ms: end, duration_ms: p.duration_ms }]);
+  };
   const overlayLayers = () => (project?.timeline.tracks.find((t) => t.kind === 'overlay')?.clips ?? []).map((c) => c.overlay?.layer ?? 0);
   const addText = (kind: 'text' | 'subtitle') =>
     project && void edit([{ op: 'add_clip', track_kind: kind, text: kind === 'text' ? 'Teks baru' : 'Subtitle baru', start_ms: freeSlot(project, kind, playhead, TEXT_CLIP_MS), duration_ms: TEXT_CLIP_MS }]);
@@ -616,6 +637,7 @@ export function EditorView({
           }}
         />
       )}
+      {penutupOpen && project && <PenutupDialog api={api} kit={brand?.kit ?? null} onPick={(o) => void addPenutup(o)} onClose={() => setPenutupOpen(false)} onKitSaved={() => setBrandReload((n) => n + 1)} />}
       {overlayOpen && project && <OverlayPicker api={api} kit={brand?.kit ?? null} onPick={addOverlay} onClose={() => setOverlayOpen(false)} onKitSaved={() => setBrandReload((n) => n + 1)} />}
       {cutClip && project && (
         <CutReviewDialog
@@ -869,6 +891,9 @@ export function EditorView({
           </button>
           <button className="smallbtn" disabled={locked || !project} onClick={() => setOverlayOpen(true)} title="Tambah logo / watermark / stiker / frame (gambar) di atas video">
             ＋ Overlay
+          </button>
+          <button className="smallbtn" disabled={locked || !project} onClick={() => setPenutupOpen(true)} title="Tambah video penutup (end card) sesudah klip video terakhir">
+            ＋ Penutup
           </button>
           <button
             className="smallbtn"

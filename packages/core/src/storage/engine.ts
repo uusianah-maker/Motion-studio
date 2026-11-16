@@ -149,6 +149,43 @@ export interface EngineJobInput {
    * added to the engine's draft as overlay clips (whole video, or [dari_ms, sampai_ms)).
    */
   overlay?: JobOverlay[];
+  /**
+   * R28 "Video penutup" for this job: a library / uploaded file, or `null` = no end card. Absent =
+   * the Brand Kit's default outro. Applied to this job's copy of brand_kit.json (`visual.penutup` +
+   * `$penutup`), so the engine contract is unchanged.
+   */
+  penutup?: { ref: MediaRef } | null;
+}
+
+/** R28: the job's end-card choice (untrusted). */
+export function validateJobPenutup(x: unknown): { ref: MediaRef } | null {
+  if (x === null) return null;
+  const o = (x ?? {}) as Record<string, unknown>;
+  const extra = Object.keys(o).filter((k) => k !== 'ref');
+  if (extra.length) bad(`penutup: field tidak dikenal ${extra.join(', ')}`);
+  const r = (o.ref ?? {}) as Record<string, unknown>;
+  if (!isSafeId(r.media_id) || !isSafeId(r.version_id)) bad('penutup.ref tidak valid');
+  return { ref: { media_id: r.media_id as string, version_id: r.version_id as string } };
+}
+
+const OUTRO_FILE = /\.(mp4|mov|webm|png|jpe?g|webp)$/i;
+
+/** R28: put the job's end card into its brand_kit.json copy + refs (`$penutup`); null = none. */
+async function applyJobPenutup(ws: Workspace, brandExport: Record<string, unknown>, refs: Record<string, MediaRef>, choice: { ref: MediaRef } | null): Promise<void> {
+  const visual = (brandExport.visual ?? {}) as { penutup?: { aset: string | null; detik: number } };
+  const aset = ((brandExport.aset ?? []) as { kunci: string }[]).filter((a) => a.kunci !== '$penutup');
+  delete refs.$penutup;
+  if (choice) {
+    const reg = await loadRegistry(ws);
+    const v = reg.versions[choice.ref.version_id];
+    if (!v || v.media_id !== choice.ref.media_id || v.lifecycle !== 'active') bad('Video penutup tidak dikenal atau sedang di Trash');
+    if (!OUTRO_FILE.test(v!.original_name)) bad('Penutup harus video (MP4/MOV/WebM) atau gambar');
+    aset.push({ kunci: '$penutup', jenis: 'penutup', tag: ['penutup'], lisensi_iklan: true, path: (await localPath(ws, choice.ref)).replace(/\\/g, '/') } as { kunci: string });
+    refs.$penutup = { ...choice.ref };
+  }
+  visual.penutup = { aset: choice ? '$penutup' : null, detik: visual.penutup?.detik ?? 2 };
+  brandExport.visual = visual;
+  brandExport.aset = aset;
 }
 
 export interface JobOverlay {
@@ -247,7 +284,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (o.mode === 'tts') return validateTtsJob(o);
   if (o.mode === 'visual') return validateVisualJob(o);
   if (o.mode === 'suara_profil') return validateSuaraProfilJob(o);
-  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan', 'overlay'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan', 'overlay', 'penutup'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
   if (o.mode !== 'generate' && o.mode !== 'batch') bad('mode harus generate | batch');
@@ -318,7 +355,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
       ...(batas !== undefined ? { batas_durasi: batas === null ? null : ([(batas as number[])[0], (batas as number[])[1]] as [number, number]) } : {}),
     };
   } else if (o.batch !== undefined) bad('batch hanya untuk mode batch');
-  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}), ...audioPilihan(o.audio_pilihan), ...(o.overlay !== undefined ? { overlay: validateJobOverlays(o.overlay) } : {}) };
+  return { project_id: o.project_id as string, mode: o.mode as 'generate' | 'batch', sources, preset, brief, ai: (o.ai as boolean) ?? false, ...(o.mode_ops ? { mode_ops: o.mode_ops as 'kompat' | 'u3' } : {}), ...(batch ? { batch } : {}), ...(o.abaikan_cek_ucapan === true ? { abaikan_cek_ucapan: true as const } : {}), ...audioPilihan(o.audio_pilihan), ...(o.overlay !== undefined ? { overlay: validateJobOverlays(o.overlay) } : {}), ...(o.penutup !== undefined ? { penutup: validateJobPenutup(o.penutup) } : {}) };
 }
 
 const PISAH_SRC = /^\$sumber:([A-Za-z0-9_-]{1,40})$/;
@@ -616,6 +653,8 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
     } else for (const s of input.sources) sumber.push({ kunci: s.kunci, path: (await localPath(ws, s.ref)).replace(/\\/g, '/') });
     const brandExport = await exportBrandKit(ws, kit.brand_id, { paths: true });
     await addLearnedKamus(ws, kit, brandExport);
+    const penutupRefs: Record<string, MediaRef> = {};
+    if (input.penutup !== undefined) await applyJobPenutup(ws, brandExport, penutupRefs, input.penutup);
     await writeJsonAtomic(path.join(jdir, 'brand_kit.json'), brandExport);
     const job = {
       schema: 'engine-job/1',
@@ -648,6 +687,11 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       await writeJsonAtomic(path.join(jdir, 'overlay.json'), { schema: 'ms-overlay/1', overlay: input.overlay });
     }
     const refs: Record<string, MediaRef> = { ...brandPlaceholders(kit) };
+    // R28: this job's end card replaces the brand default (or removes it).
+    if (input.penutup !== undefined) {
+      delete refs.$penutup;
+      Object.assign(refs, penutupRefs);
+    }
     for (const s of input.sources) refs[s.kunci] = s.ref;
     await writeJsonAtomic(path.join(jdir, 'refs.json'), { schema: 'engine-refs/1', brand_id: kit.brand_id, refs });
     lease ??= await createLease(ws, { job: 'engine', label: `Mesin ${job_id}`, media: input.sources.map((s) => s.ref), actor: opts.actor ?? 'user', worker_pid: process.pid });

@@ -161,6 +161,14 @@ export function AssetLibrary({
               </button>
             )}
             <span className="badge vio">{KINDS.find((k) => k.id === a.jenis)?.label}</span>
+            {a.jenis === 'penutup' &&
+              (draft.outro.ref?.version_id === a.ref.version_id ? (
+                <span className="badge ok" aria-label={`${a.id} penutup default`}>★ Penutup default</span>
+              ) : (
+                <button className="tiny" aria-label={`Jadikan ${a.id} penutup default`} title="Penutup default = slot Penutup Brand Kit (bagian B): dipakai mesin kalau Buat video tidak memilih yang lain" onClick={() => set({ outro: { ...draft.outro, ref: { ...a.ref } } })}>
+                  ☆ Jadikan penutup default
+                </button>
+              ))}
             {a.jenis === 'logo' &&
               (draft.logo?.ref.version_id === a.ref.version_id ? (
                 <span className="badge ok" aria-label={`${a.id} logo default`}>★ Logo default</span>
