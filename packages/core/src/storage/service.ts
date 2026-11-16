@@ -297,6 +297,10 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_keyframes: 'Keyframe',
   set_motion: 'Putar / kecepatan / mundur',
   freeze_frame: 'Bekukan frame',
+  delete_clips: 'Hapus beberapa klip',
+  shift_clips: 'Geser beberapa klip',
+  set_style_many: 'Ubah gaya beberapa teks',
+  duplicate_clip: 'Duplikat klip',
 };
 
 /** Short human label for the undo history ("Geser klip", "3 perubahan"). */

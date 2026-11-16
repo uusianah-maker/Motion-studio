@@ -135,6 +135,14 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return op.keyframes.length ? `Keyframe ${ref(op.clip_id)}: ${op.keyframes.length} titik` : `Hapus keyframe ${ref(op.clip_id)}`;
     case 'set_motion':
       return `Gerak ${ref(op.clip_id)}: ${motionSummary({ ...(op.rotate ? { rotate: op.rotate } : {}), ...(op.flip_h ? { flip_h: true } : {}), ...(op.flip_v ? { flip_v: true } : {}), ...(op.speed !== undefined ? { speed: op.speed } : {}), ...(op.reverse ? { reverse: true } : {}), ...(op.vdenoise && op.vdenoise !== 'off' ? { vdenoise: op.vdenoise } : {}) }) || 'normal'}`;
+    case 'duplicate_clip':
+      return `Duplikat ${ref(op.clip_id)}`;
+    case 'delete_clips':
+      return `Hapus ${op.clip_ids.length} klip`;
+    case 'shift_clips':
+      return `Geser ${op.clip_ids.length} klip ${op.delta_ms >= 0 ? 'maju' : 'mundur'} ${fmtPrecise(Math.abs(op.delta_ms))}`;
+    case 'set_style_many':
+      return `Ubah gaya ${op.clip_ids.length} teks: ${styleSummary(op.style)}`;
     case 'freeze_frame':
       return `Bekukan frame ${ref(op.clip_id)} di ${fmtTime(op.at_ms)} selama ${(op.duration_ms / 1000).toFixed(1).replace('.', ',')} dtk`;
     case 'set_ducking':

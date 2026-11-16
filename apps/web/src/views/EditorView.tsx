@@ -9,6 +9,7 @@ import { Preview } from './Preview';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
 import { RencanaBanner } from './RencanaBanner';
+import { MultiPanel } from './MultiPanel';
 import { freeSlot } from './PresetPanel';
 import { ProjectMenu } from './ProjectMenu';
 import { CutReviewDialog } from './CutReviewDialog';
@@ -106,6 +107,24 @@ export function EditorView({
   /** X06: Brand Kit (logo + font) for preview, inspector swatches and the Brand preset. */
   const brand = useBrand(api, { brandId: project?.brand_id ?? null });
   const [selected, setSelected] = useState<string | null>(null);
+  /** R33: several clips picked together (empty = the single `selected` clip only). */
+  const [picked, setPicked] = useState<string[]>([]);
+  /** R33: box-select rectangle on the lanes (px inside `.tracks`). */
+  const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number; pointerId: number } | null>(null);
+  const boxDone = useRef(false);
+  const dragMoved = useRef(false);
+  /** R33: right-click menu on a clip (Hapus / Duplikat / Split di playhead). */
+  const [menu, setMenu] = useState<{ x: number; y: number; clip_id: string } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [menu]);
   const [playhead, setPlayhead] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -135,6 +154,7 @@ export function EditorView({
   useEffect(() => {
     setProject(null);
     setSelected(null);
+    setPicked([]);
     setPlayhead(0);
     setPlaying(false);
     setError(null);
@@ -217,6 +237,27 @@ export function EditorView({
   const lastEnd = Math.max(0, ...allClips.map((c) => c.end_ms));
   const duration = visibleDuration(lastEnd);
   const sel = allClips.find((c) => c.clip_id === selected) ?? null;
+  // R33: the group (only clips that still exist); 2+ = group mode.
+  const group = picked.length > 1 ? allClips.filter((c) => picked.includes(c.clip_id)) : [];
+  const groupIds = group.map((c) => c.clip_id);
+  /** Click with Shift (range on the lane) / Ctrl·Cmd (add/remove) / plain (one clip). */
+  const pick = (c: Clip, e: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => {
+    const kindOf = (id: string) => allClips.find((x) => x.clip_id === id)?.kind;
+    const current = picked.length ? picked : selected ? [selected] : [];
+    if (e.ctrlKey || e.metaKey) {
+      const next = current.includes(c.clip_id) ? current.filter((x) => x !== c.clip_id) : [...current, c.clip_id];
+      setPicked(next);
+      setSelected(next.includes(c.clip_id) ? c.clip_id : (next[next.length - 1] ?? null));
+    } else if (e.shiftKey && selected && kindOf(selected) === kindOf(c.clip_id)) {
+      const lane = allClips.filter((x) => x.kind === kindOf(c.clip_id)).sort((a, b) => a.start_ms - b.start_ms);
+      const [i, j] = [lane.findIndex((x) => x.clip_id === selected), lane.findIndex((x) => x.clip_id === c.clip_id)].sort((a, b) => a - b);
+      setPicked(lane.slice(i!, j! + 1).map((x) => x.clip_id));
+      setSelected(c.clip_id);
+    } else {
+      setPicked([]);
+      setSelected(c.clip_id);
+    }
+  };
   const canSplit = !!sel && playhead > sel.start_ms && playhead < sel.end_ms;
 
   const msPerPx = () => duration / Math.max(1, (surfaceRef.current?.getBoundingClientRect().width ?? 1) * zoom);
@@ -292,6 +333,23 @@ export function EditorView({
       } else if ((e.ctrlKey || e.metaKey) && k === 'y') {
         e.preventDefault();
         if (project.history.redo) void step('redo');
+      } else if ((e.ctrlKey || e.metaKey) && k === 'a') {
+        // R33: every clip of the selected clip's lane (subtitles when nothing is selected).
+        e.preventDefault();
+        const kind = sel?.kind ?? (allClips.some((c) => c.kind === 'subtitle') ? 'subtitle' : 'text');
+        const lane = allClips.filter((c) => c.kind === kind);
+        if (lane.length) {
+          setPicked(lane.map((c) => c.clip_id));
+          setSelected(sel && sel.kind === kind ? sel.clip_id : lane[0]!.clip_id);
+        }
+      } else if (k === 'escape' && picked.length) {
+        setPicked([]);
+      } else if (groupIds.length > 1 && (k === 'delete' || k === 'backspace')) {
+        e.preventDefault();
+        void edit([{ op: 'delete_clips', clip_ids: groupIds }]).then(() => setPicked([]));
+      } else if (groupIds.length > 1 && (k === 'arrowleft' || k === 'arrowright') && !ownsArrows(e.target)) {
+        e.preventDefault();
+        void edit([{ op: 'shift_clips', clip_ids: groupIds, delta_ms: (k === 'arrowleft' ? -1 : 1) * (e.shiftKey ? 1000 : 100) }]);
       } else if (!sel) {
         return;
       } else if (k === 'delete' || k === 'backspace') {
@@ -308,12 +366,16 @@ export function EditorView({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [project, sel, canSplit, playhead, edit, step]);
+  }, [project, sel, canSplit, playhead, edit, step, picked, groupIds.join(',')]);
 
   const beginDrag = (e: React.PointerEvent, clip: Clip, mode: DragMode) => {
     if (locked || e.button !== 0) return;
     e.stopPropagation();
+    dragMoved.current = false;
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return; // R33: picking, not dragging
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // R33: dragging a picked clip moves the whole group; any other clip = a single selection.
+    if (!(mode === 'move' && groupIds.includes(clip.clip_id))) setPicked([]);
     setSelected(clip.clip_id);
     setDrag({ clip, mode, startX: e.clientX, deltaMs: 0, pointerId: e.pointerId });
   };
@@ -327,6 +389,11 @@ export function EditorView({
     setDrag(null);
     const span = dragSpan(d.mode, { ...d.clip, hasMedia: !!d.clip.media, sourceMs: sourceMs(d.clip) }, d.deltaMs);
     if (span.start_ms === d.clip.start_ms && span.end_ms === d.clip.end_ms) return; // a click, not a drag
+    dragMoved.current = true;
+    if (d.mode === 'move' && groupIds.length > 1 && groupIds.includes(d.clip.clip_id)) {
+      void edit([{ op: 'shift_clips', clip_ids: groupIds, delta_ms: span.start_ms - d.clip.start_ms }]);
+      return;
+    }
     const op: EditOp =
       d.mode === 'move'
         ? { op: 'move_clip', clip_id: d.clip.clip_id, start_ms: span.start_ms }
@@ -340,8 +407,51 @@ export function EditorView({
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
     setPlaying(false); // seeking stops playback; press play again from the new position
+    if (boxDone.current) {
+      boxDone.current = false; // the click that ended a box selection is not a seek
+      return;
+    }
     setPlayhead(snap(Math.min(duration, Math.max(0, (e.clientX - rect.left + scrollPx) * msPerPx()))));
     setSelected(null);
+    setPicked([]);
+  };
+
+  // R33: drag a box over empty lane space → every clip it touches (on the lanes it covers).
+  const tracksBox = (e: React.PointerEvent) => {
+    const r = tracksRef.current!.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const boxStart = (e: React.PointerEvent) => {
+    const t = e.target as HTMLElement;
+    if (locked || e.button !== 0 || t.closest('.clip') || !t.closest('.trackSurface') || t.closest('.ruler')) return;
+    const p = tracksBox(e);
+    setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y, pointerId: e.pointerId });
+  };
+  const boxMove = (e: React.PointerEvent) => {
+    if (!box || e.pointerId !== box.pointerId) return;
+    const p = tracksBox(e);
+    setBox({ ...box, x1: p.x, y1: p.y });
+  };
+  const boxEnd = (e: React.PointerEvent) => {
+    if (!box || e.pointerId !== box.pointerId) return;
+    const b = box;
+    setBox(null);
+    if (Math.abs(b.x1 - b.x0) < 6 && Math.abs(b.y1 - b.y0) < 6) return; // a click (seek)
+    boxDone.current = true;
+    const host = tracksRef.current!.getBoundingClientRect();
+    const [top, bottom] = [Math.min(b.y0, b.y1) + host.top, Math.max(b.y0, b.y1) + host.top];
+    const [left, right] = [Math.min(b.x0, b.x1) + host.left, Math.max(b.x0, b.x1) + host.left];
+    const hits: string[] = [];
+    for (const row of tracksRef.current!.querySelectorAll<HTMLElement>('.track[data-kind]')) {
+      const rr = row.getBoundingClientRect();
+      if (rr.bottom < top || rr.top > bottom) continue;
+      const surf = row.querySelector('.trackSurface')!.getBoundingClientRect();
+      const toMs = (x: number) => (x - surf.left + scrollPx) * msPerPx();
+      const [a, z] = [toMs(left), toMs(right)];
+      for (const c of allClips) if (c.kind === row.dataset.kind && c.start_ms < z && c.end_ms > a) hits.push(c.clip_id);
+    }
+    setPicked(hits);
+    setSelected(hits[0] ?? null);
   };
 
   const versionOf = (versionId: string) => media.flatMap((m) => m.versions).find((v) => v.version_id === versionId);
@@ -514,7 +624,8 @@ export function EditorView({
           <span className="muted">{usable.length}</span>
         </div>
         <div className="panelBody">
-          {sel && project && (
+          {group.length > 1 && project && <MultiPanel clips={group} busy={busy} readOnly={locked} onEdit={(ops) => void edit(ops).then(() => ops[0]?.op === 'delete_clips' && setPicked([]))} onClear={() => setPicked([])} />}
+          {sel && project && group.length < 2 && (
             <InspectorPanel
               // Audit 14 Nov: one panel per clip — a half-typed field never lands on the next clip.
               key={sel.clip_id}
@@ -650,8 +761,8 @@ export function EditorView({
           <button className="smallbtn" disabled={locked || !canSplit} onClick={() => sel && edit([{ op: 'split_clip', clip_id: sel.clip_id, at_ms: playhead }])} title="Split klip terpilih di playhead (S)">
             ✂ Split
           </button>
-          <button className="smallbtn" disabled={locked || !sel} onClick={() => sel && edit([{ op: 'delete_clip', clip_id: sel.clip_id }])} title={lockReason ?? (sel ? 'Hapus klip terpilih (Del)' : 'Pilih klip dulu di linimasa atau pratinjau')}>
-            🗑 Hapus
+          <button className="smallbtn" disabled={locked || !sel} onClick={() => sel && (groupIds.length > 1 ? edit([{ op: 'delete_clips', clip_ids: groupIds }]).then(() => setPicked([])) : edit([{ op: 'delete_clip', clip_id: sel.clip_id }]))} title={lockReason ?? (sel ? 'Hapus klip (Delete)' : 'Pilih klip dulu di linimasa atau pratinjau, lalu Hapus klip (Delete)')}>
+            🗑 Hapus klip
           </button>
           <span className="zoomCtl" role="group" aria-label="Zoom linimasa">
             <button className="smallbtn" disabled={zoom <= TIMELINE_ZOOM.min} onClick={() => zoomTo(zoom / 1.5)} title="Perkecil linimasa (Ctrl + scroll)" aria-label="Perkecil linimasa">
@@ -699,7 +810,32 @@ export function EditorView({
             />
           </div>
         )}
-        <div className="tracks" ref={tracksRef}>
+        <div className="tracks" ref={tracksRef} onPointerDown={boxStart} onPointerMove={boxMove} onPointerUp={boxEnd} onPointerCancel={() => setBox(null)} style={{ position: 'relative' }}>
+          {menu && (() => {
+            const mc = allClips.find((x) => x.clip_id === menu.clip_id);
+            if (!mc) return null;
+            const many = groupIds.length > 1 && groupIds.includes(mc.clip_id);
+            const canCut = !many && playhead > mc.start_ms && playhead < mc.end_ms;
+            const act = (fn: () => void) => (e: React.PointerEvent) => {
+              e.stopPropagation();
+              setMenu(null);
+              fn();
+            };
+            return (
+              <div className="clipMenu" role="menu" aria-label="Menu klip" style={{ position: 'fixed', left: Math.max(4, Math.min(menu.x, window.innerWidth - 190)), top: Math.max(4, Math.min(menu.y, window.innerHeight - 130)) /* always on screen */ }} onPointerDown={(e) => e.stopPropagation()}>
+                <button type="button" role="menuitem" disabled={locked} onPointerUp={act(() => void (many ? edit([{ op: 'delete_clips', clip_ids: groupIds }]).then(() => setPicked([])) : edit([{ op: 'delete_clip', clip_id: mc.clip_id }])))}>
+                  🗑 Hapus{many ? ` ${groupIds.length} klip` : ''}
+                </button>
+                <button type="button" role="menuitem" disabled={locked || many} onPointerUp={act(() => void edit([{ op: 'duplicate_clip', clip_id: mc.clip_id }]))}>
+                  ⧉ Duplikat
+                </button>
+                <button type="button" role="menuitem" disabled={locked || !canCut} title={canCut ? undefined : 'Taruh playhead di dalam klip ini dulu'} onPointerUp={act(() => void edit([{ op: 'split_clip', clip_id: mc.clip_id, at_ms: playhead }]))}>
+                  ✂ Split di playhead
+                </button>
+              </div>
+            );
+          })()}
+          {box && <div className="boxSelect" aria-hidden="true" style={{ left: Math.min(box.x0, box.x1), top: Math.min(box.y0, box.y1), width: Math.abs(box.x1 - box.x0), height: Math.abs(box.y1 - box.y0) }} />}
           <div className="track rulerRow">
             <div className="trackLabel muted">{formatDuration(playhead)}</div>
             <div className="trackSurface ruler" ref={surfaceRef} onClick={seek} role="slider" aria-label="Posisi playhead" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={playhead} tabIndex={-1}>
@@ -716,7 +852,7 @@ export function EditorView({
           {TRACKS.map((t) => {
             const clips = tracks.filter((x) => x.kind === t.kind).flatMap((x) => x.clips);
             return (
-              <div className={`track${THUMB_TRACKS.has(t.kind) ? ' tall' : WAVE_TRACKS[t.kind] ? ' mid' : ''}`} key={t.kind}>
+              <div className={`track${THUMB_TRACKS.has(t.kind) ? ' tall' : WAVE_TRACKS[t.kind] ? ' mid' : ''}`} key={t.kind} data-kind={t.kind}>
                 <div className="trackLabel">
                   {t.label}
                   {(t.kind === 'video' || t.kind === 'broll' || t.kind === 'audio' || t.kind === 'music' || t.kind === 'sfx') && (
@@ -736,8 +872,10 @@ export function EditorView({
                   <div className="lane" style={lane}>
                   <div className="playhead" style={{ left: pct(playhead) }} />
                   {clips.map((c) => {
-                    const live = drag && drag.clip.clip_id === c.clip_id ? dragSpan(drag.mode, { ...c, hasMedia: !!c.media, sourceMs: sourceMs(c) }, drag.deltaMs) : c;
-                    const isSel = c.clip_id === selected;
+                    // R33: a group follows the dragged clip.
+                    const lead = drag && drag.mode === 'move' && groupIds.includes(drag.clip.clip_id) && groupIds.includes(c.clip_id) ? dragSpan('move', { ...drag.clip, hasMedia: !!drag.clip.media }, drag.deltaMs).start_ms - drag.clip.start_ms : null;
+                    const live = lead !== null ? { start_ms: c.start_ms + lead, end_ms: c.end_ms + lead } : drag && drag.clip.clip_id === c.clip_id ? dragSpan(drag.mode, { ...c, hasMedia: !!c.media, sourceMs: sourceMs(c) }, drag.deltaMs) : c;
+                    const isSel = c.clip_id === selected || groupIds.includes(c.clip_id);
                     return (
                       <div
                         key={c.clip_id}
@@ -750,9 +888,22 @@ export function EditorView({
                         title={`${clipName(c)} · ${formatDuration(live.start_ms)}–${formatDuration(live.end_ms)}${c.in_ms ? ` · mulai dari detik ${(c.in_ms / 1000).toFixed(1)} sumber` : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelected(c.clip_id);
+                          if (dragMoved.current) {
+                            dragMoved.current = false; // the click ending a drag keeps the selection
+                            return;
+                          }
+                          pick(c, e);
                         }}
-                        onFocus={() => setSelected(c.clip_id)}
+                        onFocus={(e) => !picked.length && e.currentTarget.matches(':focus-visible') && setSelected(c.clip_id) /* keyboard (Tab) only: a mouse click is handled by pick() — R33 */}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!groupIds.includes(c.clip_id)) {
+                            setPicked([]);
+                            setSelected(c.clip_id);
+                          }
+                          setMenu({ x: e.clientX, y: e.clientY, clip_id: c.clip_id });
+                        }}
                         onPointerDown={(e) => beginDrag(e, c, 'move')}
                         onPointerMove={moveDrag}
                         onPointerUp={endDrag}
@@ -763,6 +914,23 @@ export function EditorView({
                         )}
                         <span className="handle start" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-start')} onPointerMove={moveDrag} onPointerUp={endDrag} />
                         <span className="clipLabel">{ellipsize(clipName(c), 28)}</span>
+                        {c.clip_id === selected && groupIds.length < 2 && !locked && ((live.end_ms - live.start_ms) / Math.max(1, duration)) * viewPx * zoom >= 64 && (
+                          // only on clips wide enough: on a narrow clip it would cover the clip itself
+                          // R33: the delete button sits ON the selected clip (owner could not find it).
+                          <button
+                            type="button"
+                            className="clipTrash"
+                            aria-label={`Hapus klip ${clipName(c)}`}
+                            title="Hapus klip (Delete)"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void edit([{ op: 'delete_clip', clip_id: c.clip_id }]);
+                            }}
+                          >
+                            🗑
+                          </button>
+                        )}
                         <span className="handle end" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-end')} onPointerMove={moveDrag} onPointerUp={endDrag} />
                       </div>
                     );

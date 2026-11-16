@@ -89,7 +89,7 @@ const cutView = (c: Clip | undefined) => (c ? { start_ms: c.start_ms, end_ms: c.
 const text = (s: string | undefined) => (s ?? '').slice(0, MAX_TEXT);
 
 const MEDIA_TRACKS = new Set(['video', 'broll', 'audio']);
-const CLIP_GROUP: Record<string, Bagian> = { set_style: 'gaya', set_volume: 'audio', set_audio: 'audio', set_framing: 'gambar', set_picture: 'gambar', set_keyframes: 'gambar', set_motion: 'gambar', freeze_frame: 'gambar' };
+const CLIP_GROUP: Record<string, Bagian> = { set_style: 'gaya', set_volume: 'audio', set_audio: 'audio', set_framing: 'gambar', set_picture: 'gambar', set_keyframes: 'gambar', set_motion: 'gambar', freeze_frame: 'gambar', set_style_many: 'gaya' };
 const TRACK_GROUP: Record<string, Bagian> = { set_ducking: 'audio', set_loudness: 'audio', set_track_mute: 'audio', set_canvas: 'gambar', set_brand_logo: 'gambar' };
 /** A clip as recorded: everything but the per-word timings (long, and kept by `kata` anyway). */
 const snap = (c: Clip | undefined) => {

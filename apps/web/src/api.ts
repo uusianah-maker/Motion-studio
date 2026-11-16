@@ -224,7 +224,11 @@ export type EditOp =
   | { op: 'set_ducking'; on: boolean; level?: number }
   | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }
   | { op: 'set_motion'; clip_id: string; rotate?: 0 | 90 | 180 | 270; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: 'off' | 'ringan' | 'sedang' }
-  | { op: 'freeze_frame'; clip_id: string; at_ms: number; duration_ms: number };
+  | { op: 'freeze_frame'; clip_id: string; at_ms: number; duration_ms: number }
+  | { op: 'delete_clips'; clip_ids: string[] }
+  | { op: 'shift_clips'; clip_ids: string[]; delta_ms: number }
+  | { op: 'set_style_many'; clip_ids: string[]; style: Partial<TextStyle> }
+  | { op: 'duplicate_clip'; clip_id: string };
 export interface Track {
   track_id: string;
   kind: 'video' | 'broll' | 'text' | 'subtitle' | 'audio' | 'music' | 'sfx' | 'effects';

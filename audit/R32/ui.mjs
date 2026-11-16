@@ -47,7 +47,8 @@ try {
   page.on('console', (m) => m.type() === 'error' && !m.text().includes('status of 4') && errors.push(m.text()));
   await page.goto(`http://127.0.0.1:${server.port}/#token=${server.app.token}`);
   await page.getByRole('heading', { name: 'Uji Hapus Teks' }).waitFor();
-  const hapus = page.getByRole('button', { name: /Hapus$/ }).filter({ hasText: '🗑' });
+  // R33: the toolbar button now reads "🗑 Hapus klip".
+  const hapus = page.getByRole('button', { name: '🗑 Hapus klip', exact: true });
   const alert = async () => (await page.locator('.notice, [role="alert"]').allInnerTexts()).join(' | ');
 
   // 1. CTA preset at the playhead, then delete it with the button.

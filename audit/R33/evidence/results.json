@@ -1,0 +1,82 @@
+[
+  {
+    "id": "R33-01 Shift+klik: rentang satu…empat terpilih (4) + panel \"4 klip dipilih\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-02 Ctrl+klik mengeluarkan \"dua\" dari pilihan (3)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-03 Ctrl+A: semua subtitle di lajur (6), teks lain tidak ikut",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-04 Ubah ukuran bersama → 6 subtitle ukuran 9, satu revisi",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-05 Ubah posisi Y bersama → semua y 0,6",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-06 Shift+→ menggeser 6 subtitle bersama +1 dtk, satu revisi",
+    "ok": true,
+    "detail": "2000,4000,6000,8000,10000,12000"
+  },
+  {
+    "id": "R33-07 Undo mengembalikan geser bersama",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-08 Seret kotak di lajur subtitle → satu, dua, tiga terpilih",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-09 Del menghapus 3 klip terpilih sekaligus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-10 Undo mengembalikan ketiganya (satu langkah)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-11 Klip terpilih menampilkan tombol 🗑; toolbar \"🗑 Hapus klip\" bertooltip \"Hapus klip (Delete)\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-12 Klik 🗑 di klip → terhapus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-13 Klik kanan klip → menu Hapus / Duplikat / Split di playhead",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-14 Duplikat → salinan \"enam\" tepat sesudahnya",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-15 Menu klik kanan → Hapus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R33-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

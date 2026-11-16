@@ -62,7 +62,13 @@ export type EditOp =
    * clip's length; later clips on the same track move with it. 0 / false / 'off' / 1 = off. */
   | { op: 'set_motion'; clip_id: string; rotate?: Rotation | 0; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: VDenoise | 'off' }
   /** R23a: insert a still of the frame at `at_ms` for `duration_ms`; later clips on that track move right. */
-  | { op: 'freeze_frame'; clip_id: string; at_ms: number; duration_ms: number };
+  | { op: 'freeze_frame'; clip_id: string; at_ms: number; duration_ms: number }
+  /** R33 multi-select: several clips at once — one op, one undo step. */
+  | { op: 'delete_clips'; clip_ids: string[] }
+  | { op: 'shift_clips'; clip_ids: string[]; delta_ms: number }
+  | { op: 'set_style_many'; clip_ids: string[]; style: Partial<TextStyle> }
+  /** R33: a copy right after the clip on its lane (or after the lane's last clip when that spot is taken). */
+  | { op: 'duplicate_clip'; clip_id: string };
 
 /** Source length per media version (from the registry probe); unknown -> not enforced. */
 export type SourceDuration = (ref: MediaRef) => number | undefined;
@@ -243,6 +249,26 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         const d = ms(o.duration_ms, 'duration_ms');
         if (d < FREEZE_MS[0] || d > FREEZE_MS[1]) bad(`ops[${i}]: lama bekukan ${FREEZE_MS[0] / 1000}–${FREEZE_MS[1] / 1000} detik`);
         return { op: 'freeze_frame', clip_id: clipId(o.clip_id), at_ms: ms(o.at_ms, 'at_ms'), duration_ms: d };
+      }
+      case 'duplicate_clip':
+        keys(['op', 'clip_id']);
+        return { op: 'duplicate_clip', clip_id: clipId(o.clip_id) };
+      case 'delete_clips':
+      case 'shift_clips':
+      case 'set_style_many': {
+        keys(['op', 'clip_ids', ...(o.op === 'shift_clips' ? ['delta_ms'] : o.op === 'set_style_many' ? ['style'] : [])]);
+        const raw = o.clip_ids;
+        if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_TIMELINE_CLIPS) bad(`ops[${i}]: clip_ids harus daftar 1–${MAX_TIMELINE_CLIPS} klip`);
+        const clip_ids = [...new Set((raw as unknown[]).map(clipId))];
+        if (o.op === 'delete_clips') return { op: 'delete_clips', clip_ids };
+        if (o.op === 'shift_clips') {
+          const d = o.delta_ms;
+          if (typeof d !== 'number' || !Number.isFinite(d) || Math.abs(d) > 24 * 3_600_000) bad(`ops[${i}]: delta_ms harus angka ms`);
+          return { op: 'shift_clips', clip_ids, delta_ms: Math.round(d as number) };
+        }
+        const style = validateStyle(o.style, `ops[${i}].style`);
+        if (!Object.keys(style).length) bad(`ops[${i}]: style kosong`);
+        return { op: 'set_style_many', clip_ids, style };
       }
       case 'set_ducking':
         keys(['op', 'on', 'level']);
@@ -691,6 +717,41 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         if (src.adjust) still.adjust = { ...src.adjust };
         for (const k of ['fit', 'fit_color', 'look', 'rotate', 'flip_h', 'flip_v', 'vdenoise'] as const) if (src[k] !== undefined) (still as unknown as Record<string, unknown>)[k] = src[k];
         track.clips.push(still);
+        break;
+      }
+      case 'duplicate_clip': {
+        const { track, clip } = locate(t, op.clip_id);
+        const len = clip.end_ms - clip.start_ms;
+        const free = (a: number) => !track.clips.some((c) => c.start_ms < a + len && c.end_ms > a);
+        const at = free(clip.end_ms) ? clip.end_ms : Math.max(...track.clips.map((c) => c.end_ms));
+        const copy = JSON.parse(JSON.stringify(clip)) as Clip;
+        copy.clip_id = newClipId();
+        copy.start_ms = at;
+        copy.end_ms = at + len;
+        track.clips.push(copy);
+        break;
+      }
+      case 'delete_clips': {
+        const gone = new Set(op.clip_ids);
+        for (const id of op.clip_ids) locate(t, id); // every id must exist
+        for (const tr of t.tracks) tr.clips = tr.clips.filter((c) => !gone.has(c.clip_id));
+        break;
+      }
+      case 'shift_clips': {
+        const moved = op.clip_ids.map((id) => locate(t, id).clip);
+        if (op.delta_ms < 0 && moved.some((c) => c.start_ms + op.delta_ms < 0)) bad('Klip yang dipilih tidak bisa digeser sebelum detik 0');
+        for (const c of moved) {
+          c.start_ms += op.delta_ms;
+          c.end_ms += op.delta_ms;
+        }
+        break;
+      }
+      case 'set_style_many': {
+        for (const id of op.clip_ids) {
+          const { track, clip } = locate(t, id);
+          if (!TEXT_TRACKS.includes(track.kind)) bad('Gaya bersama hanya untuk klip teks/subtitle', { clip_id: id });
+          clip.style = { ...(clip.style ?? {}), ...op.style };
+        }
         break;
       }
       case 'set_ducking': {
