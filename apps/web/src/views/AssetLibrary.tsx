@@ -7,6 +7,7 @@ const KINDS: { id: BrandAsset['jenis']; label: string }[] = [
   { id: 'broll', label: 'B-roll' },
   { id: 'logo', label: 'Logo' },
   { id: 'penutup', label: 'Penutup' },
+  { id: 'vo', label: 'VO (suara)' },
   { id: 'lainnya', label: 'Lainnya' },
 ];
 const STATUS: { id: BrandAsset['lisensi']['status']; label: string }[] = [
@@ -17,7 +18,7 @@ const STATUS: { id: BrandAsset['lisensi']['status']; label: string }[] = [
 ];
 /** Event tags the automation engine looks for (KONTRAK-ENGINE / U2). */
 const SUGGESTED: Record<string, string[]> = { sfx: ['teks-muncul', 'kata-kunci', 'transisi', 'penutup'], musik: ['ceria', 'santai', 'energik', 'elegan'], broll: ['detail-bahan', 'try-on', 'packing', 'lifestyle'] };
-const ACCEPT: Record<string, string> = { sfx: 'audio/*,.wav,.mp3,.m4a', musik: 'audio/*,.wav,.mp3,.m4a', broll: 'video/*,image/*', logo: 'image/png,image/jpeg,image/webp', penutup: 'video/*,image/*', lainnya: '*/*' };
+const ACCEPT: Record<string, string> = { sfx: 'audio/*,.wav,.mp3,.m4a', musik: 'audio/*,.wav,.mp3,.m4a', broll: 'video/*,image/*', logo: 'image/png,image/jpeg,image/webp', penutup: 'video/*,image/*', vo: 'audio/*,.wav,.mp3,.m4a', lainnya: '*/*' };
 const slug = (s: string) =>
   s
     .toLowerCase()

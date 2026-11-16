@@ -1,0 +1,72 @@
+[
+  {
+    "id": "R34-01 Brand → C: pelafalan \"Aysilla → Ay-si-la\" tersimpan",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-02 Kartu \"Suara dari Teks\" ada di 1. Buat video",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-03 Alamat #/buat/suara-dari-teks",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-04 Daftar suara dari mesin (Andika id-ID terpilih)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-05 Teks dipecah jadi 3 kalimat; pelafalan brand terlihat",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-06 Mesin selesai → hasil: suara lengkap + 3 kalimat dengan ▶",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-07 Pelafalan brand terkirim ke mesin (teks.pelafalan)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-08 VO masuk Brand → Aset (jenis vo) + Media (lengkap + 3 kalimat)",
+    "ok": true,
+    "detail": "VO AYS-20261116-001.wav, VO AYS-20261116-001 kalimat 01.wav, VO AYS-20261116-001 kalimat 02.wav, VO AYS-20261116-001 kalimat 03.wav"
+  },
+  {
+    "id": "R34-09 Ulang kalimat 2 → pengganti dengan ▶ (hybrid)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-10 Linimasa: 1 klip audio VO + 3 subtitle dari teks (dengan waktu per kata), satu revisi",
+    "ok": true,
+    "detail": "Halo kak, ini Aysilla. | Bahannya adem banget! | Cek keranjang kuning sekarang."
+  },
+  {
+    "id": "R34-11 Edit: klip VO dikenali (\"VO dari Suara dari Teks, 3 kalimat\")",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-12 \"＋ Subtitle dari teks\" membuat lagi 3 subtitle tanpa Whisper",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-13 Brand → Aset: jenis \"VO (suara)\" tersedia",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R34-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

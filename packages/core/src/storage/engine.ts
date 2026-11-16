@@ -36,6 +36,7 @@ import { writeJsonAtomic } from './jsonStore.js';
 import { audit } from './audit.js';
 import { markEngineOrigin, readLearning } from './learning.js';
 import { kamusBelajar } from './kamusBelajar.js';
+import { type TtsSettings, validateTtsJob } from './tts.js';
 
 export const ENGINE_DIR = '06_ENGINE';
 /** `.motionstudio/engine-ids/<job_id>`: one empty-ish file per job id ever handed out (R4). */
@@ -76,7 +77,7 @@ export function engineConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Engin
   };
 }
 
-export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot';
+export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts';
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
 
 export interface EngineStatus {
@@ -110,7 +111,7 @@ export interface EngineBrief {
 
 export interface EngineJobInput {
   project_id: string;
-  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot';
+  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot' | 'tts';
   /** `$sumber` (one video) or `$sumber:<id>` (several). */
   sources: { kunci: string; ref: MediaRef }[];
   preset: string;
@@ -133,6 +134,8 @@ export interface EngineJobInput {
   audio_pilihan?: AudioPilihan;
   /** Beat Spot (contract §16): written to job.json as the `beatspot` object. */
   beatspot?: BeatspotSettings;
+  /** R34 Suara dari Teks (contract §21): written to job.json as the `tts` object. */
+  tts?: TtsSettings;
 }
 
 export const AUDIO_PILIHAN = ['vo', 'musik', 'keduanya'] as const;
@@ -181,6 +184,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (o.mode === 'pisah') return validatePisahJob(o);
   if (o.mode === 'transfer') return validateTransferJob(o);
   if (o.mode === 'beatspot') return validateBeatspotJob(o);
+  if (o.mode === 'tts') return validateTtsJob(o);
   const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'preset', 'brief', 'ai', 'mode_ops', 'batch', 'abaikan_cek_ucapan', 'audio_pilihan'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
@@ -549,6 +553,7 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ...(input.pisah ?? {}),
       ...(input.audio_pilihan ? { audio_pilihan: input.audio_pilihan } : {}),
       // "auto" / empty BPM are left out, so a chosen preset's beat defaults can apply (§17.5).
+      ...(input.tts ? { tts: input.tts } : {}),
       ...(input.beatspot ? { beatspot: Object.fromEntries(Object.entries(input.beatspot).filter(([k, v]) => !((k === 'ketukan_per_potong' && v === 'auto') || (k === 'bpm' && v === null)))) } : {}),
     };
     await writeJsonAtomic(path.join(jdir, 'job.json'), job);
@@ -705,13 +710,13 @@ export async function runEngineJob(
   await fsp.writeFile(path.join(jdir, 'engine.log'), log, 'utf8').catch(() => undefined);
   // The copies in masuk/ were for the engine only (it keeps its own in konten/1-upload).
   if (mode === 'pisah') await removeMasuk(jdir);
-  const resultFile = mode === 'pisah' ? 'pisah.json' : 'rencana.json';
+  const resultFile = mode === 'pisah' ? 'pisah.json' : mode === 'tts' ? 'tts.json' : 'rencana.json';
   const rencana = await readJson<{ status?: string; alasan?: string }>(path.join(jdir, 'out', resultFile)).catch(() => null);
   if (code === 0 && rencana?.status === 'ditolak') code = 2; // contract §5.1: the plan itself says refused
   // The log tail can hold local paths (D:\...): never shown to the browser as is.
   const tail = scrubPaths(log.trim().split('\n').slice(-3).join(' · ')).slice(0, 300);
   if (code === 0) {
-    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : 'ops.json';
+    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : mode === 'tts' ? 'tts.json' : 'ops.json';
     const okFiles = await fsp.stat(path.join(jdir, 'out', need)).catch(() => null);
     s = okFiles
       ? { ...s, state: 'siap', tahap: 'selesai', persen: 100, ...(rencana?.status === 'perlu_keputusan' ? { pesan: 'Perlu keputusan tim (lihat kartu rencana)' } : {}) }

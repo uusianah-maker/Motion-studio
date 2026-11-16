@@ -11,6 +11,8 @@ import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle
 import { InspectorPanel } from './InspectorPanel';
 import { RencanaBanner } from './RencanaBanner';
 import { MultiPanel } from './MultiPanel';
+import { voSubtitleOps } from '../../../../packages/core/dist/storage/voText.js';
+import type { VoIndex } from '../api';
 import { freeSlot } from './PresetPanel';
 import { ProjectMenu } from './ProjectMenu';
 import { CutReviewDialog } from './CutReviewDialog';
@@ -238,6 +240,18 @@ export function EditorView({
   const lastEnd = Math.max(0, ...allClips.map((c) => c.end_ms));
   const duration = visibleDuration(lastEnd);
   const sel = allClips.find((c) => c.clip_id === selected) ?? null;
+  // R34: a selected VO (from "Suara dari Teks") knows its text → subtitles without Whisper.
+  const [vo, setVo] = useState<{ version_id: string; index: VoIndex } | null>(null);
+  const selVersion = sel?.media?.version_id ?? null;
+  useEffect(() => {
+    if (!selVersion) return;
+    let stale = false;
+    void api.voIndex(selVersion).then((index) => !stale && setVo(index ? { version_id: selVersion, index } : null), () => undefined);
+    return () => {
+      stale = true;
+    };
+  }, [api, selVersion]);
+  const selVo = sel?.media && vo?.version_id === sel.media.version_id ? vo.index : null;
   // R33: the group (only clips that still exist); 2+ = group mode.
   const group = picked.length > 1 ? allClips.filter((c) => picked.includes(c.clip_id)) : [];
   const groupIds = group.map((c) => c.clip_id);
@@ -625,6 +639,19 @@ export function EditorView({
           <span className="muted">{usable.length}</span>
         </div>
         <div className="panelBody">
+          {selVo && sel && group.length < 2 && (
+            <div className="notice info small" role="status" aria-label="VO dari teks">
+              Klip ini VO dari &quot;Suara dari Teks&quot; ({selVo.kalimat.length} kalimat).{' '}
+              <button
+                className="btn small"
+                disabled={locked || (sel.speed ?? 1) !== 1}
+                title={(sel.speed ?? 1) !== 1 ? 'Kembalikan kecepatan ke 1× dulu' : 'Subtitle per kalimat dengan waktu tiap kata, dari teks yang sudah diketahui (tanpa Whisper)'}
+                onClick={() => void edit(voSubtitleOps(selVo, sel.start_ms, sel.in_ms ?? 0, sel.end_ms - sel.start_ms) as EditOp[])}
+              >
+                ＋ Subtitle dari teks
+              </button>
+            </div>
+          )}
           {group.length > 1 && project && <MultiPanel clips={group} busy={busy} readOnly={locked} onEdit={(ops) => void edit(ops).then(() => ops[0]?.op === 'delete_clips' && setPicked([]))} onClear={() => setPicked([])} />}
           {sel && project && group.length < 2 && (
             <InspectorPanel

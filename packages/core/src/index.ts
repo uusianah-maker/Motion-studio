@@ -170,3 +170,4 @@ export { MAX_TRANSFER_SCENES, type TransferScene, type TransferView, editTransfe
 export { type BeatspotCandidate, type BeatspotCut, type BeatspotView, readBeatspotView, rerunBeatspot } from './storage/beatspot.js';
 export { type BackupLocation, listBackupLocations, registerBackupLocation, verifyBackupLocation } from './storage/backup.js';
 export { PRESET_JENIS, examplePresets } from './storage/brand.js';
+export { DEFAULT_VOICE, TTS_LIMITS, type TtsSettings, type TtsView, type TtsVoice, type VoIndex, listTtsVoices, readTtsResult, readVoIndex, splitKalimat, voSubtitleOps } from './storage/tts.js';

@@ -47,7 +47,7 @@ export type Platform = 'tiktok' | 'instagram' | 'shopee' | 'youtube';
 export interface BrandAsset {
   id: string;
   ref: Ref;
-  jenis: 'sfx' | 'musik' | 'broll' | 'logo' | 'penutup' | 'lainnya';
+  jenis: 'sfx' | 'musik' | 'broll' | 'logo' | 'penutup' | 'vo' | 'lainnya';
   nama: string;
   tag: string[];
   lisensi: { status: 'milik_sendiri' | 'berlisensi' | 'tanpa_lisensi' | 'belum_dicek'; bukti: string; iklan: boolean };
@@ -118,6 +118,8 @@ export interface BrandKit {
   watermark: { teks: string; y: number; lebar: number; opasitas: number } | null;
   kosakata: string[];
   kamus: { salah: string; benar: string }[];
+  /** R34: how the TTS says a written word ("Aysilla" → "Ay-si-la"). */
+  pelafalan: { tulisan: string; ucapan: string }[];
   kata_kunci: string[];
   kapital: 'normal' | 'kata_kunci' | 'semua';
   emoji: boolean;
@@ -563,10 +565,30 @@ export async function authMode(base = ''): Promise<'local' | 'google'> {
 
 // ---- U6 engine runner (Generate Otomatis / Batch Remix)
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
+/** R34 (contract §21). */
+export interface TtsVoice {
+  id: string;
+  nama: string;
+  bahasa: string;
+  gender: string;
+  backend: string;
+}
+export type { VoIndex } from '../../../packages/core/dist/storage/voText.js';
+import type { VoIndex } from '../../../packages/core/dist/storage/voText.js';
+export interface TtsView {
+  job_id: string;
+  suara: string;
+  kecepatan: number;
+  jeda_ms: number;
+  total_durasi: number;
+  gabungan: { media_id: string; version_id: string } | null;
+  aset_id: string | null;
+  kalimat: { no: number; teks: string; mulai: number; akhir: number; durasi: number; kata: { teks: string; mulai: number; akhir: number }[]; ref: { media_id: string; version_id: string } | null }[];
+}
 export interface EngineJob {
   job_id: string;
   project_id: string;
-  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot';
+  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts';
   state: EngineState;
   tahap: string;
   persen: number;
@@ -963,6 +985,11 @@ export function createApi(token: string | null, base = '') {
       call<{ state: ReviewInfo['state']; variant_approved?: boolean }>('POST', `/api/projects/${encodeURIComponent(id)}/review`, { json: { expected_revision, status, ...(note ? { note } : {}) } }),
     // U6 engine runner
     engineInfo: () => call<{ installed: boolean; running: number; waiting: number }>('GET', '/api/engine'),
+    /** R34 Suara dari Teks: the engine's voices, a tts job, its voice over, a VO's known text. */
+    engineSuara: () => call<{ tersedia: boolean; suara: TtsVoice[] }>('GET', '/api/engine/suara'),
+    engineTts: (id: string, tts: { teks?: string; kalimat?: string[]; suara: string; kecepatan: number; jeda_ms: number }) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'tts', tts } }).then((r) => r.job),
+    ttsResult: (id: string, jobId: string) => call<{ tts: TtsView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/tts`).then((r) => r.tts),
+    voIndex: (versionId: string) => call<{ vo: VoIndex | null }>('GET', `/api/vo/${encodeURIComponent(versionId)}`).then((r) => r.vo),
     /** R25: projects whose newest Generate plan is ready but not applied. */
     rencanaTertunda: () => call<{ tertunda: { project_id: string; job_id: string; mode: EngineJob['mode'] }[] }>('GET', '/api/engine/rencana-tertunda').then((r) => r.tertunda),
     engineJobs: (id: string) => call<{ jobs: EngineJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs`).then((r) => r.jobs),

@@ -3,7 +3,7 @@
  * and WHAT to prepare; opening a card shows that feature's page inside "Buat video" (tab bar on top),
  * and every draft ends with "Buka di Edit".
  */
-export type BuatFitur = 'generate' | 'batch' | 'beatspot' | 'transfer';
+export type BuatFitur = 'generate' | 'batch' | 'beatspot' | 'transfer' | 'suara';
 
 export const FITUR: { id: BuatFitur; nama: string; sym: string; kapan: string; bahan: string[]; hasil: string }[] = [
   {
@@ -37,6 +37,14 @@ export const FITUR: { id: BuatFitur; nama: string; sym: string; kapan: string; b
     kapan: 'Ada video orang lain yang konsepnya mau ditiru dengan produk sendiri (lewat alat AI gambar/video).',
     bahan: ['1 video referensi', 'Produk di Brand Kit (+ foto produk untuk alat AI)'],
     hasil: 'Adegan + gambar + prompt siap salin (tanpa biaya API).',
+  },
+  {
+    id: 'suara',
+    nama: 'Suara dari Teks',
+    sym: '🔊',
+    kapan: 'Butuh voice over dari tulisan (tanpa rekam suara): naskah iklan, CTA, penjelasan produk.',
+    bahan: ['Teks / naskah (paragraf)', 'Pilihan suara (sekarang Andika, Indonesia)', 'Pelafalan kata sulit di Brand Kit (opsional)'],
+    hasil: 'VO per kalimat + lengkap → tersimpan di Aset (VO) → linimasa + subtitle dari teks (tanpa Whisper).',
   },
 ];
 

@@ -13,7 +13,11 @@ import {
   listEngineBatches,
   listProjectIds,
   listEngineJobs,
+  listTtsVoices,
   pendingPlan,
+  readTtsResult,
+  readVoIndex,
+  type TtsVoice,
   loadEnginePlan,
   prepareEngineJob,
   readBatchDecisions,
@@ -59,6 +63,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
  */
 export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal; proxies?: ProxyQueue }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number> } {
   const queue: { project_id: string; job_id: string; mode: EngineMode }[] = [];
+  let voices: { at: number; list: TtsVoice[] } | null = null;
   const active = new Map<string, AbortController>();
   /**
    * R25b: the media an engine plan / approved Batch variant brings into a project get their light
@@ -167,6 +172,28 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
       method: 'GET',
       path: '/api/engine',
       handle: async () => ({ installed: !!opts.config, running: running ? 1 : 0, waiting: queue.length }),
+    },
+    {
+      // R34: the engine's voices (`engine tts` daftar_suara), cached 10 minutes.
+      method: 'GET',
+      path: '/api/engine/suara',
+      handle: async () => {
+        if (!opts.config) return { tersedia: false, suara: [] };
+        if (!voices || Date.now() - voices.at > 600_000) voices = { at: Date.now(), list: await listTtsVoices(opts.config).catch(() => [] as TtsVoice[]) };
+        return { tersedia: true, suara: voices.list };
+      },
+    },
+    {
+      // R34: a finished "Suara dari Teks" job → its voice over (imported into Media + Brand Kit on first read).
+      method: 'GET',
+      path: '/api/projects/:project_id/engine/jobs/:job_id/tts',
+      handle: async ({ params }) => ({ tts: await readTtsResult(ws, params.project_id!, jobParam(params.job_id)) }),
+    },
+    {
+      // R34: the known text + sentence/word times of a VO media (subtitles without Whisper).
+      method: 'GET',
+      path: '/api/vo/:version_id',
+      handle: async ({ params }) => ({ vo: await readVoIndex(ws, params.version_id!) }),
     },
     {
       // R25: projects whose newest Generate plan is ready but not applied (label in the lists).

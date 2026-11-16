@@ -31,7 +31,8 @@ export const CAPITALS = ['normal', 'kata_kunci', 'semua'] as const;
 export const PLATFORMS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
 export const TEXT_FREE_AREAS = ['wajah', 'produk', 'bawah_15', 'atas_10', 'kanan_tombol'] as const;
 export const DISCLAIMER_WHEN = ['selalu', 'varian_warna', 'harga', 'manual'] as const;
-export const ASSET_KINDS = ['sfx', 'musik', 'broll', 'logo', 'penutup', 'lainnya'] as const;
+/** R34: `vo` = voice over from "Suara dari Teks" (or uploaded), reusable in every feature. */
+export const ASSET_KINDS = ['sfx', 'musik', 'broll', 'logo', 'penutup', 'vo', 'lainnya'] as const;
 export const LICENSE_STATUS = ['milik_sendiri', 'berlisensi', 'tanpa_lisensi', 'belum_dicek'] as const;
 export const MAX_BRAND_ASSETS = 500;
 /** Event tags the engine's presets look for (KONTRAK-ENGINE, U2 notes from venus). */
@@ -155,6 +156,8 @@ export interface BrandKit {
   watermark: { teks: string; y: number; lebar: number; opasitas: number } | null;
   kosakata: string[];
   kamus: { salah: string; benar: string }[];
+  /** R34 (§21): how the TTS should SAY a written word, e.g. "Aysilla" → "Ay-si-la" (text / subtitles keep the writing). */
+  pelafalan: { tulisan: string; ucapan: string }[];
   kata_kunci: string[];
   kapital: (typeof CAPITALS)[number];
   emoji: boolean;
@@ -201,6 +204,7 @@ const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
   watermark: null,
   kosakata: [],
   kamus: [],
+  pelafalan: [],
   kata_kunci: [],
   kapital: 'normal',
   emoji: false,
@@ -419,6 +423,8 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
   if (produk.length > 50) bad('produk maksimal 50');
   const kamus = o.kamus === undefined ? [] : Array.isArray(o.kamus) ? o.kamus : bad('kamus harus daftar');
   if (kamus.length > 300) bad('kamus maksimal 300 pasang');
+  const pelafalan = o.pelafalan === undefined ? [] : Array.isArray(o.pelafalan) ? o.pelafalan : bad('pelafalan harus daftar');
+  if (pelafalan.length > 200) bad('pelafalan maksimal 200 pasang');
   const presets = o.presets === undefined ? [] : Array.isArray(o.presets) ? o.presets : bad('preset harus daftar');
   if (presets.length > 12) bad('preset maksimal 12');
   const presetList = presets.map(validatePreset);
@@ -483,6 +489,10 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     kamus: kamus.map((k, i) => {
       const ko = obj(k, `kamus ${i + 1}`, ['salah', 'benar']);
       return { salah: text(ko.salah, `kamus ${i + 1} salah`, 60, false), benar: text(ko.benar, `kamus ${i + 1} benar`, 60, false) };
+    }),
+    pelafalan: pelafalan.map((k, i) => {
+      const ko = obj(k, `pelafalan ${i + 1}`, ['tulisan', 'ucapan']);
+      return { tulisan: text(ko.tulisan, `pelafalan ${i + 1} tulisan`, 60, false), ucapan: text(ko.ucapan, `pelafalan ${i + 1} ucapan`, 80, false) };
     }),
     kata_kunci: list(o.kata_kunci, 'kata kunci', 100, 40),
     kapital: oneOf(o.kapital, 'aturan kapital', CAPITALS, 'normal'),
@@ -666,7 +676,7 @@ async function checkFiles(ws: Workspace, reg: Registry, kit: BrandKitInput): Pro
   for (const a of kit.aset) {
     const v = usable(reg, a.ref, `Aset ${a.id}`);
     const e = ext(v.original_name);
-    if ((a.jenis === 'sfx' || a.jenis === 'musik') && !AUDIO_EXT.includes(e) && !['.mp4', '.mov', '.webm'].includes(e)) bad(`aset ${a.id}: ${a.jenis} harus file suara (MP3/WAV/M4A/…)`);
+    if ((a.jenis === 'sfx' || a.jenis === 'musik' || a.jenis === 'vo') && !AUDIO_EXT.includes(e) && !['.mp4', '.mov', '.webm'].includes(e)) bad(`aset ${a.id}: ${a.jenis} harus file suara (MP3/WAV/M4A/…)`);
     if ((a.jenis === 'broll' || a.jenis === 'penutup') && !OUTRO_EXT.includes(e)) bad(`aset ${a.id}: ${a.jenis} harus video atau gambar`);
     if (a.jenis === 'logo' && !LOGO_EXT.includes(e)) bad(`aset ${a.id}: logo harus gambar PNG/JPG/WebP`);
   }
@@ -781,7 +791,7 @@ export function orientationOf(w: number, h: number): string {
 
 export interface BrandExportAsset {
   kunci: string;
-  jenis: 'font' | 'logo' | 'penutup' | 'sfx' | 'musik' | 'broll' | 'lainnya';
+  jenis: 'font' | 'logo' | 'penutup' | 'sfx' | 'musik' | 'broll' | 'vo' | 'lainnya';
   path?: string;
   tag: string[];
   lisensi_iklan: boolean;
@@ -874,6 +884,8 @@ export async function exportBrandKit(ws: Workspace, brandId: string, opts: { pat
       ...(k.tagline ? { tagline: k.tagline } : {}),
       kosakata_whisper: k.kosakata,
       kamus: Object.fromEntries(k.kamus.map((x) => [x.salah, x.benar])),
+      // R34 (§21): {tulisan: ucapan} for `engine tts`.
+      ...(k.pelafalan.length ? { pelafalan: Object.fromEntries(k.pelafalan.map((x) => [x.tulisan, x.ucapan])) } : {}),
       kata_kunci: k.kata_kunci,
       kapital: k.kapital,
       emoji: k.emoji,

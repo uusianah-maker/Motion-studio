@@ -72,6 +72,7 @@ function cleaned(d: BrandKitInput): BrandKitInput {
     warna_dilarang: clean(d.warna_dilarang),
     kosakata: clean(d.kosakata),
     kamus: d.kamus.filter((k) => k.salah.trim() && k.benar.trim()),
+    pelafalan: (d.pelafalan ?? []).filter((k) => k.tulisan.trim() && k.ucapan.trim()),
     kata_kunci: clean(d.kata_kunci),
     disclaimer: d.disclaimer && d.disclaimer.teks.trim() ? d.disclaimer : null,
     tagline: d.tagline.trim(),
@@ -512,6 +513,21 @@ export function BrandView({ api, readOnly = false }: { api: Api; readOnly?: bool
               ))}
               <button className="btn small" onClick={() => set({ kamus: [...draft.kamus, { salah: '', benar: '' }] })}>
                 ＋ Pasangan kamus
+              </button>
+              {/* R34: pronunciation for "Suara dari Teks" — only the voice changes, text & subtitles keep the writing. */}
+              <b className="small">Pelafalan suara (tulisan → cara dibaca)</b>
+              <div className="muted small">Dipakai "Suara dari Teks". Teks & subtitle tetap memakai tulisan aslinya.</div>
+              {(draft.pelafalan ?? []).map((k, i) => (
+                <div key={i} className="row" style={{ gap: 6 }}>
+                  <input aria-label={`Pelafalan tulisan ${i + 1}`} placeholder="Aysilla" maxLength={60} value={k.tulisan} onChange={(e) => set({ pelafalan: draft.pelafalan.map((x, j) => (j === i ? { ...x, tulisan: e.target.value } : x)) })} />→
+                  <input aria-label={`Pelafalan ucapan ${i + 1}`} placeholder="Ay-si-la" maxLength={80} value={k.ucapan} onChange={(e) => set({ pelafalan: draft.pelafalan.map((x, j) => (j === i ? { ...x, ucapan: e.target.value } : x)) })} />
+                  <button className="tiny" aria-label={`Hapus pelafalan ${i + 1}`} onClick={() => set({ pelafalan: draft.pelafalan.filter((_, j) => j !== i) })}>
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button className="btn small" onClick={() => set({ pelafalan: [...(draft.pelafalan ?? []), { tulisan: '', ucapan: '' }] })}>
+                ＋ Pelafalan
               </button>
               <label>
                 Kata kunci yang diperbesar (pisah koma)

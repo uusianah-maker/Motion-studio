@@ -26,6 +26,53 @@ if (mode === 'daftar_batch') {
   process.exit(0);
 }
 
+if (mode === 'tts') {
+  // R34 / contract §21: voices, or one WAV per sentence + the joined take with pauses, word times.
+  const tj = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8'));
+  const outDir = path.join(jobDir, 'out');
+  fs.mkdirSync(path.join(outDir, 'vo'), { recursive: true });
+  if (tj.tts?.daftar_suara) {
+    fs.writeFileSync(path.join(outDir, 'tts.json'), JSON.stringify({ schema: 'tts/1', status: 'selesai', suara: [{ id: 'windows:Andika', nama: 'Microsoft Andika', bahasa: 'id-ID', gender: 'Male', backend: 'windows' }, { id: 'windows:Zira', nama: 'Microsoft Zira', bahasa: 'en-US', gender: 'Female', backend: 'windows' }] }));
+    process.exit(0);
+  }
+  const kit = tj.brand_kit ? JSON.parse(fs.readFileSync(path.join(jobDir, tj.brand_kit), 'utf8')) : {};
+  const ucap = kit.teks?.pelafalan ?? {};
+  const rate = 48000;
+  const wav = (samples) => {
+    const b = Buffer.alloc(44 + samples.length * 2);
+    b.write('RIFF', 0); b.writeUInt32LE(36 + samples.length * 2, 4); b.write('WAVE', 8); b.write('fmt ', 12);
+    b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
+    b.write('data', 36); b.writeUInt32LE(samples.length * 2, 40);
+    samples.forEach((v, i) => b.writeInt16LE(Math.round(v * 12000), 44 + i * 2));
+    return b;
+  };
+  const wordDur = 0.3 / (tj.tts.kecepatan ?? 1);
+  const gap = (tj.tts.jeda_ms ?? 300) / 1000;
+  const all = [];
+  const file = [];
+  let t = 0;
+  tj.tts.kalimat.forEach((k, i) => {
+    process.stdout.write(`${JSON.stringify({ tahap: 'suara', persen: Math.round((i / tj.tts.kalimat.length) * 90), pesan: `kalimat ${i + 1}` })}\n`);
+    const kata = k.split(/\s+/).filter(Boolean);
+    const n = Math.round(kata.length * wordDur * rate);
+    const s = Array.from({ length: n }, (_, j) => Math.sin((2 * Math.PI * 220 * (1 + i * 0.25) * j) / rate));
+    const name = `${String(i + 1).padStart(2, '0')}.wav`;
+    fs.writeFileSync(path.join(outDir, 'vo', name), wav(s));
+    let diucapkan = k;
+    for (const [w, u] of Object.entries(ucap)) diucapkan = diucapkan.replace(new RegExp(w, 'gi'), u);
+    file.push({ no: i + 1, teks: k, diucapkan, file: `out/vo/${name}`, durasi: n / rate, mulai: t, akhir: t + n / rate, kata: kata.map((w, j) => ({ teks: w, mulai: j * wordDur, akhir: (j + 1) * wordDur })) });
+    all.push(...s);
+    t += n / rate;
+    if (i < tj.tts.kalimat.length - 1) {
+      all.push(...new Array(Math.round(gap * rate)).fill(0));
+      t += gap;
+    }
+  });
+  fs.writeFileSync(path.join(outDir, 'vo', 'gabungan.wav'), wav(all));
+  fs.writeFileSync(path.join(outDir, 'tts.json'), JSON.stringify({ schema: 'tts/1', status: 'selesai', suara: tj.tts.suara, backend: 'windows', kecepatan: tj.tts.kecepatan, jeda_ms: tj.tts.jeda_ms, lufs: -16, usulan: true, gabungan: { file: 'out/vo/gabungan.wav', durasi: t }, file, total_durasi: t }));
+  process.exit(0);
+}
+
 const job = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8'));
 const brand = JSON.parse(fs.readFileSync(path.join(jobDir, job.brand_kit), 'utf8'));
 const out = path.join(jobDir, 'out');

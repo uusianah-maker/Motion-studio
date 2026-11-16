@@ -9,6 +9,7 @@ import { GenerateView } from './views/GenerateView';
 import { HasilView } from './views/HasilView';
 import { BeatSpotView } from './views/BeatSpotView';
 import { type BuatFitur, BuatTabs, BuatVideoView } from './views/BuatVideoView';
+import { SuaraView } from './views/SuaraView';
 import { MotionTransferView } from './views/MotionTransferView';
 import { MediaView } from './views/MediaView';
 import { StorageView } from './views/StorageView';
@@ -17,10 +18,10 @@ import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 import { Logo } from './Logo';
 
-export type View = 'buat' | 'generate' | 'batch' | 'shots' | 'transfer' | 'beatspot' | 'editor' | 'hasil' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
+export type View = 'buat' | 'generate' | 'batch' | 'shots' | 'transfer' | 'beatspot' | 'suara' | 'editor' | 'hasil' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
 
 /** The four ways of "Buat video" (shown inside it, no menu items of their own). */
-const BUAT: readonly View[] = ['generate', 'batch', 'beatspot', 'transfer'];
+const BUAT: readonly View[] = ['generate', 'batch', 'beatspot', 'transfer', 'suara'];
 
 // R17 (owner: "Ya, rapikan"): the work flow in order, then materials, then settings.
 const NAV: { group: string; items: { id: View; sym: string; label: string }[] }[] = [
@@ -57,6 +58,7 @@ const ROUTE: Record<View, string> = {
   generate: 'buat/video-iklan',
   batch: 'buat/batch-remix',
   beatspot: 'buat/beat-spot',
+  suara: 'buat/suara-dari-teks',
   transfer: 'buat/motion-transfer',
   editor: 'edit',
   hasil: 'hasil',
@@ -231,6 +233,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} fokus={genFokus} />)}
         {keep('batch', <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} active={view === 'batch'} />)}
         {keep('beatspot', <BeatSpotView api={api} role={role} projects={projects ?? []} active={view === 'beatspot'} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
+        {keep('suara', <SuaraView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
         {keep('transfer', <MotionTransferView api={api} role={role} projects={projects ?? []} active={view === 'transfer'} onProjectsChanged={() => void loadProjects()} />)}
         {keep('shots', <ShotLibraryView api={api} role={role} active={view === 'shots'} />)}
         {keep('hasil', <HasilView api={api} active={view === 'hasil'} onOpenProject={(id) => void openNew(id)} />)}

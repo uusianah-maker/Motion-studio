@@ -90,6 +90,7 @@ export const emptyKit = (): BrandKitInput => ({
   watermark: null,
   kosakata: [],
   kamus: [],
+  pelafalan: [],
   kata_kunci: [],
   kapital: 'normal',
   emoji: false,
