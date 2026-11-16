@@ -690,3 +690,14 @@ Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`,
 - **Progres**: JSON-lines dari alatnya masing-masing.
 - **Kode keluar**: 0 selesai · 2 ditolak (`out/visual.json` berisi alasannya bila job tidak sah) · 1 gagal teknis.
 - **Tes**: `PerintahVisual` di test_engine menjalankan deteksi lalu reframe + keyframe_app dari salinan folder rilis dengan folder data terpisah. Folder data tidak ditulisi.
+
+### 18.11 Posisi caption memakai MediaPipe (R24a, OK venus 16 Nov)
+`posisi_caption.posisi_otomatis` sekarang mendeteksi wajah lewat `visual/deteksi.py --jenis wajah` (visual-venv), memakai titik sampel yang sama seperti sebelumnya (1/dtk, maksimal 90).
+- **Cadangan Haar** dipakai bila visual-venv tidak ada, deteksi gagal, prosesnya lebih dari 120 dtk (misalnya antre kunci AI), atau env `MOTION_POSISI_HAAR=1` diisi.
+- **Laporan**: `posisiCaption.deteksi` = `"mediapipe"` atau `"haar"`.
+- **Uji 3 klip winning**:
+  - IN17: wajah terdeteksi di 69% frame dengan MediaPipe, 54% dengan Haar.
+  - IN1: 94% (MediaPipe) dan 76% (Haar).
+  - IN21 (celana di lantai, tanpa orang): Haar **salah mengira lipatan kain sebagai wajah** dan memindahkan caption ke 0,42. MediaPipe benar: 0 wajah, caption tetap di 0,72.
+- **Waktu**: ±2,3 dtk per klip, dibanding ±0,7 dtk dengan Haar.
+- test_posisi_caption tetap lulus.

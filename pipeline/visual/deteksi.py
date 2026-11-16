@@ -157,8 +157,8 @@ def main() -> int:
     try:
         if not jenis:
             raise beban.Ditolak("--jenis harus wajah dan/atau objek")
-        if not 1 <= a.hz <= 30:
-            raise beban.Ditolak("--hz harus 1..30")
+        if not 0.05 <= a.hz <= 30:
+            raise beban.Ditolak("--hz harus 0,05..30")
         beban.tunggu_ram()
         with beban.kunci_ai("deteksi"):
             doc = deteksi(Path(a.video).resolve(), jenis, a.hz, tuple(x for x in a.label.split(",") if x))
