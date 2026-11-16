@@ -109,3 +109,26 @@ Catatan:
 - Kamus: https://github.com/damzaky/kumpulan-kata-bahasa-indonesia-KBBI, https://github.com/LibreOffice/dictionaries/tree/master/id (LICENSE-dict, README-dict.adoc)
 - Open Generative AI: https://github.com/anil-matcha/open-generative-ai; Wan2GP: https://github.com/deepbeepmeep/Wan2GP
 - Harga Muapi: https://www.muapi.ai/docs/pricing, https://muapi.ai/comparison/seedance-2.5-image-to-video, https://muapi.ai/comparison/seedance-pro-i2v, https://muapi.ai/comparison/seedance-2-vip-image-to-video-1080p
+
+## 5. R34 Suara dari Teks: Piper id_ID, VoxCPM2, Confucius4-TTS (tambahan 16 Nov)
+
+| Suara | Lisensi bobot / data | Bahasa Indonesia | Muat di GTX 1650 4 GB? | Putusan komersial |
+|---|---|---|---|---|
+| **Piper `id_ID-news_tts-medium`** (rhasspy/piper-voices) | Repo MIT, tapi **datanya tidak**. (a) Kartu model salah menulis URL dataset (korpus Malayalam di Kaggle); data aslinya hampir pasti **INDspeech_NEWS_TTS** (ATR Jepang / A-STAR, Sakti dkk. 2008–2013; github s-sakti/data_indsp_news_tts, mirror SEACrowd/indspeech_news_tts), berlisensi **CC-BY-NC-SA 4.0**. (b) Hasil fine-tune dari suara `en_US-lessac`, dan lisensi data lessac (CSTR Blizzard 2013) **hanya untuk riset**; pemakaian komersial dilarang tegas, termasuk pengembangan produk suara. | Ya | Ya, ringan (CPU cukup) | **TIDAK**. Dua sumber data sama-sama non-komersial. |
+| **VoxCPM2** (openbmb) | Bobot **Apache-2.0**, menurut kartu HF: "free for commercial use". Data latih (lebih dari 2 juta jam, multibahasa) **tidak disebutkan sumber maupun lisensinya**. Kartu melarang peniruan orang, penipuan, dan disinformasi, dan meminta hasil AI diberi label. | Ya (30 bahasa, termasuk Indonesia dan Melayu) | **Tidak**: sekitar 2 miliar parameter (BF16), VRAM sekitar **8 GB**, butuh PyTorch 2.5 dan CUDA 12. Di CPU sangat lambat. | **Boleh** menurut lisensi, tapi tidak jalan layak di PC ini |
+| **Confucius4-TTS** (NetEase Youdao) | Kode dan bobot dinyatakan **Apache-2.0** (metadata HF). Data latih tidak disebutkan. Bergantung pada w2v-BERT 2.0 (MIT) dan CAMPPlus (diunduh terpisah; lisensinya belum dicek). README berterima kasih ke Amphion/MaskGCT, yang bobotnya **CC-BY-NC-4.0**. File Confucius sendiri tidak memuat bobot MaskGCT, tapi kalau prosesnya memakai codec MaskGCT, risiko non-komersial ikut terbawa. | Ya (14 bahasa, termasuk Indonesia) | Kemungkinan **tidak**: bobot 3,06 GB (t2s 2,64 GB + s2a 0,42 GB); VRAM tidak disebut, perkiraan lebih dari 4 GB. | **Boleh dengan catatan.** Cek dulu komponen yang diunduh saat jalan (CAMPPlus, codec) sebelum dipakai. |
+
+Kesimpulan untuk R34:
+- Satu-satunya yang bersih lisensinya **dan** ringan adalah suara Windows (System.Speech) yang sudah dipakai.
+- Piper Indonesia tidak boleh dipakai untuk iklan.
+- VoxCPM2 dan Confucius4 secara lisensi boleh (Confucius dengan catatan), tapi butuh GPU yang lebih besar dari GTX 1650. Di PC ini keduanya harus jalan di CPU (sangat lambat) atau di GPU sewaan.
+- Kalau owner tetap ingin VO AI berkualitas: VoxCPM2 adalah kandidat lisensi terbaik, tapi butuh GPU 8 GB atau lebih.
+
+Sumber tambahan:
+- https://huggingface.co/rhasspy/piper-voices (MODEL_CARD id_ID/news_tts/medium dan en_US/lessac/medium)
+- https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html
+- https://huggingface.co/datasets/SEACrowd/indspeech_news_tts
+- https://huggingface.co/openbmb/VoxCPM2
+- https://huggingface.co/netease-youdao/Confucius4-TTS
+- https://github.com/netease-youdao/Confucius4-TTS
+- https://huggingface.co/amphion/MaskGCT
