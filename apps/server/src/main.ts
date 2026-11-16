@@ -128,7 +128,9 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
       ...(tokenEndpoint ? { tokenEndpoint } : {}),
     });
   }
-  const engine = createEngine(ws, { copilot, config: engineCfg, riwayat, onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
+  // R14/R25b: one background proxy maker shared by uploads and the engine (one FFmpeg at a time).
+  const proxies = createProxyQueue({ onError: (e) => process.stderr.write(`[server] pratinjau ringan: ${e instanceof Error ? e.message : String(e)}\n`) });
+  const engine = createEngine(ws, { copilot, config: engineCfg, riwayat, proxies, onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
   void engine.sweepOrphans().catch((e: unknown) => process.stderr.write(`[server] mesin (job yatim): ${String(e)}\n`));
   const app = createApp({
     ws,
@@ -136,8 +138,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs, createProxyQueue({ onError: (e) => process.stderr.write(`[server] pratinjau ringan: ${e instanceof Error ? e.message : String(e)}
-`) })), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...imageAiRoutes(imageAi, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...backupRoutes(ws), ...engine.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs, proxies), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...imageAiRoutes(imageAi, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...backupRoutes(ws), ...engine.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
     roleOf: team ? teamRoleResolver(team.roleOf) : roleResolver(roleLists),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });

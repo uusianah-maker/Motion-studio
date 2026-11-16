@@ -1,0 +1,32 @@
+[
+  {
+    "id": "R25B-01 Impor video kecil 10-bit 59,94 fps (H.264 & HEVC) → pratinjau ringan dibuat otomatis",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R25B-02 Halaman Media menampilkan status \"siap\" sendiri",
+    "ok": true,
+    "detail": "Pratinjau ringan: siap"
+  },
+  {
+    "id": "R25B-03 Video 8-bit 30 fps yang sudah ringan: tidak dibuatkan (tidak perlu)",
+    "ok": true,
+    "detail": "pix_fmt yuv420p fps 30"
+  },
+  {
+    "id": "R25B-04 Probe mencatat pix_fmt + fps (yuv420p10le, 59,94)",
+    "ok": true,
+    "detail": "{\"duration_ms\":1985,\"width\":540,\"height\":960,\"video_codec\":\"h264\",\"audio_codec\":\"aac\",\"pix_fmt\":\"yuv420p10le\",\"fps\":59.94}"
+  },
+  {
+    "id": "R25B-05 Editor memutar salinan ringan (H.264 8-bit) — gambar tampil, tidak hitam",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R25B-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

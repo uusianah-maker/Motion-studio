@@ -37,6 +37,7 @@ import {
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { onlyKeys } from './routes.js';
+import type { ProxyQueue } from './proxy.js';
 import type { RiwayatSignal } from './riwayat.js';
 import { sendBytes } from './stream.js';
 import { Readable } from 'node:stream';
@@ -47,7 +48,7 @@ import { Readable } from 'node:stream';
  * Its plan only reaches the timeline through the normal Copilot path (source `engine`): diff →
  * the team approves → one undo step. Nothing is rendered here.
  */
-export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal }): Route[] {
+export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal; proxies?: ProxyQueue }): Route[] {
   return createEngine(ws, opts).routes;
 }
 
@@ -56,9 +57,25 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
  * engine (and its Whisper / FFmpeg children) and waits for it, so no Python outlives the server
  * and a restarted server never finds a live job it would settle as an orphan (audit Jenius #2).
  */
-export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number> } {
+export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal; proxies?: ProxyQueue }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number> } {
   const queue: { project_id: string; job_id: string; mode: EngineMode }[] = [];
   const active = new Map<string, AbortController>();
+  /**
+   * R25b: the media an engine plan / approved Batch variant brings into a project get their light
+   * preview copy in the background right away (makeProxy decides whether one is needed), so the
+   * editor never opens on footage the browser cannot play. One FFmpeg at a time, low priority.
+   */
+  const proxyMedia = (ops: readonly unknown[]) => {
+    if (!opts.proxies) return;
+    const seen = new Set<string>();
+    for (const o of ops) {
+      const vid = (o as { media?: { version_id?: unknown } } | null)?.media?.version_id;
+      if (typeof vid === 'string' && !seen.has(vid)) {
+        seen.add(vid);
+        void opts.proxies.enqueue(ws, vid);
+      }
+    }
+  };
   /** Requests preparing a job right now, per project: never "orphans" (Checkpoint I H1, audit Jenius #4). */
   const preparing = new Map<string, number>();
   let running = false;
@@ -252,6 +269,13 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
         const sent = (Array.isArray(body.rows) ? body.rows : []) as { varian?: unknown; status?: unknown }[];
         const decided = sent.filter((x) => typeof x?.varian === 'string' && r.result[x.varian]?.status === x.status).map((x) => ({ varian: x.varian as string, status: x.status as string }));
         if (decided.length) void opts.riwayat?.decided(params.project_id!, job, decided);
+        // R25b: the clips of the variant projects made now get their preview copies.
+        for (const d of decided) {
+          const pid = r.result[d.varian]?.project_id;
+          if (d.status !== 'disetujui' || !pid) continue;
+          const v = await readProject(ws, pid).catch(() => null);
+          if (v) proxyMedia(v.timeline.tracks.flatMap((t) => t.clips));
+        }
         return { decisions: r.result };
       },
     },
@@ -268,6 +292,7 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
         if (s.mode === 'transfer') throw new ApiError(400, 'BAD_REQUEST', 'Motion Transfer tidak punya rencana edit');
         const variant = body.variant === undefined ? undefined : typeof body.variant === 'string' ? body.variant : undefined;
         const p = await loadEnginePlan(ws, opts.config, params.project_id!, job, variant);
+        proxyMedia(p.ops);
         const r = p.rencana as { hook?: { teks?: unknown }; durasi?: { akhir?: unknown }; peringatan?: unknown; ragu?: unknown; menunggu_u3?: unknown };
         const list = (x: unknown) => (Array.isArray(x) ? x : []);
         const warnings = [

@@ -35,11 +35,19 @@ export async function proxyReady(ws: Workspace, versionId: string): Promise<bool
 
 export type ProxyResult = 'dibuat' | 'sudah_ada' | 'tidak_perlu';
 
+/** R25b: a pixel format the browser cannot decode (10/12-bit, 4:2:2 / 4:4:4 from cameras). */
+export const isHeavyPixFmt = (f: string | null | undefined): boolean => !!f && (/(p(10|12|16)|^p01[026])(le|be)?$/.test(f) || /^yuv4(22|44)/.test(f));
+/** Above this the browser struggles (DJI 59,94 fps, 4K): always a light copy. */
+export const PROXY_MAX_FPS = 30.5;
+export const PROXY_MAX_LONG_SIDE = 1920;
+
 /** A file already this light plays fine as it is (no proxy). */
-export function needsProxy(p: { video_codec: string | null; width: number | null; height: number | null; duration_ms: number }, size: number): boolean {
+export function needsProxy(p: { video_codec: string | null; width: number | null; height: number | null; duration_ms: number; pix_fmt?: string | null; fps?: number | null }, size: number): boolean {
   if (!p.video_codec || p.duration_ms <= 0) return false;
   // A codec the browser cannot play (HEVC from DJI/iPhone) always needs the h264 copy, whatever its size.
   if (!BROWSER_VIDEO_CODECS.has(p.video_codec)) return true;
+  // R25b: 10-bit / 4:2:2 even in h264, high frame rate, or a long side over 1920 px.
+  if (isHeavyPixFmt(p.pix_fmt) || (p.fps ?? 0) > PROXY_MAX_FPS || Math.max(p.width ?? 0, p.height ?? 0) > PROXY_MAX_LONG_SIDE) return true;
   const short = Math.min(p.width ?? 0, p.height ?? 0) || Infinity;
   const kbps = (size * 8) / (p.duration_ms / 1000) / 1000;
   return short > PROXY_SHORT_SIDE || kbps > PROXY_VIDEO_KBPS * 1.5;
@@ -56,14 +64,17 @@ export async function makeProxy(ws: Workspace, versionId: string, opts: { signal
   const rel = await ws.blobs.resolve(v.rel_path, MEDIA_AREAS);
   return ws.blobs.withLocalFile(rel, async (src) => {
     const probe = v.probe ?? (await probeFile(src));
-    if (!probe || !needsProxy({ video_codec: probe.video_codec ?? null, width: probe.width ?? null, height: probe.height ?? null, duration_ms: probe.duration_ms }, v.size)) return 'tidak_perlu' as const;
+    // R25b: older registry probes lack pix_fmt/fps — read them from the file then.
+    const full = probe && probe.pix_fmt === undefined && probe.video_codec ? ((await probeFile(src)) ?? probe) : probe;
+    if (!full || !needsProxy(full, v.size)) return 'tidak_perlu' as const;
     await fsp.mkdir(path.dirname(out), { recursive: true });
     const tmp = `${out}.${randomBytes(4).toString('hex')}.tmp.mp4`;
     const args = [
       '-hide_banner', '-nostdin', '-loglevel', 'error', '-y',
       '-i', src,
       '-map', '0:v:0', '-map', '0:a:0?',
-      '-vf', `scale='if(gte(iw,ih),-2,${PROXY_SHORT_SIDE})':'if(gte(iw,ih),${PROXY_SHORT_SIDE},-2)',format=yuv420p`,
+      // R25b: 59,94 fps footage gets a 30 fps copy (preview only; render reads the original).
+      '-vf', `${(full.fps ?? 0) > PROXY_MAX_FPS ? 'fps=30,' : ''}scale='if(gte(iw,ih),-2,${PROXY_SHORT_SIDE})':'if(gte(iw,ih),${PROXY_SHORT_SIDE},-2)',format=yuv420p`,
       '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${PROXY_VIDEO_KBPS}k`, '-maxrate', `${Math.round(PROXY_VIDEO_KBPS * 1.25)}k`, '-bufsize', `${PROXY_VIDEO_KBPS * 2}k`,
       '-force_key_frames', 'expr:gte(t,n_forced*1)',
       '-c:a', 'aac', '-b:a', `${PROXY_AUDIO_KBPS}k`, '-ac', '2',

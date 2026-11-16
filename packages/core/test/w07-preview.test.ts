@@ -41,7 +41,7 @@ const code = (fn: () => unknown) => {
 
 describe.skipIf(!hasFfprobe)('W07 probe (ffprobe)', () => {
   it('reads duration, size and codecs of a real MP4; text files are not media', async () => {
-    expect(await probeFile(path.join(FIX, 'sample_8s_9x16.mp4'))).toEqual({ duration_ms: 8000, width: 360, height: 640, video_codec: 'h264', audio_codec: 'aac' });
+    expect(await probeFile(path.join(FIX, 'sample_8s_9x16.mp4'))).toEqual({ duration_ms: 8000, width: 360, height: 640, video_codec: 'h264', audio_codec: 'aac', pix_fmt: 'yuv420p', fps: 25 }); // R25b: + pix_fmt, fps
     expect(await probeFile(path.join(FIX, 'not_video.txt'))).toBeNull();
   });
 

@@ -7,6 +7,10 @@ export interface MediaProbe {
   height: number | null;
   video_codec: string | null;
   audio_codec: string | null;
+  /** R25b: pixel format of the video (`yuv420p10le` = 10-bit, which browsers cannot decode). Older probes: absent. */
+  pix_fmt?: string | null;
+  /** R25b: average frame rate of the video. Older probes: absent. */
+  fps?: number | null;
 }
 
 /** ffprobe "decodes" plain text as a video stream; these are never real footage. */
@@ -31,13 +35,13 @@ function run(bin: string, args: string[]): Promise<string> {
 export async function probeFile(file: string): Promise<MediaProbe | null | undefined> {
   let out: string;
   try {
-    out = await run(ffprobeBin(), ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,codec_name,width,height,duration', '-of', 'json', file]);
+    out = await run(ffprobeBin(), ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,codec_name,width,height,duration,pix_fmt,avg_frame_rate', '-of', 'json', file]);
   } catch (e) {
     // Spawn failures carry a string code (ENOENT, EACCES…); a non-zero exit carries a number.
     const err = e as NodeJS.ErrnoException & { killed?: boolean };
     return typeof err.code === 'string' || err.killed ? undefined : null; // timeout = retry later
   }
-  let j: { format?: { duration?: string }; streams?: { codec_type?: string; codec_name?: string; width?: number; height?: number; duration?: string }[] };
+  let j: { format?: { duration?: string }; streams?: { codec_type?: string; codec_name?: string; width?: number; height?: number; duration?: string; pix_fmt?: string; avg_frame_rate?: string }[] };
   try {
     j = JSON.parse(out);
   } catch {
@@ -56,7 +60,15 @@ export async function probeFile(file: string): Promise<MediaProbe | null | undef
     height: video?.height ?? null,
     video_codec: video?.codec_name ?? null,
     audio_codec: audio?.codec_name ?? null,
+    ...(video ? { pix_fmt: video.pix_fmt ?? null, fps: frameRate(video.avg_frame_rate) } : {}),
   };
+}
+
+/** "60000/1001" → 59.94 (null when unknown). */
+function frameRate(r: string | undefined): number | null {
+  const [a, b] = (r ?? '').split('/').map(Number);
+  const v = b ? a! / b : a;
+  return v && Number.isFinite(v) && v > 0 && v < 1000 ? Math.round(v * 100) / 100 : null;
 }
 
 export function validateProbe(x: unknown): MediaProbe | null {
@@ -67,7 +79,11 @@ export function validateProbe(x: unknown): MediaProbe | null {
   if (!o || typeof o.duration_ms !== 'number' || !Number.isFinite(o.duration_ms) || o.duration_ms <= 0 || !okDim(o.width) || !okDim(o.height) || !okCodec(o.video_codec) || !okCodec(o.audio_codec)) {
     throw new Error('probe tidak valid');
   }
-  return { duration_ms: o.duration_ms, width: o.width ?? null, height: o.height ?? null, video_codec: o.video_codec ?? null, audio_codec: o.audio_codec ?? null };
+  const out: MediaProbe = { duration_ms: o.duration_ms, width: o.width ?? null, height: o.height ?? null, video_codec: o.video_codec ?? null, audio_codec: o.audio_codec ?? null };
+  // R25b: optional (older probes have neither); bad values are dropped, never fatal.
+  if (o.pix_fmt === null || (typeof o.pix_fmt === 'string' && o.pix_fmt.length <= 32)) out.pix_fmt = o.pix_fmt;
+  if (o.fps === null || (typeof o.fps === 'number' && Number.isFinite(o.fps) && o.fps > 0 && o.fps < 1000)) out.fps = o.fps;
+  return out;
 }
 
 /** X06: a still image (logo). `null` = not a PNG/JPEG/WebP picture ffprobe can read. */
