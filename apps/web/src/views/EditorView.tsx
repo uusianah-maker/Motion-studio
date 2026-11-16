@@ -7,6 +7,7 @@ import { ClipThumbs, ClipWave, useMediaVisuals } from './TimelineVisuals';
 import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import { waitingForProxy } from '../proxyWait';
+import { fitMove, fitTrim, gapAt } from '../dragFit';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { InspectorPanel } from './InspectorPanel';
 import { RencanaBanner } from './RencanaBanner';
@@ -119,16 +120,21 @@ export function EditorView({
   const dragMoved = useRef(false);
   /** R33: right-click menu on a clip (Hapus / Duplikat / Split di playhead). */
   const [menu, setMenu] = useState<{ x: number; y: number; clip_id: string } | null>(null);
+  /** Owner 16 Nov: right-click an empty gap on a lane → "Hapus jarak" (pull the clips after it left). */
+  const [gapMenu, setGapMenu] = useState<{ x: number; y: number; clip_ids: string[]; delta_ms: number } | null>(null);
   useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
+    if (!menu && !gapMenu) return;
+    const close = () => {
+      setMenu(null);
+      setGapMenu(null);
+    };
     window.addEventListener('pointerdown', close);
     window.addEventListener('keydown', close);
     return () => {
       window.removeEventListener('pointerdown', close);
       window.removeEventListener('keydown', close);
     };
-  }, [menu]);
+  }, [menu, gapMenu]);
   const [playhead, setPlayhead] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -397,16 +403,26 @@ export function EditorView({
   };
   const moveDrag = (e: React.PointerEvent) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
-    setDrag({ ...drag, deltaMs: (e.clientX - drag.startX) * msPerPx() });
+    const dx = e.clientX - drag.startX;
+    setDrag({ ...drag, deltaMs: Math.abs(dx) < 2 ? 0 : dx * msPerPx() }); // a shaky click does not move the clip
   };
+  /** Owner 16 Nov: easier dragging — the clip sticks to nearby edges and stops against its neighbour
+   *  (the server refuses overlaps, so a drop onto a neighbour used to bounce back). */
+  const fitted = (d: Drag) => {
+    const raw = dragSpan(d.mode, { ...d.clip, hasMedia: !!d.clip.media, sourceMs: sourceMs(d.clip) }, d.deltaMs);
+    const others = (tracks.find((t) => t.clips.some((c) => c.clip_id === d.clip.clip_id))?.clips ?? []).filter((c) => c.clip_id !== d.clip.clip_id);
+    if (d.mode === 'move') return fitMove(raw, others, [playhead], 8 * msPerPx(), d.clip);
+    return fitTrim(raw, d.mode === 'trim-start' ? 'start' : 'end', others, d.clip);
+  };
+  const groupDrag = (d: Drag) => d.mode === 'move' && groupIds.length > 1 && groupIds.includes(d.clip.clip_id);
   const endDrag = (e: React.PointerEvent) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
     const d = drag;
     setDrag(null);
-    const span = dragSpan(d.mode, { ...d.clip, hasMedia: !!d.clip.media, sourceMs: sourceMs(d.clip) }, d.deltaMs);
+    const span = groupDrag(d) ? dragSpan(d.mode, { ...d.clip, hasMedia: !!d.clip.media, sourceMs: sourceMs(d.clip) }, d.deltaMs) : fitted(d);
     if (span.start_ms === d.clip.start_ms && span.end_ms === d.clip.end_ms) return; // a click, not a drag
     dragMoved.current = true;
-    if (d.mode === 'move' && groupIds.length > 1 && groupIds.includes(d.clip.clip_id)) {
+    if (groupDrag(d)) {
       void edit([{ op: 'shift_clips', clip_ids: groupIds, delta_ms: span.start_ms - d.clip.start_ms }]);
       return;
     }
@@ -430,6 +446,36 @@ export function EditorView({
     setPlayhead(snap(Math.min(duration, Math.max(0, (e.clientX - rect.left + scrollPx) * msPerPx()))));
     setSelected(null);
     setPicked([]);
+  };
+
+  // Owner 16 Nov: the playhead can be dragged (scrub) on the ruler or by its line in the lanes;
+  // the preview follows while dragging.
+  const scrubId = useRef<number | null>(null);
+  const scrubTo = (clientX: number) => {
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPlaying(false);
+    setPlayhead(snap(Math.min(duration, Math.max(0, (clientX - rect.left + scrollPx) * msPerPx())), 10));
+  };
+  const scrubProps = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      e.stopPropagation(); // not a box selection
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      scrubId.current = e.pointerId;
+      scrubTo(e.clientX);
+    },
+    onPointerMove: (e: React.PointerEvent) => scrubId.current === e.pointerId && scrubTo(e.clientX),
+    onPointerUp: () => (scrubId.current = null),
+    onPointerCancel: () => (scrubId.current = null),
+  };
+  const openGapMenu = (e: React.MouseEvent, kind: string) => {
+    e.preventDefault();
+    const surf = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const at = (e.clientX - surf.left + scrollPx) * msPerPx();
+    const gap = tracks.filter((x) => x.kind === kind).map((x) => gapAt(x.clips, at)).find((g) => g !== null) ?? null;
+    setMenu(null);
+    setGapMenu(gap && !locked ? { x: e.clientX, y: e.clientY, ...gap } : null);
   };
 
   // R33: drag a box over empty lane space → every clip it touches (on the lanes it covers).
@@ -876,10 +922,26 @@ export function EditorView({
               </div>
             );
           })()}
+          {gapMenu && (
+            <div className="clipMenu" role="menu" aria-label="Menu jarak" style={{ position: 'fixed', left: Math.max(4, Math.min(gapMenu.x, window.innerWidth - 190)), top: Math.max(4, Math.min(gapMenu.y, window.innerHeight - 60)) }} onPointerDown={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                role="menuitem"
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  const g = gapMenu;
+                  setGapMenu(null);
+                  void edit([{ op: 'shift_clips', clip_ids: g.clip_ids, delta_ms: g.delta_ms }]);
+                }}
+              >
+                ⇤ Hapus jarak ({(-gapMenu.delta_ms / 1000).toFixed(1)} dtk)
+              </button>
+            </div>
+          )}
           {box && <div className="boxSelect" aria-hidden="true" style={{ left: Math.min(box.x0, box.x1), top: Math.min(box.y0, box.y1), width: Math.abs(box.x1 - box.x0), height: Math.abs(box.y1 - box.y0) }} />}
           <div className="track rulerRow">
             <div className="trackLabel muted">{formatDuration(playhead)}</div>
-            <div className="trackSurface ruler" ref={surfaceRef} onClick={seek} role="slider" aria-label="Posisi playhead" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={playhead} tabIndex={-1}>
+            <div className="trackSurface ruler" ref={surfaceRef} {...scrubProps} role="slider" aria-label="Posisi playhead" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={playhead} tabIndex={-1}>
               <div className="lane" style={lane}>
                 {rulerTicks(duration, duration / zoom).map((t) => (
                   <span key={t} className="tick" style={{ left: pct(t) }}>
@@ -909,13 +971,14 @@ export function EditorView({
                     </button>
                   )}
                 </div>
-                <div className="trackSurface" onClick={seek}>
+                <div className="trackSurface" onClick={seek} onContextMenu={(e) => openGapMenu(e, t.kind)}>
                   <div className="lane" style={lane}>
                   <div className="playhead" style={{ left: pct(playhead) }} />
+                  <div className="playheadGrip" style={{ left: pct(playhead) }} title="Seret untuk menggeser playhead" aria-hidden="true" onClick={(e) => e.stopPropagation()} {...scrubProps} />
                   {clips.map((c) => {
                     // R33: a group follows the dragged clip.
-                    const lead = drag && drag.mode === 'move' && groupIds.includes(drag.clip.clip_id) && groupIds.includes(c.clip_id) ? dragSpan('move', { ...drag.clip, hasMedia: !!drag.clip.media }, drag.deltaMs).start_ms - drag.clip.start_ms : null;
-                    const live = lead !== null ? { start_ms: c.start_ms + lead, end_ms: c.end_ms + lead } : drag && drag.clip.clip_id === c.clip_id ? dragSpan(drag.mode, { ...c, hasMedia: !!c.media, sourceMs: sourceMs(c) }, drag.deltaMs) : c;
+                    const lead = drag && groupDrag(drag) && groupIds.includes(c.clip_id) ? dragSpan('move', { ...drag.clip, hasMedia: !!drag.clip.media }, drag.deltaMs).start_ms - drag.clip.start_ms : null;
+                    const live = lead !== null ? { start_ms: c.start_ms + lead, end_ms: c.end_ms + lead } : drag && drag.clip.clip_id === c.clip_id ? fitted(drag) : c;
                     const isSel = c.clip_id === selected || groupIds.includes(c.clip_id);
                     return (
                       <div
@@ -953,7 +1016,7 @@ export function EditorView({
                         {c.media && (
                           <ClipVisual api={api} clip={c} kind={t.kind} inMs={(c.in_ms ?? 0) + (drag?.mode === 'trim-start' ? live.start_ms - c.start_ms : 0) /* trimming the start moves the source in-point too */} lenMs={live.end_ms - live.start_ms} />
                         )}
-                        <span className="handle start" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-start')} onPointerMove={moveDrag} onPointerUp={endDrag} />
+                        <span className="handle start" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-start')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={() => setDrag(null)} />
                         <span className="clipLabel">{ellipsize(clipName(c), 28)}</span>
                         {c.clip_id === selected && groupIds.length < 2 && !locked && ((live.end_ms - live.start_ms) / Math.max(1, duration)) * viewPx * zoom >= 64 && (
                           // only on clips wide enough: on a narrow clip it would cover the clip itself
@@ -972,7 +1035,7 @@ export function EditorView({
                             🗑
                           </button>
                         )}
-                        <span className="handle end" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-end')} onPointerMove={moveDrag} onPointerUp={endDrag} />
+                        <span className="handle end" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-end')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={() => setDrag(null)} />
                       </div>
                     );
                   })}

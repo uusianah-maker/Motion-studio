@@ -298,12 +298,16 @@ table.list tr:hover td { background: #191d29; }
 .clip.selected { outline: 2px solid #f6d67c; outline-offset: 0; z-index: 2; }
 .clip:focus-visible { outline: 2px solid #9b86ff; }
 .clip .clipLabel { pointer-events: none; overflow: hidden; text-overflow: ellipsis; }
-.clip .handle { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; background: #ffffff22; }
+.clip .handle { position: absolute; top: 0; bottom: 0; width: 10px; max-width: 30%; cursor: ew-resize; background: #ffffff22; z-index: 1; }
+.clip .handle:hover { background: #ffffff55; }
 .clip .handle.start { left: 0; border-radius: 4px 0 0 4px; }
 .clip .handle.end { right: 0; border-radius: 0 4px 4px 0; }
 .clip.selected .handle { background: #f6d67c88; }
 .trackSurface { cursor: pointer; }
 .trackSurface .playhead { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid #f09d87; pointer-events: none; z-index: 4; }
+/* Owner 16 Nov: grab the playhead line in the lanes to scrub (10 px hit area around the 2 px line). */
+.trackSurface .playheadGrip { position: absolute; top: 0; bottom: 0; width: 10px; margin-left: -4px; cursor: ew-resize; z-index: 5; touch-action: none; }
+.trackSurface.ruler { cursor: ew-resize; touch-action: none; }
 .rulerRow { height: 28px; border-bottom: 1px solid #303545; }
 .trackSurface.ruler { background: transparent; height: 22px; overflow: visible; }
 .ruler .tick { position: absolute; top: 4px; font-size: 10px; color: #7f899f; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }
@@ -481,7 +485,9 @@ kbd { font-size: 10px; border: 1px solid #ffffff44; border-radius: 4px; padding:
 .boxSelect { position: absolute; z-index: 5; border: 1px dashed var(--vio, #8b7bff); background: rgba(139, 123, 255, 0.12); pointer-events: none; }
 
 /* R33: delete button on the selected clip + right-click menu. */
-.clip .clipTrash { position: absolute; top: 2px; right: 10px; z-index: 3; padding: 0 4px; font-size: 11px; line-height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,.35); background: rgba(20,22,32,.85); color: #fff; cursor: pointer; }
+/* Owner 16 Nov: small, top-left past the start handle — at the right it covered the trim handle,
+   so grabbing there deleted the clip instead of trimming it. */
+.clip .clipTrash { position: absolute; top: 1px; left: 12px; z-index: 3; padding: 0 3px; font-size: 9px; line-height: 13px; border-radius: 4px; border: 1px solid rgba(255,255,255,.35); background: rgba(20,22,32,.85); color: #fff; cursor: pointer; }
 .clipMenu { z-index: 50; display: flex; flex-direction: column; min-width: 170px; padding: 4px; border-radius: 8px; background: #1b1e2b; border: 1px solid #343a52; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
 .clipMenu button { text-align: left; padding: 6px 10px; border: 0; background: none; color: inherit; border-radius: 6px; cursor: pointer; }
 .clipMenu button:hover:not(:disabled) { background: #2a2f45; }
