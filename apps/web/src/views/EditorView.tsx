@@ -133,7 +133,7 @@ export function EditorView({
 
   // A video the browser cannot play (HEVC) shows once its light copy is made in the background:
   // re-read the media list every 4 s while one is still being made, so no page reload is needed.
-  const proxyPending = media.some((m) => m.proxy === 'proses' || (m.proxy == null && m.versions.some((v) => v.version_id === m.current_version_id && v.preview === false && !!v.probe?.video_codec)));
+  const proxyPending = media.some((m) => m.proxy === 'proses' || ((m.proxy === null || m.proxy === undefined) && m.versions.some((v) => v.version_id === m.current_version_id && v.preview === false && !!v.probe?.video_codec)));
   useEffect(() => {
     if (!projectId || !proxyPending) return;
     const t = setInterval(() => {
