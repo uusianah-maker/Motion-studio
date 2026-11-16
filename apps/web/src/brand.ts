@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Api, BrandKit, BrandKitInput } from './api';
+import type { Api, BrandAsset, BrandKit, BrandKitInput, BrandTextPreset } from './api';
 
 /** CSS family names the editor registers for the Brand Kit fonts (X06 title, U1 caption). */
 export const BRAND_FONT_FAMILY = 'MotionBrandFont';
@@ -12,6 +12,24 @@ export interface LoadedBrand {
   /** True once the title font is registered in `document.fonts`. */
   fontReady: boolean;
   captionReady: boolean;
+  /** R38a: what this brand can use — its library + files / presets other brands share. */
+  library: { aset: BrandAsset[]; preset_teks: BrandTextPreset[] };
+}
+
+/** R38a: CSS family of an Aset font (`font: "ref:<media>/<version>"`), registered on demand. */
+export const asetFontFamily = (versionId: string) => `MotionAset_${versionId}`;
+const asetFonts = new Map<string, Promise<boolean>>();
+/**
+ * Register an Aset font (by version) as `@font-face` once per page, so the preview draws the text
+ * in the same file the render uses. Resolves false when the file cannot be read (text falls back).
+ */
+export function ensureAsetFont(api: Api, versionId: string): Promise<boolean> {
+  let p = asetFonts.get(versionId);
+  if (!p) {
+    p = loadFont(api, asetFontFamily(versionId), versionId);
+    asetFonts.set(versionId, p);
+  }
+  return p;
 }
 
 async function loadFont(api: Api, family: string, versionId: string): Promise<boolean> {
@@ -43,7 +61,8 @@ export function useBrand(api: Api, opts: { brandId?: string | null; reload?: num
       const logoUrl = kit.logo ? await api.streamUrl(kit.logo.ref.version_id).then((r) => r.url).catch(() => null) : null;
       const fontReady = kit.font ? await loadFont(api, BRAND_FONT_FAMILY, kit.font.version_id) : false;
       const captionReady = kit.font_caption ? await loadFont(api, BRAND_CAPTION_FAMILY, kit.font_caption.version_id) : false;
-      if (live) setState({ kit, logoUrl, fontReady, captionReady });
+      const library = kit.brand_id ? await api.brandLibrary(kit.brand_id).catch(() => ({ aset: kit.aset, preset_teks: kit.preset_teks ?? [] })) : { aset: kit.aset, preset_teks: kit.preset_teks ?? [] };
+      if (live) setState({ kit, logoUrl, fontReady, captionReady, library });
     })().catch(() => live && setState(null));
     return () => {
       live = false;
@@ -84,6 +103,7 @@ export const emptyKit = (): BrandKitInput => ({
   gaya: '',
   grading: '',
   filter_bawaan: null,
+  lut_bawaan: null,
   cta: {},
   cta_wajib: '',
   disclaimer: null,
@@ -104,6 +124,7 @@ export const emptyKit = (): BrandKitInput => ({
   sfx_dilarang: [],
   referensi: [],
   presets: [],
+  preset_teks: [],
 });
 
 /** The editable part of a saved kit. */

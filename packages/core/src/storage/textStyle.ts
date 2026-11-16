@@ -25,7 +25,7 @@ export interface TextStyle {
   outline: boolean;
   align: TextAlign;
   /** X06/U1: 'brand' = the brand's title font, 'caption' = its caption font (default font if missing). */
-  font: 'default' | 'brand' | 'caption';
+  font: TextFont;
   /** U3c: frosted-glass box — blur of the picture behind the text box (0 = off, max 30). */
   bg_blur: number;
   /** U3b: how text (or each word of a caption with word timings) appears. */
@@ -102,7 +102,7 @@ export function validateStyle(raw: unknown, where = 'style'): Partial<TextStyle>
     out.align = o.align as TextAlign;
   }
   if (o.font !== undefined) {
-    if (o.font !== 'default' && o.font !== 'brand' && o.font !== 'caption') bad(`${where}.font harus default | brand | caption`);
+    if (o.font !== 'default' && o.font !== 'brand' && o.font !== 'caption' && !fontRef(o.font)) bad(`${where}.font harus default | brand | caption | ref:<media>/<versi> (font dari Aset)`);
     out.font = o.font as TextStyle['font'];
   }
   if (o.anim !== undefined) {
@@ -180,3 +180,16 @@ export function wrapCharsFor(style: TextStyle, ratio: string): number {
 
 /** The exact lines both preview and render draw. */
 export const layoutText = (text: string, style: TextStyle, ratio: string) => wrapText(text.trim(), wrapCharsFor(style, ratio));
+
+/**
+ * R38a: the font of a text — default, the brand's title / caption font, or any uploaded font from
+ * the Aset library (`ref:<media_id>/<version_id>`), so a project keeps its exact font version.
+ */
+export type TextFont = 'default' | 'brand' | 'caption' | `ref:${string}`;
+const FONT_REF = /^ref:([A-Za-z0-9_-]{1,64})\/([A-Za-z0-9_-]{1,64})$/;
+/** The media of an Aset font (`null` for default / brand / caption). */
+export function fontRef(font: unknown): { media_id: string; version_id: string } | null {
+  const m = typeof font === 'string' ? FONT_REF.exec(font) : null;
+  return m ? { media_id: m[1]!, version_id: m[2]! } : null;
+}
+export const fontOfRef = (r: { media_id: string; version_id: string }): TextFont => `ref:${r.media_id}/${r.version_id}`;

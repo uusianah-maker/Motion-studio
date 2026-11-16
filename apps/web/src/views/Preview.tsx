@@ -5,7 +5,8 @@ import { keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/
 import { DEFAULT_DUCK, duckGainAt, effectiveLook, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import { orientCss, sourceAt } from '../../../../packages/core/dist/storage/clipMotion.js';
 import { applyAudioFx, resumeAudioFx } from '../audioFx';
-import type { LoadedBrand } from '../brand';
+import { type LoadedBrand, ensureAsetFont } from '../brand';
+import { fontRef } from '../../../../packages/core/dist/storage/textStyle.js';
 import type { Api, Clip, Media, Project } from '../api';
 import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { TextOverlay } from './TextOverlay';
@@ -103,6 +104,11 @@ export function Preview({
   const zoom = fx?.effect ? zoomAt(fx.effect, t - fx.start_ms, fx.end_ms - fx.start_ms) : 1;
   const texts = clipsOf('text').filter((c) => t >= c.start_ms && t < c.end_ms);
   const subs = clipsOf('subtitle').filter((c) => t >= c.start_ms && t < c.end_ms);
+  // R38a: register every Aset font the texts use (once per page; text re-flows when it arrives).
+  const asetFontIds = [...new Set([...clipsOf('text'), ...clipsOf('subtitle')].flatMap((c) => { const r = fontRef(c.style?.font ?? (styleDraft?.clip_id === c.clip_id ? styleDraft.style.font : undefined)); return r ? [r.version_id] : []; }))].join(',');
+  useEffect(() => {
+    for (const v of asetFontIds.split(',').filter(Boolean)) void ensureAsetFont(api, v);
+  }, [api, asetFontIds]);
   const versionOf = (c: Clip | null) => (c?.media ? media.flatMap((m) => m.versions).find((v) => v.version_id === c.media!.version_id) : undefined);
 
   /** R23f: the visual clip is stabilised but its copy is not ready: look again every few seconds. */

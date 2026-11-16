@@ -26,6 +26,7 @@ import {
   listProjectIds,
   loadRegistry,
   readKamusBelajar,
+  libraryFor,
   readProject,
   checkBrandGuard,
   localDate,
@@ -476,6 +477,8 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       },
     },
     { method: 'GET', path: '/api/brands/:brand_id', handle: async ({ svc, params }) => ({ brand: await svc.readBrand(params.brand_id!) }) },
+    // R38a: what a brand can use — its library + what other brands share with every brand.
+    { method: 'GET', path: '/api/brands/:brand_id/library', handle: async ({ ws, params }) => libraryFor(ws, params.brand_id!) },
     // R36: words learned from editor corrections of subtitles (Brand → C "Dipelajari dari koreksi editor").
     { method: 'GET', path: '/api/brands/:brand_id/kamus-belajar', handle: async ({ ws, params }) => readKamusBelajar(ws, params.brand_id!) },
     {

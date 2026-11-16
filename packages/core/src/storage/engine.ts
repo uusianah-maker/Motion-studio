@@ -17,7 +17,7 @@ import { execFile, spawn } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type BrandKit, assetKunci, brandReferences, exportBrandKit, readBrand, readBrandFor } from './brand.js';
+import { type BrandKit, assetKunci, brandReferences, exportBrandKit, readBrand, readBrandFor, sharedLibrary } from './brand.js';
 import { OVERLAY_DEFAULT, type Overlay, validateOverlay } from './overlay.js';
 import { localDate } from './brandGuard.js';
 import { createLease, releaseLease, setLeaseStatus } from './deps.js';
@@ -750,6 +750,11 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       await writeJsonAtomic(path.join(jdir, 'overlay.json'), { schema: 'ms-overlay/1', overlay: input.overlay });
     }
     const refs: Record<string, MediaRef> = { ...brandPlaceholders(kit) };
+    // R38a: files other brands share with every brand are in brand_kit.json too.
+    for (const a of (await sharedLibrary(ws, kit)).aset) {
+      refs[`$${a.jenis}:${a.id}`] ??= a.ref;
+      refs[assetKunci(a)] ??= a.ref;
+    }
     // R28: this job's end card replaces the brand default (or removes it).
     if (input.penutup !== undefined) {
       delete refs.$penutup;

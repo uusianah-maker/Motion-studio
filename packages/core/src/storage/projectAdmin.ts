@@ -1,3 +1,5 @@
+import { clipRefs as refsOfClip } from './project.js';
+import { fontOfRef, fontRef } from './textStyle.js';
 import { promises as fsp } from 'node:fs';
 import { readBrand } from './brand.js';
 import { commitProject } from './deps.js';
@@ -42,7 +44,8 @@ export function cleanName(x: unknown): string {
   return name;
 }
 
-const clipRefs = (t: Timeline): MediaRef[] => t.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.media ? [c.media] : [])));
+/** R38a: media, Aset font and LUT of every clip. */
+const clipRefs = (t: Timeline): MediaRef[] => t.tracks.flatMap((tr) => tr.clips.flatMap((c) => refsOfClip(c)));
 
 /** Rename and/or archive/activate. History (undo/redo) is kept; the revision moves on. */
 export async function updateProjectMeta(ws: Workspace, input: { project_id: string; expected_revision: number; name?: unknown; status?: unknown; brand_id?: unknown; fitur?: unknown; actor: Actor }): Promise<ProjectManifest> {
@@ -150,19 +153,25 @@ export async function importProject(ws: Workspace, input: { data: unknown; new_p
   for (const v of Object.values(reg.versions)) if (v.lifecycle === 'active' && v.integrity === 'ok' && !byHash.has(v.content_hash)) byHash.set(v.content_hash, { media_id: v.media_id, version_id: v.version_id });
   const missing = new Set<string>();
   let remapped = 0;
+  // Checkpoint G G-2: keep the id only when that version is usable; otherwise try the same bytes.
+  // R38a: the same for an Aset font (text style) and a colour LUT.
+  const fix = (ref: MediaRef, set: (r: MediaRef) => void) => {
+    const here = reg.versions[ref.version_id];
+    if (here && here.media_id === ref.media_id && here.lifecycle === 'active' && here.integrity === 'ok') return;
+    const info = hashOf.get(ref.version_id);
+    const match = info?.hash ? byHash.get(info.hash) : undefined;
+    if (match) {
+      set({ ...match });
+      remapped++;
+    } else if (!here || here.media_id !== ref.media_id) missing.add(info?.name ?? ref.version_id);
+    // else: known here but in Trash/damaged and no other copy — the commit below explains which.
+  };
   for (const tr of timeline.tracks) {
     for (const c of tr.clips) {
-      if (!c.media) continue;
-      const here = reg.versions[c.media.version_id];
-      // Checkpoint G G-2: keep the id only when that version is usable; otherwise try the same bytes.
-      if (here && here.media_id === c.media.media_id && here.lifecycle === 'active' && here.integrity === 'ok') continue;
-      const info = hashOf.get(c.media.version_id);
-      const match = info?.hash ? byHash.get(info.hash) : undefined;
-      if (match) {
-        c.media = { ...match };
-        remapped++;
-      } else if (!here || here.media_id !== c.media.media_id) missing.add(info?.name ?? c.media.version_id);
-      // else: known here but in Trash/damaged and no other copy — the commit below explains which.
+      if (c.media) fix(c.media, (r) => (c.media = r));
+      const f = fontRef(c.style?.font);
+      if (f) fix(f, (r) => (c.style = { ...c.style, font: fontOfRef(r) }));
+      if (c.lut) fix(c.lut, (r) => (c.lut = r));
     }
   }
   if (missing.size) throw new StorageError('PRECONDITION', `Media belum ada di workspace ini: ${[...missing].join(', ')}. Impor file videonya dulu, lalu impor proyek lagi.`, { missing: [...missing] });

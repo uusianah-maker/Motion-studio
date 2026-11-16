@@ -10,6 +10,7 @@
  *  - keywords (`highlight.words`) and optionally the word being spoken use the highlight colour
  *    and scale.
  */
+import { fontRef } from './textStyle.js';
 import { type FontInfo, assFontSize } from './fontInfo.js';
 import type { Clip, TrackKind } from './project.js';
 import { type TextStyle, contrastText, effectiveStyle, layoutText } from './textStyle.js';
@@ -23,6 +24,8 @@ export interface AssFonts {
   regular: FontInfo;
   brand: FontInfo | null;
   caption: FontInfo | null;
+  /** R38a: Aset fonts by version id (style `font: "ref:<media>/<version>"`). */
+  aset?: Record<string, FontInfo>;
 }
 
 /** A clip goes through libass when it needs what drawtext cannot do. */
@@ -45,6 +48,8 @@ const assAlpha = (opacity: number) => `&H${Math.round(255 * (1 - Math.min(1, Mat
 const safe = (t: string) => t.replace(/[{}]/g, (m) => (m === '{' ? '(' : ')')).replace(/\\/g, '/');
 
 function faceFor(s: TextStyle, f: AssFonts): FontInfo {
+  const ref = fontRef(s.font);
+  if (ref && f.aset?.[ref.version_id]) return f.aset[ref.version_id]!;
   if (s.font === 'brand' && f.brand) return f.brand;
   if (s.font === 'caption' && f.caption) return f.caption;
   return s.bold || !f.regular ? f.bold : f.regular;

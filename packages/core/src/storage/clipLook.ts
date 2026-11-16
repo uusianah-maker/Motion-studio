@@ -380,9 +380,24 @@ export interface ClipExtras extends MotionFields {
   eq?: Eq;
   /** R23b: "Perjelas suara" (highpass + voice EQ + light compressor + loudnorm). */
   voice?: boolean;
+  /** R38a: colour LUT (`.cube` media from the Aset library) applied after the look. */
+  lut?: { media_id: string; version_id: string };
 }
 export const SOUND_FIELDS = ['fade_in_ms', 'fade_out_ms', 'denoise', 'eq', 'voice'] as const;
-export const PICTURE_FIELDS = ['fit', 'fit_color', 'adjust', 'look', 'transition'] as const;
+export const PICTURE_FIELDS = ['fit', 'fit_color', 'adjust', 'look', 'transition', 'lut'] as const;
+
+const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** R38a: a LUT media reference (untrusted). */
+export function validateLutRef(v: unknown, where: string): { media_id: string; version_id: string } {
+  const o = (v ?? {}) as Record<string, unknown>;
+  if (typeof v !== 'object' || v === null || Object.keys(o).length !== 2 || typeof o.media_id !== 'string' || typeof o.version_id !== 'string' || !SAFE_ID.test(o.media_id) || !SAFE_ID.test(o.version_id)) return bad(`${where} harus { media_id, version_id } file LUT`);
+  return { media_id: o.media_id, version_id: o.version_id };
+}
+/**
+ * R38a: the LUT a clip is graded with — its own, else the brand default unless the clip chose
+ * "Tanpa filter" (`look: 'none'`).
+ */
+export const effectiveLut = (clip: { look?: LookId | 'none'; lut?: { media_id: string; version_id: string } }, brandLut: { media_id: string; version_id: string } | null = null) => clip.lut ?? (clip.look === 'none' ? null : brandLut);
 export const EXTRA_FIELDS = [...SOUND_FIELDS, ...PICTURE_FIELDS, ...MOTION_FIELDS] as const;
 
 /**
@@ -422,6 +437,7 @@ export function readExtras(o: Record<string, unknown>, where: string, kind: stri
   }
   if (o.look !== undefined) out.look = validateLook(o.look, `${where}.look`);
   if (o.transition !== undefined) out.transition = validateTransition(o.transition, `${where}.transition`);
+  if (o.lut !== undefined) out.lut = validateLutRef(o.lut, `${where}.lut`);
   Object.assign(out, readMotion(o, where, visual && hasMedia, hasMedia));
   return out;
 }
@@ -439,6 +455,7 @@ export function copyExtras(c: ClipExtras): ClipExtras {
     ...(c.adjust ? { adjust: { ...c.adjust } } : {}),
     ...(c.look ? { look: c.look } : {}),
     ...(c.transition ? { transition: { ...c.transition } } : {}),
+    ...(c.lut ? { lut: { ...c.lut } } : {}),
     ...copyMotion(c),
   };
 }

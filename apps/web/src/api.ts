@@ -57,7 +57,7 @@ export type Platform = 'tiktok' | 'instagram' | 'shopee' | 'youtube';
 export interface BrandAsset {
   id: string;
   ref: Ref;
-  jenis: 'sfx' | 'musik' | 'broll' | 'logo' | 'watermark' | 'stiker' | 'frame' | 'penutup' | 'vo' | 'lainnya';
+  jenis: 'sfx' | 'musik' | 'broll' | 'logo' | 'watermark' | 'stiker' | 'frame' | 'penutup' | 'vo' | 'video_efek' | 'transisi' | 'lut' | 'font' | 'lainnya';
   nama: string;
   tag: string[];
   lisensi: { status: 'milik_sendiri' | 'berlisensi' | 'tanpa_lisensi' | 'belum_dicek'; bukti: string; iklan: boolean };
@@ -68,6 +68,22 @@ export interface BrandAsset {
   varian: string;
   ada_teks_bawaan: boolean;
   catatan: string;
+  /** R38a: offered in every brand of the workspace. */
+  semua_brand?: true;
+  /** R38a (library listing only): the brand a shared file comes from. */
+  dari?: string;
+}
+/** R38a: a text preset saved from the editor (Brand → Aset, jenis Preset teks). */
+export interface BrandTextPreset {
+  id: string;
+  nama: string;
+  tag: string[];
+  track: 'text' | 'subtitle';
+  teks: string;
+  durasi_ms: number;
+  style: Partial<TextStyle>;
+  semua_brand?: true;
+  dari?: string;
 }
 /** F: one content preset per brand. */
 export interface BrandPreset {
@@ -122,6 +138,8 @@ export interface BrandKit {
   grading: string;
   /** Malam 15 Nov: default colour look for video/b-roll clips (null = none). */
   filter_bawaan: LookId | null;
+  /** R38a: colour LUT (.cube) for every video/b-roll clip without its own. */
+  lut_bawaan: Ref | null;
   cta: Partial<Record<Platform, string>>;
   cta_wajib: string;
   disclaimer: { teks: string; kapan: 'selalu' | 'varian_warna' | 'harga' | 'manual' } | null;
@@ -146,6 +164,8 @@ export interface BrandKit {
   sfx_dilarang: string[];
   referensi: { link: string; tiru: string; jangan: string }[];
   presets: BrandPreset[];
+  /** R38a: saved text presets. */
+  preset_teks: BrandTextPreset[];
 }
 export interface BrandGuard {
   prices: { text: string; valid_until: string }[];
@@ -240,7 +260,7 @@ export type EditOp =
   | { op: 'set_track_mute'; track_kind: 'video' | 'broll' | 'audio' | 'music' | 'sfx'; muted: boolean }
   | { op: 'set_loudness'; lufs: number | null }
   | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off'; eq?: { bass: number; mid: number; treble: number } | null; voice?: boolean }
-  | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
+  | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null; lut?: { media_id: string; version_id: string } | null }
   | { op: 'set_ducking'; on: boolean; level?: number }
   | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }
   | { op: 'set_motion'; clip_id: string; rotate?: 0 | 90 | 180 | 270; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: 'off' | 'ringan' | 'sedang'; stabil?: 'off' | 'ringan' | 'kuat' }
@@ -907,6 +927,8 @@ export function createApi(token: string | null, base = '') {
     brands: () => call<{ brands: BrandKit[]; default_id: string | null }>('GET', '/api/brands'),
     brandById: (id: string) => call<{ brand: BrandKit }>('GET', `/api/brands/${encodeURIComponent(id)}`).then((r) => r.brand),
     /** R36: pairs learned from editor corrections (+ ignored words). */
+    /** R38a: the brand's library + files / presets other brands share with every brand. */
+    brandLibrary: (id: string) => call<{ aset: BrandAsset[]; preset_teks: BrandTextPreset[] }>('GET', `/api/brands/${encodeURIComponent(id)}/library`),
     kamusBelajar: (id: string) => call<{ pasangan: KamusBelajarPasangan[]; abaikan: string[] }>('GET', `/api/brands/${encodeURIComponent(id)}/kamus-belajar`),
     createBrand: (kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', '/api/brands', { json: { kit } }).then((r) => r.brand),
     saveBrandById: (id: string, expected_revision: number, kit: BrandKitInput) => call<{ brand: BrandKit }>('POST', `/api/brands/${encodeURIComponent(id)}`, { json: { expected_revision, kit } }).then((r) => r.brand),

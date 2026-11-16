@@ -1,12 +1,12 @@
 {
-  "at": "2026-11-12T20:53:05.733Z",
+  "at": "2026-11-16T10:47:56.891Z",
   "passed": 9,
   "total": 9,
   "results": [
     {
       "id": "X1-desktop-01 Teks bergaya: pusat di (0.30, 0.70), ukuran 9% sisi pendek, merah di kotak kuning, rata kiri, tebal",
       "ok": true,
-      "detail": "cx 0.302 cy 0.699 font 23.2/23.2"
+      "detail": "cx 0.302 cy 0.699 font 20.7/20.7"
     },
     {
       "id": "X1-desktop-02 Baris pratinjau = baris render (fungsi layout yang sama)",

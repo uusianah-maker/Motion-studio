@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-16T09:39:24.226Z",
+  "at": "2026-11-16T10:48:14.615Z",
   "passed": 28,
   "total": 28,
   "results": [
@@ -106,7 +106,7 @@
     {
       "id": "M15-K5 Undo mengembalikan opasitas keyframe",
       "ok": true,
-      "detail": ""
+      "detail": "undo=\"Undo: Keyframe (Ctrl+Z)\" rev=14 kf=[{\"at_ms\":0,\"x\":0,\"y\":0,\"scale\":1,\"opacity\":1,\"ease\":\"linear\"},{\"at_ms\":2000,\"x\":0,\"y\":0,\"scale\":1.15,\"opacity\":1,\"ease\":\"ease\"}]"
     },
     {
       "id": "M15-17 Brand Kit: \"Filter bawaan video\" tersimpan per brand",

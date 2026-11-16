@@ -22,7 +22,7 @@ import { checkTools, findFont, measureLoudness, runFfmpeg, sourceMetadataMarkers
 import type { Actor } from './permissions.js';
 import { MEDIA_AREAS } from './permissions.js';
 import { type PreflightResult, finishRender, startRender, verifyRenderSnapshot } from './preflight.js';
-import { effectiveStyle, layoutText } from './textStyle.js';
+import { effectiveStyle, fontRef, layoutText } from './textStyle.js';
 import { type MediaProbe, probeFile, probeImage } from './probe.js';
 import { type CanvasRatio, type Clip, type Timeline, type Track } from './project.js';
 import { loadRegistry } from './registry.js';
@@ -208,6 +208,8 @@ export interface RenderBrand {
   fonts?: Partial<AssFonts>;
   /** Malam 15 Nov: Brand Kit default colour look for video/b-roll clips without their own `look`. */
   look?: LookId | null;
+  /** R38a: Aset fonts in the job folder by version id (file name there, e.g. `fonta_v_x.ttf`). */
+  aset_fonts?: ReadonlyMap<string, string>;
   /** R26: local file of each overlay media version; `still` = a picture (looped), else a video. */
   overlays?: ReadonlyMap<string, { path: string; still: boolean }>;
 }
@@ -440,8 +442,10 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       ].join(':');
       const face = s.bold || !regularFont ? font : regularFont;
       // X06: the brand font when the style asks for it and the kit has one (else the default face).
-      const fontFile =
-        s.font === 'brand' && brand.font
+      const aref = fontRef(s.font);
+      const fontFile = aref && brand.aset_fonts?.get(aref.version_id)
+        ? brand.aset_fonts.get(aref.version_id)!
+        : s.font === 'brand' && brand.font
           ? `fontk${path.extname(brand.font).toLowerCase()}`
           : s.font === 'caption' && brand.font_caption
             ? `fontc${path.extname(brand.font_caption).toLowerCase()}`
@@ -460,7 +464,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   }
   if (assClips.length) {
     const f = brand.fonts ?? {};
-    files.push({ name: 'captions.ass', content: buildAss({ clips: assClips, width: W, height: H, ratio, total_ms, fonts: { bold: f.bold ?? DEFAULT_FONT_INFO, regular: f.regular ?? { ...DEFAULT_FONT_INFO, bold: false }, brand: f.brand ?? null, caption: f.caption ?? null } }) });
+    files.push({ name: 'captions.ass', content: buildAss({ clips: assClips, width: W, height: H, ratio, total_ms, fonts: { bold: f.bold ?? DEFAULT_FONT_INFO, regular: f.regular ?? { ...DEFAULT_FONT_INFO, bold: false }, brand: f.brand ?? null, caption: f.caption ?? null, ...(f.aset ? { aset: f.aset } : {}) } }) });
     // Fonts are looked up by family name among the files copied into the job folder.
     draws.push('ass=filename=captions.ass:fontsdir=.');
   }
@@ -665,6 +669,10 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.font_caption?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
     const clipVersions = new Set(project.timeline.tracks.flatMap((tr) => (tr.kind === 'overlay' ? [] : tr.clips.flatMap((c) => (c.media ? [c.media.version_id] : [])))));
     const overlayVersions = new Set(clipsOf(project.timeline, 'overlay').flatMap((c) => (c.media ? [c.media.version_id] : [])));
+    // R38a: Aset fonts of texts and colour LUTs are leased with the clips but are not timeline media.
+    const asetFontRefs = [...clipsOf(project.timeline, 'text'), ...clipsOf(project.timeline, 'subtitle')].flatMap((c) => (c.text?.trim() && fontRef(c.style?.font) ? [fontRef(c.style?.font)!] : []));
+    const asetFontVersions = new Set(asetFontRefs.map((r) => r.version_id));
+    const lutVersions = new Set(project.timeline.tracks.flatMap((tr) => tr.clips.flatMap((c) => (c.lut ? [c.lut.version_id] : []))));
     const versions = lease.media.map((m) => reg.versions[m.version_id]!);
     const rels = await Promise.all(versions.map((v) => ws.blobs.resolve(v.rel_path, MEDIA_AREAS)));
     tmp = await fsp.mkdtemp(path.join(hooks.tmpRoot ?? os.tmpdir(), RENDER_TMP_PREFIX));
@@ -686,6 +694,7 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
           for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
           if (!clipVersions.has(v.version_id)) continue;
         }
+        if ((asetFontVersions.has(v.version_id) || lutVersions.has(v.version_id)) && !clipVersions.has(v.version_id) && !overlayVersions.has(v.version_id)) continue; // font / LUT file, copied below
         if (brandOnly.has(v.version_id) && !clipVersions.has(v.version_id)) {
           if (v.version_id === brandRefs.logo?.ref.version_id) for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
           continue; // font / logo: not a timeline clip
@@ -715,7 +724,20 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       if (fr) fonts.regular = fr;
       if (fk) fonts.brand = fk;
       if (fc) fonts.caption = fc;
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays });
+      // R38a: Aset fonts → job folder (drawtext by file, libass by family name in fontsdir).
+      const asetFonts = new Map<string, string>();
+      for (const r of asetFontRefs) {
+        if (asetFonts.has(r.version_id)) continue;
+        const file = local.get(r.version_id);
+        if (!file) throw new StorageError('PRECONDITION', 'Font teks dari Aset tidak tersedia untuk render', { version_id: r.version_id });
+        const e = (/\.(ttf|otf)$/i.exec(reg.versions[r.version_id]?.original_name ?? '')?.[0] ?? '.ttf').toLowerCase();
+        const name = `fonta_${r.version_id}${e}`;
+        await fsp.copyFile(file, path.join(jobDir, name));
+        asetFonts.set(r.version_id, name);
+        const fi = await info(file);
+        if (fi) (fonts.aset ??= {})[r.version_id] = fi;
+      }
+      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays, aset_fonts: asetFonts });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));

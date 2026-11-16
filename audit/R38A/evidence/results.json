@@ -1,0 +1,87 @@
+[
+  {
+    "id": "R38A-01 \"＋ Tambah aset\": semua jenis (SFX, Musik, VO, gambar, Video efek, Transisi, LUT, Font, Penutup, B-roll…)",
+    "ok": true,
+    "detail": "SFX | Musik | B-roll | Logo | Watermark | Stiker | Frame | Penutup | VO (suara) | Video efek | Transisi (stinger) | Filter warna (LUT) | Font | Lainnya"
+  },
+  {
+    "id": "R38A-02 File salah jenis ditolak sebelum diunggah (PNG sebagai Font)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-03 LUT rusak ditolak dengan alasan jelas",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-04 Video efek: tag dari form, ▶ memutar pratinjau video",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-05 LUT: swatch sebelum/sesudah dihitung dari file (abu-abu terang jadi lebih hangat: biru turun)",
+    "ok": true,
+    "detail": "[[214,214,214],[241,214,150]]"
+  },
+  {
+    "id": "R38A-06 Font: contoh huruf memakai file font itu (@font-face terbaca)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-07 Tersimpan: jenis video_efek / transisi / lut / font, tag, boleh iklan, font \"semua brand\"",
+    "ok": true,
+    "detail": "light-leak:video_efek,stinger-swipe:transisi,hangat-senja:lut,huruf-iklan:font"
+  },
+  {
+    "id": "R38A-08 Library Editor punya tab Musik & Font (selain SFX, VO, Transisi, Efek, Teks)",
+    "ok": true,
+    "detail": "SFX|Musik|VO|Transisi|Efek|Teks|Font"
+  },
+  {
+    "id": "R38A-09 Inspector: pilihan font berisi font Aset brand + font bersama brand lain",
+    "ok": true,
+    "detail": "Huruf Iklan | Huruf Bersama · Lain Brand"
+  },
+  {
+    "id": "R38A-10 Library → Font → Pakai: teks terpilih memakai font Aset (ref ke file itu)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-11 Pratinjau menggambar teks dengan font itu (@font-face Aset)",
+    "ok": true,
+    "detail": "MotionAset_v_b69566431d349cce, Arial, sans-serif"
+  },
+  {
+    "id": "R38A-12 \"Simpan sebagai preset\" → Brand → Aset: preset teks (teks + gaya + font)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-13 Tab Teks: preset brand menambah teks dengan gaya + font yang sama",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-14 Tab Efek: video efek dari Aset tampil + ▶; \"＋\" menunggu R38b (nonaktif + keterangan) atau aktif bila R38b ada",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-15 Tab Transisi: stinger dari Aset tampil",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-16 Render nyata dengan font Aset selesai (font disalin ke job, ikut di-lease)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "R38A-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]

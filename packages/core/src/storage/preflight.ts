@@ -8,7 +8,7 @@ import { guard } from './guard.js';
 import { journalBusy } from './journal.js';
 import { normalizeRelative } from './paths.js';
 import { type Actor, MEDIA_AREAS } from './permissions.js';
-import type { MediaRef } from './project.js';
+import { type MediaRef, clipRefs } from './project.js';
 import { estimateSpace } from './quota.js';
 import { loadRegistry } from './registry.js';
 import { type Workspace, projectRel, readProject, withWorkspaceLock } from './workspace.js';
@@ -85,7 +85,8 @@ export async function renderPreflight(
   const snapshot: SnapshotItem[] = [];
 
   const refs: MediaRef[] = [];
-  for (const t of project.timeline.tracks) for (const c of t.clips) if (c.media) refs.push(c.media);
+  // R38a: + Aset fonts and colour LUTs of the clips (verified and leased like clip media).
+  for (const t of project.timeline.tracks) for (const c of t.clips) refs.push(...clipRefs(c));
   if (!refs.length) problems.push({ code: 'NO_MEDIA' });
   // X06: Brand Kit font/logo this render uses are verified and leased like clip media.
   const kit = await readBrandFor(ws, project.brand_id);

@@ -8,10 +8,10 @@ import { type Keyframe, cutKeyframes, sliceKeyframes, validateKeyframes } from '
 import { needsAss } from './ass.js';
 import { type Chroma, validateChroma } from './chroma.js';
 import { OVERLAY_DEFAULT, type Overlay, contentEnd, patchOverlay, validateOverlay, validateOverlayPatch } from './overlay.js';
-import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateTransition } from './clipLook.js';
+import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateLutRef, validateTransition } from './clipLook.js';
 import { type Eq, validateEq } from './clipAudio.js';
 import { FREEZE_MS, MAX_REVERSE_MS, type Rotation, type StabilLevel, type VDenoise, validateStabil, sliceIn, sourceAt, sourceLength, validateBool, validateRotate, validateSpeed, validateVDenoise } from './clipMotion.js';
-import { CANVAS_RATIOS, type CanvasRatio, type Clip, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
+import { CANVAS_RATIOS, type CanvasRatio, type Clip, clipRefs, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
 
 /**
  * Timeline editing core (plan v2.0 W06, PRD: "action reducer, undo history; authoritative
@@ -57,7 +57,7 @@ export type EditOp =
   /** Malam 15 Nov: sound of a media clip — fades (0 = none) and noise reduction. */
   | { op: 'set_audio'; clip_id: string; fade_in_ms?: number; fade_out_ms?: number; denoise?: Denoise | 'off'; eq?: Eq | null; voice?: boolean }
   /** Malam 15 Nov: picture of a video/b-roll clip; null clears a field. */
-  | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null }
+  | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null; lut?: { media_id: string; version_id: string } | null }
   /** Malam 15 Nov: music ducking under speech; `level` = music gain while someone speaks. */
   | { op: 'set_ducking'; on: boolean; level?: number }
   /** Malam 15 Nov: keyframes of a video/b-roll/text/subtitle clip ([] = none). */
@@ -235,7 +235,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
         };
       }
       case 'set_picture': {
-        const fields = ['fit', 'fit_color', 'adjust', 'look', 'transition'] as const;
+        const fields = ['fit', 'fit_color', 'adjust', 'look', 'transition', 'lut'] as const;
         keys(['op', 'clip_id', ...fields]);
         if (fields.every((k) => o[k] === undefined)) bad(`ops[${i}]: isi minimal satu dari ${fields.join(', ')}`);
         const opt = (k: string, fn: (v: unknown, w: string) => unknown) => (o[k] === undefined ? {} : { [k]: o[k] === null ? null : fn(o[k], `ops[${i}].${k}`) });
@@ -247,6 +247,7 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           ...opt('adjust', validateAdjust),
           ...opt('look', validateLook),
           ...opt('transition', validateTransition),
+          ...opt('lut', validateLutRef),
         } as EditOp;
       }
       case 'set_keyframes':
@@ -422,6 +423,7 @@ const clone = (t: Timeline): Timeline => ({
       ...(c.transition ? { transition: { ...c.transition } } : {}),
       ...(c.keyframes ? { keyframes: c.keyframes.map((k) => ({ ...k })) } : {}),
       ...(c.overlay ? { overlay: { ...c.overlay } } : {}),
+      ...(c.lut ? { lut: { ...c.lut } } : {}),
       ...(c.chroma ? { chroma: { ...c.chroma } } : {}),
     })),
   })),
@@ -713,6 +715,8 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         else if (op.transition) clip.transition = { ...op.transition };
         if (op.adjust === null || (op.adjust && isNeutral(op.adjust))) delete clip.adjust;
         else if (op.adjust) clip.adjust = { ...op.adjust };
+        if (op.lut === null) delete clip.lut;
+        else if (op.lut) clip.lut = { ...op.lut };
         break;
       }
       case 'set_keyframes': {
@@ -897,7 +901,7 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
 /** Media a stored timeline would bring back: kept on the snapshot so the GC sees it. */
 export function timelineMedia(t: Timeline): MediaRef[] {
   const seen = new Map<string, MediaRef>();
-  for (const tr of t.tracks) for (const c of tr.clips) if (c.media) seen.set(c.media.version_id, { ...c.media });
+  for (const tr of t.tracks) for (const c of tr.clips) for (const r of clipRefs(c)) seen.set(r.version_id, { ...r });
   return [...seen.values()];
 }
 

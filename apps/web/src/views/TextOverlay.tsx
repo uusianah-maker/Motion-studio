@@ -3,7 +3,8 @@ import { type TextStyle, contrastText, effectiveStyle, layoutText } from '../../
 import { spokenCount, wordKey } from '../../../../packages/core/dist/storage/words.js';
 import type { Clip } from '../api';
 import type { KfValues } from '../../../../packages/core/dist/storage/keyframes.js';
-import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY } from '../brand';
+import { BRAND_CAPTION_FAMILY, BRAND_FONT_FAMILY, asetFontFamily } from '../brand';
+import { fontRef } from '../../../../packages/core/dist/storage/textStyle.js';
 
 /**
  * U3b: same rules as the ASS captions — spoken words visible (later ones invisible so the line
@@ -114,7 +115,8 @@ export function TextOverlay({
     color: s.color,
     fontWeight: s.bold ? 800 : 400,
     // X06: brand font (registered by useBrand); falls back to the default face if not loaded.
-    ...(s.font === 'brand' ? { fontFamily: `'${BRAND_FONT_FAMILY}', Arial, sans-serif` } : s.font === 'caption' ? { fontFamily: `'${BRAND_CAPTION_FAMILY}', Arial, sans-serif` } : {}),
+    // R38a: an Aset font (registered by the Preview with ensureAsetFont) — same file as the render.
+    ...(fontRef(s.font) ? { fontFamily: `'${asetFontFamily(fontRef(s.font)!.version_id)}', Arial, sans-serif` } : s.font === 'brand' ? { fontFamily: `'${BRAND_FONT_FAMILY}', Arial, sans-serif` } : s.font === 'caption' ? { fontFamily: `'${BRAND_CAPTION_FAMILY}', Arial, sans-serif` } : {}),
     textAlign: s.align,
     background: s.bg ? rgba(s.bg, s.bg_opacity) : 'transparent',
     padding: s.bg ? `${px * 0.4}px` : 0,

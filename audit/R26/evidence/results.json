@@ -2,7 +2,7 @@
   {
     "id": "R26-01 Jenis aset baru: Watermark, Stiker, Frame (selain Logo)",
     "ok": true,
-    "detail": "Semua jenis (2) | SFX (0) | Musik (0) | B-roll (0) | Logo (1) | Watermark (0) | Stiker (1) | Frame (0) | Penutup (0) | VO (suara) (0) | Lainnya (0)"
+    "detail": "Semua jenis (2) | Preset teks (0) | SFX (0) | Musik (0) | B-roll (0) | Logo (1) | Watermark (0) | Stiker (1) | Frame (0) | Penutup (0) | VO (suara) (0) | Video efek (0) | Transisi (stinger) (0) | Filter warna (LUT) (0) | Font (0) | Lainnya (0)"
   },
   {
     "id": "R26-02 Gambar overlay tampil sebagai thumbnail di atas papan catur (transparansi terlihat)",
@@ -17,7 +17,7 @@
   {
     "id": "R26-04 Tersimpan: logo Brand Kit = aset logo-merah (sinkron), pasang logo otomatis = ya",
     "ok": true,
-    "detail": "logo=v_c5fbfad721903d2c auto=true"
+    "detail": "logo=v_c59bc945c795c896 auto=true"
   },
   {
     "id": "R26-05 Dialog overlay menampilkan gambar dari Aset brand (logo default + stiker)",
@@ -67,7 +67,7 @@
   {
     "id": "R26-14 Pratinjau menggambar urutan yang sama (belakang → depan)",
     "ok": true,
-    "detail": "c_588854759a6c4e99,c_459da10d7210f6bc"
+    "detail": "c_6ce0a860a12870ee,c_4b66cc16a10c17b5"
   },
   {
     "id": "R26-15 Seret overlay di pratinjau → geser manual tersimpan (satu revisi)",

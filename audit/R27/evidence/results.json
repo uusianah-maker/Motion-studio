@@ -10,9 +10,9 @@
     "detail": ""
   },
   {
-    "id": "R27-03 Panel Library di Editor: tab SFX, VO, Transisi, Efek, Teks",
+    "id": "R27-03 Panel Library di Editor: tab SFX, Musik, VO, Transisi, Efek, Teks, Font",
     "ok": true,
-    "detail": "SFX|VO|Transisi|Efek|Teks"
+    "detail": "SFX|Musik|VO|Transisi|Efek|Teks|Font"
   },
   {
     "id": "R27-04 Tab SFX berisi SFX dari Aset brand (2)",

@@ -8,6 +8,8 @@ import { ErrorNotice } from '../ui';
 import { Preview } from './Preview';
 import { OverlayPicker, type OverlayPick } from './OverlayPicker';
 import { PenutupDialog, type PenutupOption } from './PenutupPicker';
+import { kitInput } from './OverlayPicker';
+import { fontOfRef } from '../../../../packages/core/dist/storage/textStyle.js';
 import { type Overlay, contentEnd } from '../../../../packages/core/dist/storage/overlay.js';
 import { waitingForProxy } from '../proxyWait';
 import { fitMove, fitTrim, gapAt } from '../dragFit';
@@ -564,6 +566,20 @@ export function EditorView({
     const start = whole ? 0 : Math.round(playhead / 100) * 100;
     void edit([{ op: 'add_clip', track_kind: 'overlay', media: p.ref, start_ms: start, duration_ms: whole ? end : TEXT_CLIP_MS, ...(whole ? { overlay: { pos: p.jenis === 'logo' ? 'tr' : p.jenis === 'frame' ? 'c' : 'br', dx: 0, dy: 0, skala: p.jenis === 'frame' ? 100 : p.jenis === 'logo' ? 18 : 30, opasitas: p.jenis === 'watermark' ? 0.6 : 1, margin: p.jenis === 'frame' ? 0 : 4, layer: Math.min(999, Math.max(-1, ...overlayLayers()) + 1), sepanjang: true } } : {}) }]);
   };
+  /** R38a: a text clip's words + look → a preset in the brand library (tab Teks of the Library). */
+  const savePreset = async (nama: string, c: Clip & { kind: Track['kind'] }) => {
+    const id0 = brand?.kit.brand_id;
+    if (!id0) throw new Error('Buat brand dulu di menu Brand, lalu simpan preset.');
+    const fresh = await api.brandById(id0);
+    const base = nama.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 36) || 'preset';
+    const taken = new Set(fresh.preset_teks.map((p) => p.id));
+    let id = base;
+    for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+    const preset = { id, nama, tag: [], track: c.kind === 'subtitle' ? ('subtitle' as const) : ('text' as const), teks: c.text ?? nama, durasi_ms: Math.min(60_000, Math.max(100, c.end_ms - c.start_ms)), style: { ...(c.style ?? {}) } };
+    await api.saveBrandById(fresh.brand_id, fresh.revision, { ...kitInput(fresh), preset_teks: [...fresh.preset_teks, preset] });
+    setBrandReload((n) => n + 1);
+    setNotice(`Preset "${nama}" tersimpan di Brand → Aset (tab Teks di Library).`);
+  };
   /** R28: the end card goes right after the last clip of the video track (its own length). */
   const addPenutup = async (o: PenutupOption) => {
     setPenutupOpen(false);
@@ -809,11 +825,13 @@ export function EditorView({
               api={api}
               onDraft={setStyleDraft}
               onOverlayDraft={setOverlayDraft}
+              asetFonts={(brand?.library.aset ?? []).filter((a) => a.jenis === 'font').map((a) => ({ value: fontOfRef(a.ref), label: `${a.nama || a.id}${a.dari ? ` · ${a.dari}` : ''}` }))}
+              {...((sel.kind === 'text' || sel.kind === 'subtitle') && sel.text && !reviewer && project.status !== 'archived' ? { onSavePreset: (nama: string) => savePreset(nama, sel) } : {})}
               flushRef={inspectorFlush}
             />
           )}
           {project && !reviewer && (
-            <LibraryPanel api={api} project={project} media={media} kit={brand?.kit ?? null} playhead={playhead} selected={sel} busy={locked} edit={(ops) => void edit(ops)} clipName={clipName} />
+            <LibraryPanel api={api} project={project} media={media} kit={brand?.kit ?? null} library={brand?.library ?? null} playhead={playhead} selected={sel} busy={locked} edit={(ops) => void edit(ops)} clipName={clipName} />
           )}
           {project && (
             <PresetPanel

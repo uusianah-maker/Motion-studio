@@ -3,7 +3,7 @@ import { type Chroma, validateChroma } from './chroma.js';
 import { type BlurRegion, type Crop, validateBlur, validateCrop } from './framing.js';
 import { type ClipEffect, validateEffect } from './effects.js';
 import { type Word, validateWords } from './words.js';
-import { type TextStyle, validateStyle } from './textStyle.js';
+import { type TextStyle, fontRef, validateStyle } from './textStyle.js';
 import { isSafeId } from './ids.js';
 import { type ClipExtras, readExtras, validateDuck } from './clipLook.js';
 import { type Keyframe, validateKeyframes } from './keyframes.js';
@@ -190,7 +190,7 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
       snap.timeline = validateTimeline(so.timeline, `${w}.timeline`);
       // The GC must see every media the stored timeline would bring back (PRD: retained undo holds media).
       const held = new Set(snap.media.map((m) => m.version_id));
-      for (const t of snap.timeline.tracks) for (const c of t.clips) if (c.media && !held.has(c.media.version_id)) fail(`${w}.media`, 'tidak memuat semua media timeline');
+      for (const t of snap.timeline.tracks) for (const c of t.clips) if (clipRefs(c).some((r) => !held.has(r.version_id))) fail(`${w}.media`, 'tidak memuat semua media timeline');
     }
     return snap;
   });
@@ -365,11 +365,24 @@ function validateTracks(timeline: Obj, where: string): Track[] {
   });
 }
 
+/**
+ * Every media version one clip needs: its own media + (R38a) an Aset font of its text style and its
+ * colour LUT — so the GC, undo history, preflight and render all hold / lease them too.
+ */
+export function clipRefs(c: Clip): MediaRef[] {
+  const out: MediaRef[] = [];
+  if (c.media) out.push(c.media);
+  const f = fontRef(c.style?.font);
+  if (f) out.push(f);
+  if (c.lut) out.push(c.lut);
+  return out;
+}
+
 /** Every media version a manifest holds: timeline clips + retained snapshots/undo. */
 export function manifestReferences(m: ProjectManifest): { ref: MediaRef; source: 'timeline' | 'snapshot' | 'undo'; detail: string }[] {
   const out: { ref: MediaRef; source: 'timeline' | 'snapshot' | 'undo'; detail: string }[] = [];
   for (const t of m.timeline.tracks) {
-    for (const c of t.clips) if (c.media) out.push({ ref: c.media, source: 'timeline', detail: `${t.track_id}/${c.clip_id}` });
+    for (const c of t.clips) for (const ref of clipRefs(c)) out.push({ ref, source: 'timeline', detail: `${t.track_id}/${c.clip_id}` });
   }
   for (const s of m.snapshots) {
     if (!s.retained) continue;

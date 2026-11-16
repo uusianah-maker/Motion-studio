@@ -1,3 +1,5 @@
+import { LUT_LIMITS, parseCube } from './lut.js';
+import { type TextStyle, validateStyle } from './textStyle.js';
 import { promises as fsp } from 'node:fs';
 import { LOOK_IDS, type LookId } from './clipLook.js';
 import path from 'node:path';
@@ -32,11 +34,14 @@ export const PLATFORMS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
 export const TEXT_FREE_AREAS = ['wajah', 'produk', 'bawah_15', 'atas_10', 'kanan_tombol'] as const;
 export const DISCLAIMER_WHEN = ['selalu', 'varian_warna', 'harga', 'manual'] as const;
 /** R34: `vo` = voice over from "Suara dari Teks" (or uploaded), reusable in every feature. */
-export const ASSET_KINDS = ['sfx', 'musik', 'broll', 'logo', 'watermark', 'stiker', 'frame', 'penutup', 'vo', 'lainnya'] as const;
+export const ASSET_KINDS = ['sfx', 'musik', 'broll', 'logo', 'watermark', 'stiker', 'frame', 'penutup', 'vo', 'video_efek', 'transisi', 'lut', 'font', 'lainnya'] as const;
+/** R38a: kinds the engine contract does not know — exported as `lainnya` + their kind as a tag. */
+export const APP_ONLY_KINDS = ['watermark', 'stiker', 'frame', 'video_efek', 'transisi', 'lut', 'font'] as const;
+export const MAX_PRESET_TEKS = 200;
 /** R26: picture kinds that go on the overlay track (PNG with transparency preferred). */
 export const OVERLAY_ASSET_KINDS = ['logo', 'watermark', 'stiker', 'frame'] as const;
 /** R26: kinds the engine contract (KONTRAK-ENGINE §4) does not know are exported as `lainnya`. */
-const ENGINE_KIND = (j: (typeof ASSET_KINDS)[number]): BrandExportAsset['jenis'] => (j === 'watermark' || j === 'stiker' || j === 'frame' ? 'lainnya' : j);
+const ENGINE_KIND = (j: (typeof ASSET_KINDS)[number]): BrandExportAsset['jenis'] => ((APP_ONLY_KINDS as readonly string[]).includes(j) ? 'lainnya' : (j as BrandExportAsset['jenis']));
 /** Placeholder of a library file in the engine export (`$sfx:pop-01`, `$lainnya:stiker-diskon`). */
 export const assetKunci = (a: { jenis: (typeof ASSET_KINDS)[number]; id: string }): string => `$${ENGINE_KIND(a.jenis)}:${a.id}`;
 export const LICENSE_STATUS = ['milik_sendiri', 'berlisensi', 'tanpa_lisensi', 'belum_dicek'] as const;
@@ -91,6 +96,20 @@ export interface BrandAsset {
   /** B-roll: footage already has burned-in text (Batch Remix avoids or blurs it). */
   ada_teks_bawaan: boolean;
   catatan: string;
+  /** R38a: also offered in every other brand of this workspace (the file stays this brand's). */
+  semua_brand?: true;
+}
+
+/** R38a: a text preset the team saved ("Simpan sebagai preset"), shown in the Library's Teks tab. */
+export interface BrandTextPreset {
+  id: string;
+  nama: string;
+  tag: string[];
+  track: 'text' | 'subtitle';
+  teks: string;
+  durasi_ms: number;
+  style: Partial<TextStyle>;
+  semua_brand?: true;
 }
 
 /** F: one content preset (konversi, awareness, …). Free text where the sheet is free text. */
@@ -154,6 +173,8 @@ export interface BrandKit {
   grading: string;
   /** Malam 15 Nov: colour look every video/b-roll clip gets unless it picks its own (null = none). */
   filter_bawaan: LookId | null;
+  /** R38a: colour LUT (.cube from the library) every video/b-roll clip gets unless it picks its own. */
+  lut_bawaan: MediaRef | null;
   // C. Text & language
   cta: Partial<Record<Platform, string>>;
   cta_wajib: string;
@@ -185,6 +206,8 @@ export interface BrandKit {
   referensi: { link: string; tiru: string; jangan: string }[];
   // F. Presets
   presets: BrandPreset[];
+  /** R38a: text presets saved from the editor. */
+  preset_teks: BrandTextPreset[];
 }
 
 export type BrandKitInput = Omit<BrandKit, 'schema_version' | 'brand_id' | 'revision' | 'updated_at'>;
@@ -208,6 +231,7 @@ const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
   gaya: '',
   grading: '',
   filter_bawaan: null,
+  lut_bawaan: null,
   cta: {},
   cta_wajib: '',
   disclaimer: null,
@@ -228,6 +252,7 @@ const EMPTY_FIELDS: Omit<BrandKitInput, 'name' | 'kode'> = {
   sfx_dilarang: [],
   referensi: [],
   presets: [],
+  preset_teks: [],
 };
 
 /** "No brand yet": what a project without any kit sees (nothing to apply, nothing to check). */
@@ -299,7 +324,7 @@ const perPlatform = (x: unknown, w: string, max: number): Partial<Record<Platfor
 
 function validateAsset(x: unknown, i: number): BrandAsset {
   const w = `aset ${i + 1}`;
-  const o = obj(x, w, ['id', 'ref', 'jenis', 'nama', 'tag', 'lisensi', 'mood', 'bpm', 'instrumental', 'produk', 'varian', 'ada_teks_bawaan', 'catatan']);
+  const o = obj(x, w, ['id', 'ref', 'jenis', 'nama', 'tag', 'lisensi', 'mood', 'bpm', 'instrumental', 'produk', 'varian', 'ada_teks_bawaan', 'catatan', 'semua_brand']);
   const id = typeof o.id === 'string' && SLUG.test(o.id) ? o.id : bad(`${w}: id huruf kecil/angka/strip, mis. "pop-01"`);
   const l = obj(o.lisensi ?? {}, `${w} lisensi`, ['status', 'bukti', 'iklan']);
   const status = oneOf(l.status, `${w} status lisensi`, LICENSE_STATUS, 'belum_dicek');
@@ -323,6 +348,7 @@ function validateAsset(x: unknown, i: number): BrandAsset {
     varian: text(o.varian, `${w} varian`, 40),
     ada_teks_bawaan: bool(o.ada_teks_bawaan, `${w} ada teks bawaan`, false),
     catatan: text(o.catatan, `${w} catatan`, 200),
+    ...(bool(o.semua_brand, `${w} semua brand`, false) ? { semua_brand: true as const } : {}),
   };
 }
 
@@ -492,6 +518,7 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
     outro: { ref: ref(out.ref, 'penutup'), detik: num(out.detik, 'durasi penutup', 0.5, 10, 2) },
     gaya: text(o.gaya, 'gaya keseluruhan', 120),
     grading: text(o.grading, 'color grading', 120),
+    lut_bawaan: ref(o.lut_bawaan, 'LUT bawaan'),
     filter_bawaan: o.filter_bawaan === undefined || o.filter_bawaan === null || o.filter_bawaan === '' ? null : LOOK_IDS.includes(o.filter_bawaan as LookId) ? (o.filter_bawaan as LookId) : bad(`filter bawaan harus salah satu dari ${LOOK_IDS.join(', ')}`),
     cta: perPlatform(o.cta, 'CTA', 120),
     cta_wajib: text(o.cta_wajib, 'CTA wajib', 200),
@@ -525,6 +552,7 @@ export function validateBrandInput(raw: unknown): BrandKitInput {
       return { link, tiru: text(ro.tiru, `referensi ${i + 1} yang ditiru`, 200), jangan: text(ro.jangan, `referensi ${i + 1} yang tidak ditiru`, 200) };
     }),
     presets: presetList,
+    preset_teks: presetTeks(o.preset_teks),
   };
 }
 
@@ -587,6 +615,38 @@ async function migrateLegacy(ws: Workspace): Promise<void> {
 }
 
 /** All brands, sorted by name. */
+/**
+ * R38a: library files and text presets other brands share with every brand (`semua_brand`), each
+ * marked with the brand it comes from. A brand's own item with the same id wins.
+ */
+export async function sharedLibrary(ws: Workspace, kit: Pick<BrandKit, 'brand_id' | 'aset' | 'preset_teks'>): Promise<{ aset: (BrandAsset & { dari: string })[]; preset_teks: (BrandTextPreset & { dari: string })[] }> {
+  const own = new Set(kit.aset.map((a) => a.id));
+  const ownP = new Set(kit.preset_teks.map((p) => p.id));
+  const aset: (BrandAsset & { dari: string })[] = [];
+  const preset_teks: (BrandTextPreset & { dari: string })[] = [];
+  for (const b of await listBrands(ws)) {
+    if (b.brand_id === kit.brand_id) continue;
+    for (const a of b.aset) {
+      if (!a.semua_brand || own.has(a.id)) continue;
+      own.add(a.id);
+      aset.push({ ...a, dari: b.name });
+    }
+    for (const p of b.preset_teks) {
+      if (!p.semua_brand || ownP.has(p.id)) continue;
+      ownP.add(p.id);
+      preset_teks.push({ ...p, dari: b.name });
+    }
+  }
+  return { aset, preset_teks };
+}
+
+/** R38a: what a brand can use — its own library + what other brands share (Editor Library, pickers). */
+export async function libraryFor(ws: Workspace, brandId: string): Promise<{ aset: (BrandAsset & { dari?: string })[]; preset_teks: (BrandTextPreset & { dari?: string })[] }> {
+  const kit = await readBrand(ws, brandId);
+  const shared = await sharedLibrary(ws, kit);
+  return { aset: [...kit.aset, ...shared.aset], preset_teks: [...kit.preset_teks, ...shared.preset_teks] };
+}
+
 export async function listBrands(ws: Workspace): Promise<BrandKit[]> {
   await migrateLegacy(ws);
   const names = await fsp.readdir(dir(ws)).catch(() => [] as string[]);
@@ -693,7 +753,60 @@ async function checkFiles(ws: Workspace, reg: Registry, kit: BrandKitInput): Pro
     if ((a.jenis === 'sfx' || a.jenis === 'musik' || a.jenis === 'vo') && !AUDIO_EXT.includes(e) && !['.mp4', '.mov', '.webm'].includes(e)) bad(`aset ${a.id}: ${a.jenis} harus file suara (MP3/WAV/M4A/…)`);
     if ((a.jenis === 'broll' || a.jenis === 'penutup') && !OUTRO_EXT.includes(e)) bad(`aset ${a.id}: ${a.jenis} harus video atau gambar`);
     if ((OVERLAY_ASSET_KINDS as readonly string[]).includes(a.jenis) && !LOGO_EXT.includes(e)) bad(`aset ${a.id}: ${a.jenis} harus gambar PNG/JPG/WebP`);
+    // R38a: effect / stinger clips are videos (WebM / MOV may carry transparency).
+    if ((a.jenis === 'video_efek' || a.jenis === 'transisi') && !['.mp4', '.mov', '.webm'].includes(e)) bad(`aset ${a.id}: ${a.jenis === 'transisi' ? 'transisi' : 'video efek'} harus video MP4/WebM/MOV`);
+    if (a.jenis === 'font' && (!FONT_EXT.includes(e) || !isFontMagic(await head(ws, v)))) bad(`aset ${a.id}: font harus file .ttf atau .otf yang sah`);
+    if (a.jenis === 'lut') await checkCube(ws, v, `aset ${a.id}`);
   }
+  if (kit.lut_bawaan) {
+    const v = usable(reg, kit.lut_bawaan, 'LUT bawaan');
+    await checkCube(ws, v, 'LUT bawaan');
+  }
+}
+
+/** R38a: a `.cube` 3D LUT that parses (size, values, domain). */
+async function checkCube(ws: Workspace, v: VersionRecord, what: string): Promise<void> {
+  if (ext(v.original_name) !== '.cube') bad(`${what}: LUT harus file .cube`);
+  if (v.size > LUT_LIMITS.bytes) bad(`${what}: file LUT terlalu besar (maks 8 MB)`);
+  const textOf = await ws.blobs.withLocalFile(await ws.blobs.resolve(v.rel_path, MEDIA_AREAS), (abs) => fsp.readFile(abs, 'utf8'));
+  try {
+    parseCube(textOf);
+  } catch (e) {
+    bad(`${what}: ${e instanceof Error ? e.message : 'LUT tidak valid'}`);
+  }
+}
+
+/** R38a: saved text presets (untrusted). */
+function presetTeks(x: unknown): BrandTextPreset[] {
+  if (x === undefined || x === null) return [];
+  if (!Array.isArray(x)) return bad('preset teks harus daftar');
+  if (x.length > MAX_PRESET_TEKS) bad(`preset teks maksimal ${MAX_PRESET_TEKS}`);
+  const out = x.map((raw, i) => {
+    const w = `preset teks ${i + 1}`;
+    const o = obj(raw, w, ['id', 'nama', 'tag', 'track', 'teks', 'durasi_ms', 'style', 'semua_brand']);
+    const id = typeof o.id === 'string' && SLUG.test(o.id) ? o.id : bad(`${w}: id huruf kecil/angka/strip`);
+    const track = o.track === 'subtitle' ? 'subtitle' : o.track === 'text' || o.track === undefined ? 'text' : bad(`${w}: track harus text | subtitle`);
+    const teks = text(o.teks, `${w} teks`, 500, false);
+    let style: Partial<TextStyle>;
+    try {
+      style = validateStyle(o.style ?? {}, `${w}.style`);
+    } catch (e) {
+      return bad(e instanceof Error ? e.message : `${w}: gaya tidak valid`);
+    }
+    return {
+      id,
+      nama: text(o.nama, `${w} nama`, 60, false),
+      tag: list(o.tag, `${w} tag`, 20, 30).map((t) => t.toLowerCase()),
+      track,
+      teks,
+      durasi_ms: Math.round(num(o.durasi_ms, `${w} durasi`, 100, 60_000, 3000)),
+      style,
+      ...(bool(o.semua_brand, `${w} semua brand`, false) ? { semua_brand: true as const } : {}),
+    } satisfies BrandTextPreset;
+  });
+  const dupe = out.find((p, i) => out.findIndex((q) => q.id === p.id) !== i);
+  if (dupe) bad(`id preset teks "${dupe.id}" dobel`);
+  return out;
 }
 
 async function save(ws: Workspace, kit: BrandKit, actor: Actor, op: string): Promise<BrandKit> {
@@ -847,7 +960,9 @@ export async function exportBrandKit(ws: Workspace, brandId: string, opts: { pat
   const logoLight = await add('$logo:terang', 'logo', k.logo_light);
   const outro = await add('$penutup', 'penutup', k.outro.ref);
   // U2 library: `$sfx:pop-01`, `$musik:ceria-01`, `$broll:detail-bahan` … with tags + licence.
-  for (const a of k.aset) {
+  // R38a: + files other brands share with every brand (the engine may pick them too).
+  const shared = (await sharedLibrary(ws, k)).aset;
+  for (const a of [...k.aset, ...shared]) {
     const v = usable(reg, a.ref, assetKunci(a));
     // Duration + orientation come from the file itself (probed now if the import has not yet).
     const local = await ws.blobs.resolve(v.rel_path, MEDIA_AREAS);

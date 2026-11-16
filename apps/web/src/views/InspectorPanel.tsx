@@ -31,6 +31,8 @@ export function InspectorPanel({
   onEdit,
   onDraft,
   onOverlayDraft,
+  asetFonts = [],
+  onSavePreset,
   readOnly = false,
   lockReason = null,
   api = null,
@@ -48,6 +50,10 @@ export function InspectorPanel({
   busy: boolean;
   onEdit: (ops: EditOp[]) => Promise<void> | void;
   onDraft: (d: { clip_id: string; style: Partial<TextStyle> } | null) => void;
+  /** R38a: Aset fonts the text can use (Brand → Aset, jenis Font). */
+  asetFonts?: { value: string; label: string }[];
+  /** R38a: "Simpan sebagai preset" for a text / subtitle clip (saved in Brand → Aset). */
+  onSavePreset?: (nama: string) => Promise<void>;
   /** R26: live overlay spec while a slider moves (preview only). */
   onOverlayDraft?: (d: { clip_id: string; overlay: Overlay } | null) => void;
   /** R5: the editor calls this before undo / redo, so a change still waiting is saved first. */
@@ -458,8 +464,19 @@ export function InspectorPanel({
               <option value="caption" disabled={!brand?.font_caption && s.font !== 'caption'}>
                 Brand · caption{brand?.font_caption ? '' : ' (belum ada di Brand Kit)'}
               </option>
+              {asetFonts.length > 0 && (
+                <optgroup label="Font dari Aset">
+                  {asetFonts.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {s.font.startsWith('ref:') && !asetFonts.some((f) => f.value === s.font) && <option value={s.font}>Font Aset (tidak ada di brand ini)</option>}
             </select>
           </label>
+          {onSavePreset && <SavePreset onSave={onSavePreset} />}
           <div className="row wrap" style={{ gap: 6 }}>
             <label className="inline">
               <input type="checkbox" aria-label="Tebal" checked={s.bold} onChange={(e) => change({ bold: e.target.checked })} /> Tebal
@@ -483,5 +500,42 @@ export function InspectorPanel({
       )}
       </fieldset>
     </section>
+  );
+}
+
+/** R38a: "Simpan sebagai preset" — the text's look + words become a preset in Brand → Aset. */
+function SavePreset({ onSave }: { onSave: (nama: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [nama, setNama] = useState('');
+  const [state, setState] = useState<'idle' | 'busy' | 'ok' | string>('idle');
+  if (!open)
+    return (
+      <button className="btn small" aria-label="Simpan sebagai preset" title="Simpan gaya + teks ini sebagai preset (Brand → Aset, tab Teks di Library)" onClick={() => (setOpen(true), setState('idle'))}>
+        ☆ Simpan sebagai preset
+      </button>
+    );
+  const save = async () => {
+    if (!nama.trim()) return;
+    setState('busy');
+    try {
+      await onSave(nama.trim());
+      setState('ok');
+      setOpen(false);
+      setNama('');
+    } catch (e) {
+      setState(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <div className="row wrap inspFull" style={{ gap: 6, alignItems: 'center' }} role="group" aria-label="Simpan preset teks">
+      <input aria-label="Nama preset" placeholder="mis. CTA kuning" maxLength={60} value={nama} autoFocus onChange={(e) => setNama(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void save()} />
+      <button className="btn small" disabled={!nama.trim() || state === 'busy'} onClick={() => void save()}>
+        {state === 'busy' ? 'Menyimpan…' : 'Simpan'}
+      </button>
+      <button className="tiny" onClick={() => setOpen(false)}>
+        Batal
+      </button>
+      {state !== 'idle' && state !== 'busy' && state !== 'ok' && <span className="notice err small">{state}</span>}
+    </div>
   );
 }
