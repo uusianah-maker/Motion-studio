@@ -44,6 +44,10 @@ const gen = (name, f) => {
 const up1 = gen('Owner bicara 1.wav', 300);
 const up2 = gen('Owner bicara 2.mp3', 340);
 for (const [n, f] of [['Owner live 3.wav', 380], ['Owner live 4.wav', 420]]) await svc.importMedia({ sourcePath: gen(n, f), scope: { kind: 'shared' }, actor: 'user' });
+// Owner 17 Nov: audio only — a video in Media must not be offered.
+const vid = path.join(work, 'Video live owner.mp4');
+execFileSync(FFMPEG, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=64x64:d=2', '-f', 'lavfi', '-i', 'sine=d=2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-shortest', vid], { windowsHide: true });
+await svc.importMedia({ sourcePath: vid, scope: { kind: 'shared' }, actor: 'user' });
 const lastJob = async () => {
   for (const p of await fsp.readdir(path.join(wsRoot, 'PROJECTS'))) {
     const dir = path.join(wsRoot, 'PROJECTS', p, '06_ENGINE');
@@ -71,6 +75,9 @@ try {
   await card.waitFor();
   check('SO-01 Tab "Suara saya" di Suara dari Teks: belum ada contoh, Latih nonaktif', (await card.getByText('Belum ada contoh suara.').count()) === 1 && (await card.getByRole('button', { name: 'Latih suara' }).isDisabled()));
 
+  const accept = await card.getByLabel('File contoh suara').getAttribute('accept');
+  const opts = (await card.getByLabel('Pilih dari Media').locator('option').allInnerTexts()).join('|');
+  check('SO-01b Audio saja: unggah hanya file suara, "Pilih dari Media" tanpa video, petunjuk m4a/mp3/wav', !accept.includes('video') && accept.includes('.m4a') && !opts.includes('Video live owner') && opts.includes('Owner live 3.wav') && (await card.getByText(/rekaman HP: m4a\/mp3\/wav/).count()) === 1, `${accept} · ${opts}`);
   await card.getByLabel('File contoh suara').setInputFiles([up1, up2]);
   const rows = card.getByRole('table', { name: 'Daftar contoh suara' }).locator('tbody tr');
   check('SO-02 ＋ Tambahkan contoh suara: 2 file diunggah → 2 baris + durasi', await until(async () => (await rows.count()) === 2 && (await rows.first().innerText()).includes('2 dtk')));

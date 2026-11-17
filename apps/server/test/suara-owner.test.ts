@@ -76,12 +76,16 @@ const job = (refs: { media_id: string; version_id: string }[], latih: boolean, h
 });
 
 describe('Suara owner (§23, API)', () => {
-  it('sample list: add audio/video, the same media once, remove → hapus_contoh sent once', async () => {
+  it('sample list: audio only (video refused), the same media once, remove → hapus_contoh sent once', async () => {
     const s = await setup();
     const a = await s.sample('satu.wav');
-    const b = await s.sample('dua.mp4', true);
+    const v = await s.sample('video.mp4', true);
+    const b = await s.sample('dua.m4a');
     expect((await s.call('/api/suara-owner')).json.suara_owner).toEqual({ schema: 'suara-owner/1', contoh: [], dihapus: [] });
     expect((await s.call('/api/suara-owner/contoh', { contoh: [{ media_id: 'x', version_id: 'y' }] })).status).toBe(422);
+    const refused = await s.call('/api/suara-owner/contoh', { contoh: [v] });
+    expect(refused.status).toBe(422);
+    expect(refused.json.error.message).toMatch(/ini video.*file suara/);
     const added = await s.call('/api/suara-owner/contoh', { contoh: [a, b, a] });
     expect(added.status, JSON.stringify(added.json)).toBe(200);
     expect(added.json.suara_owner.contoh).toEqual([b, a]);

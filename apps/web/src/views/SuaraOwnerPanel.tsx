@@ -118,7 +118,7 @@ export function SuaraOwnerPanel({ api, role = 'owner', projects, onProjectsChang
   const inList = new Set(rows.map((r) => r.ref.media_id));
   const candidates = media.filter((m) => {
     const k = mediaKind(versionOf(m)?.probe);
-    return (k === 'audio' || k === 'video') && !inList.has(m.media_id) && !!versionOf(m)?.probe?.audio_codec && versionOf(m)?.lifecycle === 'active';
+    return k === 'audio' && !inList.has(m.media_id) && !!versionOf(m)?.probe?.audio_codec && versionOf(m)?.lifecycle === 'active';
   });
   const running = job && current && job.job_id === current.job_id && (job.state === 'menunggu' || job.state === 'berjalan');
   const engineMissing = job?.state === 'gagal' && /tidak dikenal|unknown|invalid choice|belum (ada|tersedia)|no such/i.test(job.alasan ?? '');
@@ -192,7 +192,7 @@ export function SuaraOwnerPanel({ api, role = 'owner', projects, onProjectsChang
       <section className="card" aria-label="Contoh suara owner">
         <h3 style={{ marginTop: 0 }}>Suara owner</h3>
         <p className="muted small" style={{ marginTop: 0 }}>
-          Kumpulkan rekaman suara owner yang bersih (bicara biasa, tanpa musik, tanpa suara orang lain), total 10–15 menit. Lalu tekan Latih suara. Setelah jadi, &quot;Suara owner&quot; muncul di pilihan suara Dari teks.
+          Unggah file suara (rekaman HP: m4a/mp3/wav) atau rekam langsung — audio saja, bukan video. Suara owner yang bersih (bicara biasa, tanpa musik, tanpa suara orang lain), total 10–15 menit. Lalu tekan Latih suara. Setelah jadi, &quot;Suara owner&quot; muncul di pilihan suara Dari teks.
         </p>
         <div aria-label="Terkumpul" style={{ margin: '8px 0 12px' }}>
           <div className="small">
@@ -203,7 +203,7 @@ export function SuaraOwnerPanel({ api, role = 'owner', projects, onProjectsChang
           </div>
         </div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input ref={fileRef} type="file" accept="audio/*,video/*" multiple hidden aria-label="File contoh suara" onChange={(e) => void upload(e.target.files)} />
+          <input ref={fileRef} type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.opus,.weba,.flac,audio/*" multiple hidden aria-label="File contoh suara" onChange={(e) => void upload(e.target.files)} />
           <button type="button" className="btn primary" disabled={reviewer || !!busy} onClick={() => fileRef.current?.click()}>
             ＋ Tambahkan contoh suara
           </button>
@@ -217,7 +217,7 @@ export function SuaraOwnerPanel({ api, role = 'owner', projects, onProjectsChang
             </button>
           )}
           <select aria-label="Pilih dari Media" value={pick} disabled={reviewer || !!busy || !candidates.length} onChange={(e) => setPick(e.target.value)}>
-            <option value="">{candidates.length ? 'Pilih dari Media…' : 'Media audio/video tidak ada'}</option>
+            <option value="">{candidates.length ? 'Pilih audio dari Media…' : 'Belum ada audio di Media'}</option>
             {candidates.map((m) => (
               <option key={m.media_id} value={m.media_id}>
                 {m.display_name}

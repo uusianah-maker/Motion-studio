@@ -57,6 +57,8 @@ export async function addSuaraOwner(ws: Workspace, refs: unknown): Promise<Suara
     if (!isRef(r)) bad('contoh tidak valid');
     const v = reg.versions[(r as MediaRef).version_id];
     if (!v || v.media_id !== (r as MediaRef).media_id || v.lifecycle !== 'active') bad('Media contoh tidak aktif (di Trash atau tidak dikenal)');
+    // Owner 17 Nov: "pakai audio aja, jangan pakai video" — samples are sound files only.
+    if (v!.probe?.video_codec) bad(`${v!.original_name}: ini video. Contoh Suara owner harus file suara (rekaman HP: m4a/mp3/wav)`);
     if (!v!.probe?.audio_codec) bad(`${v!.original_name}: tidak ada suaranya`);
     const ref = { media_id: (r as MediaRef).media_id, version_id: (r as MediaRef).version_id };
     list.contoh = [...list.contoh.filter((c) => c.media_id !== ref.media_id), ref];
