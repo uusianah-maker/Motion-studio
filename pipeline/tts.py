@@ -186,13 +186,16 @@ class Windows:
 
 
 class Owner:
-    """R31 §23: "Suara owner" = TTS Windows lalu konversi ke suara owner. Muncul di daftar HANYA bila profil siap."""
-    nama = "owner"
+    """R31 §23 + §24: TTS Windows lalu konversi ke suara satu profil (owner, grace, julia, niar).
+    Muncul di daftar HANYA bila profil itu siap."""
+
+    def __init__(self, profil: str = "owner"):
+        self.nama = profil
 
     def _profil(self) -> dict | None:
         sys.path.insert(0, str(Path(__file__).resolve().parent / "batch"))
         from jalur import DATA
-        p = DATA / "konten" / "suara" / "owner" / "profil.json"
+        p = DATA / "konten" / "suara" / self.nama / "profil.json"
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -201,25 +204,27 @@ class Owner:
 
     def daftar(self) -> list[dict]:
         d = self._profil()
-        return [{"id": f"owner:{d.get('nama') or 'Suara owner'}", "nama": d.get("nama") or "Suara owner", "bahasa": "id-ID",
-                 "gender": None, "backend": "owner", "siap": True}] if d else []
+        if not d:
+            return []
+        nama = d.get("nama") or f"Suara {self.nama}"
+        return [{"id": f"{self.nama}:{nama}", "nama": nama, "bahasa": "id-ID", "gender": None, "backend": self.nama, "siap": True}]
 
     def ucapkan(self, item, suara, kecepatan, profil: dict | None = None, rentang: tuple[int, int] = (10, 58)):
         """TTS Windows (suara dasar, + pelafalan) lalu dikonversi ke suara owner di suara-venv. Durasi tetap sama,
         jadi batas kata dari Windows tetap berlaku untuk subtitle."""
         d = profil or self._profil()
         if not d:
-            raise Ditolak("Suara owner belum siap: tambah contoh suara dan latih profil dulu (§23)")
+            raise Ditolak(f"Profil suara '{self.nama}' belum siap: tambah contoh suara dan latih profil dulu (§23)")
         import suara_profil as sp
         with tempfile.TemporaryDirectory() as t:
             dasar = [(teks, Path(t) / f"dasar_{i:02d}.wav") for i, (teks, _) in enumerate(item)]
             cues = Windows().ucapkan(dasar, d.get("suara_dasar") or "Andika", kecepatan)
-            sp.jalan_mesin("ubah", {"model_dir": str(sp.folder_profil("owner") / "model"),
+            sp.jalan_mesin("ubah", {"model_dir": str(sp.folder_profil(self.nama) / "model"),
                                     "masuk": [str(p) for _, p in dasar], "keluar": [str(p) for _, p in item]}, rentang)
         return cues
 
 
-BACKEND = {"windows": Windows(), "owner": Owner()}
+BACKEND = {"windows": Windows(), **{p: Owner(p) for p in ("owner", "grace", "julia", "niar")}}
 
 
 def urai_suara(s: str | None) -> tuple[str, str]:

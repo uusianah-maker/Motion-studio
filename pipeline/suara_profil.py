@@ -31,7 +31,8 @@ from jalur import DATA, TOOLS, venv_py  # noqa: E402  (R20: data di MOTION_ENGIN
 
 SUARA_PY = Path(os.environ.get("MOTION_SUARA_PY") or venv_py(TOOLS / "suara-venv"))
 
-PROFIL = ("owner",)  # satu profil; profil lain perlu keputusan owner
+# §24: owner + tiga adik owner (keputusan owner 23 Nov 2026). Profil lain tetap ditolak.
+PROFIL = {"owner": "Suara owner", "grace": "Suara Grace", "julia": "Suara Julia", "niar": "Suara Niar"}
 SR = 40000
 FRAME = 0.03
 SUNYI_MAKS = 0.6      # jeda > 0,6 dtk dipendekkan
@@ -141,6 +142,20 @@ def bersihkan(x: np.ndarray, a: dict) -> np.ndarray:
     return np.concatenate(out) if out else np.zeros(0, np.float32)
 
 
+def pemilik_lain(profil: str, sha: str) -> str | None:
+    """§24: profil lain yang sudah memakai rekaman ini (satu rekaman = satu orang, tidak boleh tercampur)."""
+    for lain in PROFIL:
+        if lain == profil:
+            continue
+        try:
+            d = json.loads((folder_profil(lain) / "profil.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if any(c.get("sha256") == sha for c in (d.get("contoh") or {}).values()):
+            return lain
+    return None
+
+
 def muat_profil(folder: Path, profil: str, nama: str) -> dict:
     p = folder / "profil.json"
     if p.exists():
@@ -207,7 +222,7 @@ def latih(folder: Path, data: dict, kalimat: list[str], out: Path) -> list[dict]
     import tts
     (out / "contoh").mkdir(parents=True, exist_ok=True)
     item = [(k, out / "contoh" / f"{i:02d}.wav") for i, k in enumerate(kalimat, 1)]
-    tts.Owner().ucapkan([(tts.susun_ucapan(k, {})[0], p) for k, p in item], "Suara owner", 1.0, profil=data, rentang=(95, 99))
+    tts.BACKEND[data["profil"]].ucapkan([(tts.susun_ucapan(k, {})[0], p) for k, p in item], data["nama"], 1.0, profil=data, rentang=(95, 99))
     return [{"teks": k, "file": f"out/contoh/{p.name}"} for k, p in item]
 
 
@@ -240,14 +255,18 @@ def jalankan(job_dir: Path) -> int:
             raise Ditolak("job.suara_profil harus objek")
         profil = str(cfg.get("profil") or "owner")
         if profil not in PROFIL:
-            raise Ditolak(f"profil '{profil}' tidak diizinkan: hanya satu profil 'owner' (keputusan owner)")
-        nama = str(cfg.get("nama") or "Suara owner")[:60]
+            raise Ditolak(f"profil '{profil}' tidak diizinkan: hanya {', '.join(PROFIL)} (keputusan owner)")
+        nama = PROFIL[profil]  # nama tetap per profil, supaya id suara di daftar tidak tertukar
         sumber = {s["kunci"]: Path(s["path"]) for s in job.get("sumber", []) if s.get("kunci") and s.get("path")}
         tambah = [str(k) for k in (cfg.get("tambah_contoh") or [])]
         hapus = [str(k) for k in (cfg.get("hapus_contoh") or [])]
         hilang = [k for k in tambah if k not in sumber or not sumber[k].exists()]
         if hilang:
             raise Ditolak("contoh tidak ada di sumber: " + ", ".join(hilang[:5]))
+        for k in tambah:  # sebelum ada yang berubah di profil
+            lain = pemilik_lain(profil, sidik(sumber[k]))
+            if lain:
+                raise Ditolak(f"rekaman {k} sudah dipakai profil '{lain}': satu rekaman hanya untuk satu orang")
         folder = folder_profil(profil)
         data = muat_profil(folder, profil, nama)
         data["nama"] = nama

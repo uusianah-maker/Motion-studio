@@ -961,3 +961,14 @@ SHA256 yang sama tertulis di `SHA` dalam `pipeline/suara_mesin.py`.
   - `edge-tts` **dilepas** dari suara-venv dan `import edge_tts` diblokir di `suara_mesin.py`, karena mengirim teks ke server Microsoft.
   - Watermark OpenVoice (`wavmark`, mengunduh model) dan `openvoice.api` tidak dipakai; konverternya dipanggil langsung.
   - UI Gradio Applio, `pypresence`, pemeriksa versi, dan pengunduh prasyarat Applio tidak dipanggil.
+
+## 24. Profil suara per orang: `grace`, `julia`, `niar` (v0.4.7, 23 Nov 2026, Hanagaki; keputusan owner lewat venus) — DRAF
+Owner menyatakan ketiganya adik owner dan sudah setuju suaranya dikloning. Semua aturan §23 tetap berlaku, per profil.
+
+- **Profil yang diterima** `suara_profil.profil`: `owner` (bawaan bila kosong), `grace`, `julia`, `niar`. Selain itu ditolak dengan kode 2.
+- **Nama tetap**: `Suara owner`, `Suara Grace`, `Suara Julia`, `Suara Niar`. Field `nama` dari job diabaikan, supaya id suara tidak tertukar.
+- **Penyimpanan**: `<DATA>/konten/suara/<profil>/`, masing-masing punya `contoh/`, `model/`, dan `profil.json` sendiri.
+- **Tidak tercampur**: rekaman (sidik SHA-256) yang sudah dipakai satu profil ditolak dengan kode 2 bila dikirim ke profil lain. Pemeriksaan ini berjalan sebelum profil diubah.
+- **Daftar suara §21**: tiap profil yang siap muncul sebagai `<profil>:<nama>`, misalnya `grace:Suara Grace`, dengan `backend` = id profil. Yang belum siap tidak muncul.
+- **Backend latih** tetap menurut durasi bersih (§23.5): ≥ 5 menit Applio, 30 dtk – < 5 menit OpenVoice uji cepat.
+- **App**: `POST` job masih mengirim `profil: owner`. Pilihan profil di tab "Suara saya" menyusul di sisi app.
