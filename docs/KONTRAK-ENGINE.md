@@ -972,3 +972,19 @@ Owner menyatakan ketiganya adik owner dan sudah setuju suaranya dikloning. Semua
 - **Daftar suara §21**: tiap profil yang siap muncul sebagai `<profil>:<nama>`, misalnya `grace:Suara Grace`, dengan `backend` = id profil. Yang belum siap tidak muncul.
 - **Backend latih** tetap menurut durasi bersih (§23.5): ≥ 5 menit Applio, 30 dtk – < 5 menit OpenVoice uji cepat.
 - **App**: `POST` job masih mengirim `profil: owner`. Pilihan profil di tab "Suara saya" menyusul di sisi app.
+
+## 25. Mode lanjut latihan Applio (v0.4.8, 23 Nov 2026, Hanagaki; diminta venus) — DRAF
+Tujuannya: latihan panjang bisa dibagi per malam tanpa mengulang dari nol.
+
+**Masukan tambahan** `suara_profil` (opsional):
+- `jeda_pukul`: `"HH:MM"` waktu lokal. Latihan berhenti di checkpoint terakhir yang masih sempat sebelum jam itu.
+- `mulai_baru`: `true` membuang progres lama secara sengaja. Bawaan `false`.
+
+**Keluaran**: status baru `dijeda` (kode 0) dengan `epoch` dan `total_epoch`. Model belum berubah (`versi_model` tetap). Menjalankan `latih: true` lagi melanjutkan.
+
+**Aturan**:
+- Checkpoint tiap 10 epoch. Baris epoch N dicetak sebelum checkpoint N ditulis, jadi cadangan dibuat saat epoch N+1 muncul.
+- Cadangan `_kerja/cadangan/eNNNN/{G,D}.pth`: disalin, dibaca ulang, epoch G dan D harus sama, SHA-256 dicatat di `_kerja/lanjut.json`. Dua cadangan terakhir disimpan.
+- Dilanjutkan hanya bila sidik contoh + batch + sample rate sama dan cadangan utuh. Bila contoh berubah, latihan mulai baru.
+- Checkpoint rusak, catatan hilang, atau Applio tidak mulai dari epoch N+1 = **gagal keras** (kode 1). Folder kerja tidak dihapus.
+- Hanya proses Applio milik job itu yang dihentikan. Kunci AI dilepas setelah job berakhir.

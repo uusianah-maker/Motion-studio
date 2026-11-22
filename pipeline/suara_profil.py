@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -202,8 +203,10 @@ def jalan_mesin(perintah: str, isi: dict, rentang: tuple[int, int] = (0, 100)) -
     return hasil
 
 
-def latih(folder: Path, data: dict, kalimat: list[str], out: Path) -> list[dict]:
-    """Latih profil (Applio bila >= 5 menit bersih, OpenVoice bila uji cepat), lalu buat contoh hasil."""
+def latih(folder: Path, data: dict, kalimat: list[str], out: Path, jeda_pukul: str | None = None,
+          mulai_baru: bool = False) -> list[dict] | None:
+    """Latih profil (Applio bila >= 5 menit bersih, OpenVoice bila uji cepat), lalu buat contoh hasil.
+    None = dijeda aman (§25); `data["latihan_jeda"]` berisi epoch-nya."""
     pakai = [folder / c["file"] for c in data["contoh"].values() if c["dipakai"]]
     pakai = list(dict.fromkeys(pakai))  # kunci berbeda, file sama
     total = sum(c["durasi_bersih"] for c in data["contoh"].values() if c["dipakai"])
@@ -212,7 +215,13 @@ def latih(folder: Path, data: dict, kalimat: list[str], out: Path) -> list[dict]
     progres("latih", 70, f"melatih profil suara ({backend})", perkiraan_dtk=perkiraan)
     model = folder / "model"
     info = jalan_mesin("latih", {"contoh": [str(p) for p in pakai], "model_dir": str(model), "backend": backend,
-                                 "epoch": int(os.environ.get("MOTION_SUARA_EPOCH") or 150)}, (70, 95))  # env hanya untuk uji asap
+                                 "epoch": int(os.environ.get("MOTION_SUARA_EPOCH") or 150),  # env hanya untuk uji asap
+                                 "jeda_pukul": jeda_pukul, "mulai_baru": mulai_baru}, (70, 95))
+    if info.get("dijeda"):
+        data["latihan_jeda"] = {"epoch": info["epoch"], "total_epoch": info["total_epoch"], "waktu": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        simpan_profil(folder, data)
+        return None
+    data.pop("latihan_jeda", None)
     data.update(versi_model=int(data.get("versi_model") or 0) + 1, backend=info.get("backend", backend),
                 dilatih_pada=time.strftime("%Y-%m-%dT%H:%M:%S"), perlu_latih_ulang=False,
                 suara_dasar=data.get("suara_dasar") or "Andika")
@@ -254,6 +263,12 @@ def jalankan(job_dir: Path) -> int:
         if not isinstance(cfg, dict):
             raise Ditolak("job.suara_profil harus objek")
         profil = str(cfg.get("profil") or "owner")
+        jeda_pukul = cfg.get("jeda_pukul")
+        if jeda_pukul is not None and not (isinstance(jeda_pukul, str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", jeda_pukul)):
+            raise Ditolak("jeda_pukul harus HH:MM")
+        mulai_baru = cfg.get("mulai_baru", False)
+        if not isinstance(mulai_baru, bool):
+            raise Ditolak("mulai_baru harus true/false")
         if profil not in PROFIL:
             raise Ditolak(f"profil '{profil}' tidak diizinkan: hanya {', '.join(PROFIL)} (keputusan owner)")
         nama = PROFIL[profil]  # nama tetap per profil, supaya id suara di daftar tidak tertukar
@@ -313,11 +328,17 @@ def jalankan(job_dir: Path) -> int:
             if not any(c["dipakai"] for c in data["contoh"].values()):
                 raise Ditolak("tidak ada contoh yang lolos mutu untuk dilatih")
             if total >= MINIMAL_UJI_DTK:
-                hasil = latih(folder, data, [str(k) for k in (cfg.get("contoh_kalimat") or KALIMAT_BAWAAN)][:3], out)
-                catatan = None if data.get("backend") == "applio" else (
-                    f"uji cepat OpenVoice ({total / 60:.1f} menit bersih); tambah contoh sampai minimal "
-                    f"{MINIMAL_DTK // 60} menit untuk hasil utama Applio")
-                lap = laporan(data, status_dari(data), catatan, contoh_hasil=hasil)
+                hasil = latih(folder, data, [str(k) for k in (cfg.get("contoh_kalimat") or KALIMAT_BAWAAN)][:3], out,
+                              jeda_pukul, mulai_baru)
+                if hasil is None:
+                    j = data["latihan_jeda"]
+                    lap = {**laporan(data, "dijeda", f"dijeda aman di epoch {j['epoch']}/{j['total_epoch']}; jalankan latih lagi untuk melanjutkan"),
+                           "epoch": j["epoch"], "total_epoch": j["total_epoch"]}
+                else:
+                    catatan = None if data.get("backend") == "applio" else (
+                        f"uji cepat OpenVoice ({total / 60:.1f} menit bersih); tambah contoh sampai minimal "
+                        f"{MINIMAL_DTK // 60} menit untuk hasil utama Applio")
+                    lap = laporan(data, status_dari(data), catatan, contoh_hasil=hasil)
             else:
                 lap = laporan(data, "kurang_contoh",
                               f"durasi bersih {total:.0f} dtk; minimal {MINIMAL_UJI_DTK} dtk untuk uji cepat dan "

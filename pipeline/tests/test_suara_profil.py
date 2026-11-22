@@ -116,6 +116,13 @@ class SuaraProfil(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr[-500:])
         self.assertEqual(json.loads(r.stdout.strip().splitlines()[-1]), ["julia:Suara Julia"])  # hanya profil yang siap
 
+    def test_setelan_jeda_tidak_sah_ditolak(self):
+        for cfg in ({"jeda_pukul": "25:00"}, {"jeda_pukul": "6"}, {"mulai_baru": "ya"}):
+            kode, lap = self.jalan(cfg, {})
+            self.assertEqual((kode, lap["status"]), (2, "ditolak"), self.last.stderr[-300:])
+        kode, lap = self.jalan({"jeda_pukul": "06:00", "mulai_baru": False}, {})
+        self.assertEqual(kode, 0, self.last.stderr[-300:])
+
     def test_ditolak(self):
         a = tulis(self.tmp / "a.wav", ucapan(5, 1.0))
         self.assertEqual(self.jalan({"profil": "talent"}, {})[0], 2)
