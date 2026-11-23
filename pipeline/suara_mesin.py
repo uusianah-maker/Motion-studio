@@ -260,13 +260,15 @@ def latih(cmd: dict) -> dict:
     cek_bobot()
     info: dict = {"backend": backend, "dibuat": time.strftime("%Y-%m-%dT%H:%M:%S")}
     dev = perangkat()
+    se_baru = model_dir / "openvoice_se.baru.pth"
     progres("latih", 2, "nada & warna suara (OpenVoice)")
     with tempfile.TemporaryDirectory() as d:
         ref = potong_ref(contoh, Path(d))
         if not ref:
             raise RuntimeError("contoh terlalu pendek untuk diambil warna suaranya")
         c = openvoice(dev)
-        c.extract_se([str(p) for p in ref], se_save_path=str(model_dir / "openvoice_se.pth"))
+        # §25: model aktif baru diganti setelah latihan selesai (bukan saat dijeda/gagal).
+        c.extract_se([str(p) for p in ref], se_save_path=str(se_baru))
         del c
     info["f0_hz"] = round(f0_median(contoh), 1)
     progres("latih", 8, f"nada tengah owner ±{info['f0_hz']:.0f} Hz")
@@ -285,6 +287,11 @@ def latih(cmd: dict) -> dict:
         tr = APPLIO / "rvc" / "train"
         mulai_dari = 0
         if rencana["aksi"] == "lanjut":
+            m_lanjut = lanjut.baca_manifest(kerja) or {}
+            if not lanjut.sempat_checkpoint(time.time(), jeda_pada, m_lanjut.get("dtk_blok") or lanjut.perkiraan_blok(exp)):
+                se_baru.unlink(missing_ok=True)
+                progres("latih", 20, "tidak sempat mencapai checkpoint berikutnya sebelum jam jeda; latihan tidak dimulai")
+                return {"backend": backend, "dijeda": True, "tidak_mulai": True, "epoch": rencana["epoch"], "total_epoch": epoch}
             mulai_dari = lanjut.pulihkan(kerja, exp)
             progres("latih", 20, f"melanjutkan dari epoch {mulai_dari}/{epoch}")
         else:
@@ -304,6 +311,7 @@ def latih(cmd: dict) -> dict:
                                "0" if dev.startswith("cuda") else "-", batch, SR_LATIH, True, True, False, False, "HiFi-GAN", False],
                               logs, "latih", 20, 92, total_epoch=epoch, pada_epoch=penjaga)
         if dijeda:
+            se_baru.unlink(missing_ok=True)
             progres("latih", 92, f"dijeda aman di epoch {penjaga.epoch_aman}/{epoch}")
             return {"backend": backend, "dijeda": True, "epoch": penjaga.epoch_aman, "total_epoch": epoch}
         jalan_applio([tr / "process" / "extract_index.py", exp, "Auto"], logs, "latih_index", 92, 96)
@@ -317,6 +325,7 @@ def latih(cmd: dict) -> dict:
             shutil.copy2(index[-1], model_dir / "applio" / "owner.index")
         info.update(epoch=epoch, batch=batch, applio_bobot=bobot[-1].name, applio_index=bool(index))
         shutil.rmtree(kerja, ignore_errors=True)  # checkpoint G/D besar; model akhir sudah disalin
+    os.replace(se_baru, model_dir / "openvoice_se.pth")
     (model_dir / "info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
     progres("latih", 97, "model tersimpan")
     return info

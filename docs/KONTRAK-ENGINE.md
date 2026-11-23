@@ -985,6 +985,10 @@ Tujuannya: latihan panjang bisa dibagi per malam tanpa mengulang dari nol.
 **Aturan**:
 - Checkpoint tiap 10 epoch. Baris epoch N dicetak sebelum checkpoint N ditulis, jadi cadangan dibuat saat epoch N+1 muncul.
 - Cadangan `_kerja/cadangan/eNNNN/{G,D}.pth`: disalin, dibaca ulang, epoch G dan D harus sama, SHA-256 dicatat di `_kerja/lanjut.json`. Dua cadangan terakhir disimpan.
-- Dilanjutkan hanya bila sidik contoh + batch + sample rate sama dan cadangan utuh. Bila contoh berubah, latihan mulai baru.
+- Dilanjutkan hanya bila sidik contoh + batch + sample rate sama dan cadangan utuh.
+- Bila contoh atau setelan berubah saat ada progres: **gagal keras**, progres tidak dihapus. Progres hanya dibuang dengan `mulai_baru: true`.
+- **Adopsi progres lama** (sekali jalan): `suara_lanjut.py adopsi <kerja> <sha256.json> <epoch> <total> <batch> <sr> <contoh…>`. G/D harus cocok dengan SHA, epoch, dan dataset. Tidak menghapus apa pun.
+- `jeda_pukul` saat melanjutkan: bila checkpoint berikutnya diperkirakan tidak sempat, latihan tidak dimulai dan status tetap `dijeda`. Pada latihan baru, lama blok pertama belum diketahui, jadi jeda bisa terlambat sampai checkpoint pertama.
+- Status `dijeda` bertahan di job berikutnya (`latihan_jeda` di laporan). `openvoice_se.pth` baru diganti setelah latihan selesai.
 - Checkpoint rusak, catatan hilang, atau Applio tidak mulai dari epoch N+1 = **gagal keras** (kode 1). Folder kerja tidak dihapus.
 - Hanya proses Applio milik job itu yang dihentikan. Kunci AI dilepas setelah job berakhir.

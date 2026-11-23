@@ -123,6 +123,14 @@ class SuaraProfil(unittest.TestCase):
         kode, lap = self.jalan({"jeda_pukul": "06:00", "mulai_baru": False}, {})
         self.assertEqual(kode, 0, self.last.stderr[-300:])
 
+    def test_status_dijeda_bertahan_di_job_berikutnya(self):
+        f = self.data / "konten" / "suara" / "owner"
+        f.mkdir(parents=True)
+        (f / "profil.json").write_text(json.dumps({"schema": "suara-profil-data/1", "profil": "owner", "nama": "Suara owner", "contoh": {},
+                                                   "versi_model": 0, "latihan_jeda": {"epoch": 120, "total_epoch": 150}}), encoding="utf-8")
+        kode, lap = self.jalan({}, {})
+        self.assertEqual((kode, lap["status"], lap["latihan_jeda"]["epoch"]), (0, "dijeda", 120), self.last.stderr[-300:])
+
     def test_ditolak(self):
         a = tulis(self.tmp / "a.wav", ucapan(5, 1.0))
         self.assertEqual(self.jalan({"profil": "talent"}, {})[0], 2)

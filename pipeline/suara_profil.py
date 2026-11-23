@@ -242,10 +242,13 @@ def laporan(data: dict, status: str, alasan: str | None = None, contoh_hasil=Non
     return {"schema": "suara-profil/1", "status": status, "profil": data["profil"], "nama": data["nama"], "contoh": contoh,
             "durasi_bersih_total": total, "target_dtk": list(TARGET_DTK), "minimal_dtk": MINIMAL_DTK,
             "minimal_uji_dtk": MINIMAL_UJI_DTK, "backend": data.get("backend"), "dilatih_pada": data.get("dilatih_pada"),
-            "versi_model": data.get("versi_model", 0), "contoh_hasil": contoh_hasil or [], "alasan": alasan}
+            "versi_model": data.get("versi_model", 0), "latihan_jeda": data.get("latihan_jeda"),
+            "contoh_hasil": contoh_hasil or [], "alasan": alasan}
 
 
 def status_dari(data: dict) -> str:
+    if data.get("latihan_jeda"):
+        return "dijeda"
     if data.get("versi_model") and not data.get("perlu_latih_ulang"):
         return "siap"
     if data.get("versi_model") and data.get("perlu_latih_ulang"):

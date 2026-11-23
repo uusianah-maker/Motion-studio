@@ -13,7 +13,9 @@ import gc
 import hashlib
 import json
 import os
+import re
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Callable
@@ -107,7 +109,10 @@ def putuskan(kerja: Path, exp: Path, sidik: str, total: int, muat: Callable[[Pat
             raise CheckpointRusak("ada checkpoint tanpa catatan lanjut.json; pakai mulai_baru bila memang mau dari nol")
         return {"aksi": "baru"}
     if m.get("sidik") != sidik:
-        return {"aksi": "baru"}  # contoh/setelan berubah: progres lama memang tidak berlaku
+        if ada_ckpt or m.get("cadangan"):
+            raise CheckpointRusak("contoh atau setelan berubah sejak latihan ini dimulai; progres tidak dihapus. "
+                                  "Kembalikan contohnya, atau pakai mulai_baru bila memang mau dari nol")
+        return {"aksi": "baru"}
     if not m.get("cadangan"):
         if ada_ckpt:
             raise CheckpointRusak("ada checkpoint yang belum tercadangkan; pakai mulai_baru bila memang mau dari nol")
@@ -133,8 +138,8 @@ def pulihkan(kerja: Path, exp: Path) -> int:
     return int(c["epoch"])
 
 
-def cadangkan(kerja: Path, exp: Path, epoch: int, muat: Callable[[Path], int] = baca_iterasi) -> None:
-    """Salin G/D, buktikan salinannya utuh & epoch-nya benar, baru catat sebagai cadangan terakhir."""
+def _buat_cadangan(kerja: Path, exp: Path, epoch: int, muat: Callable[[Path], int]) -> dict:
+    """Salin G/D ke cadangan/eNNNN dan buktikan salinannya utuh & epoch-nya benar."""
     akar = kerja / "cadangan"
     nama = f"e{epoch:04d}"
     tmp = akar / f"{nama}.tmp"
@@ -152,12 +157,65 @@ def cadangkan(kerja: Path, exp: Path, epoch: int, muat: Callable[[Path], int] = 
     if tujuan.exists():
         shutil.rmtree(tujuan)
     os.replace(tmp, tujuan)
+    return {"epoch": epoch, "folder": nama, "sha_g": sha_g, "sha_d": sha_d, "waktu": time.strftime("%Y-%m-%dT%H:%M:%S")}
+
+
+def cadangkan(kerja: Path, exp: Path, epoch: int, muat: Callable[[Path], int] = baca_iterasi) -> None:
+    """Cadangan baru dicatat setelah terbukti utuh; dua cadangan terakhir disimpan."""
+    c = _buat_cadangan(kerja, exp, epoch, muat)
     m = baca_manifest(kerja) or {}
-    m["cadangan"] = {"epoch": epoch, "folder": nama, "sha_g": sha_g, "sha_d": sha_d, "waktu": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    m["cadangan"] = c
     tulis_manifest(kerja, m)
+    akar = kerja / "cadangan"
     lama = sorted(p for p in akar.iterdir() if p.is_dir() and p.name.startswith("e") and not p.name.endswith(".tmp"))
     for p in lama[:-SIMPAN_CADANGAN]:
         shutil.rmtree(p, ignore_errors=True)
+
+
+def perkiraan_blok(exp: Path) -> float | None:
+    """Lama satu blok checkpoint dari waktu dua model `owner_<N>e_` terakhir yang berurutan."""
+    ada = {}
+    for p in exp.glob("owner_*e_*s.pth"):
+        h = re.match(r"owner_(\d+)e_", p.name)
+        if h:
+            ada[int(h.group(1))] = p.stat().st_mtime
+    urut = sorted(ada)
+    for a, b in zip(reversed(urut[:-1]), reversed(urut[1:])):
+        if b - a == SETIAP_EPOCH and ada[b] > ada[a]:
+            return ada[b] - ada[a]
+    return None
+
+
+def sempat_checkpoint(sekarang: float, jeda_pada: float | None, dtk_blok: float | None) -> bool:
+    """Apakah satu checkpoint lagi masih selesai sebelum jam jeda (+10% dan 2 menit untuk memuat model)."""
+    if jeda_pada is None or not dtk_blok:
+        return True
+    return sekarang + dtk_blok * 1.1 + 120 < jeda_pada
+
+
+def adopsi(kerja: Path, exp: Path, contoh: list[Path], batch: int, sr: int, total: int, epoch: int, sha: dict[str, str],
+           muat: Callable[[Path], int] = baca_iterasi) -> dict:
+    """Sekali jalan: daftarkan progres lama (tanpa lanjut.json) ke mode lanjut. Tidak menghapus apa pun."""
+    if baca_manifest(kerja) is not None:
+        raise CheckpointRusak("folder kerja sudah punya lanjut.json")
+    if (kerja / "cadangan").exists():
+        raise CheckpointRusak("folder cadangan sudah ada")
+    g, d = exp / NAMA_G, exp / NAMA_D
+    if not g.is_file() or not d.is_file():
+        raise CheckpointRusak("G/D tidak ada")
+    if _sha(g).lower() != sha[NAMA_G].lower() or _sha(d).lower() != sha[NAMA_D].lower():
+        raise CheckpointRusak("SHA-256 G/D tidak cocok dengan cadangan terverifikasi")
+    eg, ed = muat(g), muat(d)
+    if eg != epoch or ed != epoch or epoch >= total:
+        raise CheckpointRusak(f"epoch G/D tidak sesuai (G {eg}, D {ed}, diminta {epoch}, target {total})")
+    data = sorted((kerja / "dataset").glob("*.wav"))
+    if not data or sorted(_sha(p) for p in data) != sorted(_sha(p) for p in contoh):
+        raise CheckpointRusak("contoh tidak sama dengan dataset latihan ini")
+    c = _buat_cadangan(kerja, exp, epoch, muat)
+    m = {"schema": "suara-lanjut/1", "sidik": sidik_latih(contoh, batch, sr), "total_epoch": total, "batch": batch,
+         "adopsi": time.strftime("%Y-%m-%dT%H:%M:%S"), "dtk_blok": perkiraan_blok(exp), "cadangan": c}
+    tulis_manifest(kerja, m)
+    return m
 
 
 def waktu_jeda(pukul: str | None, sekarang: float | None = None) -> float | None:
@@ -200,5 +258,20 @@ class Penjaga:
         now = self.jam()
         durasi = now - self.t_terakhir  # lama satu blok checkpoint
         self.t_terakhir = now
+        m = baca_manifest(self.kerja) or {}
+        m["dtk_blok"] = round(durasi, 1)
+        tulis_manifest(self.kerja, m)
         # Jeda di checkpoint terakhir yang masih sempat, bukan melewati jam yang diminta.
         return self.jeda_pada is not None and now + durasi >= self.jeda_pada
+
+
+if __name__ == "__main__":
+    # suara_lanjut.py adopsi <kerja> <sha256.json> <epoch> <total> <batch> <sr> <contoh.wav>...  (jalankan dengan suara-venv)
+    if len(sys.argv) < 9 or sys.argv[1] != "adopsi":
+        print("pakai: suara_lanjut.py adopsi <kerja> <sha256.json> <epoch> <total> <batch> <sr> <contoh.wav>...", file=sys.stderr)
+        sys.exit(1)
+    _kerja = Path(sys.argv[2])
+    _sha_json = {x["nama"]: x["sha256"] for x in json.loads(Path(sys.argv[3]).read_text(encoding="utf-8-sig"))}
+    _hasil = adopsi(_kerja, _kerja / "logs" / "owner", [Path(x) for x in sys.argv[8:]], int(sys.argv[6]), int(sys.argv[7]),
+                    int(sys.argv[5]), int(sys.argv[4]), _sha_json)
+    print(json.dumps({"adopsi": "ok", "epoch": _hasil["cadangan"]["epoch"], "dtk_blok": _hasil["dtk_blok"]}))
