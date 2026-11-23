@@ -278,6 +278,7 @@ def latih(cmd: dict) -> dict:
         exp = logs / "owner"
         epoch = int(cmd.get("epoch") or 150)
         batch = int(cmd.get("batch") or 4)
+        jeda_pada = lanjut.waktu_jeda(cmd.get("jeda_pukul"))  # dihitung sebelum persiapan yang bisa melewati jam itu
         sidik = lanjut.sidik_latih(contoh, batch, SR_LATIH)
         # §25: progres sah dilanjutkan; progres meragukan = gagal keras (tidak dihapus diam-diam).
         rencana = {"aksi": "baru"} if cmd.get("mulai_baru") else lanjut.putuskan(kerja, exp, sidik, epoch)
@@ -298,7 +299,7 @@ def latih(cmd: dict) -> dict:
             jalan_applio([tr / "extract" / "extract.py", exp, "rmvpe", 2, "0" if dev.startswith("cuda") else "-", SR_LATIH,
                           "contentvec", "", 2], logs, "latih_fitur", 12, 20)
             lanjut.tulis_manifest(kerja, {"schema": "suara-lanjut/1", "sidik": sidik, "total_epoch": epoch, "batch": batch})
-        penjaga = lanjut.Penjaga(kerja, exp, epoch, mulai_dari, lanjut.waktu_jeda(cmd.get("jeda_pukul")))
+        penjaga = lanjut.Penjaga(kerja, exp, epoch, mulai_dari, jeda_pada)
         dijeda = jalan_applio([tr / "train.py", "owner", lanjut.SETIAP_EPOCH, epoch, BOBOT / "f0G40k.pth", BOBOT / "f0D40k.pth",
                                "0" if dev.startswith("cuda") else "-", batch, SR_LATIH, True, True, False, False, "HiFi-GAN", False],
                               logs, "latih", 20, 92, total_epoch=epoch, pada_epoch=penjaga)
