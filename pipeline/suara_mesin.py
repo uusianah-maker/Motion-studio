@@ -331,7 +331,8 @@ def latih(cmd: dict) -> dict:
         if index:
             shutil.copy2(index[-1], model_dir / "applio" / "owner.index")
         info.update(epoch=epoch, batch=batch, applio_bobot=bobot[-1].name, applio_index=bool(index))
-        shutil.rmtree(kerja, ignore_errors=True)  # checkpoint G/D besar; model akhir sudah disalin
+        if not os.environ.get("MOTION_SUARA_SIMPAN_KERJA"):  # simpan = latihan masih bisa diteruskan ke epoch lebih tinggi
+            shutil.rmtree(kerja, ignore_errors=True)  # checkpoint G/D besar; model akhir sudah disalin
     os.replace(se_baru, model_dir / "openvoice_se.pth")
     (model_dir / "info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
     progres("latih", 97, "model tersimpan")
