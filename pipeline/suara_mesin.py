@@ -137,9 +137,13 @@ def jalan_applio(args: list, logs: Path, tahap: str, p0: int, p1: int, total_epo
                             text=True, encoding="utf-8", errors="replace", creationflags=IDLE if os.name == "nt" else 0)
     ekor: list[str] = []
     terakhir = 0
+    catatan = open(logs / f"applio_{tahap}.log", "a", encoding="utf-8", errors="replace")  # bukti bila Applio crash
     for baris in proc.stdout:  # type: ignore[union-attr]
         baris = baris.rstrip()
         ekor = (ekor + [baris])[-30:]
+        if "| batch=" not in baris:
+            print(baris[:2000], file=catatan)
+            catatan.flush()
         m = re.search(r"\bepoch=(\d+)", baris)
         if m and total_epoch and int(m.group(1)) > terakhir:  # satu baris per epoch
             terakhir = e = min(int(m.group(1)), total_epoch)
@@ -149,10 +153,13 @@ def jalan_applio(args: list, logs: Path, tahap: str, p0: int, p1: int, total_epo
                     henti = pada_epoch(e)
                 except Exception:
                     hentikan_proses(proc)
+                    catatan.close()
                     raise
                 if henti:
                     hentikan_proses(proc)
+                    catatan.close()
                     return True
+    catatan.close()
     if proc.wait() != 0:
         raise RuntimeError(f"Applio {tahap} gagal: " + " | ".join(ekor[-6:])[-600:])
     progres(tahap, p1, "")
