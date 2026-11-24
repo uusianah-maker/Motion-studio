@@ -53,6 +53,8 @@ TANPA_ASET = {"muncul": ("$sfx:whoosh", 450), "riser": ("$sfx:whoosh", 450), "wh
               "cta": ("$sfx:pop", 250), "harga": ("$sfx:pop", 250), "pop": ("$sfx:pop", 250), "halaman": ("$sfx:pop", 250)}
 HINDARI = TAG_HINDARI | {"scratch", "back", "glitch", "error", "question"}
 
+FADE_MASUK_MS = 4
+FADE_KELUAR_MS = (15, 40)  # (bunyi utuh, bunyi terpotong)
 RISER_MAJU = 900  # riser mulai 0,9 dtk sebelum hook/CTA; pasangan ini boleh lebih rapat dari jarak minimum
 
 KATA_HARGA = re.compile(
@@ -85,6 +87,17 @@ def kejadian(ops: list[dict], total_ms: int, hook_ms: int | None = None, cta_ms:
     for o in video[1:]:
         tr = o.get("transition") or {}
         ev.append((max(0, o["start_ms"] - 80), "whoosh", f"transisi {tr['type']}" if tr.get("type") else "potong"))
+    # Zoom-through sebagai keyframe klip video (Generate, keluhan tim 24 Nov): puncak skala >= 1.25 yang diapit
+    # skala ~1 = satu kejadian (jangkar di klip tetangga tidak dihitung dua kali).
+    puncak = set()
+    for o in video:
+        kf = o.get("keyframes") or []
+        for k in range(1, len(kf) - 1):
+            if kf[k].get("scale", 1) >= 1.25 and kf[k - 1].get("scale", 1) <= 1.05 and kf[k + 1].get("scale", 1) <= 1.05:
+                t = o["start_ms"] + int(kf[k - 1]["at_ms"])
+                if o["start_ms"] <= o["start_ms"] + int(kf[k]["at_ms"]) < o["start_ms"] + o["duration_ms"] and t not in puncak:
+                    puncak.add(t)
+                    ev.append((max(0, t - 60), "whoosh", "efek zoom_through"))
     for o in ops:
         if o.get("track_kind") == "effects":
             jenis = (o.get("effect") or {}).get("type", "")
@@ -208,12 +221,16 @@ def pasang(ops: list[dict], aset: list[dict], total_ms: int, *, hook_ms: int | N
             kunci, dur = TANPA_ASET[jenis]
             bawaan.add(kunci)
         nxt = dipilih[i + 1][0] if i + 1 < len(dipilih) else total_ms
+        utuh = min(nxt - t, total_ms - t) >= dur
         dur = min(dur, nxt - t, total_ms - t)
         if dur < MIN_CLIP_MS:
             continue
         vol = JENIS[jenis][3]
+        # Keluhan tim 24 Nov: SFX yang terpotong SFX berikutnya berhenti mendadak (klik). Fade sangat pendek:
+        # masuk FADE_MASUK_MS (anti klik), keluar FADE_KELUAR_MS (lebih panjang bila bunyinya terpotong). Kontrak 12.1.
         sfx_ops.append({"op": "add_clip", "track_kind": "sfx", "media": kunci, "start_ms": int(t), "duration_ms": int(dur),
-                        "volume": vol})
+                        "volume": vol, "fade_in_ms": FADE_MASUK_MS,
+                        "fade_out_ms": min(FADE_KELUAR_MS[0] if utuh else FADE_KELUAR_MS[1], int(dur) // 3)})
         detail.append({"detik": round(t / 1000, 2), "jenis": jenis, "alasan": alasan, "media": kunci})
         terakhir.append(kunci)
     lap = {"kepadatan": kepadatan, "jumlah": len(sfx_ops), "berbeda": len({d["media"] for d in detail}),

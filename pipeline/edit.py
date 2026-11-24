@@ -74,9 +74,71 @@ def find_phrase(words, phrase: str):
     return hits
 
 
-def apply_kamus(words, kamus):
-    """Ganti salah dengar Whisper. Frasa multi-kata digabung jadi satu entri."""
+SUFIKS_KAMUS = ("nya", "lah", "kah")  # partikel yang tetap ikut di hasil: "selananya" -> "celananya"
+FUZZY_MIN_HURUF = 4  # kunci multi-kata: tiap kata >= 4 huruf boleh beda 1 huruf (lebih pendek = wajib persis)
+
+
+def _beda_maks1(a: str, b: str) -> bool:
+    """Jarak edit (Levenshtein) a-b <= 1."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) > len(b):
+        a, b = b, a
+    i = 0
+    while i < len(a) and a[i] == b[i]:
+        i += 1
+    return a[i + 1 :] == b[i + 1 :] if len(a) == len(b) else a[i:] == b[i + 1 :]
+
+
+def cocok_kamus(words, phrase: str, benar=frozenset()):
+    """Posisi (i, n, sufiks) kunci kamus `phrase` di `words`. Huruf besar/tanda baca diabaikan.
+    - persis (seperti find_phrase, termasuk kata ulang yang ditulis satu token);
+    - kata terakhir boleh diberi sufiks -nya/-lah/-kah (kunci >= 3 huruf), sufiks ikut di hasil;
+    - kunci multi-kata: tiap kata >= FUZZY_MIN_HURUF huruf boleh beda 1 huruf, KECUALI teksnya sendiri
+      sudah kata benar (`benar`: nilai kamus + kosakata), supaya "Lucy Pants" tidak "dibetulkan"."""
+    toks = [norm(t) for t in re.split(r"[\s-]+", phrase) if norm(t)]
+    if not toks:
+        return []
+    hits = [(i, n, "") for i, n in find_phrase(words, phrase)]
+    sudah = {i for i, _, _ in hits}
+    n = len(toks)
+    for i in range(len(words) - n + 1):
+        if i in sudah:
+            continue
+        ws = [norm(words[i + k]["text"]) for k in range(n)]
+        suf = ""
+        akhir, kunci_akhir = ws[-1], toks[-1]
+        for s_ in SUFIKS_KAMUS:
+            if len(kunci_akhir) >= 3 and akhir.endswith(s_) and not kunci_akhir.endswith(s_) and len(akhir) > len(s_):
+                if akhir[: -len(s_)] == kunci_akhir or (n > 1 and len(kunci_akhir) >= FUZZY_MIN_HURUF
+                                                        and _beda_maks1(akhir[: -len(s_)], kunci_akhir)):
+                    suf, ws = s_, ws[:-1] + [akhir[: -len(s_)]]
+                    break
+        fuzzy = False
+        ok = True
+        for w, t in zip(ws, toks):
+            if w == t:
+                continue
+            if n > 1 and len(t) >= FUZZY_MIN_HURUF and _beda_maks1(w, t):
+                fuzzy = True
+                continue
+            ok = False
+            break
+        if not ok or not (suf or fuzzy):
+            continue
+        if fuzzy and "".join(ws) in benar:
+            continue
+        hits.append((i, n, suf))
+    return sorted(hits)
+
+
+def apply_kamus(words, kamus, kosakata=()):
+    """Ganti salah dengar Whisper. Frasa multi-kata digabung jadi satu entri. Toleran: huruf besar/tanda
+    baca, sufiks -nya/-lah/-kah, dan beda 1 huruf per kata untuk kunci multi-kata (lihat cocok_kamus)."""
     fixes = []
+    benar = frozenset(norm(v) for v in list(kamus.values()) + list(kosakata))
     # Frasa terpanjang dulu supaya "keran yang uniknya" menang atas "keran".
     for wrong, right in sorted(kamus.items(), key=lambda kv: -len(kv[0].split())):
         start = 0
@@ -84,19 +146,20 @@ def apply_kamus(words, kamus):
             # Cari mulai setelah gantian terakhir, dan lewati yang sudah benar:
             # "distyling" -> "di-styling" ternormalisasi sama, jangan diganti berulang.
             hits = [
-                h for h in find_phrase(words, wrong)
-                if h[0] >= start and " ".join(w["text"] for w in words[h[0] : h[0] + h[1]]).lower().rstrip(".,?!;:") != right.lower()
+                h for h in cocok_kamus(words, wrong, benar)
+                if h[0] >= start and " ".join(w["text"] for w in words[h[0] : h[0] + h[1]]).lower().rstrip(".,?!;:")
+                != (right + h[2]).lower()
             ]
             if not hits:
                 break
-            i, n = hits[0]
+            i, n, suf = hits[0]
             start = i + 1
             first, last = words[i], words[i + n - 1]
             before = " ".join(w["text"] for w in words[i : i + n])
             text = right[0].upper() + right[1:] if first["text"][:1].isupper() else right
             merged = dict(first)
             merged.update(
-                text=text + trailing_punct(last["text"]),
+                text=text + suf + trailing_punct(last["text"]),
                 endMs=last["endMs"],
                 prob=min(w["prob"] for w in words[i : i + n]),
                 fixed=True,
@@ -131,6 +194,43 @@ def mark_banned(words, banned):
     return found
 
 
+RAGU_SANGAT = 0.05  # keyakinan Whisper di bawah ini = hampir pasti karangan ("alright.", "nuts," prob 0,00)
+APIT_MS = 300  # ... kecuali diapit kata yakin di kiri DAN kanan dalam jarak ini (tetap tampil, ditandai ragu)
+
+
+def token_lindung(bk) -> set:
+    """Kata yang tidak boleh disembunyikan/dibuang hanya karena Whisper ragu: nama brand, kosakata,
+    kata kunci, kata benar kamus, nama produk (per kata, ternormalisasi)."""
+    frasa = [bk.get("nama", ""), *bk.get("kosakata_whisper", []), *bk.get("kata_kunci", []),
+             *(bk.get("kamus_kata") or {}).values()]
+    frasa += [p.get("nama", "") if isinstance(p, dict) else str(p) for p in bk.get("produk", []) or []]
+    return {norm(t) for f in frasa for t in re.split(r"[\s-]+", str(f)) if norm(t)}
+
+
+def saring_ragu(words, lindung):
+    """Kata dengan keyakinan < RAGU_SANGAT yang bukan angka dan bukan kosakata brand: disembunyikan dari
+    caption (audio tetap; autocut membuangnya bila terisolasi), kecuali diapit kata yakin dalam APIT_MS di
+    kedua sisi -> tetap tampil dan ditandai ragu. Angka/kosakata ditandai `lindung` (tidak dibuang autocut)."""
+    from autocut import yakin
+
+    hasil = []
+    for i, w in enumerate(words):
+        if _angka(w["text"]) or is_number(w["text"]) or norm(w["text"]) in lindung or w.get("fixed"):
+            w["lindung"] = True
+            continue
+        if w.get("prob", 1) >= RAGU_SANGAT:
+            continue
+        kiri = any(yakin(v) for v in words[:i] if w["startMs"] - v["endMs"] <= APIT_MS)
+        kanan = any(yakin(v) for v in words[i + 1 :] if v["startMs"] - w["endMs"] <= APIT_MS)
+        if kiri and kanan:
+            w["ragu"] = f"Whisper sangat ragu ({w['prob']:.2f}); tetap tampil karena diapit kata yakin, cek"
+        else:
+            w["hidden"] = True
+            w["ragu"] = f"disembunyikan dari caption: Whisper sangat ragu ({w['prob']:.2f}), kemungkinan salah dengar"
+            hasil.append({"atSec": round(w["startMs"] / 1000, 2), "kata": w["text"], "prob": w["prob"]})
+    return hasil
+
+
 SIZE_RE = re.compile(r"^(x{0,3}s|m|x{0,3}l|\d?xl|allsize|jumbo)$")
 
 
@@ -140,6 +240,11 @@ def is_number(text: str) -> bool:
     base = re.sub(r"-nya$", "", raw, flags=re.I)
     size = bool(SIZE_RE.match(base.lower())) and base[:1].isupper()  # "M", bukan "m"
     return bool(re.search(r"\d", text)) or norm(text) in NUMBER_WORDS or size
+
+
+def _angka(text: str) -> bool:
+    """Bagian dari angka/harga yang diucapkan (tanpa ukuran baju)."""
+    return bool(re.search(r"\d", text)) or norm(text) in NUMBER_WORDS
 
 
 def plan_captions(captions, words, kata_kunci, kamus_values):
@@ -154,11 +259,22 @@ def plan_captions(captions, words, kata_kunci, kamus_values):
             if None not in cis:
                 units.append((cis[0], len(cis), 2))
     kamus_norm = {norm(v) for v in kamus_values}
-    for ci, c in enumerate(captions):
+    ci = 0
+    while ci < len(captions):
+        c = captions[ci]
         if is_number(c["text"]):
-            units.append((ci, 1, 3))
-        elif norm(c["text"]) in kamus_norm:
+            # Angka tidak boleh terbelah di dua halaman: "Rp" "89" "ribu" / "seratus" "ribu" = satu blok
+            # (maks 3 kata, berhenti di tanda baca). Ukuran baju (M, XL) tetap satu kata.
+            n = 1
+            while (_angka(c["text"]) and n < MAX_WORDS_PER_PAGE and ci + n < len(captions)
+                   and not re.search(r"[.,?!;:]$", captions[ci + n - 1]["text"]) and _angka(captions[ci + n]["text"])):
+                n += 1
+            units.append((ci, n, 3))
+            ci += n
+            continue
+        if norm(c["text"]) in kamus_norm:
             units.append((ci, 1, 1))
+        ci += 1
     # Satu caption hanya ikut satu unit: yang terpanjang/prioritas tertinggi.
     units.sort(key=lambda u: (u[0], -u[2], -u[1]))
     dedup, taken = [], set()
@@ -329,7 +445,11 @@ def plan_effects(scene_cuts_src, cut, hook):
         acc += s["endFrame"] - s["startFrame"]
         joins.append(acc * 1000 / FPS)
     scene_out = [to_out(t) for t in scene_cuts_src]
+    # Keluhan tim 24 Nov (zoom kasar): skala dasar hanya berganti di sambungan/pergantian shot ("cut",
+    # lompatan menyamarkan jump cut). Titik "smooth" = dorong pelan sementara di skala dasar yang sama
+    # (ops.gerak_framing: naik 600-1200 ms ease lalu kembali ke skala dasar), bukan lompat balik ke 1.0.
     framing = [{"atMs": 0, "scale": 1.0, "mode": "cut"}]
+    dasar = 1.0
     t = 0.0
     while True:
         nxt = t + FRAMING_EVERY_MS
@@ -337,8 +457,9 @@ def plan_effects(scene_cuts_src, cut, hook):
         at = hard[0] if hard else nxt
         if at >= video_ms - 500:
             break
-        scale = 1.0 if framing[-1]["scale"] != 1.0 else FRAMING_ZOOM
-        framing.append({"atMs": round(at), "scale": scale, "mode": "cut" if hard else "smooth"})
+        if hard:
+            dasar = 1.0 if dasar != 1.0 else FRAMING_ZOOM
+        framing.append({"atMs": round(at), "scale": dasar, "mode": "cut" if hard else "smooth"})
         t = at
     return zt, framing
 
@@ -402,6 +523,53 @@ def pasang_vo(ops_doc: dict, rencana: dict, bk: dict, args, vo_idx: dict, cut: d
              "teks": f"footage lebih pendek dari VO: diulang {len(cut['segments'])}x. Ganti/tambah b-roll di editor bila perlu."})
 
 
+def terapkan_instruksi(catatan: str, gabungan_path, tr: dict, words: list, mode_vo: bool) -> dict:
+    """Keluhan tim 24 Nov: brief.catatan -> buang footage / kalimat (mekanisme `--buang`). Laporan lengkap:
+    dipahami (+ hasilnya), otomatis (sudah dikerjakan mesin), tidak_dipahami (tidak pernah diam-diam)."""
+    import instruksi
+
+    if gabungan_path and Path(gabungan_path).exists():
+        bagian = json.loads(Path(gabungan_path).read_text(encoding="utf-8"))["bagian"]
+    else:
+        bagian = [{"kunci": "$sumber", "mulai_ms": 0, "durasi_ms": tr["durationMs"]}]
+    ins = instruksi.baca(catatan, len(bagian))
+    lap = {"teks": catatan, "dipahami": [], "otomatis": ins["otomatis"], "tidak_dipahami": list(ins["tidak_dipahami"])}
+    if mode_vo:  # §22: kata = teks VO, footage hanya gambar; aturan buang tidak berlaku
+        for x in ins["dipahami"] + [{"kalimat": k} for _, _, k in ins["buang_frasa"]]:
+            lap["tidak_dipahami"].append({"kalimat": x["kalimat"], "alasan": "mode VO dari Library: atur di editor"})
+        return lap
+    semua = set(range(1, len(bagian) + 1))
+    buang = set(ins["buang_footage"])
+    if ins["hanya_footage"]:
+        buang |= semua - set(ins["hanya_footage"])
+    sumber_ins = [x for x in ins["dipahami"] if x["aksi"] in ("buang_footage", "hanya_footage")]
+    if buang and buang >= semua:
+        lap["tidak_dipahami"] += [{"kalimat": x["kalimat"], "alasan": "semua footage akan terbuang; instruksi tidak diterapkan"}
+                                  for x in sumber_ins]
+        buang, sumber_ins = set(), []
+    for no, a, b in instruksi.rentang_footage(bagian, sorted(buang)):
+        n = 0
+        for w in words:
+            if a <= (w["startMs"] + w["endMs"]) / 2 < b:
+                w["forced"] = f"dibuang (instruksi tim: footage {no})"
+                n += 1
+        if tr.get("utuh"):
+            tr["utuh"] = kurangi_rentang(tr["utuh"], a, b)
+        for x in sumber_ins:
+            if no in (x["footage"] if x["aksi"] == "buang_footage" else semua - set(ins["hanya_footage"] or [])):
+                x.setdefault("hasil", []).append({"footage": no, "dari": round(a / 1000, 2), "sampai": round(b / 1000, 2),
+                                                  "kata_dibuang": n})
+    lap["dipahami"] += sumber_ins
+    for jenis, teks, kal in ins["buang_frasa"]:
+        hits = find_phrase(words, teks)
+        for i, n in hits:
+            for k in range(i, i + n):
+                words[k]["forced"] = f"dibuang (instruksi tim: {jenis} \"{teks}\")"
+        lap["dipahami"].append({"kalimat": kal, "aksi": f"buang_{jenis}", "teks": teks, "ditemukan": len(hits),
+                                "detik": [round(words[i]["startMs"] / 1000, 2) for i, _ in hits]})
+    return lap
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("transcript")
@@ -459,6 +627,8 @@ def main() -> None:
     ap.add_argument("--vo-media", help="kunci aset VO, mis. $vo:vo-ays-...")
     ap.add_argument("--vo-path", help="path file VO (aset_lokal bila tidak ada di Brand Kit)")
     ap.add_argument("--vo-volume-footage", type=float, default=0.0, help="volume suara asli footage (0 = mati)")
+    ap.add_argument("--catatan", help="instruksi tim (brief.catatan job.json); dibaca dengan aturan (pipeline/instruksi.py)")
+    ap.add_argument("--gabungan", help="out/gabungan.json (§26) untuk memetakan 'footage N' ke rentang waktu")
     args = ap.parse_args()
     vo_idx = json.loads(Path(args.vo_index).read_text(encoding="utf-8")) if args.vo_index else None
 
@@ -485,8 +655,10 @@ def main() -> None:
         raise SystemExit(2)
 
     words = list(tr["words"]) if vo_idx else merge_split_words(tr["words"])
-    fixes = [] if vo_idx else apply_kamus(words, bk.get("kamus_kata", {}))  # §22: teks VO sudah benar
+    fixes = [] if vo_idx else apply_kamus(words, bk.get("kamus_kata", {}), bk.get("kosakata_whisper", []))  # §22: teks VO sudah benar
     banned = mark_banned(words, list(dict.fromkeys(SUPERLATIF_UMUM + bk.get("superlatif_dilarang", []))))
+    # Keluhan tim 24 Nov: kata karangan Whisper (prob ~0) tidak tampil. §22: teks VO sudah benar.
+    ragu_disembunyikan = [] if vo_idx else saring_ragu(words, token_lindung(bk))
     # Bagian tengah yang dipilih user untuk dibuang (mis. durasi > 30 dtk).
     for rng in args.buang:
         a, b = (float(x) * 1000 for x in rng.split("-"))
@@ -496,6 +668,7 @@ def main() -> None:
         # §26: pilihan tim menang atas footage tanpa ucapan yang dilindungi (hybrid).
         if tr.get("utuh"):
             tr["utuh"] = kurangi_rentang(tr["utuh"], a, b)
+    instruksi_tim = terapkan_instruksi(args.catatan, args.gabungan, tr, words, bool(vo_idx)) if args.catatan else None
     # Koreksi salah dengar di satu posisi (bukan aturan kamus umum), mis. "19.2:Bahannya".
     for item in args.koreksi:
         sec, _, teks = item.partition(":")
@@ -662,6 +835,8 @@ def main() -> None:
         "kamusFixes": fixes,
         "superlatifDisembunyikan": banned,
         "kataDisembunyikan": hidden_manual,
+        "kataRaguDisembunyikan": ragu_disembunyikan,
+        "instruksiTim": instruksi_tim,
         "hook": hook,
         "efek": {
             "17_glass_type": f"judul hook 0-{hook['endMs']/1000:.1f}s" if hook else "hook dilewati (teks bawaan)",
@@ -684,6 +859,17 @@ def main() -> None:
                                      mode=args.mode_ops, preset=preset, batas_durasi=args.batas_durasi)
     if vo_idx:
         pasang_vo(ops_doc, rencana, bk, args, vo_idx, cut)
+    if instruksi_tim:
+        rencana["instruksi_tim"] = instruksi_tim
+        if instruksi_tim["tidak_dipahami"]:
+            rencana.setdefault("peringatan", []).append(
+                {"level": "info", "jenis": "instruksi_tim",
+                 "teks": f"{len(instruksi_tim['tidak_dipahami'])} instruksi di catatan belum dipahami mesin; kerjakan manual "
+                         "di editor: " + " | ".join(x["kalimat"][:80] for x in instruksi_tim["tidak_dipahami"])})
+        for x in instruksi_tim["dipahami"]:
+            if x.get("ditemukan") == 0:
+                rencana.setdefault("peringatan", []).append(
+                    {"level": "warn", "jenis": "instruksi_tim", "teks": f"teks \"{x['teks']}\" dari catatan tidak ditemukan di ucapan"})
     # Pengaman (venus, 14 Nov): tiap klip <= panjang ASLI file sumbernya (lihat jaga_ops.py).
     lokal = {a["kunci"]: a["path"] for a in ops_doc.get("aset_lokal", [])}
     lokal["$sumber"] = str((Path.cwd() / "public" / args.video).resolve())
@@ -722,6 +908,13 @@ def main() -> None:
     print(f"SFX: {len(sfx)}  Musik: {report['musik']}")
     for d in doubts:
         print(f"  ? {d['atSec']}s '{d['word']}': {d['note']}")
+    if instruksi_tim:
+        for x in instruksi_tim["dipahami"]:
+            print(f"  instruksi OK: {x['kalimat']} -> {x['aksi']}")
+        for x in instruksi_tim["otomatis"]:
+            print(f"  instruksi otomatis: {x['kalimat']} ({x['catatan']})")
+        for x in instruksi_tim["tidak_dipahami"]:
+            print(f"  instruksi TIDAK DIPAHAMI: {x['kalimat']} ({x['alasan']})")
 
 
 if __name__ == "__main__":

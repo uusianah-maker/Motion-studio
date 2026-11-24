@@ -90,12 +90,41 @@ class TestKosakataBrand(unittest.TestCase):
         bk = {"nama": "Aysilla Factory", "kosakata_whisper": ["celana", "Celana ", "join live"],
               "kata_kunci": ["diskon"], "kamus_kata": {"cana": "celana", "icy love": "Aysilla"},
               "produk": [{"nama": "Kulot Highwaist"}, "korset"]}
-        self.assertEqual(kosakata_brand(bk), ["Aysilla Factory", "celana", "join live", "diskon", "Aysilla",
+        # Keluhan tim 24 Nov: kata benar kamus sebelum kosakata (dulu selalu terpotong batas 40)
+        self.assertEqual(kosakata_brand(bk), ["Aysilla Factory", "celana", "Aysilla", "join live", "diskon",
                                               "Kulot Highwaist", "korset"])
 
-    def test_dibatasi(self):
-        bk = {"nama": "A", "kosakata_whisper": [f"kata{i}" for i in range(100)]}
-        self.assertEqual(len(kosakata_brand(bk)), 40)
+    def test_brief_produk_varian_sesudah_nama_brand(self):
+        bk = {"nama": "Aysilla Factory", "kosakata_whisper": ["celana"], "kamus_kata": {"lus": "loose"}}
+        brief = {"produk": "Loose Pants", "varian": "ivory, hitam, most grey"}
+        self.assertEqual(kosakata_brand(bk, brief), ["Aysilla Factory", "Loose Pants", "ivory", "hitam", "most grey",
+                                                     "loose", "celana"])
+
+    def test_dibatasi_token_bukan_jumlah(self):
+        bk = {"nama": "A", "kosakata_whisper": [f"kata{i}" for i in range(300)]}
+        hitung = lambda t: len(t.split())  # noqa: E731  1 token per kata
+        self.assertEqual(len(kosakata_brand(bk, hitung=hitung, batas_token=50)), 50)
+        out = kosakata_brand(bk)  # tanpa tokenizer: perkiraan boros, tetap di bawah batas
+        self.assertLess(len(out), 300)
+
+    def test_batas_token_whisper_asli(self):
+        """Tokenizer model Whisper yang dipakai (cache lokal, tanpa jaringan): Brand Kit Aysilla 42 kosakata +
+        kamus muat, dan prompt lengkap tetap <= 223 token (batas faster-whisper)."""
+        snap = Path.home() / ".cache/huggingface/hub/models--mobiuslabsgmbh--faster-whisper-large-v3-turbo/snapshots"
+        tj = next(snap.glob("*/tokenizer.json"), None) if snap.exists() else None
+        if tj is None:
+            self.skipTest("tokenizer Whisper tidak ada di cache")
+        import tokenizers
+
+        tok = tokenizers.Tokenizer.from_file(str(tj))
+        hitung = lambda t: len(tok.encode(" " + t, add_special_tokens=False).ids)  # noqa: E731
+        fx = json.loads((Path(__file__).parent / "data" / "keluhan_aysilla_bk_teks.json").read_text(encoding="utf-8"))
+        bk = {"nama": "Aysilla Factory", "kosakata_whisper": fx["kosakata_whisper"], "kamus_kata": fx["kamus"]}
+        out = kosakata_brand(bk, {"produk": "Loose Pants", "varian": "ivory, hitam, latte, most grey, espresso"}, hitung, 180)
+        self.assertLessEqual(hitung(", ".join(out)), 180)
+        self.assertIn("cuttingannya", out)  # kata benar kamus tidak lagi terpotong
+        self.assertIn("espresso", [x.lower() for x in out])
+        self.assertGreater(len(out), 40)
 
 
 if __name__ == "__main__":

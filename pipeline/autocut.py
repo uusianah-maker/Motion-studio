@@ -23,17 +23,29 @@ TAIL_MS = 400  # ekor setelah kata terakhir video (CTA jangan kepotong)
 LOW_PROB = 0.5  # kata dengan keyakinan Whisper di bawah ini ditandai ragu
 SILENCE_DB = -35  # di bawah volume ini dianggap diam (suara rata-rata uji01: -29 dB)
 MIN_SEG_MS = 250  # potongan lebih pendek dari ini dibuang (bikin kedip)
+# Keluhan tim 24 Nov: transkrip tanpa VAD (jeda harus terlihat) membuat Whisper mengarang kata di noise
+# ("ugh,", "nuts,", "Danny," prob 0,00). Kata ragu yang terisolasi ikut dibuang dari potongan.
+HALU_PROB = 0.3  # kata di bawah keyakinan ini ...
+YAKIN_PROB = 0.5  # ... tanpa kata yakin (>= ini, durasi > 0) ...
+HALU_JARAK_MS = 600  # ... dalam jarak ini di kiri/kanan = karangan Whisper
+HALU_PANJANG_MS = 1500  # kata ragu yang "diucapkan" selama ini atau lebih = waktu karangan (contoh: "Danny," 5,9 dtk)
+MIN_SEG_TANPA_KATA_MS = 500  # sisa potongan tanpa satu kata pun yang lebih pendek dari ini dibuang
 
 # "m" tunggal TIDAK termasuk: itu ukuran baju ("size M"). "mm"/"hmm" tetap pengisi.
 FILLER_RE = re.compile(r"^(e+|e+m+|e+h+m+|hm+|mm+|u+m+|u+h+|a+h+m+)$")
 RETAKE_CUES = {"ulang", "ulangi"}
 
 
+SAMBUNG_TITIK = re.compile(r"^\.\w")  # ".000", ".L", ".N." (lanjutan angka/singkatan)
+
+
 def merge_split_words(words):
-    """Whisper memecah kata ulang: "bener" + "-bener" -> "bener-bener"."""
+    """Whisper memecah kata ulang: "bener" + "-bener" -> "bener-bener", dan angka/singkatan:
+    "Rp89" + ".000" -> "Rp89.000", "A" + ".L" + ".N." -> "A.L.N." (aturan yang sama dengan Batch,
+    batch/common.kalimat; harga tidak boleh terbelah di dua halaman caption)."""
     out = []
     for w in words:
-        if out and w["text"].startswith("-"):
+        if out and (w["text"].startswith("-") or SAMBUNG_TITIK.match(w["text"])):
             prev = out[-1]
             prev["text"] += w["text"]
             prev["endMs"] = w["endMs"]
@@ -51,12 +63,34 @@ def ends_sentence(text: str) -> bool:
     return bool(re.search(r"[.?!]$", text.strip()))
 
 
+def yakin(w) -> bool:
+    return w.get("prob", 1) >= YAKIN_PROB and w["endMs"] > w["startMs"]
+
+
+def terisolasi(words, i, jarak_ms=HALU_JARAK_MS) -> bool:
+    """Tidak ada kata yakin (dan tidak dibuang) dalam `jarak_ms` di kiri maupun kanan kata i."""
+    w = words[i]
+    for j in range(i - 1, -1, -1):
+        v = words[j]
+        if w["startMs"] - v["endMs"] > jarak_ms:
+            break
+        if yakin(v) and not v.get("cut"):
+            return False
+    for j in range(i + 1, len(words)):
+        v = words[j]
+        if v["startMs"] - w["endMs"] > jarak_ms:
+            break
+        if yakin(v) and not v.get("cut"):
+            return False
+    return True
+
+
 def mark_removals(words):
     """Isi words[i]['cut'] = alasan (atau None kalau dipakai)."""
     for w in words:
         # "forced": potongan yang dipilih user (edit.py --buang), selalu dibuang.
         w["cut"] = w.get("forced")
-        w["doubt"] = None
+        w["doubt"] = w.get("ragu")  # catatan ragu dari edit.saring_ragu
 
     n = len(words)
 
@@ -64,6 +98,14 @@ def mark_removals(words):
     for w in words:
         if FILLER_RE.match(norm(w["text"])):
             w["cut"] = "pengisi"
+
+    # 1b. Karangan Whisper di noise: kata ragu tanpa kata yakin di dekatnya. Angka/kosakata brand/kata
+    #     hasil kamus ("lindung"/"fixed") tidak dibuang.
+    for i, w in enumerate(words):
+        if (w["cut"] is None and w.get("prob", 1) < HALU_PROB and not w.get("lindung") and not w.get("fixed")
+                and (terisolasi(words, i) or w["endMs"] - w["startMs"] >= HALU_PANJANG_MS)):
+            w["cut"] = "karangan Whisper (ragu, terisolasi)"
+            w["doubt"] = None
 
     # 2. Isyarat take ulang ("eh bentar, ulang"): buang dari awal kalimat yang
     #    gagal sampai isyaratnya.
@@ -256,6 +298,20 @@ def snap_ke_jeda(segs, words, db):
     return out
 
 
+def buang_sisa_tanpa_kata(segs, words):
+    """Sisa potongan (mis. sesudah jeda audio dikurangkan) yang tidak memuat satu kata pun yang dipakai
+    dan lebih pendek dari MIN_SEG_TANPA_KATA_MS dibuang: itu noise/napas, bukan ucapan. Rentang `utuh`
+    (§26.5) dipasang sesudah langkah ini, jadi tidak terkena."""
+    dipakai = [w for w in words if not w.get("cut")]
+    out = []
+    for s in segs:
+        a, b = s["srcStartMs"], s["srcEndMs"]
+        ada = any((w["startMs"] < b and w["endMs"] > a) or a <= w["startMs"] < b for w in dipakai)
+        if ada or b - a >= MIN_SEG_TANPA_KATA_MS:
+            out.append(s)
+    return out
+
+
 def kurangi_rentang(rentang, a, b):
     """[[x, y], ...] dikurangi [a, b] (ms)."""
     out = []
@@ -292,6 +348,7 @@ def run_cut(tr, words=None):
     silences = detect_silences(tr["source"], SILENCE_DB, MAX_GAP_MS)
     segs = subtract_silences(segs, [s for s in silences if s[1] - s[0] > MAX_GAP_MS])
     segs = snap_ke_jeda(segs, words, energi_db(tr["source"]))
+    segs = buang_sisa_tanpa_kata(segs, words)
     segs = pasang_utuh(segs, tr.get("utuh"), tr["durationMs"])
 
     # Snap ke frame (30 fps). Potongan yang bersentuhan digabung.
