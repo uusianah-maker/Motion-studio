@@ -998,3 +998,26 @@ Owner ingin satu video iklan bisa memakai beberapa footage sekaligus (mis. `Kont
 - Kata di bagian yang file-nya bisu dibuang dari transkrip, karena itu karangan Whisper dari hening dan tidak boleh tampil sebagai caption.
 - Pilihan tim tetap menang: rentang `koreksi.buang` dikurangkan dari `utuh`.
 - `rencana.json`: `sumber_gabungan.bagian[].utuh` (true/false) dan peringatan `info` berjenis `footage_utuh` yang menyebut footage ke berapa.
+
+## 27. Keluhan tim: typo, potongan, instruksi catatan, gerak halus (v0.5.0, 24 Nov 2026) — DRAF
+
+Semua aditif. Job tanpa `brief.catatan` dan ops lama tetap valid.
+
+**27.1 Typo subtitle**
+- Kamus (`teks.kamus`) toleran: huruf besar/tanda baca diabaikan; kata terakhir boleh bersufiks `-nya`/`-lah`/`-kah` dan sufiksnya ikut di hasil ("selananya" → "celananya"); kunci multi-kata boleh beda 1 huruf per kata (hanya kata ≥ 4 huruf), kecuali teksnya sendiri sudah kata benar (nilai kamus/kosakata). Kunci satu kata tetap harus persis.
+- Petunjuk Whisper (`hotwords` + `initial_prompt`) dibatasi **token** (tokenizer model, ≤ 200 token termasuk contoh pengisi; batas faster-whisper 223), bukan 40 entri. Urutan: nama brand → `brief.produk` + `brief.varian` (mesin meneruskannya ke `transcribe.py --produk/--varian`) → kata benar kamus → kosakata → kata kunci → produk Brand Kit.
+- Harga tidak terbelah: "Rp89" + ".000" digabung jadi satu kata (aturan Batch), dan halaman caption tidak memecah angka ("Rp 89 ribu" = satu blok, maks 3 kata).
+- Kata dengan keyakinan < 0,05 yang bukan angka/kosakata brand tidak tampil di caption (audio tetap), kecuali diapit kata yakin ≤ 0,3 dtk di kedua sisi (tetap tampil, masuk `ragu`). Laporan: `potongan.json` `kataRaguDisembunyikan`, dan `rencana.ragu`.
+
+**27.2 Potongan**
+- Kata < 0,3 tanpa kata yakin (≥ 0,5, durasi > 0) dalam 0,6 dtk, atau kata ragu yang "panjangnya" ≥ 1,5 dtk, dibuang dari potongan (`dibuang[].jenis`: "karangan Whisper (ragu, terisolasi)"). Angka, kosakata brand, dan kata hasil kamus tidak terkena.
+- Sisa potongan tanpa satu kata pun dan < 0,5 dtk dibuang. §26.5 (footage tanpa ucapan dipakai utuh) tidak berubah.
+
+**27.3 Instruksi tim dari `brief.catatan`** (aturan, tanpa AI/jaringan; `pipeline/instruksi.py`)
+- Dikenali: "jangan pakai / buang / hapus / tanpa / skip footage N[, M dan K]" (juga "ke-2", "kedua", "terakhir"), "hanya pakai footage N[, M]", dan "buang/hapus kalimat|kata '…'" (teks wajib dalam tanda kutip). Penerapannya sama dengan `koreksi.buang` (`dibuang[].sumber: "user"`, `jenis` memuat "instruksi tim"). Nomor footage = urutan `sumber` (§26.1); satu footage = footage 1.
+- `rencana.instruksi_tim`: `{ teks, dipahami: [{ kalimat, aksi, footage?, teks?, ditemukan?, detik?, hasil? }], otomatis: [{ kalimat, catatan }], tidak_dipahami: [{ kalimat, alasan }] }`. `otomatis` = memang sudah dikerjakan mesin (gabung footage, buang jeda/pengulangan). Bila `tidak_dipahami` tidak kosong: peringatan `info` berjenis `instruksi_tim`. Teks kutipan yang tidak ditemukan: peringatan `warn`. Instruksi yang akan membuang semua footage tidak diterapkan.
+
+**27.4 Gerak halus (Generate saja; Batch tidak berubah)**
+- Efek `zoom` di track `effects` hanya untuk lompatan skala di sambungan potongan (`mode: "cut"`).
+- Dorong pelan dan zoom-through ditulis sebagai `keyframes` klip video (§12.5): dorong pelan 1 → 1,05 naik 600–1200 ms `ease`, tahan, lalu kembali ke 1 (titik kembali selalu ada); zoom-through 1 → 1,35 dalam 250 ms sebelum titik potong lalu kembali ke 1 dalam 300 ms, `ease`. Titik di luar klip menjadi jangkar (gerak menyambung lintas potongan); maks 20 per klip. `rencana.efek` mencatatnya dengan jenis `zoom` / `zoom_through` + `keyframe: true`. SFX whoosh untuk zoom-through dibaca dari puncak keyframe.
+- Klip SFX mesin (Generate dan Batch, `sfx_rencana`) memakai `fade_in_ms: 4` dan `fade_out_ms: 15` (40 bila bunyinya terpotong SFX berikutnya), maks ⅓ panjang klip (§12.1).
