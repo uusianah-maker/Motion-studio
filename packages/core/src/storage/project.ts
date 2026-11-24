@@ -116,6 +116,17 @@ export interface ProjectManifest {
   brand_id?: string;
   /** R22: the feature that made the project (missing on old projects → guessed). */
   fitur?: ProjectFitur;
+  /**
+   * Keluhan tim 24 Nov: the project was deleted from the project list and sits in Trash. It is
+   * read-only (status `archived`) and keeps holding its media until it is restored; restoring puts
+   * back the status it had before.
+   */
+  dihapus?: ProjectTrash;
+}
+
+export interface ProjectTrash {
+  at: number;
+  status_sebelum: 'active' | 'archived';
 }
 
 export interface VariantBrief {
@@ -207,7 +218,15 @@ export function validateProjectManifest(x: unknown): ProjectManifest {
     ...(o.variant !== undefined ? { variant: validateVariantInfo(o.variant) } : {}),
     ...(o.brand_id !== undefined ? { brand_id: id(o.brand_id, 'brand_id') } : {}),
     ...(o.fitur !== undefined ? { fitur: isProjectFitur(o.fitur) ? o.fitur : fail('fitur', 'fitur tidak dikenal') } : {}),
+    ...(o.dihapus !== undefined ? { dihapus: validateProjectTrash(o.dihapus) } : {}),
   };
+}
+
+function validateProjectTrash(x: unknown): ProjectTrash {
+  const t = obj(x, 'dihapus');
+  const sebelum = t.status_sebelum;
+  if (sebelum !== 'active' && sebelum !== 'archived') fail('dihapus.status_sebelum', 'harus active|archived');
+  return { at: num(t.at, 'dihapus.at'), status_sebelum: sebelum as ProjectTrash['status_sebelum'] };
 }
 
 function validateVariantInfo(x: unknown): VariantInfo {

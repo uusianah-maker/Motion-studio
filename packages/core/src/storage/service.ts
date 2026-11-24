@@ -104,6 +104,14 @@ export class StorageService {
     return mutate(this.ws, 'svc.updateProjectMeta', input.actor, () => admin.updateProjectMeta(this.ws, input));
   }
 
+  trashProject(input: Parameters<typeof admin.trashProject>[1]) {
+    return mutate(this.ws, 'svc.trashProject', input.actor, () => admin.trashProject(this.ws, input));
+  }
+
+  restoreProject(input: Parameters<typeof admin.restoreProject>[1]) {
+    return mutate(this.ws, 'svc.restoreProject', input.actor, () => admin.restoreProject(this.ws, input));
+  }
+
   duplicateProject(input: Omit<Parameters<typeof admin.duplicateProject>[1], 'new_project_id'> & { new_project_id?: string }) {
     return mutate(this.ws, 'svc.duplicateProject', input.actor, () => admin.duplicateProject(this.ws, { ...input, new_project_id: input.new_project_id ?? newProjectId() }));
   }

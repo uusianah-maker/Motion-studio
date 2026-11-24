@@ -332,9 +332,11 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
       handle: async ({ ws }) => {
         const read: (ProjectManifest | { project_id: string; error: string })[] = [];
         for (const id of await listProjectIds(ws)) read.push(await readProject(ws, id).catch(() => ({ project_id: id, error: 'PROJECT_INVALID' })));
-        const ok = read.filter((m): m is ProjectManifest => !('error' in m));
+        // Projects deleted to Trash leave the list (they are listed at /api/trash/projects).
+        const shown = read.filter((m) => 'error' in m || !m.dihapus);
+        const ok = shown.filter((m): m is ProjectManifest => !('error' in m));
         const sums = new Map((await summariesOf(ws, ok)).map((s) => [s.project_id, s]));
-        return { projects: read.map((m) => sums.get(m.project_id) ?? m) };
+        return { projects: shown.map((m) => sums.get(m.project_id) ?? m) };
       },
     },
     {
@@ -544,6 +546,37 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
         onlyKeys(body, ['expected_revision', 'name', 'status', 'brand_id', 'fitur']);
         const r = await svc.updateProjectMeta({ project_id: params.project_id!, expected_revision: revision(body), name: body.name, status: body.status, brand_id: body.brand_id, fitur: body.fitur, actor });
         return { project: projectView(r.result), clocks_ok: r.clocks.ok };
+      },
+    },
+    {
+      // Keluhan tim 24 Nov: delete a project from the list → Trash (restorable, media kept).
+      method: 'POST',
+      path: '/api/projects/:project_id/hapus',
+      handle: async ({ req, params, svc, actor }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['expected_revision']);
+        const r = await svc.trashProject({ project_id: params.project_id!, expected_revision: revision(body), actor });
+        return { project: projectView(r.result), clocks_ok: r.clocks.ok };
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/trash/projects',
+      handle: async ({ ws }) => {
+        const items: { project_id: string; name: string; dihapus_at: number; updated_at: number }[] = [];
+        for (const id of await listProjectIds(ws)) {
+          const m = await readProject(ws, id).catch(() => null);
+          if (m?.dihapus) items.push({ project_id: m.project_id, name: m.name, dihapus_at: m.dihapus.at, updated_at: m.updated_at });
+        }
+        return { projects: items.sort((a, b) => b.dihapus_at - a.dihapus_at) };
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/trash/projects/:project_id/restore',
+      handle: async ({ ws, params, svc, actor }) => {
+        const r = await svc.restoreProject({ project_id: params.project_id!, actor });
+        return { project: await summaryOf(ws, r.result), clocks_ok: r.clocks.ok };
       },
     },
     {

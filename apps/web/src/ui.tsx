@@ -96,6 +96,7 @@ export function ProjectList({
   onSelect,
   onCreate,
   onImport,
+  onDelete,
   tertunda,
 }: {
   projects: ProjectSummary[] | null;
@@ -106,7 +107,12 @@ export function ProjectList({
   onImport?: (file: File) => Promise<void>;
   /** R25: projects whose engine plan is ready but not applied yet. */
   tertunda?: ReadonlySet<string>;
+  /** Keluhan tim 24 Nov: delete the chosen projects (they go to Trash, restorable). */
+  onDelete?: (projects: ProjectSummary[]) => Promise<void>;
 }) {
+  // Select mode: tick several projects, then delete them in one go.
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -130,9 +136,39 @@ export function ProjectList({
       if (fileRef.current) fileRef.current.value = '';
     }
   };
+  const togglePick = (id: string) =>
+    setPicked((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const pickable = matching.filter((p) => !p.error);
+  const deletePicked = async () => {
+    const list = (projects ?? []).filter((p) => picked.has(p.project_id));
+    if (!list.length || !onDelete) return;
+    if (!window.confirm(`Hapus ${list.length} proyek dari daftar? Proyek pindah ke Trash dan bisa dipulihkan dari sana. Media dan hasil render tidak ikut terhapus.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onDelete(list);
+      setPicked(new Set());
+      setPicking(false);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
   const row = (p: ProjectSummary) => (
-    <button key={p.project_id} className={`project${p.project_id === selected ? ' active' : ''}`} onClick={() => onSelect(p.project_id)} disabled={!!p.error}>
-      <span className="thumb" aria-hidden="true">{p.status === 'archived' ? '🗄' : '🎬'}</span>
+    <button
+      key={p.project_id}
+      className={`project${p.project_id === selected && !picking ? ' active' : ''}${picking && picked.has(p.project_id) ? ' picked' : ''}`}
+      onClick={() => (picking ? togglePick(p.project_id) : onSelect(p.project_id))}
+      disabled={!!p.error}
+      {...(picking ? { role: 'checkbox', 'aria-checked': picked.has(p.project_id) } : {})}
+    >
+      <span className="thumb" aria-hidden="true">{picking ? (picked.has(p.project_id) ? '☑' : '☐') : p.status === 'archived' ? '🗄' : '🎬'}</span>
       <span>
         <b>{p.name ?? p.project_id}</b>
         <small>
@@ -166,6 +202,35 @@ export function ProjectList({
         <b>Proyek</b>
         <span className="muted">{projects ? projects.length : '…'}</span>
       </div>
+      {onDelete && !!projects?.length && (
+        <div className="importRow pickRow">
+          {!picking ? (
+            <button className="linkbtn" disabled={busy} onClick={() => setPicking(true)} title="Centang beberapa proyek lalu hapus sekaligus">
+              🗑 Pilih proyek untuk dihapus
+            </button>
+          ) : (
+            <>
+              <button className="linkbtn" disabled={busy} onClick={() => setPicked(new Set(pickable.map((p) => p.project_id)))}>
+                Pilih semua yang tampil ({pickable.length})
+              </button>
+              <span className="spacer" />
+              <button className="btn small danger" disabled={busy || picked.size === 0} onClick={() => void deletePicked()}>
+                Hapus ({picked.size})
+              </button>
+              <button
+                className="btn small"
+                disabled={busy}
+                onClick={() => {
+                  setPicking(false);
+                  setPicked(new Set());
+                }}
+              >
+                Batal
+              </button>
+            </>
+          )}
+        </div>
+      )}
       <input className="search" aria-label="Cari proyek" placeholder="⌕  Cari proyek..." value={q} onChange={(e) => setQ(e.target.value)} />
       <form className="newProject" onSubmit={submit}>
         <input aria-label="Nama proyek baru" placeholder="Nama proyek baru" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />

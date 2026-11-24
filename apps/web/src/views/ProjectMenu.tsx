@@ -15,6 +15,7 @@ export function ProjectMenu({
   busy,
   run,
   onDuplicated,
+  onDeleted,
   brandName = null,
 }: {
   api: Api;
@@ -22,6 +23,8 @@ export function ProjectMenu({
   busy: boolean;
   run: (fn: (p: Project) => Promise<Project>) => Promise<void>;
   onDuplicated: (projectId: string) => Promise<void> | void;
+  /** The project went to Trash: leave it and refresh the project list. */
+  onDeleted?: () => void;
   /** U1: "AYS · Aysilla Factory" of the brand this project uses (null = none yet). */
   brandName?: string | null;
 }) {
@@ -134,6 +137,21 @@ export function ProjectMenu({
         >
           ⇩ Ekspor .json
         </button>
+        {onDeleted && (
+          <button
+            className="btn small danger"
+            disabled={busy || working}
+            onClick={() =>
+              window.confirm(`Hapus proyek "${project.name}" dari daftar? Proyek pindah ke Trash dan bisa dipulihkan dari sana. Media dan hasil render tidak ikut terhapus.`) &&
+              void side(async () => {
+                await api.deleteProject(project.project_id, project.revision);
+                onDeleted();
+              })
+            }
+          >
+            🗑 Hapus proyek
+          </button>
+        )}
         <div className="muted small">Ekspor hanya berisi linimasa, tanpa file video (media tetap di PC). Proyek arsip hanya-baca, medianya tetap dilindungi.</div>
         {error ? <ErrorNotice error={error} /> : null}
       </div>

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { type Api, type PurgePlan, type Role, type TrashItem } from '../api';
+import { type Api, type PurgePlan, type Role, type TrashItem, type TrashedProject } from '../api';
 import { blockerText, formatBytes, formatDate } from '../lib';
 import { ErrorNotice, Modal } from '../ui';
 
-export function TrashView({ api, role = 'owner' }: { api: Api; role?: Role }) {
+export function TrashView({ api, role = 'owner', onProjectsChanged }: { api: Api; role?: Role; onProjectsChanged?: () => void }) {
+  const [projects, setProjects] = useState<TrashedProject[] | null>(null);
   const [items, setItems] = useState<TrashItem[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [note, setNote] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
@@ -14,8 +15,9 @@ export function TrashView({ api, role = 'owner' }: { api: Api; role?: Role }) {
 
   const load = useCallback(async () => {
     try {
-      const list = await api.trash();
+      const [list, proj] = await Promise.all([api.trash(), api.trashedProjects()]);
       setItems(list);
+      setProjects(proj);
       setSelected((s) => new Set([...s].filter((id) => list.some((i) => i.version_id === id))));
       setError(null);
     } catch (e) {
@@ -49,6 +51,22 @@ export function TrashView({ api, role = 'owner' }: { api: Api; role?: Role }) {
     }
   };
 
+  const restoreProject = async (p: TrashedProject) => {
+    setBusy(p.project_id);
+    setNote(null);
+    setError(null);
+    try {
+      await api.restoreProject(p.project_id);
+      setNote({ kind: 'ok', text: `Proyek “${p.name}” dipulihkan ke daftar proyek.` });
+      onProjectsChanged?.();
+      await load();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const toggle = (id: string) => setSelected((s) => {
     const n = new Set(s);
     if (n.has(id)) n.delete(id);
@@ -73,6 +91,36 @@ export function TrashView({ api, role = 'owner' }: { api: Api; role?: Role }) {
           Media yang 30 hari tidak dipakai proyek mana pun dipindah ke sini otomatis. <b>Tidak ada yang dihapus otomatis</b> — hapus permanen hanya lewat tombol di atas, dengan konfirmasi ketik frasa.
         </div>
         <ErrorNotice error={error} />
+        {projects && projects.length > 0 && (
+          <section className="card" aria-label="Proyek terhapus">
+            <h2>Proyek terhapus ({projects.length})</h2>
+            <p className="small muted">Proyek yang dihapus dari daftar Edit. Isinya utuh dan medianya tetap dilindungi sampai dipulihkan.</p>
+            <table className="list">
+              <thead>
+                <tr>
+                  <th>Proyek</th>
+                  <th>Dihapus</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map((p) => (
+                  <tr key={p.project_id}>
+                    <td>{p.name}</td>
+                    <td>{formatDate(p.dihapus_at)}</td>
+                    <td>
+                      {role !== 'reviewer' && (
+                        <button className="btn small" disabled={busy !== null} onClick={() => void restoreProject(p)}>
+                          ↺ Pulihkan
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
         {note && <div className={`notice ${note.kind}`} role="status">{note.text}</div>}
         {items && items.length === 0 ? (
           <div className="empty">Trash kosong.</div>

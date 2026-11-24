@@ -127,6 +127,7 @@ interface Stored {
 const hookRef = { media_id: 'm_00000000000000a1', version_id: V_HOOK };
 const brollRef = { media_id: 'm_00000000000000b1', version_id: V_BROLL };
 const projects = new Map<string, Stored>();
+const deletedProjects = new Map<string, { s: Stored; at: number }>();
 const demoBrand = (brand_id: string, name: string, kode: string, colors: string[], banned: string[]): BrandKit => ({
   ...emptyKit(),
   schema_version: 2,
@@ -421,6 +422,21 @@ export function createDemoApi(): Api {
       s.p.revision++;
       s.p.updated_at = now();
       return view(s);
+    },
+    deleteProject: async (id, rev) => {
+      const s = get(id);
+      if (s.p.revision !== rev) fail(409, 'CONFLICT', 'Revisi proyek sudah berubah');
+      projects.delete(id);
+      deletedProjects.set(id, { s, at: now() });
+      return view(s);
+    },
+    trashedProjects: async () => [...deletedProjects.values()].map(({ s, at }) => ({ project_id: s.p.project_id, name: s.p.name, dihapus_at: at, updated_at: s.p.updated_at })).sort((a, b) => b.dihapus_at - a.dihapus_at),
+    restoreProject: async (id) => {
+      const d = deletedProjects.get(id) ?? fail(409, 'CONFLICT', 'Proyek tidak ada di Trash');
+      deletedProjects.delete(id);
+      projects.set(id, d.s);
+      const p = d.s.p;
+      return { project_id: p.project_id, name: p.name, status: p.status, revision: p.revision, created_at: p.created_at, updated_at: p.updated_at };
     },
     duplicateProject: async (id, name) => {
       const s = get(id);

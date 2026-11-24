@@ -167,6 +167,9 @@ a.btn { text-decoration: none; }
 .kfRow label { display: grid; gap: 2px; font-size: 12px; min-width: 0; }
 .kfRow input, .kfRow select { width: 100%; min-width: 0; }
 .importRow { padding: 0 15px 8px; }
+.pickRow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pickRow .spacer { flex: 1; }
+.project.picked { background: #2a2230; border-left-color: var(--danger, #ff6b6b); }
 .fiturChips { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 15px 10px; }
 .linkbtn { background: none; border: 0; color: #9fb4ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
 .linkbtn:hover { text-decoration: underline; }

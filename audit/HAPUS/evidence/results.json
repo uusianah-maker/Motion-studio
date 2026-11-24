@@ -1,0 +1,42 @@
+[
+  {
+    "id": "H-01 Pilih 2 proyek → Hapus: hilang dari daftar, sisanya tetap",
+    "ok": true,
+    "detail": "Proyek D, Proyek A"
+  },
+  {
+    "id": "H-02 Di disk: pindah ke Trash (hanya-baca), bukan dihapus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "H-03 Hitungan daftar ikut turun",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "H-04 Hapus dari menu ⋯ Proyek: hilang dari daftar, editor pindah ke proyek lain",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "H-05 Trash menampilkan 3 proyek terhapus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "H-06 Pulihkan → kembali aktif di disk dan hilang dari Trash",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "H-07 Proyek yang dipulihkan muncul lagi di daftar Edit",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "H-08 Tanpa error di konsol",
+    "ok": true,
+    "detail": ""
+  }
+]

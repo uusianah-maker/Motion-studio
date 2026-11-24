@@ -175,8 +175,25 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
     await openNew(r.project.project_id);
   };
 
+  /** Keluhan tim 24 Nov: delete several projects to Trash; one failure does not stop the rest. */
+  const deleteProjects = async (list: ProjectSummary[]) => {
+    const gone = new Set<string>();
+    const gagal: string[] = [];
+    for (const p of list) {
+      try {
+        await api.deleteProject(p.project_id, p.revision ?? 0);
+        gone.add(p.project_id);
+      } catch (e) {
+        gagal.push(`${p.name ?? p.project_id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    setSelected((cur) => (cur && gone.has(cur) ? null : cur));
+    await loadProjects();
+    if (gagal.length) throw new Error(`${gone.size} proyek dihapus, ${gagal.length} gagal — ${gagal.slice(0, 3).join('; ')}`);
+  };
+
   const sideList = (
-    <ProjectList projects={projects} selected={selected} onSelect={(id) => { setSelected(id); setView('editor'); }} onCreate={createProject} onImport={importProject} tertunda={tertunda} />
+    <ProjectList projects={projects} selected={selected} onSelect={(id) => { setSelected(id); setView('editor'); }} onCreate={createProject} onImport={importProject} tertunda={tertunda} {...(role !== 'reviewer' ? { onDelete: deleteProjects } : {})} />
   );
 
   return (
@@ -227,7 +244,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
       {view === 'editor' && !narrow && <aside className="side" aria-label="Proyek">{sideList}</aside>}
       <div className="page">
         {error ? <div className="body"><ErrorNotice error={error} /></div> : null}
-        {view === 'editor' && <EditorView api={api} role={role} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} onLihatRencana={(pid, job) => { setGenFokus({ project_id: pid, job_id: job, n: Date.now() }); setView('generate'); }} />}
+        {view === 'editor' && <EditorView api={api} role={role} projectId={selected} mobileProjects={narrow ? sideList : null} onSaved={(p) => setProjects((list) => list?.map((x) => (x.project_id === p.project_id ? { ...x, name: p.name, status: p.status, revision: p.revision, updated_at: p.updated_at, ...(p.variant ? { variant: variantTag(p) } : {}) } : x)) ?? list)} onProjectCreated={openNew} onProjectsChanged={() => void loadProjects()} onProjectDeleted={() => { setSelected(null); void loadProjects(); }} onLihatRencana={(pid, job) => { setGenFokus({ project_id: pid, job_id: job, n: Date.now() }); setView('generate'); }} />}
         {view === 'buat' && <BuatVideoView onOpen={(f: BuatFitur) => setView(f)} />}
         {BUAT.includes(view) && <BuatTabs current={view as BuatFitur} onOpen={(f) => setView(f)} onHub={() => setView('buat')} />}
         {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} fokus={genFokus} />)}
@@ -239,7 +256,7 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {keep('hasil', <HasilView api={api} active={view === 'hasil'} onOpenProject={(id) => void openNew(id)} />)}
         {keep('media', <MediaView api={api} role={role} projects={projects ?? []} selectedProject={selected} />)}
         {view === 'brand' && <BrandView api={api} readOnly={role !== 'owner'} />}
-        {view === 'trash' && <TrashView api={api} role={role} />}
+        {view === 'trash' && <TrashView api={api} role={role} onProjectsChanged={() => void loadProjects()} />}
         {view === 'storage' && <StorageView api={api} role={role} />}
         {view === 'ai' && <AiView api={api} />}
         {view === 'team' && role === 'owner' && account && <TeamView api={api} />}

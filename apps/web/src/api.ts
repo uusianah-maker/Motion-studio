@@ -197,6 +197,14 @@ export interface ProjectExport {
 /** R22: which feature page made the project (old projects: guessed by the server). */
 export type ProjectFitur = 'iklan' | 'batch' | 'beatspot' | 'transfer' | 'editor';
 
+/** A project deleted from the project list, waiting in Trash. */
+export interface TrashedProject {
+  project_id: string;
+  name: string;
+  dihapus_at: number;
+  updated_at: number;
+}
+
 export interface ProjectSummary {
   project_id: string;
   name?: string;
@@ -943,6 +951,10 @@ export function createApi(token: string | null, base = '') {
     /** X05: rename and/or archive (read-only) / activate. */
     updateProject: (id: string, expected_revision: number, patch: { name?: string; status?: 'active' | 'archived'; brand_id?: string | null; fitur?: ProjectFitur }) =>
       call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/meta`, { json: { expected_revision, ...patch } }).then((r) => r.project),
+    /** Keluhan tim 24 Nov: delete a project from the list → Trash (restorable, media kept). */
+    deleteProject: (id: string, expected_revision: number) => call<{ project: Project }>('POST', `/api/projects/${encodeURIComponent(id)}/hapus`, { json: { expected_revision } }).then((r) => r.project),
+    trashedProjects: () => call<{ projects: TrashedProject[] }>('GET', '/api/trash/projects').then((r) => r.projects),
+    restoreProject: (id: string) => call<{ project: ProjectSummary }>('POST', `/api/trash/projects/${encodeURIComponent(id)}/restore`, { json: {} }).then((r) => r.project),
     duplicateProject: (id: string, name?: string) =>
       call<{ project: ProjectSummary }>('POST', `/api/projects/${encodeURIComponent(id)}/duplicate`, { json: name ? { name } : {} }).then((r) => r.project),
     exportProject: (id: string) => call<{ export: ProjectExport }>('GET', `/api/projects/${encodeURIComponent(id)}/export`).then((r) => r.export),

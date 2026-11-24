@@ -106,6 +106,7 @@ export function EditorView({
   onSaved,
   onProjectCreated,
   onProjectsChanged,
+  onProjectDeleted,
   onLihatRencana,
 }: {
   api: Api;
@@ -117,6 +118,8 @@ export function EditorView({
   onProjectCreated?: (id: string) => Promise<void> | void;
   /** X09: variants were created/approved — refresh the project list. */
   onProjectsChanged?: () => void;
+  /** The open project was deleted to Trash. */
+  onProjectDeleted?: () => void;
   /** R25: open the engine plan of a project on the Video iklan page. */
   onLihatRencana?: (projectId: string, jobId: string) => void;
 }) {
@@ -633,7 +636,7 @@ export function EditorView({
             ◫ Varian
           </button>
         )}
-        {project && <ProjectMenu api={api} project={project} busy={busy} run={run} onDuplicated={(id) => onProjectCreated?.(id)} brandName={brand?.kit.brand_id ? `${brand.kit.kode} · ${brand.kit.name}` : null} />}
+        {project && <ProjectMenu api={api} project={project} busy={busy} run={run} onDuplicated={(id) => onProjectCreated?.(id)} {...(onProjectDeleted && role !== 'reviewer' ? { onDeleted: onProjectDeleted } : {})} brandName={brand?.kit.brand_id ? `${brand.kit.kode} · ${brand.kit.name}` : null} />}
         <button
           className="btn primary"
           disabled={!project || (!!project.variant && project.variant.approved_revision !== project.revision)}

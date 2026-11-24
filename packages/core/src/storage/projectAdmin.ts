@@ -58,6 +58,7 @@ export async function updateProjectMeta(ws: Workspace, input: { project_id: stri
   if (input.status !== undefined && input.status !== 'active' && input.status !== 'archived') bad('Status harus active atau archived');
   const current = await readProject(ws, input.project_id);
   if (current.revision !== input.expected_revision) throw new StorageError('CONFLICT', 'Revisi proyek sudah berubah; muat ulang dulu', { expected: input.expected_revision, actual: current.revision });
+  if (current.dihapus) throw new StorageError('PRECONDITION', 'Proyek ada di Trash. Pulihkan dulu dari Trash.', { project_id: current.project_id });
   const next: ProjectManifest = {
     ...current,
     ...(input.name !== undefined ? { name: cleanName(input.name) } : {}),
@@ -67,6 +68,29 @@ export async function updateProjectMeta(ws: Workspace, input: { project_id: stri
   if (input.brand_id === null) delete next.brand_id;
   else if (input.brand_id !== undefined) next.brand_id = input.brand_id as string;
   return commitProject(ws, { manifest: next, expected_revision: input.expected_revision, actor: input.actor });
+}
+
+/**
+ * Delete a project from the project list (keluhan tim 24 Nov): it moves to Trash, becomes
+ * read-only and keeps holding its media, so nothing is lost until it is restored. Goes through
+ * `commitProject` like every other change.
+ */
+export async function trashProject(ws: Workspace, input: { project_id: string; expected_revision: number; actor: Actor }): Promise<ProjectManifest> {
+  await guard(ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'meta' });
+  const current = await readProject(ws, input.project_id);
+  if (current.revision !== input.expected_revision) throw new StorageError('CONFLICT', 'Revisi proyek sudah berubah; muat ulang dulu', { expected: input.expected_revision, actual: current.revision });
+  if (current.dihapus) throw new StorageError('CONFLICT', 'Proyek sudah ada di Trash', { project_id: current.project_id });
+  const next: ProjectManifest = { ...current, status: 'archived', dihapus: { at: ws.clock.now(), status_sebelum: current.status } };
+  return commitProject(ws, { manifest: next, expected_revision: input.expected_revision, actor: input.actor });
+}
+
+/** Bring a project back from Trash with the status it had before it was deleted. */
+export async function restoreProject(ws: Workspace, input: { project_id: string; actor: Actor }): Promise<ProjectManifest> {
+  await guard(ws, input.actor, 'commit_project', { project_id: input.project_id, step: 'meta' });
+  const current = await readProject(ws, input.project_id);
+  if (!current.dihapus) throw new StorageError('CONFLICT', 'Proyek tidak ada di Trash', { project_id: current.project_id });
+  const { dihapus, ...rest } = current;
+  return commitProject(ws, { manifest: { ...rest, status: dihapus.status_sebelum }, expected_revision: current.revision, actor: input.actor });
 }
 
 /**
