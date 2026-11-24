@@ -132,6 +132,27 @@ def gabung(job: dict, out: Path, log=print) -> dict | None:
     return hasil
 
 
+def tandai_tanpa_ucapan(transkrip: Path, hasil: dict) -> list[dict]:
+    """Bagian gabungan tanpa ucapan (footage bisu, atau bersuara tapi tidak ada kata) -> `utuh` di
+    transkrip.json, supaya auto-cut tidak membuangnya sebagai jeda (b-roll tetap tampil penuh).
+    Kata di bagian yang file-nya memang bisu = karangan Whisper dari hening -> dibuang dari transkrip.
+    Kembalikan bagian yang dilindungi (untuk laporan)."""
+    tr = json.loads(transkrip.read_text(encoding="utf-8"))
+    tengah = lambda w: (w["startMs"] + w["endMs"]) / 2  # noqa: E731
+    utuh, dilindungi, words = [], [], tr.get("words", [])
+    for b in hasil["bagian"]:
+        a, z = b["mulai_ms"], b["mulai_ms"] + b["durasi_ms"]
+        if not b["suara"]:
+            words = [w for w in words if not a <= tengah(w) < z]
+        if not b["suara"] or not any(a <= tengah(w) < z for w in words):
+            utuh.append([a, z])
+            dilindungi.append(b)
+    tr["words"] = words
+    tr["utuh"] = utuh
+    transkrip.write_text(json.dumps(tr, ensure_ascii=False), encoding="utf-8")
+    return dilindungi
+
+
 def pasang_di_ops(out: Path, hasil: dict) -> int:
     """Klip video `$sumber` di ops.json -> `$gabungan:video` + aset_lokal (diimpor aplikasi sebagai media proyek)."""
     p = out / "ops.json"
@@ -145,6 +166,15 @@ def pasang_di_ops(out: Path, hasil: dict) -> int:
     doc["aset_lokal"] = lokal + [{"kunci": hasil["kunci"], "path": hasil["path"]}]
     p.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     r = json.loads((out / "rencana.json").read_text(encoding="utf-8"))
-    r["sumber_gabungan"] = {k: hasil[k] for k in ("kunci", "bagian", "durasi", "kanvas", "fps")}
+    tp = out / "transkrip.json"
+    utuh = json.loads(tp.read_text(encoding="utf-8")).get("utuh", []) if tp.exists() else []
+    mulai_utuh = {a for a, _ in utuh}
+    bagian = [{**b, "utuh": b["mulai_ms"] in mulai_utuh} for b in hasil["bagian"]]
+    r["sumber_gabungan"] = {**{k: hasil[k] for k in ("kunci", "durasi", "kanvas", "fps")}, "bagian": bagian}
+    if any(b["utuh"] for b in bagian):
+        r.setdefault("peringatan", []).append({
+            "level": "info", "jenis": "footage_utuh",
+            "teks": "Footage tanpa ucapan dipakai utuh (tidak dipotong sebagai jeda): footage ke-"
+                    + ", ".join(str(i + 1) for i, b in enumerate(bagian) if b["utuh"])})
     (out / "rencana.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     return n

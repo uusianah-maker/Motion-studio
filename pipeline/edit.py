@@ -18,7 +18,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from autocut import FPS, merge_split_words, run_cut, strip_internal
+from autocut import FPS, kurangi_rentang, merge_split_words, run_cut, strip_internal
 from cek_ucapan import cek_ucapan
 from brandkit import muat as muat_brand_kit
 from posisi_caption import posisi_otomatis
@@ -493,6 +493,9 @@ def main() -> None:
         for w in words:
             if w["startMs"] >= a - 50 and w["endMs"] <= b + 150:
                 w["forced"] = f"dibuang (pilihan user {rng})"
+        # §26: pilihan tim menang atas footage tanpa ucapan yang dilindungi (hybrid).
+        if tr.get("utuh"):
+            tr["utuh"] = kurangi_rentang(tr["utuh"], a, b)
     # Koreksi salah dengar di satu posisi (bukan aturan kamus umum), mis. "19.2:Bahannya".
     for item in args.koreksi:
         sec, _, teks = item.partition(":")

@@ -113,5 +113,76 @@ class Gabung(unittest.TestCase):
         self.assertEqual(json.loads((out / "rencana.json").read_text(encoding="utf-8"))["sumber_gabungan"]["durasi"], 6.0)
 
 
+class FootageTanpaUcapan(unittest.TestCase):
+    """§26: footage tanpa ucapan (b-roll) di video gabungan tidak dipotong auto-cut sebagai jeda."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.d = Path(tempfile.mkdtemp())
+        a = buat(cls.d / "bicara.mp4", "540x960", 30, 3.0, "48000:2")  # sine = "suara" (kata diberikan manual)
+        b = buat(cls.d / "broll.mp4", "540x960", 30, 2.0, None)  # bisu
+        c = buat(cls.d / "bicara2.mp4", "540x960", 30, 3.0, "48000:2")
+        cls.h = gabung.gabung({"sumber": [{"kunci": f"$sumber:f{i}", "path": str(p)} for i, p in enumerate((a, b, c))]},
+                              cls.d / "out", log=lambda *_: None)
+
+    @staticmethod
+    def kata(teks, a, b):
+        return {"text": teks, "startMs": a, "endMs": b, "prob": 0.95}
+
+    def test_bagian_bisu_ditandai_utuh_dan_kata_karangan_dibuang(self):
+        p = self.d / "tr1.json"
+        p.write_text(json.dumps({"source": self.h["path"], "durationMs": 8000, "words": [
+            self.kata("Halo", 200, 600), self.kata("kak.", 700, 1100),
+            self.kata("Terima", 3500, 3800), self.kata("kasih.", 3900, 4200),  # karangan Whisper di b-roll bisu
+            self.kata("Cek", 5200, 5600), self.kata("keranjang.", 5700, 6400)]}), encoding="utf-8")
+        lindung = gabung.tandai_tanpa_ucapan(p, self.h)
+        tr = json.loads(p.read_text(encoding="utf-8"))
+        self.assertEqual([b["kunci"] for b in lindung], ["$sumber:f1"])
+        self.assertEqual(tr["utuh"], [[3000, 5000]])
+        self.assertEqual([w["text"] for w in tr["words"]], ["Halo", "kak.", "Cek", "keranjang."])
+
+    def test_bersuara_tanpa_kata_juga_utuh(self):
+        p = self.d / "tr2.json"
+        p.write_text(json.dumps({"source": self.h["path"], "durationMs": 8000,
+                                 "words": [self.kata("Halo", 200, 600)]}), encoding="utf-8")
+        gabung.tandai_tanpa_ucapan(p, self.h)
+        self.assertEqual(json.loads(p.read_text(encoding="utf-8"))["utuh"], [[3000, 5000], [5000, 8000]])
+
+    def test_auto_cut_memakai_bagian_utuh_penuh(self):
+        import autocut
+
+        kata = [self.kata("Halo", 200, 600), self.kata("kak.", 700, 1100), self.kata("Cek", 5200, 5600),
+                self.kata("keranjang.", 5700, 6400)]
+        tr = {"source": self.h["path"], "durationMs": 8000, "words": kata}
+        tanpa = autocut.run_cut(dict(tr), [dict(w) for w in kata])
+        dengan = autocut.run_cut({**tr, "utuh": [[3000, 5000]]}, [dict(w) for w in kata])
+        ms = lambda c: [(s["startFrame"] * 1000 // 30, s["endFrame"] * 1000 // 30) for s in c["segments"]]  # noqa: E731
+        self.assertFalse(any(a <= 3500 < b for a, b in ms(tanpa)))  # dulu: b-roll terbuang sebagai jeda
+        self.assertTrue(any(a <= 3000 and b >= 5000 for a, b in ms(dengan)), ms(dengan))
+        self.assertGreaterEqual(dengan["videoMs"] - tanpa["videoMs"], 1900)
+        # Caption tetap di kata yang diucapkan: "Cek" bergeser ke belakang b-roll, tidak jatuh di atasnya.
+        cek = next(c for c in dengan["captions"] if c["text"] == "Cek")
+        halo = next(c for c in dengan["captions"] if c["text"] == "Halo")
+        self.assertGreater(cek["startMs"] - halo["startMs"], 2000)
+
+    def test_rentang_dikurangi_pilihan_buang(self):
+        import autocut
+
+        self.assertEqual(autocut.kurangi_rentang([[3000, 5000]], 3500, 4000), [[3000, 3500], [4000, 5000]])
+        self.assertEqual(autocut.kurangi_rentang([[3000, 5000]], 2000, 6000), [])
+        self.assertEqual(autocut.kurangi_rentang([[3000, 5000]], 6000, 7000), [[3000, 5000]])
+
+    def test_rencana_menandai_bagian_utuh(self):
+        out = self.d / "o-r"
+        out.mkdir()
+        (out / "ops.json").write_text(json.dumps({"ops": [], "aset_lokal": []}), encoding="utf-8")
+        (out / "rencana.json").write_text(json.dumps({"status": "siap", "peringatan": []}), encoding="utf-8")
+        (out / "transkrip.json").write_text(json.dumps({"words": [], "utuh": [[3000, 5000]]}), encoding="utf-8")
+        gabung.pasang_di_ops(out, self.h)
+        r = json.loads((out / "rencana.json").read_text(encoding="utf-8"))
+        self.assertEqual([b["utuh"] for b in r["sumber_gabungan"]["bagian"]], [False, True, False])
+        self.assertIn("footage ke-2", r["peringatan"][-1]["teks"])
+
+
 if __name__ == "__main__":
     unittest.main()

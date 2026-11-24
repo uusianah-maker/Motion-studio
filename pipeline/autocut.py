@@ -256,16 +256,43 @@ def snap_ke_jeda(segs, words, db):
     return out
 
 
+def kurangi_rentang(rentang, a, b):
+    """[[x, y], ...] dikurangi [a, b] (ms)."""
+    out = []
+    for x, y in rentang:
+        if b <= x or a >= y:
+            out.append([x, y])
+            continue
+        if a > x:
+            out.append([x, a])
+        if b < y:
+            out.append([b, y])
+    return out
+
+
+def pasang_utuh(segs, utuh, duration_ms):
+    """§26: rentang sumber `utuh` (footage tanpa ucapan di video gabungan) selalu dipakai penuh, tidak
+    dianggap jeda. Digabung dengan potongan ucapan lalu diurutkan (yang bersentuhan disatukan nanti)."""
+    tambah = []
+    for a, b in utuh or []:
+        a, b = max(0, int(a)), min(int(b), int(duration_ms))
+        if b - a >= MIN_SEG_MS:
+            tambah.append({"srcStartMs": a, "srcEndMs": b, "why": "footage tanpa ucapan (utuh)"})
+    return sorted(list(segs) + tambah, key=lambda s: s["srcStartMs"])
+
+
 def run_cut(tr, words=None):
     """Jalankan auto-cut. Kembalikan potongan, peta waktu, caption, dan laporan.
 
-    `words` boleh diberikan kalau teks sudah dikoreksi (kamus brand)."""
+    `words` boleh diberikan kalau teks sudah dikoreksi (kamus brand).
+    `tr["utuh"]` (opsional, §26): [[mulai_ms, akhir_ms], ...] rentang yang tidak boleh dipotong."""
     words = merge_split_words(tr["words"]) if words is None else words
     mark_removals(words)
     segs = build_segments(words, tr["durationMs"])
     silences = detect_silences(tr["source"], SILENCE_DB, MAX_GAP_MS)
     segs = subtract_silences(segs, [s for s in silences if s[1] - s[0] > MAX_GAP_MS])
     segs = snap_ke_jeda(segs, words, energi_db(tr["source"]))
+    segs = pasang_utuh(segs, tr.get("utuh"), tr["durationMs"])
 
     # Snap ke frame (30 fps). Potongan yang bersentuhan digabung.
     segments = []

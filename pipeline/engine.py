@@ -257,6 +257,10 @@ def generate(job_dir: Path) -> int:
                    "--brandkit", str(job_dir / job.get("brand_kit", "brand_kit.json"))])
     if rc != 0:
         raise RuntimeError(f"transkrip gagal (kode {rc})")
+    if gab:  # §26: footage tanpa ucapan tidak dipotong sebagai jeda
+        utuh = gabung.tandai_tanpa_ucapan(transkrip, gab)
+        if utuh:
+            log(f"footage tanpa ucapan dipakai utuh: {', '.join(b['kunci'] for b in utuh)}")
     n = len(json.loads(transkrip.read_text(encoding="utf-8"))["words"])
     progres("transkrip", 60, f"{n} kata, {time.perf_counter() - t0:.0f} dtk")
     progres("rencana", 70, "potong, caption, hook, efek")

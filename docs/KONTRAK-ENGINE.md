@@ -991,3 +991,10 @@ Owner ingin satu video iklan bisa memakai beberapa footage sekaligus (mis. `Kont
 - Form Video iklan: pilih beberapa file sekaligus, tambah lagi, ubah urutan (↑/↓), hapus satu per satu. Durasi tiap file dan totalnya tampil sebelum diunggah. File diunggah satu per satu.
 - `$gabungan:video` hanya diterima bila berada di folder `out/` job itu sendiri (bukan symlink ke luar, harus `.mp4`). File diimpor sekali lewat salinan sementara sebagai media proyek dan diingat di `refs.json`.
 - Draf tetap hybrid: potongan ada di timeline sebagai klip biasa yang bisa digeser, dipotong, atau dihapus, dengan satu undo. Kartu rencana menampilkan jumlah footage dan durasi tiap bagian.
+
+**26.5 Footage tanpa ucapan dipakai utuh**
+
+- Setelah transkrip, bagian gabungan yang tidak berisi ucapan (file bisu, atau bersuara tanpa satu kata pun) ditulis sebagai `utuh: [[mulai_ms, akhir_ms], …]` di `out/transkrip.json`. Auto-cut (`autocut.run_cut`) selalu memakai rentang itu penuh dan tidak menganggapnya jeda, jadi b-roll tidak hilang dari draf.
+- Kata di bagian yang file-nya bisu dibuang dari transkrip, karena itu karangan Whisper dari hening dan tidak boleh tampil sebagai caption.
+- Pilihan tim tetap menang: rentang `koreksi.buang` dikurangkan dari `utuh`.
+- `rencana.json`: `sumber_gabungan.bagian[].utuh` (true/false) dan peringatan `info` berjenis `footage_utuh` yang menyebut footage ke berapa.
