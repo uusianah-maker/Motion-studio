@@ -21,14 +21,14 @@ lalu Motion Studio merender varian yang disetujui.
 ## Dua Python
 
 - `.venv` (repo): `perencana.py`, `pratinjau.py`, tes. Butuh `transcribe.py` / `edit.py` / `brandkit.py` (milik venus, hanya diimpor).
-- `D:\VIBECODING\tools\demucs-venv`: Demucs (`pisah.py`) + OpenCV + RapidOCR (`shotlib.py`).
+- `<TOOLS>\demucs-venv`: Demucs (`pisah.py`) + OpenCV + RapidOCR (`shotlib.py`).
   Perencana memanggil Shot Library sendiri lewat Python ini kalau `shots.json` belum ada.
 
 ## Alur
 
 ```
 .venv\Scripts\python pipeline\pisah.py <batch>                                   # Y1
-D:\VIBECODING\tools\demucs-venv\Scripts\python pipeline\batch\shotlib.py <batch>  # Y2 (sekali per batch, ±1 mnt/footage)
+<TOOLS>\demucs-venv\Scripts\python pipeline\batch\shotlib.py <batch>  # Y2 (sekali per batch, ±1 mnt/footage)
 .venv\Scripts\python pipeline\batch\perencana.py <job_dir>                        # Y3-Y5
 .venv\Scripts\python pipeline\batch\pratinjau.py <job_dir> varian-001 [--blur]    # opsional, cek visual
 ```

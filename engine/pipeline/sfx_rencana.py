@@ -162,7 +162,7 @@ def kandidat(aset: list[dict], jenis: str, dilarang=()) -> list[dict]:
         t = set(a.get("tag", []))
         if t & HINDARI:
             continue
-        d = (a.get("durasi_ms") or 0) - SISA_MS  # panjang yang benar-benar boleh dipakai (jaga_durasi)
+        d = (a.get("durasi_ms") or 0) - SISA_MS - 1  # panjang yang boleh dipakai (jaga_durasi; +1 ms pembulatan)
         if not max(dmin - SISA_MS, MIN_CLIP_MS) <= d <= dmax:
             continue
         prio = min((tags.index(x) for x in t if x in tags), default=None)
@@ -203,7 +203,7 @@ def pasang(ops: list[dict], aset: list[dict], total_ms: int, *, hook_ms: int | N
             pil = c[putar[jenis] % len(c)]
             putar[jenis] += 1
         if pil:
-            kunci, dur = pil["kunci"], int(pil.get("durasi_ms") or 300) - SISA_MS
+            kunci, dur = pil["kunci"], int(pil.get("durasi_ms") or 300) - SISA_MS - 1
         else:
             kunci, dur = TANPA_ASET[jenis]
             bawaan.add(kunci)

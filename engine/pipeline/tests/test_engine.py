@@ -114,6 +114,60 @@ class PerintahTts(unittest.TestCase):
 
 
 
+class SuaraDariTeks(unittest.TestCase):
+    """R34: pelafalan, cap waktu kata, daftar suara, gabungan + LUFS."""
+
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import tts
+        self.tts = tts
+
+    def test_pelafalan_frasa_terpanjang_dan_peta_kata_asli(self):
+        u, g = self.tts.susun_ucapan("Ini Loose Pants, dari Aysilla!", {"loose pants": "lus pens", "Aysilla": "Ai sila", "ini": "ini"})
+        self.assertEqual(u, "Ini lus pens, dari Ai sila!")
+        self.assertEqual([x["kata"] for x in g], [["Ini"], ["Loose", "Pants,"], ["dari"], ["Aysilla!"]])
+        self.assertEqual(u[g[1]["awal"]:g[1]["akhir"] + 1], "lus pens,")
+
+    def test_waktu_kata_dari_batas_kata(self):
+        _, g = self.tts.susun_ucapan("halo Loose Pants kak", {"Loose Pants": "lus pens"})
+        cue = [{"mulai_ms": 100, "awal": 0}, {"mulai_ms": 500, "awal": 5}, {"mulai_ms": 800, "awal": 9}, {"mulai_ms": 1200, "awal": 14}]
+        k = self.tts.waktu_kata(g, cue, 2.0)
+        self.assertEqual([x["teks"] for x in k], ["halo", "Loose", "Pants", "kak"])
+        self.assertEqual((k[0]["mulai"], k[0]["akhir"]), (0.1, 0.5))
+        self.assertAlmostEqual(k[2]["akhir"], 1.2)  # frasa dibagi rata menurut huruf, akhirnya = kata berikutnya
+        self.assertAlmostEqual(k[3]["akhir"], 1.75)  # kata terakhir = akhir audio - 0,25 dtk
+        for a, b in zip(k, k[1:]):
+            self.assertLessEqual(a["akhir"], b["mulai"] + 1e-6)
+
+    def test_suara_dan_parameter_ditolak(self):
+        with self.assertRaises(self.tts.Ditolak):
+            self.tts.urai_suara("elevenlabs:Rachel")
+        self.assertEqual(self.tts.urai_suara("Andika"), ("windows", "Andika"))
+        self.assertEqual(self.tts.urai_suara(None), ("windows", "Andika"))
+        with self.assertRaises(self.tts.Ditolak):
+            self.tts.angka_dari({"jeda_ms": 5000}, "jeda_ms", 300, 0, 3000, "jeda")
+
+    @unittest.skipUnless(sys.platform == "win32", "suara Windows")
+    def test_daftar_suara_dan_gabungan_lufs(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "job.json").write_text(json.dumps({"tts": {"daftar_suara": True}}), encoding="utf-8")
+        self.assertEqual(self.tts.jalankan(d), 0)
+        suara = json.loads((d / "out" / "tts.json").read_text(encoding="utf-8"))["suara"]
+        self.assertIn("windows:Andika", [s["id"] for s in suara])
+        (d / "job.json").write_text(json.dumps({"tts": {"kalimat": ["Halo kak.", "Ini Loose Pants."], "jeda_ms": 500,
+                                                        "pelafalan": {"Loose Pants": "lus pens"}}}), encoding="utf-8")
+        (d / "brand_kit.json").write_text(json.dumps({"teks": {"pelafalan": {"kak": "kaak"}}}), encoding="utf-8")
+        self.assertEqual(self.tts.jalankan(d), 0)
+        lap = json.loads((d / "out" / "tts.json").read_text(encoding="utf-8"))
+        self.assertEqual(lap["file"][0]["diucapkan"], "Halo kaak.")  # pelafalan Brand Kit
+        self.assertEqual(lap["file"][1]["diucapkan"], "Ini lus pens.")  # pelafalan job
+        self.assertEqual([k["teks"] for k in lap["file"][1]["kata"]], ["Ini", "Loose", "Pants."])
+        f1, f2 = lap["file"]
+        self.assertAlmostEqual(f2["mulai"], f1["akhir"] + 0.5, places=2)
+        self.assertAlmostEqual(lap["gabungan"]["durasi"], f2["akhir"], delta=0.05)
+        self.assertAlmostEqual(self.tts.loudness(d / "out" / "vo" / "gabungan.wav"), -16, delta=1.0)
+
+
 class PerintahVisual(unittest.TestCase):
     """R24: engine visual <job_dir> lewat visual-venv; jalan dari folder rilis + MOTION_ENGINE_DATA (R20)."""
 
@@ -127,6 +181,7 @@ class PerintahVisual(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != "MOTION_ENGINE_DATA"}
         if env_data:
             env["MOTION_ENGINE_DATA"] = env_data
+            env["MOTION_TOOLS_DIR"] = str(engine.TOOLS)  # data uji di folder sementara; alat tetap yang terpasang
         r = subprocess.run([sys.executable, str(engine_py), "visual", str(d)], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", env=env)
         return r, d
@@ -160,7 +215,7 @@ class PerintahVisual(unittest.TestCase):
         job = {"visual": {"alat": "reframe", "jalur": str(d / "out" / "jalur.json"), "kanvas": [1080, 1920], "fit": "isi"}}
         (d / "job.json").write_text(json.dumps(job), encoding="utf-8")
         import os
-        env = {**os.environ, "MOTION_ENGINE_DATA": str(data)}
+        env = {**os.environ, "MOTION_ENGINE_DATA": str(data), "MOTION_TOOLS_DIR": str(engine.TOOLS)}
         r = subprocess.run([sys.executable, str(rilis / "pipeline" / "engine.py"), "visual", str(d)], capture_output=True,
                            text=True, encoding="utf-8", errors="replace", env=env)
         self.assertEqual(r.returncode, 0, r.stderr[-800:])

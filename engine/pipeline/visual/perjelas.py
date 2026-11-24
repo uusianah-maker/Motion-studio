@@ -2,7 +2,7 @@
 
   python pipeline/visual/perjelas.py <masuk> <folder_keluar> [--mode cepat|kualitas] [--skala 2|3|4] [--sisi 1920]
 
-- Alat: D:\\VIBECODING\\tools\\realesrgan\\realesrgan-ncnn-vulkan.exe (override MOTION_REALESRGAN), lisensi di LICENSES\\.
+- Alat: <TOOLS>/realesrgan/realesrgan-ncnn-vulkan.exe (MOTION_TOOLS_DIR; override MOTION_REALESRGAN), lisensi di LICENSES/.
 - Mode:
     kualitas = realesrgan-x4plus (foto/footage nyata, x4 saja, lambat)  -> bawaan GAMBAR
     cepat    = realesr-animevideov3 (x2/x3/x4, jauh lebih cepat)       -> bawaan VIDEO
@@ -30,7 +30,7 @@ import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
 
-ALAT = Path(os.environ.get("MOTION_REALESRGAN", r"D:\VIBECODING\tools\realesrgan\realesrgan-ncnn-vulkan.exe"))
+ALAT = Path(os.environ.get("MOTION_REALESRGAN") or beban.TOOLS / "realesrgan" / "realesrgan-ncnn-vulkan.exe")
 MODE = {"kualitas": ("realesrgan-x4plus", (4,)), "cepat": ("realesr-animevideov3", (2, 3, 4))}
 GAMBAR = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 IDLE = 0x40

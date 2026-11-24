@@ -448,9 +448,11 @@ Sumber angka: laporan Hanagaki (85 video Aysilla, `BELAJAR/hanagaki/LAPORAN-HANA
 - Progres JSON-lines Batch / Pisah / Beat Spot kini ditulis UTF-8 (di Windows sebelumnya cp1252, karakter seperti "·" rusak di app).
 
 ## 18. Visual Tools AI lokal (R24, v0.4.1, 16 Nov 2026, yuki — owner: "Ya, bagikan") — DRAF
-Semua model jalan di PC sendiri, tanpa API berbayar. Hasil AI selalu **usulan** (`"usulan": true`): app menampilkannya sebagai keyframe/jalur yang bisa diubah, dimatikan, atau dihapus manual (hybrid). Job berat jalan dengan prioritas Idle dan maksimal 2 pekerja. Kode ada di `pipeline/visual/`. Python vision = venv terpisah `D:\VIBECODING\tools\visual-venv` (override `MOTION_VISUAL_PY`) supaya OpenCV demucs-venv tidak bentrok. Status: format 18.1–18.2 sudah ada dan dites; 18.3–18.6 menunggu OK instalasi dari venus.
+Semua model jalan di PC sendiri, tanpa API berbayar. Hasil AI selalu **usulan** (`"usulan": true`): app menampilkannya sebagai keyframe/jalur yang bisa diubah, dimatikan, atau dihapus manual (hybrid). Job berat jalan dengan prioritas Idle dan maksimal 2 pekerja. Kode ada di `pipeline/visual/`. Python vision = venv terpisah `<TOOLS>\visual-venv` (override `MOTION_VISUAL_PY`) supaya OpenCV demucs-venv tidak bentrok. Status: format 18.1–18.2 sudah ada dan dites; 18.3–18.6 menunggu OK instalasi dari venus.
 
 ### 18.0 Aturan wajib: lisensi, cache, beban
+> `<TOOLS>` = folder alat bersama: env `MOTION_TOOLS_DIR`, bawaannya `<DATA>/../tools` (di PC kantor `D:` …`\tools`). Isinya `visual-venv`, `demucs-venv`, `models`, dan `realesrgan`. Kode tidak berisi path absolut karena repo bersifat publik.
+
 Sumber: cek sukma 16 Nov, Motion-studio `docs/R23-R24-LISENSI-KAPASITAS-2026-11-16.md`. Aturan ini ditegakkan di `pipeline/visual/beban.py` dan dites di `AturanBeban`.
 
 1. **Model hapus latar** selalu disebut eksplisit dan harus ada di daftar putih:
@@ -459,7 +461,7 @@ Sumber: cek sukma 16 Nov, Motion-studio `docs/R23-R24-LISENSI-KAPASITAS-2026-11-
    
    Model lain ditolak dengan kode 2. Bawaan rembg (bria-rmbg) non-komersial, jadi **dilarang**. Backend cloud (withoutbg, atlascloud) juga tidak dipakai.
 2. **Cache model di D:**, tidak di C:
-   - `U2NET_HOME` = `D:\VIBECODING\tools\models`
+   - `U2NET_HOME` = `<TOOLS>\models`
    - `HF_HOME` = `…\models\hf`
    - Model MediaPipe dipanggil dengan path file eksplisit dari folder yang sama.
    - Folder bisa diganti lewat `MOTION_MODELS_DIR`.
@@ -522,6 +524,7 @@ Hasilnya keyframe jendela crop, **bukan** video jadi.
 Semua perintah itu menulis progres JSON-lines dalam UTF-8.
 
 ### 18.4 TTS voice over `tts/1` (R24f) — sudah jalan
+> Diperluas di **§21** (R34 Suara dari Teks): daftar suara, pelafalan, gabungan, cap waktu kata, -16 LUFS.
 `engine tts <job_dir>`:
 - Masukan: `job.json` → `"tts": {"kalimat": ["…", "…"], "suara": "Andika", "kecepatan": 1.0}`. `"teks": "…"` boleh dipakai sebagai ganti `kalimat`.
 - Keluaran, hanya di dalam job_dir:
@@ -534,17 +537,19 @@ Semua perintah itu menulis progres JSON-lines dalam UTF-8.
 - Prioritas proses Idle. Skrip `tts_windows.ps1` diambil dari folder kode (rilis). Tidak ada yang ditulis ke folder data. App yang memindahkan WAV ke proyek sebagai usulan di track audio.
 
 ### 18.5 Venv & model terpasang (16 Nov 2026, OK venus)
-- **visual-venv**: `D:\VIBECODING\tools\visual-venv`, Python 3.12.5, ukuran 730 MB.
+- **visual-venv**: `<TOOLS>\visual-venv`, Python 3.12.5, ukuran 730 MB.
   - Versi dikunci di `pipeline/visual/requirements-visual.txt`: mediapipe 1.2.3, opencv-contrib-python 5.0.0.93 (dengan CSRT/KCF), rembg 2.0.87, onnxruntime 1.32.0 CPU. Tanpa torch.
   - `.venv` dan `demucs-venv` tidak berubah: `pip freeze` sebelum dan sesudah instalasi identik.
-- **Model**, di `D:\VIBECODING\tools\models`:
+- **Model**, di `<TOOLS>\models`:
 
 | File | Sumber | Lisensi | SHA256 |
 |---|---|---|---|
 | `blaze_face_short_range.tflite` (0,23 MB) | storage.googleapis.com/mediapipe-models …/float16/1 | Apache-2.0 | `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f` |
 | `efficientdet_lite0_int8.tflite` (4,6 MB) | storage.googleapis.com/mediapipe-models …/int8/1 | Apache-2.0 | `0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb` |
 | `BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx` (224 MB) = rembg `birefnet-general-lite` | GitHub ZhengPeng7/BiRefNet rilis v1 | MIT | `5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333` |
-| `realesrgan-ncnn-vulkan-20220424-windows.zip` (45,5 MB) — **belum diekstrak** | GitHub xinntao/Real-ESRGAN rilis v0.2.5.0 | BSD-3 (model) + MIT (ncnn-vulkan) + BSD-3 (ncnn); zip tanpa LICENSE | `abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d` |
+| `u2net_human_seg.onnx` (176 MB) — terpasang, **tidak jadi bawaan** (ikut menghapus produk yang dipegang) | GitHub danielgatis/rembg rilis v0.0.0 (distribusi ONNX resmi, OK venus) | Apache-2.0 | `01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c` |
+| `isnet-general-use.onnx` (179 MB) — bawaan video | GitHub danielgatis/rembg rilis v0.0.0 | Apache-2.0 | `60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a` |
+| `realesrgan-ncnn-vulkan-20220424-windows.zip` (45,5 MB) — diekstrak ke `realesrgan\` (§18.9) | GitHub xinntao/Real-ESRGAN rilis v0.2.5.0 | BSD-3 (model) + MIT (ncnn-vulkan) + BSD-3 (ncnn); zip tanpa LICENSE | `abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d` |
 
 ### 18.6 Deteksi wajah & objek (R24a) — sudah jalan
 Perintah: `<visual-venv>\Scripts\python pipeline/visual/deteksi.py <video> <keluar.json> [--jenis wajah,objek] [--hz 10] [--label person,handbag,…]`. Hasilnya jalur-posisi/1 (§18.1).
@@ -578,7 +583,15 @@ Perintah: `<visual-venv>\Scripts\python pipeline/visual/hapus_latar.py <masuk> <
   - `<nama>-masker.mp4`: abu-abu, putih = subjek, untuk `alphamerge` di render.
 - **Laporan**: `<folder_keluar>/hapus_latar.json`, berisi `{"schema":"hapus-latar/1","status":"selesai|ditolak","usulan":true,"model","lisensi","jenis","file","masker",…}`. Kode keluar 2 untuk ditolak (model di luar daftar putih, klip lebih dari 15 dtk, fps di luar batas), 1 untuk gagal teknis.
 - **Tanpa unduhan dari rembg.** rembg ternyata mengunduh model dari mirror danielgatis, bukan dari sumber resmi. Satu kali sempat terunduh saat uji coba; filenya identik (SHA sama) dan sudah dihapus. Karena itu inferensi BiRefNet ditulis langsung dengan onnxruntime dan file resmi di §18.5: input tetap 1024×1024, normalisasi ImageNet, lalu sigmoid. Model lain di daftar putih belum dipasang dan ditolak sampai unduhannya mendapat OK.
-- **Kecepatan CPU di PC kantor: ±13 dtk per frame.**
+- **Model (16 Nov, OK venus)**:
+
+| Model | Untuk | Kecepatan per frame | Catatan |
+|---|---|---|---|
+| `isnet-general-use` | bawaan **video** | ±1,3 dtk | Topengnya dipertegas (0,15–0,55 → 0–1) karena kain polos sempat setengah transparan; sebagian latar bisa ikut terbawa. Video 15 dtk @10 fps ≈ **3,5 menit** (uji 2 dtk: 27 dtk). |
+| `birefnet-general-lite` | bawaan **gambar**, opsi "kualitas tinggi" untuk klip sangat pendek | ±13 dtk | — |
+| `u2net_human_seg` | — | ±0,45 dtk | **Tidak dipakai sebagai bawaan**: celana yang dipegang ikut terhapus. |
+
+- **Kecepatan BiRefNet di CPU PC kantor: ±13 dtk per frame.**
   - Satu gambar butuh ±13 dtk.
   - Video 15 dtk pada 10 fps (150 frame) butuh ±33 menit. Pada 5 fps, ±17 menit.
   - Perkiraan waktu diukur dari frame pertama, lalu dikirim lewat `perkiraan_dtk`.
@@ -655,7 +668,7 @@ Perintah: `python pipeline/kamus_belajar.py <.motionstudio/brands/<brand_id>/bel
 
 ### 18.9 Perjelas / upscale (R24e) — sudah jalan
 Perintah: `<visual-venv>\Scripts\python pipeline/visual/perjelas.py <masuk> <folder_keluar> [--mode cepat|kualitas] [--skala 2|3|4] [--sisi 1920]`.
-- **Alat**: `D:\VIBECODING\tools\realesrgan\realesrgan-ncnn-vulkan.exe` (override `MOTION_REALESRGAN`), berjalan di GPU Vulkan.
+- **Alat**: `<TOOLS>\realesrgan\realesrgan-ncnn-vulkan.exe` (override `MOTION_REALESRGAN`), berjalan di GPU Vulkan.
   - Lisensi: exe MIT, model BSD-3, ncnn BSD-3. Teks lisensinya tersimpan di `LICENSES\`.
   - `vcomp140d.dll` tidak didistribusikan.
 - **Mode**:
@@ -674,7 +687,7 @@ Perintah: `<visual-venv>\Scripts\python pipeline/visual/perjelas.py <masuk> <fol
 - **Bug yang sudah diperbaiki saat uji**: stderr exe sempat dialirkan ke pipe yang tidak dibaca, sehingga proses tertahan dan butuh ±50 dtk/frame. Sekarang stderr ditulis ke file log.
 
 ### 18.10 Perintah `engine visual <job_dir>` — satu pintu (OK venus 16 Nov)
-Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`, bawaannya `D:/VIBECODING/tools/visual-venv/Scripts/python.exe`. Polanya sama dengan `tts`, dan juga jalan dari folder rilis (R20).
+Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`, bawaannya `<TOOLS>/visual-venv/Scripts/python.exe`. Polanya sama dengan `tts`, dan juga jalan dari folder rilis (R20).
 ```json
 {"schema":"engine-job/1","visual":{"alat":"deteksi|reframe|lacak|hapus_latar|perjelas","masuk":"konten/…/a.mp4", …}}
 ```
@@ -702,3 +715,286 @@ Pengganti rencana §18.3. Prosesnya berjalan di visual-venv: `MOTION_VISUAL_PY`,
   - IN21 (celana di lantai, tanpa orang): Haar **salah mengira lipatan kain sebagai wajah** dan memindahkan caption ke 0,42. MediaPipe benar: 0 wajah, caption tetap di 0,72.
 - **Waktu**: ±2,3 dtk per klip, dibanding ±0,7 dtk dengan Haar.
 - test_posisi_caption tetap lulus.
+
+## 21. Suara dari Teks — `engine tts` diperluas (R34, v0.4.4, 16 Nov 2026, yuki; app: ucok)
+Menggantikan §18.4. Semua field baru bersifat aditif, jadi job tts/1 lama tetap jalan (default: jeda 300 ms, -16 LUFS).
+
+**Masukan** `job.json → tts`:
+```json
+{"kalimat":["Halo kak, ini Loose Pants.","Harganya cuma 99 ribu!"], "suara":"windows:Andika", "kecepatan":1.0,
+ "jeda_ms":300, "pelafalan":{"Loose Pants":"lus pens"}, "lufs":-16}
+```
+- `teks` boleh dipakai sebagai ganti `kalimat`.
+- `suara` = id dari daftar suara. `"Andika"` tanpa awalan berarti `windows:Andika`.
+- Batas nilai: kecepatan 0,5–2,0; jeda 0–3000 ms; lufs -30..-8; maksimal 60 kalimat; maksimal 1000 huruf per kalimat.
+- Nilai di luar batas atau backend yang tidak ada menghasilkan kode 2 (ditolak).
+
+**Daftar suara**: `{"tts":{"daftar_suara":true}}` → `out/tts.json` = `{"schema":"tts/1","status":"selesai","suara":[{"id":"windows:Andika","nama":"Microsoft Andika","bahasa":"id-ID","gender":"Male","backend":"windows"}, …]}`. Di PC kantor tersedia Andika (id-ID) dan suara Inggris David, Zira, Mark, George, Susan, Hazel.
+
+**Kamus pelafalan per brand**: field Brand Kit baru `teks.pelafalan` {tulisan: ucapan}, digabung dengan `tts.pelafalan` dari job (job yang menang).
+- Frasa terpanjang dicocokkan lebih dulu (maksimal 4 kata), tidak peka huruf besar/kecil maupun tanda baca. Tanda baca di ujung kata tetap ikut, supaya intonasi terjaga.
+- Yang berubah hanya ucapan. `teks` dan `kata[].teks` tetap memakai tulisan asli, untuk subtitle.
+
+**Keluaran** (hanya di dalam job_dir):
+- `out/vo/01.wav …` per kalimat, ditambah `out/vo/gabungan.wav` (kalimat + jeda).
+- Format WAV 48 kHz mono 16-bit.
+- Semua file memakai **satu gain** yang sama, sehingga gabungan = target LUFS. Limiter di -1 dBTP. Hasil uji: -16,4 LUFS, -1,0 dBTP.
+```json
+{"schema":"tts/1","status":"selesai","suara":"windows:Andika","backend":"windows","kecepatan":1,"jeda_ms":300,"lufs":-16,"usulan":true,
+ "gabungan":{"file":"out/vo/gabungan.wav","durasi":10.33},
+ "file":[{"no":1,"teks":"Halo kak, ini Loose Pants.","diucapkan":"Halo kak, ini lus pens.","file":"out/vo/01.wav","durasi":4.13,
+          "mulai":0.0,"akhir":4.13,"kata":[{"teks":"Halo","mulai":0.101,"akhir":0.416}, …]}],
+ "total_durasi":10.33}
+```
+- `file[].mulai/akhir` = posisi kalimat di gabungan. `kata[].mulai/akhir` = posisi kata relatif terhadap file kalimatnya. Waktu kata di gabungan = `file.mulai + kata.mulai`.
+- **Cap waktu kata tanpa Whisper**: diambil dari batas kata Windows (`IncludeWordBoundaryMetadata`).
+  - Windows hanya memberi waktu mulai kata, jadi akhir kata = awal kata berikutnya.
+  - Kata terakhir berakhir di akhir audio dikurangi sisa sunyi (maksimal 0,25 dtk).
+  - Frasa hasil pelafalan dibagi rata menurut panjang hurufnya.
+- Hybrid: VO adalah usulan. App menaruhnya di Media/Aset brand, lalu tim memakai, memotong, atau menggantinya.
+
+**Backend yang bisa ditambah**: `pipeline/tts.py → BACKEND` = {"windows"}.
+- Backend baru (TTS neural Indonesia, atau R31 "Suara owner" = TTS lalu dikonversi RVC/OpenVoice) cukup menyediakan `daftar()` dan `ucapkan(item, suara, kecepatan) → batas kata per kalimat`.
+- Id suaranya `"<backend>:<nama>"`, misalnya `owner:Suara owner`.
+- Format keluaran tetap sama.
+- Kalau backend tidak memberi batas kata, waktu kata akan diisi dari perkiraan atau Whisper (menyusul).
+
+**Skrip** `tts_windows.ps1` (tetap kompatibel dengan cara lama):
+- `-Daftar -Laporan s.json` untuk daftar suara;
+- `-Masuk m.json -Laporan h.json` untuk banyak kalimat dalam satu proses: teks dibaca dari file UTF-8 (aman untuk tanda kutip), hasilnya berisi batas kata.
+
+Proses PowerShell dan ffmpeg berjalan dengan prioritas Idle.
+
+## 22. VO dari Library: suara utama dari "Suara dari Teks" (R34 lanjutan, v0.4.5, 16 Nov 2026, yuki — usul ucok; disetujui venus)
+Tujuannya: VO yang sudah ada di Media/Aset brand (jenis `vo`, hasil `engine tts` §21) dipakai sebagai **suara utama** di Video iklan (Generate), Batch Remix, dan Beat Spot. Subtitle diambil dari teks VO yang sudah diketahui, **tanpa Whisper**. Footage dipakai sebagai gambar (b-roll).
+
+### 22.1 Masukan job (aditif; job tanpa `vo` = perilaku lama)
+```json
+{"vo": {"media": "$vo:vo-ays-20261116-004", "index": "vo_index.json", "suara_footage": "mati", "subtitle": true}}
+```
+- **`media`**: kunci aset VO.
+  - App memetakannya ke path file lewat `refs.json` / `sumber` seperti media lain.
+  - Untuk Generate, kunci ini juga dimasukkan ke `sumber` sebagai `{"kunci":"$vo:…","path":…}`.
+- **`index`**: nama file di dalam `<job_dir>`.
+  - App **menyalin** `.motionstudio/vo/<version>.json` (`vo-index/1`) ke sana. Mesin tidak membaca `.motionstudio`.
+  - Isinya `kalimat[]` dengan `mulai/akhir` (detik di file VO) dan `kata[]` (detik, relatif terhadap kalimatnya). Format ini sama dengan §21 `file[]` dan dengan `voText.ts`.
+- **`suara_footage`**: `"mati"` (bawaan) | `"pelan"` (suara asli footage dipertahankan di 15 %, misalnya suasana) | `"asli"`.
+- **`subtitle`**: bawaan `true`.
+- **Ditolak (kode 2)** bila:
+  - index tidak ada atau tidak sah (bukan `vo-index/1`, tanpa kalimat, `akhir` > durasi file + 0,1 dtk, lebih dari 60 kalimat);
+  - media VO tidak ada;
+  - `audio_pilihan: "musik"` dipakai bersama `vo` (bertentangan).
+
+### 22.2 Keluaran (ms-ops/1, sama untuk ketiga mode)
+- **Track `audio`**:
+  - satu klip VO utuh mulai 0 ms (`in_ms` 0, durasi = durasi VO), volume 1,0;
+  - jeda antar kalimat ikut dari file (sudah diatur `jeda_ms` saat TTS).
+- **Track `subtitle`**:
+  - dari index; satu kalimat dipecah menjadi halaman sesuai aturan caption mode/preset (`caption.maks_kata`, bawaan 3–4 kata);
+  - `words` diambil dari `kata[]`, dengan waktu = `kalimat.mulai + kata.mulai`;
+  - teks = tulisan asli (pelafalan §21 tidak tampil di layar);
+  - kata kunci, angka, dan harga di-highlight seperti biasa;
+  - koreksi kamus **tidak** diterapkan karena teksnya sudah benar.
+- **Track `video` (footage sebagai b-roll)**:
+  - footage disusun mengisi durasi VO. Potongan mengikuti batas kalimat: satu kalimat = 1–2 shot, `shot.maks_dtk` preset dihormati;
+  - suara footage mengikuti `suara_footage` (`set_audio` / volume);
+  - Generate: dari footage sumber, dengan bagian diam/kosong dibuang lewat deteksi gerak/adegan, bukan transkrip;
+  - Batch: Shot Library, dipilih lewat matcher dengan **teks kalimat VO** sebagai pengganti kalimat vokal;
+  - Beat Spot: potongan tetap di ketukan (§16); VO diletakkan di atas sound dengan `set_ducking` 0,3 bila `audio_pilihan: "keduanya"`.
+- **Hook, CTA, SFX (§19), musik, dan watermark/penutup** mengikuti aturan mode masing-masing.
+  - **Hook (keputusan venus 16 Nov)**: kalimat pertama VO dipakai **utuh** bila ≤ 12 kata, tanpa tanda baca akhir, karena naskah VO ditulis sengaja dan kalimat pertamanya adalah pembuka. Aturan ini mengalahkan `hook.dari_kalimat_kuat` dan batas `hook.baris` preset. Kalimat yang lebih panjang memakai aturan hook mode masing-masing. Hook tetap bisa diubah di editor (`vo_library.hook_vo`; berlaku di Generate & Batch, Beat Spot tidak punya hook).
+  - SFX `harga`/`pop` otomatis ikut dari kata-kata di subtitle.
+- **Laporan**: `rencana.json` → `"sumber_suara": "vo_library"`, `"vo": {"media", "durasi", "kalimat": n}`. Peringatan bila footage lebih pendek dari VO (footage diulang/diperpanjang, `jenis: "footage_kurang"`).
+- **Hybrid**: VO, subtitle, dan shot adalah klip biasa, jadi bisa digeser, dipotong, atau diganti di editor. Saat memotong VO di editor, app memakai `voSubtitleOps` untuk menyusun ulang subtitle.
+
+### 22.3 Pembagian kerja (usul, mohon dikonfirmasi venus/ucok)
+- **ucok (app)**:
+  - pilihan "VO dari Library" di halaman Video iklan, Batch, dan Beat Spot;
+  - menyalin `vo-index/1` ke `<job_dir>/vo_index.json` + `refs` media VO.
+- **yuki (mesin)**: Batch Remix (`batch/perencana.py`) dan Beat Spot (`batch/beatspot.py`), ditambah helper bersama `pipeline/vo_library.py` (validasi index → kalimat/kata/halaman subtitle).
+- **venus (mesin)**: Generate (`edit.py`/`engine.py`), memakai helper yang sama (dilewati jalur Whisper/autocut).
+
+### 22.4 Status implementasi
+- **Helper** `pipeline/vo_library.py`:
+  - `konfigurasi` (validasi `job.vo`), `muat_index` (validasi `vo-index/1` terhadap durasi file VO);
+  - `kata_absolut` (waktu kata absolut; kalimat tanpa cap waktu kata dibagi rata menurut huruf);
+  - `halaman`, `segmen_footage` (footage diulang mengisi durasi VO), `cut_vo` (pengganti `autocut.run_cut`).
+  - Tes: `tests/test_vo_library.py`.
+- **Generate — sudah jalan**:
+  - `engine generate` dengan `job.vo`:
+    - **tanpa Whisper**: `out/transkrip.json` = kata dari VO, dengan `sumber_suara: "vo_library"`;
+    - footage boleh tanpa suara dan minimal 1 dtk.
+  - `edit.py --vo-index/--vo-media/--vo-path/--vo-volume-footage`:
+    - cek ucapan, kamus, dan autocut dilewati;
+    - caption, hook, kata kunci, efek, SFX §19, musik, CTA, dan watermark tetap memakai aturan Generate;
+    - klip VO di track `audio`; klip `video` diberi `volume` sesuai `suara_footage`.
+  - Kunci VO masuk `aset_lokal` bila tidak ada di Brand Kit ekspor.
+  - `engine ulang` juga memakai jalur VO, dengan transkrip VO yang sudah ada.
+  - Uji di salinan job (VO 3 kalimat, 13,5 dtk), validator Motion Studio OK:
+    - footage IN17 12,9 dtk → 2 klip video;
+    - footage 2 dtk → diulang 7×, dengan peringatan `footage_kurang`;
+    - SFX `harga` muncul di "sembilan puluh sembilan ribu" dan "diskon".
+- **Aset VO tidak masuk `aset_lokal`** (Generate dan Batch). File VO ada di Media workspace, di luar folder mesin, dan app/runner sudah mengenalnya lewat **Brand Kit** (aset `vo`, kunci `$vo:<id>`). Path VO dari `sumber` job hanya dipakai mesin untuk validasi index dan `jaga_durasi`. Konsekuensinya, aset VO **wajib ada di brand_kit.json job**. Ini sudah terjadi karena `tts.ts` memasukkannya ke Brand Kit; tanpa itu validator menolak dengan "placeholder tidak dideklarasikan".
+- **Batch Remix — sudah jalan** (`batch/perencana.py`):
+  - VO dari Library menjadi **satu kandidat VO** (`kandidat_vo_library`): kalimat utuh dengan urutan tetap, topik dari teks, waktu kata absolut.
+  - `vo_mod.susun/ragamkan` dilewati. Kalimat yang kena aturan superlatif hanya dilaporkan (`saran_buang`), tidak dibuang.
+  - Variasi antar varian hanya berasal dari susunan shot. Matcher tidak menemukan footage dengan id VO, jadi semua potongan b-roll.
+  - Klip audio per kalimat diambil dari `$vo:…` dengan `in_ms` = posisi kalimat di file VO.
+  - `maks_per_vo` bawaan = `jumlah`.
+  - `batch.json` → `sumber_suara: "vo_library"`, `vo_library: {…}`.
+  - **Perbaikan umum** (berlaku juga untuk Batch biasa):
+    - shot pembuka yang sudah dipakai varian lain dengan VO sama ikut dihindari. Dulu pembuka selalu sama, sehingga semua calon ditolak "pembuka sama";
+    - `batch.json.calon_ditolak` = hitungan alasan penolakan calon varian.
+  - Uji di salinan batch 2026-11-13_video-winning, VO 13,5 dtk: 3/3 varian dengan shot berbeda, validator OK, qc lulus.
+- **Beat Spot — sudah jalan** (`batch/beatspot.py`):
+  - VO utuh di track `audio` mulai 0. Bila ada sound, `set_ducking` 0,3 aktif.
+  - Subtitle dibuat dari teks VO: halaman ≤ `caption.maks_kata` kata, gaya caption preset, posisi bawaan y 0,72.
+  - Potongan di ketukan diperpanjang sampai menutup seluruh VO (+0,5 dtk). Bila VO lebih panjang dari target, target maksimum ikut naik dan peringatan `durasi` (info) muncul.
+  - Peringatan bila sound lebih pendek dari VO atau footage tidak cukup (`footage_kurang`).
+  - File VO di `sumber` **tidak** dianggap sound, walaupun itu satu-satunya audio.
+  - Uji di salinan job Beat Spot R18 (preset aysilla-beatspot, footage asli, VO 13,5 dtk): 8 potongan, 18 dtk, 11 subtitle, validator OK. Tes `BeatSpot.test_vo_dari_library_suara_utama_dan_subtitle` lulus.
+- **§22 lengkap**: Generate, Batch, dan Beat Spot sudah jalan. Sisi app (pilihan di 3 halaman + salin index) dikerjakan ucok.
+
+
+## 23. Profil suara "Suara owner" — `engine suara_profil` (R31, v0.4.6, 16 Nov 2026, yuki; app: Hanagaki; OK venus)
+Tujuannya: owner menambah contoh suaranya, mesin membersihkan dan memeriksa mutunya, lalu melatih profil. Sesudah siap, `owner:Suara owner` muncul di daftar suara §21. Pengucapannya: TTS Andika (+ pelafalan) lalu dikonversi ke suara owner (OpenVoice V2 tone converter untuk uji cepat, Applio/RVC untuk hasil utama; keduanya MIT).
+- **Satu profil saja**: `owner`. Menambah profil suara orang lain perlu keputusan owner, dan mesin menolak id profil lain dengan kode 2.
+
+### 23.1 Masukan
+```json
+{"schema":"engine-job/1","mode":"suara_profil","job_id":"AYS-…",
+ "sumber":[{"kunci":"$media:m_abc","path":"D:/…/SHARED_MEDIA/…/v_….mp4"}, …],
+ "suara_profil":{"profil":"owner","nama":"Suara owner",
+                 "tambah_contoh":["$media:m_abc", …],
+                 "hapus_contoh":["$media:m_old", …],
+                 "latih":true,
+                 "contoh_kalimat":["Halo kak, ini Loose Pants.", "…", "…"]}}
+```
+- **`tambah_contoh`**: kunci media yang path-nya diberikan di `sumber`, seperti media lain. Boleh berupa **video atau audio** (mp4/mov/webm/m4a/mp3/wav); mesin mengambil audionya sendiri.
+- File asli **tidak diubah dan tidak dipindah**. Mesin menyalin hasil bersihnya ke folder profil.
+- Contoh yang sudah pernah ditambahkan (sidik SHA-256 sama) dilewati, jadi aman bila dikirim ulang.
+- **`hapus_contoh`** (opsional, usul Hanagaki): kunci contoh yang dibuang dari profil, yaitu file bersih dan sidiknya. Kunci yang tidak dikenal diabaikan. Bila model sudah dilatih, status berubah menjadi `perlu_latih_ulang` sampai `latih: true` dijalankan lagi.
+- **`latih`**: `false` = hanya tambah dan periksa contoh. `true` = latih kalau total durasi bersih ≥ minimum.
+- **`contoh_kalimat`**: maksimal 3 kalimat untuk contoh hasil. Bawaannya 3 kalimat jualan baku.
+
+### 23.2 Pemeriksaan & batas (per contoh)
+- **Pembersihan**:
+  - Audio diubah ke mono 40 kHz.
+  - Sunyi lebih dari 0,6 dtk dipotong. Bagian dengan musik atau lebih dari satu pembicara (bila terdeteksi) dibuang.
+  - Sisanya disebut **durasi bersih**.
+- **Mutu** per contoh: `snr_db` (perkiraan), `musik` (true bila musik latar terdeteksi), `clipping`. Contoh dengan SNR < 15 dB atau bermusik ditandai `dipakai: false` beserta `alasan`.
+- **Target durasi bersih**:
+  - **10–15 menit** untuk Applio.
+  - **Minimal 5 menit** untuk melatih Applio.
+  - **Minimal 30 dtk** untuk uji cepat OpenVoice.
+
+### 23.3 Keluaran `out/suara_profil.json` (`suara-profil/1`)
+```json
+{"schema":"suara-profil/1","status":"siap|kurang_contoh|perlu_latih_ulang|ditolak","profil":"owner","nama":"Suara owner",
+ "contoh":[{"kunci":"$media:m_abc","durasi":612.4,"durasi_bersih":548.0,"snr_db":31.2,"musik":false,"clipping":false,
+            "dipakai":true,"alasan":null}],
+ "durasi_bersih_total":548.0,"target_dtk":[600,900],"minimal_dtk":300,
+ "backend":"applio|openvoice","dilatih_pada":"2026-11-16T20:00:00+07:00","versi_model":3,
+ "contoh_hasil":[{"teks":"Halo kak, ini Loose Pants.","file":"out/contoh/01.wav"}, …],
+ "alasan":null}
+```
+- **`contoh[].kunci`** = kunci di `sumber` (`$media:<media_id>`), dipakai app untuk mencocokkan baris. `contoh[]` memuat **semua contoh aktif** di profil, bukan hanya yang dikirim di job ini.
+- **Progres** JSON-lines dikirim per tahap: `ambil_audio`, `bersihkan`, `periksa`, `latih` (dengan `perkiraan_dtk`; Applio ±1–2 jam di GTX 1650), `contoh`.
+- **Kode keluar**:
+  - 0 = selesai, termasuk `kurang_contoh` (contoh tersimpan tetapi belum dilatih karena durasi kurang);
+  - 2 = ditolak (profil bukan `owner`, tidak ada contoh yang terbaca, `latih` tetapi tidak ada contoh yang lolos mutu);
+  - 1 = gagal teknis.
+- **Beban**: kunci AI global, prioritas Idle, menunggu RAM ≥ 3 GB (§18.0). Pelatihan sebaiknya dijalankan di jam sepi.
+
+### 23.4 Penyimpanan & tanda siap
+- **Lokasi profil**: `<DATA>/konten/suara/owner/`.
+  - Isinya `contoh/` (WAV bersih), `model/` (bobot Applio + index, embedding OpenVoice), dan `profil.json`.
+  - Profil berlaku untuk **satu workspace**, tidak per brand, karena suara owner sama untuk semua brand.
+  - Rekaman dan model **tidak pernah masuk repo** (`konten/**` diabaikan git) dan tidak diunggah ke mana pun.
+- **Tanda siap**: `engine tts {"daftar_suara":true}` menyertakan `{"id":"owner:Suara owner","backend":"owner","siap":true,…}` bila `profil.json.status == "siap"`.
+  - App cukup membaca daftar suara. Tidak perlu membaca folder profil.
+  - Selama belum siap, `owner:Suara owner` tidak muncul. `tts` dengan suara itu ditolak dengan kode 2.
+
+### 23.5 Status
+- **Sudah jalan**: `engine suara_profil` (`pipeline/suara_profil.py`, berjalan di .venv). Fungsinya:
+  - ambil audio dari video/audio, ubah ke mono 40 kHz;
+  - deteksi ucapan dari energi terhadap lantai derau, jeda dipendekkan ke maksimal 0,6 dtk;
+  - hitung SNR dan clipping;
+  - deteksi musik latar: sela ucapan tetap berbunyi di atas -45 dBFS dan bersifat bernada (spectral flatness < 0,2);
+  - dedup dengan SHA-256, `hapus_contoh`, `perlu_latih_ulang`, `kurang_contoh`.
+- **Uji audio asli** (hanya dibaca):
+  - vokal IN17 hasil Demucs: SNR 28,8 dB, **dipakai**;
+  - video IN17 asli (bercampur musik): **ditolak "ada musik latar"**;
+  - stem musik: ditolak.
+  - Tes: `tests/test_suara_profil.py` 3/3.
+- **Latih + contoh hasil (16 Nov sore)**: `pipeline/suara_mesin.py`, dijalankan dengan suara-venv oleh `suara_profil.py` dan `tts.py`, di bawah kunci AI global, prioritas Idle, dan tunggu RAM.
+  - **`latih: true`, durasi bersih 30 dtk – < 5 menit** → backend `openvoice` (uji cepat ±2 menit). Status `siap`; `alasan` berisi catatan "uji cepat … tambah contoh sampai minimal 5 menit untuk hasil utama Applio".
+  - **≥ 5 menit** → backend `applio` (RVC v2 40 kHz, HiFi-GAN, rmvpe + contentvec, 150 epoch, batch 4, fp32). Langkahnya: preprocess → fitur → latih → index. Model akhir disalin ke `model/applio/owner.{pth,index}`, sedangkan checkpoint kerja dihapus.
+  - Keduanya juga menyimpan embedding OpenVoice (`model/openvoice_se.pth`) dan nada tengah owner (`model/info.json` `f0_hz`).
+  - **< 30 dtk** → `kurang_contoh` (kode 0), seperti sebelumnya.
+  - Sesudah latih: `versi_model` +1, `perlu_latih_ulang: false`, lalu 3 `contoh_hasil` dibuat di `out/contoh/NN.wav` lewat jalur yang sama dengan `tts`.
+- **`owner:Suara owner` di §21**:
+  - TTS dasar Windows (`profil.suara_dasar`, bawaan Andika, + pelafalan) → dikonversi ke suara owner (Applio: pitch otomatis dari selisih nada tengah; OpenVoice: tone color tau 0,3) → WAV 48 kHz, lalu LUFS seperti biasa.
+  - Durasi tidak berubah, jadi batas kata dari Windows tetap dipakai untuk subtitle.
+- **Uji (sampel SINTETIS = suara Windows Zira, bukan rekaman orang)**:
+  - OpenVoice 71 dtk bersih: 136 dtk sampai selesai, termasuk 3 contoh hasil.
+  - Kemiripan warna suara ke target naik dari 0,57 (Andika dasar) ke 0,91; nada tengah 147 → 182 Hz (target 182 Hz); durasi 3,62 → 3,61 dtk.
+  - Applio uji asap (5 sampel sintetis, 5,9 menit bersih, **3 epoch**, GTX 1650): 825 dtk dari awal sampai 3 contoh hasil. Kemiripan 0,57 → 0,91; nada 147 → 194 Hz; durasi tetap. Model akhir + index ±108 MB.
+  - Perkiraan 150 epoch (±1–2 jam) belum diukur dengan data asli; akan dicatat saat rekaman owner masuk.
+  - `engine tts` dengan `owner:Suara owner`: muncul di `daftar_suara` setelah profil siap. Subtitle dari batas kata Windows tetap pas.
+  - Selama latih, kunci AI global dipegang, jadi job AI berat lain antre (sesuai §18.0).
+- **Batasan**: OpenVoice tidak mengubah intonasi/logat, hanya warna suara. Hasil utama tetap Applio dengan rekaman owner 10–15 menit.
+
+### 23.6 Bobot model (R31, unduh 16 Nov, OK venus)
+Disimpan di `<TOOLS>/models/suara/`, hanya dari Hugging Face resmi. `suara_mesin.py` mengecek SHA256 sebelum dipakai dan tidak pernah mengunduh saat jalan (`HF_HUB_OFFLINE=1`). Prasyarat Applio (rmvpe, contentvec) di-*hardlink* ke folder Applio.
+
+| File | Asal | Ukuran | SHA256 | Lisensi |
+|---|---|---|---|---|
+| `f0G40k.pth`, `f0D40k.pth` | HF `IAHispano/Applio` `Resources/pretrained_v2/` (pretrained RVC v2, asal RVC-Project `lj1995/VoiceConversionWebUI`) | 69,7 / 136,3 MB | `3b2c44035e782c4b14ddc0bede9e2f4a724d025cd073f736d4f43708453adfcb` / `6b6ab091e70801b28e3f41f335f2fc5f3f35c75b39ae2628d419644ec2b0fa09` | MIT (repo HF Applio & lj1995) |
+| `rmvpe.pt` | HF `IAHispano/Applio` `Resources/predictors/` (bobot RMVPE yang dirilis RVC-Project) | 172,8 MB | `6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193` | ⚠ Kode RMVPE `Dream-High/RMVPE` Apache-2.0; bobotnya disebar RVC-Project (MIT). Tidak ada lisensi terpisah khusus bobot → **ditandai, boleh untuk uji internal** (venus) |
+| `contentvec/pytorch_model.bin` + `config.json` | HF `IAHispano/Applio` `Resources/embedders/contentvec/` | 360,8 MB | `d8dd400e054ddf4e6be75dab5a2549db748cc99e756a097c496c099f65a4854e` | MIT (`auspicious3000/contentvec`) |
+| `openvoice_v2/checkpoint.pth` + `config.json` | HF `myshell-ai/OpenVoiceV2` `converter/` | 125,2 MB | `9652c27e92b6b2a91632590ac9962ef7ae2b712e5c5b7f4c34ec55ee2b37ab9e` | MIT |
+
+SHA256 yang sama tertulis di `SHA` dalam `pipeline/suara_mesin.py`.
+- **Paket**: `pipeline/requirements-suara.txt`. Applio 3.7.1 (commit `6f69726b`) dan OpenVoice (commit `74a1d147`, dipasang `--no-deps`).
+- **Tidak dipakai/diblokir**:
+  - `edge-tts` **dilepas** dari suara-venv dan `import edge_tts` diblokir di `suara_mesin.py`, karena mengirim teks ke server Microsoft.
+  - Watermark OpenVoice (`wavmark`, mengunduh model) dan `openvoice.api` tidak dipakai; konverternya dipanggil langsung.
+  - UI Gradio Applio, `pypresence`, pemeriksa versi, dan pengunduh prasyarat Applio tidak dipanggil.
+
+## 26. Video Iklan dengan beberapa footage (v0.4.9, 24 Nov 2026; permintaan owner lewat venus) — DRAF
+
+Owner ingin satu video iklan bisa memakai beberapa footage sekaligus (mis. `Konten 1 (1)`, `Konten 2 (2)`, `Konten 3 (1)`). Mesin menggabungkannya sesuai urutan pilihan tim menjadi satu video, lalu menyusun draf seperti biasa. Nomor 24 dan 25 sudah dipakai draf suara di branch `hotfix/suara-*`, maka bagian ini memakai nomor 26.
+
+**26.1 `job.json` (mode `generate`), aditif**
+
+- Satu footage: tetap `sumber: [{ "kunci": "$sumber", "path": … }]` (job lama tidak berubah).
+- Beberapa footage (2–20): `sumber` berisi `$sumber:<id>` untuk tiap footage. **Urutan daftar adalah urutan di video.** App memakai `$sumber:f01`, `$sumber:f02`, dan seterusnya. Footage yang sama boleh dipakai dua kali dengan kunci berbeda. `$vo:<aset>` (§22) tetap boleh ikut dan bukan footage.
+- App menolak campuran `$sumber` dan `$sumber:<id>`, kunci kembar, atau lebih dari 20 footage. Mesin juga menolaknya (kode 2).
+
+**26.2 Penggabungan (`pipeline/gabung.py`)**
+
+- Tiap footage disamakan dulu: gambar **1080×1920**, skala menutup bingkai lalu dipotong di tengah (sama seperti satu video yang "dipotong ke 9:16"), **30 fps**, yuv420p. Suara **48 kHz stereo**. Footage tanpa suara diberi hening sepanjang gambarnya.
+- Panjang tiap bagian = panjang gambarnya, dibulatkan ke frame utuh 30 fps. Gambar yang sedikit lebih pendek diisi frame terakhir dan suara dipotong atau ditambah hening, jadi suara bagian berikutnya tidak bergeser.
+- Hasil: `<job_dir>/out/gabungan.mp4` (H.264 CRF 18 + AAC 192k) dan `out/gabungan.json` (`gabungan/1`: `bagian`, `durasi`, `sidik`). Bila isi dan urutan footage sama (`engine ulang`, "Tetap lanjut" di job yang sama), file dipakai ulang. File asli tidak pernah diubah.
+- Progres: tahap baru `gabung` (`persen` 8–12).
+- Ditolak (kode 2): file bukan video, video kosong, lebih dari 20 footage, atau semua footage tanpa suara padahal tidak memakai VO dari Library.
+
+**26.3 Hasil**
+
+- Transkrip, potongan, caption, hook, dan efek berjalan di atas `gabungan.mp4`, sama seperti satu video.
+- `ops.json`: klip video memakai placeholder **`$gabungan:video`** (bukan `$sumber`) dan `aset_lokal` memuat `{ "kunci": "$gabungan:video", "path": "<job_dir>/out/gabungan.mp4" }`.
+- `rencana.json` mendapat `sumber_gabungan`: `{ kunci, durasi, kanvas: [1080, 1920], fps: 30, bagian: [{ kunci, nama, mulai_ms, durasi_ms, suara }] }`. `mulai_ms` adalah posisi bagian itu di video gabungan.
+
+**26.4 App (Motion Studio)**
+
+- Form Video iklan: pilih beberapa file sekaligus, tambah lagi, ubah urutan (↑/↓), hapus satu per satu. Durasi tiap file dan totalnya tampil sebelum diunggah. File diunggah satu per satu.
+- `$gabungan:video` hanya diterima bila berada di folder `out/` job itu sendiri (bukan symlink ke luar, harus `.mp4`). File diimpor sekali lewat salinan sementara sebagai media proyek dan diingat di `refs.json`.
+- Draf tetap hybrid: potongan ada di timeline sebagai klip biasa yang bisa digeser, dipotong, atau dihapus, dengan satu undo. Kartu rencana menampilkan jumlah footage dan durasi tiap bagian.
+
+**26.5 Footage tanpa ucapan dipakai utuh**
+
+- Setelah transkrip, bagian gabungan yang tidak berisi ucapan (file bisu, atau bersuara tanpa satu kata pun) ditulis sebagai `utuh: [[mulai_ms, akhir_ms], …]` di `out/transkrip.json`. Auto-cut (`autocut.run_cut`) selalu memakai rentang itu penuh dan tidak menganggapnya jeda, jadi b-roll tidak hilang dari draf.
+- Kata di bagian yang file-nya bisu dibuang dari transkrip, karena itu karangan Whisper dari hening dan tidak boleh tampil sebagai caption.
+- Pilihan tim tetap menang: rentang `koreksi.buang` dikurangkan dari `utuh`.
+- `rencana.json`: `sumber_gabungan.bagian[].utuh` (true/false) dan peringatan `info` berjenis `footage_utuh` yang menyebut footage ke berapa.

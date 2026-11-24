@@ -3,7 +3,7 @@
 Jalan di visual-venv (MOTION_VISUAL_PY):
   python pipeline/visual/deteksi.py <video> <keluar.json> [--jenis wajah,objek] [--hz 10] [--label person,...]
 
-- Wajah: FaceDetector blaze_face_short_range (model di D:\\VIBECODING\\tools\\models, path eksplisit).
+- Wajah: FaceDetector blaze_face_short_range (model di <TOOLS>/models, path eksplisit).
 - Objek: ObjectDetector efficientdet_lite0 int8 (label COCO, mis. person, handbag, bottle).
 - Mode VIDEO (MediaPipe memakai urutan waktu), sampel `hz` per detik; deteksi per frame digabung jadi jalur ber-id
   (jalur_posisi.gabung_deteksi). Hasil = USULAN (hybrid): app menampilkan jalur, user boleh hapus/ubah.

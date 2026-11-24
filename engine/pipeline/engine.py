@@ -10,6 +10,8 @@
                               logo + end card (pipeline/batch/beatspot.py); out/beatspot.json = laporan potongan
   engine tts      <job_dir>   R24f voice over offline (suara Windows, mis. Andika): job.tts.kalimat -> out/vo/NN.wav,
                               laporan out/tts.json (schema tts/1); pipeline/tts.py (modul yuki)
+  engine suara_profil <job_dir> R31 §23 profil "Suara owner": tambah/hapus contoh, periksa mutu, latih
+                              (pipeline/suara_profil.py, modul yuki); out/suara_profil.json (suara-profil/1)
   engine visual   <job_dir>   R24 Visual Tools (modul yuki, visual-venv MOTION_VISUAL_PY): job.visual.alat = deteksi |
                               reframe | lacak | hapus_latar | perjelas -> out/ (pipeline/visual/jalankan.py, §18)
   engine daftar_batch         daftar batch untuk dropdown (read-only, tanpa job_dir);
@@ -32,6 +34,8 @@ import sys
 import time
 from pathlib import Path
 
+import vo_library  # §22 VO dari Library (yuki)
+
 ROOT = Path(__file__).resolve().parents[1]
 # R20 (rilis mesin terpisah): KODE bisa jalan dari folder rilis, DATA (konten/, public/, arsip/, .venv) tetap di
 # folder data. MOTION_ENGINE_DATA = folder data; tanpa env = ROOT (perilaku lama, persis sama).
@@ -39,7 +43,11 @@ DATA = Path(os.environ["MOTION_ENGINE_DATA"]).resolve() if os.environ.get("MOTIO
 PY = sys.executable
 JOB_SCHEMA = "engine-job/1"
 # R24: Python visual-venv (MediaPipe/OpenCV-contrib/onnxruntime) terpisah dari .venv & demucs-venv.
-VISUAL_PY = os.environ.get("MOTION_VISUAL_PY") or str(Path("D:/VIBECODING/tools/visual-venv/Scripts/python.exe"))
+# Alat bersama: MOTION_TOOLS_DIR, bawaan <DATA>/../tools (tanpa path absolut di kode; repo publik).
+TOOLS = Path(os.environ["MOTION_TOOLS_DIR"]).resolve() if os.environ.get("MOTION_TOOLS_DIR") else DATA.parent / "tools"
+VISUAL_PY = os.environ.get("MOTION_VISUAL_PY") or str(next(
+    (p for p in (TOOLS / "visual-venv" / "Scripts" / "python.exe", TOOLS / "visual-venv" / "bin" / "python") if p.exists()),
+    TOOLS / "visual-venv" / "Scripts" / "python.exe"))
 
 
 class Ditolak(Exception):
@@ -90,6 +98,60 @@ def sumber_utama(job: dict) -> Path:
     raise ValueError("job.json: sumber dengan kunci $sumber tidak ada")
 
 
+def sumber_video(job: dict, out: Path, butuh_suara: bool) -> tuple[Path, dict | None]:
+    """§26: satu footage -> file itu (perilaku lama). Banyak footage (`$sumber:<id>`, urut) ->
+    out/gabungan.mp4 (disamakan + disambung oleh gabung.py) beserta laporannya. gabung.Ditolak = kode 2."""
+    import gabung
+
+    daftar = gabung.daftar_footage(job)
+    if len(daftar) <= 1:
+        return sumber_utama(job), None
+    if butuh_suara:
+        info = [gabung.periksa(Path(s["path"])) for s in daftar]
+        if not any(f["suara"] for f in info):
+            raise gabung.Ditolak("semua footage tanpa suara; Generate Otomatis butuh orang bicara (atau pilih VO dari Library)")
+    progres("gabung", 8, f"menggabung {len(daftar)} footage")
+    hasil = gabung.gabung(job, out, log)
+    progres("gabung", 12, f"{len(daftar)} footage -> {hasil['durasi']:.1f} dtk")
+    return Path(hasil["path"]), hasil
+
+
+def pasang_gabungan(out: Path, gab: dict | None) -> None:
+    if gab:
+        import gabung
+
+        n = gabung.pasang_di_ops(out, gab)
+        log(f"gabungan: {n} klip video -> {gab['kunci']}")
+
+
+def sumber_vo(job: dict, kunci: str) -> Path | None:
+    for s in job.get("sumber", []):
+        if s.get("kunci") == kunci and s.get("path"):
+            return Path(s["path"])
+    return None
+
+
+def siapkan_vo(job: dict, job_dir: Path):
+    """§22: (cfg, index, path VO) bila job memakai VO dari Library, None bila tidak. vo_library.Ditolak = kode 2."""
+    cfg = vo_library.konfigurasi(job)
+    if cfg is None:
+        return None
+    path = sumber_vo(job, cfg["media"])
+    if path is None or not path.exists():
+        raise vo_library.Ditolak(f"file VO {cfg['media']} tidak ada di sumber job")
+    idx = vo_library.muat_index(job_dir / cfg["index"], vo_library.durasi_media(path))
+    return cfg, idx, path
+
+
+def argumen_vo(job: dict, job_dir: Path) -> list[str]:
+    vo = siapkan_vo(job, job_dir)
+    if vo is None:
+        return []
+    cfg, _, path = vo
+    return ["--vo-index", str(job_dir / cfg["index"]), "--vo-media", cfg["media"], "--vo-path", str(path),
+            "--vo-volume-footage", str(cfg["volume_footage"])]
+
+
 def tulis_ditolak(out: Path, alasan: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "rencana.json").write_text(
@@ -97,7 +159,7 @@ def tulis_ditolak(out: Path, alasan: str) -> None:
         encoding="utf-8", newline="\n")
 
 
-def cek_input(video: Path) -> dict:
+def cek_input(video: Path, min_dtk: float = 5, butuh_suara: bool = True) -> dict:
     if not video.exists():
         raise Ditolak(f"file video tidak ditemukan: {video}")
     r = subprocess.run(
@@ -110,14 +172,14 @@ def cek_input(video: Path) -> dict:
     aus = [s for s in info.get("streams", []) if s.get("codec_type") == "audio"]
     if not vs:
         raise Ditolak("tidak ada gambar video di file")
-    if not aus:
+    if not aus and butuh_suara:
         raise Ditolak("video tidak punya suara; Generate Otomatis butuh orang bicara")
     w, h = vs[0].get("width", 0), vs[0].get("height", 0)
     dur = float(info.get("format", {}).get("duration", 0))
     peringatan = []
     if not h or abs(w / h - 9 / 16) > 0.02:
         peringatan.append(f"rasio {w}x{h} bukan 9:16; hasil akan dipotong ke 9:16")
-    if dur < 5:
+    if dur < min_dtk:
         raise Ditolak(f"video terlalu pendek ({dur:.1f} dtk)")
     return {"lebar": w, "tinggi": h, "durasi": dur, "peringatan": peringatan}
 
@@ -137,6 +199,8 @@ def argumen_edit(job: dict, job_dir: Path, transkrip: Path, video: Path, out: Pa
         cmd += ["--abaikan-cek-ucapan"]
     if job.get("audio_pilihan") in ("vo", "musik", "keduanya"):
         cmd += ["--audio", job["audio_pilihan"]]
+    if job.get("vo") is not None:
+        cmd += argumen_vo(job, job_dir)
     return cmd
 
 
@@ -153,24 +217,50 @@ def selesai(out: Path, cek: dict | None = None, kamus_baru=None) -> int:
 
 
 def generate(job_dir: Path) -> int:
+    import gabung
+
     job = baca_job(job_dir)
     out = job_dir / "out"
-    video = sumber_utama(job)
-    progres("cek_input", 5, video.name)
+    progres("cek_input", 5, f"{len(gabung.daftar_footage(job))} footage")
     try:
-        cek = cek_input(video)
-    except Ditolak as e:
+        vo = siapkan_vo(job, job_dir)
+        video, gab = sumber_video(job, out, butuh_suara=not vo)  # §26: banyak footage -> out/gabungan.mp4
+        cek = cek_input(video, min_dtk=1 if vo else 5, butuh_suara=not vo)  # §22: footage hanya gambar (diulang bila pendek)
+    except (Ditolak, vo_library.Ditolak, gabung.Ditolak) as e:
         tulis_ditolak(out, str(e))
         progres("selesai", 100, f"ditolak: {e}")
         return 2
     out.mkdir(parents=True, exist_ok=True)
     transkrip = out / "transkrip.json"
+    if vo:
+        # §22 VO dari Library: tanpa Whisper. "Transkrip" = kata VO (waktu VO); durasi = footage (batas gambar).
+        cfg, idx, _ = vo
+        kata = vo_library.kata_transkrip(idx)
+        transkrip.write_text(json.dumps({"source": str(video), "durationMs": round(cek["durasi"] * 1000), "words": kata,
+                                         "sumber_suara": "vo_library", "vo": vo_library.laporan(cfg, idx)},
+                                        ensure_ascii=False), encoding="utf-8")
+        progres("transkrip", 60, f"VO dari Library: {len(kata)} kata, tanpa Whisper")
+        progres("rencana", 70, "caption dari teks VO, footage jadi gambar, hook, efek")
+        try:
+            cmd = argumen_edit(job, job_dir, transkrip, video, out)
+        except vo_library.Ditolak as e:
+            tulis_ditolak(out, str(e))
+            return 2
+        rc = jalankan(cmd)
+        if rc != 0:
+            raise RuntimeError(f"rencana VO gagal (kode {rc})")
+        pasang_gabungan(out, gab)
+        return selesai(out, cek)
     progres("transkrip", 15, f"{cek['durasi']:.0f} dtk audio")
     t0 = time.perf_counter()
     rc = jalankan([PY, "pipeline/transcribe.py", str(video), str(transkrip),
                    "--brandkit", str(job_dir / job.get("brand_kit", "brand_kit.json"))])
     if rc != 0:
         raise RuntimeError(f"transkrip gagal (kode {rc})")
+    if gab:  # §26: footage tanpa ucapan tidak dipotong sebagai jeda
+        utuh = gabung.tandai_tanpa_ucapan(transkrip, gab)
+        if utuh:
+            log(f"footage tanpa ucapan dipakai utuh: {', '.join(b['kunci'] for b in utuh)}")
     n = len(json.loads(transkrip.read_text(encoding="utf-8"))["words"])
     progres("transkrip", 60, f"{n} kata, {time.perf_counter() - t0:.0f} dtk")
     progres("rencana", 70, "potong, caption, hook, efek")
@@ -182,6 +272,7 @@ def generate(job_dir: Path) -> int:
         return 2
     if rc != 0:
         raise RuntimeError(f"rencana gagal (kode {rc})")
+    pasang_gabungan(out, gab)
     return selesai(out, cek)
 
 
@@ -195,7 +286,8 @@ def ulang(job_dir: Path) -> int:
     p = job_dir / "koreksi.json"
     koreksi = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     progres("rencana", 30, "menerapkan koreksi")
-    cmd = argumen_edit(job, job_dir, transkrip, sumber_utama(job), out)
+    video, gab = sumber_video(job, out, butuh_suara=False)  # §26: gabungan dipakai ulang bila footage sama
+    cmd = argumen_edit(job, job_dir, transkrip, video, out)
     kata = koreksi.get("kata", [])
     if kata:
         cmd += ["--koreksi", *[f"{k['detik']}:{k['jadi']}" for k in kata]]
@@ -222,6 +314,7 @@ def ulang(job_dir: Path) -> int:
             kamus_baru[asal] = k["jadi"]
     if koreksi.get("pakai"):
         log("catatan: 'pakai' (paksa pakai bagian yang dibuang mesin) belum didukung; diabaikan")
+    pasang_gabungan(out, gab)
     return selesai(out, kamus_baru=kamus_baru or None)
 
 
@@ -290,6 +383,13 @@ def tts(job_dir: Path) -> int:
     return teruskan([PY, "pipeline/tts.py", str(job_dir)])
 
 
+def suara_profil(job_dir: Path) -> int:
+    if not (job_dir / "job.json").exists():
+        raise FileNotFoundError(f"job.json tidak ada di {job_dir}")
+    # suara_profil.py menulis progres JSON-lines + out/suara_profil.json sendiri; kode 2 = ditolak.
+    return teruskan([PY, "pipeline/suara_profil.py", str(job_dir)])
+
+
 def visual(job_dir: Path) -> int:
     if not (job_dir / "job.json").exists():
         raise FileNotFoundError(f"job.json tidak ada di {job_dir}")
@@ -333,7 +433,7 @@ def cek_alat() -> int:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
-    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "beatspot", "tts", "visual", "daftar_batch", "cek"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("generate", "ulang", "batch", "pisah", "transfer", "beatspot", "tts", "visual", "suara_profil", "daftar_batch", "cek"):
         log(__doc__)
         return 1
     cmd = sys.argv[1]
@@ -347,7 +447,7 @@ def main() -> int:
     job_dir = Path(sys.argv[2]).resolve()
     try:
         return {"generate": generate, "ulang": ulang, "batch": batch, "pisah": pisah, "transfer": transfer,
-                "beatspot": beatspot, "tts": tts, "visual": visual}[cmd](job_dir)
+                "beatspot": beatspot, "tts": tts, "visual": visual, "suara_profil": suara_profil}[cmd](job_dir)
     except Exception as e:  # noqa: BLE001 - gagal teknis: kode 1, pesan ke progres
         log(f"GAGAL: {e!r}")
         progres("gagal", 100, str(e)[:300])

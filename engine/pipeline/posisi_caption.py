@@ -91,7 +91,11 @@ def pilih_y(wajah_per_frame, default: float = 0.72, area_produk: str | None = No
 
 # R24a (venus 16 Nov): MediaPipe (visual-venv) bila tersedia — lebih akurat untuk wajah berhijab/miring/agak jauh;
 # Haar tetap jadi cadangan (visual-venv tidak ada, gagal, atau terlalu lama karena antre kunci AI).
-VISUAL_PY = os.environ.get("MOTION_VISUAL_PY") or str(Path("D:/VIBECODING/tools/visual-venv/Scripts/python.exe"))
+_DATA = Path(os.environ["MOTION_ENGINE_DATA"]).resolve() if os.environ.get("MOTION_ENGINE_DATA") else Path(__file__).resolve().parents[1]
+_TOOLS = Path(os.environ["MOTION_TOOLS_DIR"]).resolve() if os.environ.get("MOTION_TOOLS_DIR") else _DATA.parent / "tools"
+VISUAL_PY = os.environ.get("MOTION_VISUAL_PY") or str(next(
+    (p for p in (_TOOLS / "visual-venv" / "Scripts" / "python.exe", _TOOLS / "visual-venv" / "bin" / "python") if p.exists()),
+    _TOOLS / "visual-venv" / "Scripts" / "python.exe"))
 DETEKSI = Path(__file__).resolve().parent / "visual" / "deteksi.py"
 BATAS_MP_DTK = 120
 

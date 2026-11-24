@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import KONTEN, PIPELINE, norm  # noqa: E402
+from common import KONTEN, PIPELINE, alasan_buang, norm, topik_dari  # noqa: E402
 import matcher  # noqa: E402
 import musik as musik_mod  # noqa: E402
 import vo as vo_mod  # noqa: E402
@@ -37,6 +37,7 @@ from brandkit import muat as muat_brand_kit  # noqa: E402  (milik venus)
 from ops import CAPTION_SIZE, CTA_MS, HOOK_SIZE, MIN_CLIP_MS, _bersih, efek_video, kata_klip  # noqa: E402  (milik venus, konvensi sama)
 from efek_otomatis import efek_batch  # noqa: E402  (venus: efek otomatis, sama dengan Generate)
 import sfx_rencana  # noqa: E402  (R29: SFX dari timeline jadi, sama dengan Generate)
+import vo_library  # noqa: E402  (§22 VO dari Library)
 from jaga_ops import buang_teks_kosong, cek_durasi, jaga_durasi, rapikan_kata, validasi_motion_studio  # noqa: E402  (pengaman venus: klip <= panjang file sumber)
 
 from jalur import BATCH_PY  # noqa: E402
@@ -164,7 +165,8 @@ def buat_ops(v: dict, brand: dict, mode: str, pakai_blur: bool, gaya: dict | Non
             op["transition"] = {"type": "flash", "ms": gaya_mod.FLASH_MS}  # §12.1: flash putih saat ganti orang/footage
         ops.append(op)
     for vk in ([] if audio_pilihan == "musik" else v["susunan"]["vo_klip"]):
-        ops.append({"op": "add_clip", "track_kind": "audio", "media": f"$vokal:{v['vo']}",
+        ops.append({"op": "add_clip", "track_kind": "audio",
+                    "media": v["vo"] if str(v["vo"]).startswith("$vo:") else f"$vokal:{v['vo']}",  # §22
                     "start_ms": ms(vk["start"]), "duration_ms": ms(vk["dur"]), "in_ms": ms(vk["in"]), "volume": 1.0})
     m = v["musik"]
     # Track `music` (U3b, keputusan ucok 13 Nov): lane suara ketiga di samping `audio` (VO) dan `sfx`.
@@ -331,6 +333,29 @@ def sama_posisi(a: dict, b: dict) -> float:
     return sum(a[k] == b[k] for k in bersama) / max(1, len(bersama))
 
 
+def path_vo(job: dict, brand_raw: dict, kunci: str) -> Path:
+    """§22: file VO dari sumber job (refs app) atau dari aset Brand Kit."""
+    for x in job.get("sumber", []) or []:
+        if x.get("kunci") == kunci and x.get("path"):
+            return Path(x["path"])
+    for a in brand_raw.get("aset", []) or []:
+        if a.get("kunci") == kunci and a.get("path"):
+            return Path(a["path"])
+    raise Ditolak(f"file VO {kunci} tidak ada di sumber job / Brand Kit")
+
+
+def kandidat_vo_library(idx: dict, kunci: str, brand: dict) -> dict:
+    """§22: VO dari Library sebagai SATU kandidat VO berbentuk vo_mod.kandidat (kalimat utuh, urutan tetap)."""
+    kata = vo_library.kata_absolut(idx)
+    ks = []
+    for i, s in enumerate(idx["kalimat"]):
+        kk = [{**w, "prob": 1.0} for w in kata if w["kalimat"] == i]
+        ks.append({"id": i, "teks": s["teks"], "dari": float(s["mulai"]), "sampai": float(s["akhir"]), "kata": kk,
+                   "topik": topik_dari(s["teks"]), "teknis": None, "brand_lain": None,
+                   "saran_buang": alasan_buang(s["teks"], brand.get("superlatif_dilarang", []))})
+    return {"id": kunci, "kalimat": ks, "durasi": float(idx["kalimat"][-1]["akhir"]), "skor": 0}
+
+
 def jalankan(job_dir: Path) -> int:
     job = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
     if job.get("mode") != "batch":
@@ -387,7 +412,19 @@ def jalankan(job_dir: Path) -> int:
     produk_kata = [x for x in re.split(r"\s+", produk.lower()) if x] + ["celana"] if produk else []
     akun_semua = sorted({a for m in lib["footage"].values() for a in m.get("watermark", {}).get("akun", [])})
     deteksi = brand_lain.dari_job(brand_raw, brand, job.get("akun_sendiri", []), akun_semua)
-    vos, vo_tolak = vo_mod.kandidat(vo_dir, vo_lib, brand, produk_kata, deteksi)
+    # §22 VO dari Library: satu VO tetap (teks sudah diketahui, tanpa Whisper); variasi antar varian = susunan shot.
+    try:
+        cfg_vo = vo_library.konfigurasi(job)
+        vo_path = idx_vo = None
+        if cfg_vo:
+            vo_path = path_vo(job, brand_raw, cfg_vo["media"])
+            idx_vo = vo_library.muat_index(job_dir / cfg_vo["index"], vo_library.durasi_media(vo_path))
+    except vo_library.Ditolak as e:
+        raise Ditolak(str(e)) from None
+    if cfg_vo:
+        vos, vo_tolak = [kandidat_vo_library(idx_vo, cfg_vo["media"], brand)], []
+    else:
+        vos, vo_tolak = vo_mod.kandidat(vo_dir, vo_lib, brand, produk_kata, deteksi)
     tolak_ids = {t["id"] for t in vo_tolak}
     # Footage boleh jadi broll: semua, kecuali yang ucapannya tentang produk lain.
     produk_lain = {t["id"] for t in vo_tolak if t["alasan"].startswith("tidak menyebut produk")}
@@ -418,8 +455,8 @@ def jalankan(job_dir: Path) -> int:
     g_pakai, m_pakai, vo_pakai = Counter(), Counter(), Counter()
     if riw:
         g_pakai.update(riw.shot_terpakai())  # shot yang pernah dipakai batch lain dipilih paling akhir
-    maks_per_vo = int(job.get("maks_per_vo", MAKS_PER_VO))
-    urutan_vo, vo_habis, gagal_vo = defaultdict(set), set(), Counter()
+    maks_per_vo = int(job.get("maks_per_vo", n if cfg_vo else MAKS_PER_VO))  # §22: satu VO untuk semua varian
+    urutan_vo, vo_habis, gagal_vo, gagal_alasan = defaultdict(set), set(), Counter(), Counter()
     if riw:
         for x in vos:  # susunan kalimat VO yang pernah dipakai (batch mana pun) tidak diulang
             urutan_vo[x["id"]] |= riw.urutan(x["id"])
@@ -431,10 +468,15 @@ def jalankan(job_dir: Path) -> int:
         if not sisa:
             break
         vo_c = min(sisa, key=lambda x: (vo_pakai[x["id"]], gagal_vo[x["id"]], -x["skor"], rng.random()))
-        rv = vo_mod.susun(vo_c, rng, (target[0] - TAHAN, target[1] - TAHAN) if target else None, buang_otomatis)
-        # Audio tidak boleh identik antar varian VO sama: susunan kalimat (urutan/isi) harus beda.
-        rv = vo_mod.ragamkan(rv, vo_c, rng, urutan_vo[vo_c["id"]],
-                             (target[0] - TAHAN, target[1] - TAHAN) if target else None)
+        if cfg_vo:  # §22: VO utuh, urutan tetap; kalimat terlarang hanya dilaporkan (tim yang menulis naskah)
+            saran = [{"dari": k["dari"], "sampai": k["sampai"], "teks": k["teks"], "jenis": k["saran_buang"]}
+                     for k in vo_c["kalimat"] if k["saran_buang"]]
+            rv = vo_mod._hasil(vo_c, vo_c["kalimat"], [], saran, (target[0] - TAHAN, target[1] - TAHAN) if target else None)
+        else:
+            rv = vo_mod.susun(vo_c, rng, (target[0] - TAHAN, target[1] - TAHAN) if target else None, buang_otomatis)
+            # Audio tidak boleh identik antar varian VO sama: susunan kalimat (urutan/isi) harus beda.
+            rv = vo_mod.ragamkan(rv, vo_c, rng, urutan_vo[vo_c["id"]],
+                                 (target[0] - TAHAN, target[1] - TAHAN) if target else None)
         if rv is None:
             vo_habis.add(vo_c["id"])  # kalimat VO ini terlalu sedikit untuk disusun beda lagi
             continue
@@ -448,8 +490,11 @@ def jalankan(job_dir: Path) -> int:
         if m is None and gaya.get("audio_pilihan") in ("musik", "keduanya"):
             raise Ditolak(f"audio_pilihan \"{gaya['audio_pilihan']}\" butuh musik, tetapi tidak ada musik yang boleh "
                           "dipakai (aset musik Brand Kit lisensi_iklan / public/musik)")
+        # Pembuka yang sudah dipakai varian lain dengan VO sama juga dihindari (dulu: pembuka selalu shot yang sama
+        # karena skor topik kalimat pertama mengalahkan acak -> semua calon ditolak "pembuka sama", terutama §22).
+        pembuka_job = {x["_pembuka"] for x in varian if x["vo"] == rv["vo"] and x["_pembuka"]}
         sus = matcher.susun_shot(rv, lib, footage_boleh, rng, m["ketukan"] if m else None, Counter(g_pakai),
-                                 boleh_teks=hak_jelas, kecuali=kecuali, hindari_pembuka=hindari_pembuka)
+                                 boleh_teks=hak_jelas, kecuali=kecuali, hindari_pembuka=hindari_pembuka | pembuka_job)
         # Shot tidak boleh melewati ujung file sumber.
         for p in sus["potongan"]:
             dmax = lib["footage"][p["footage"]]["durasi"]
@@ -481,10 +526,17 @@ def jalankan(job_dir: Path) -> int:
             if mirip_riwayat:
                 ditolak_riwayat[mirip_riwayat] += 1
         if mirip or terlalu_asli or mirip_riwayat:
+            for x in mirip[:1]:  # alasan ditolak (untuk tim): shot sama / pembuka sama / posisi sama
+                gagal_alasan["pembuka sama" if pembuka and pembuka == x["_pembuka"] else
+                             "shot terlalu mirip" if jaccard(shots, x["_shots"]) > MAKS_MIRIP else "posisi shot sama"] += 1
+            if terlalu_asli:
+                gagal_alasan["terlalu sinkron"] += 1
+            if mirip_riwayat:
+                gagal_alasan[f"riwayat ({mirip_riwayat})"] += 1
             if m:  # batch tanpa musik: m = None (dulu crash: "NoneType not subscriptable")
                 m_pakai[m["kunci"]] -= 1
             gagal_vo[vo_c["id"]] += 1
-            if gagal_vo[vo_c["id"]] >= 12:
+            if gagal_vo[vo_c["id"]] >= (n * 15 if cfg_vo else 12):  # §22: satu VO, variasi hanya dari shot
                 vo_habis.add(vo_c["id"])  # VO ini sudah jenuh: tidak ada susunan gambar yang cukup beda lagi
             continue
         for p in sus["potongan"]:
@@ -500,7 +552,8 @@ def jalankan(job_dir: Path) -> int:
             cta_teks = cta.rstrip(".!")
         idx = len(varian) + 1
         v = {"id": f"varian-{idx:03d}", "vo": rv["vo"], "rv": rv, "susunan": sus, "musik": m,
-             "durasi": sus["durasi"], "hook": {"teks": gaya_mod.teks_hook(rv, gaya.get("hook") or {}), "dari": 0.0,
+             "durasi": sus["durasi"], "hook": {"teks": (vo_library.hook_vo(idx_vo) if cfg_vo else None)
+                                               or gaya_mod.teks_hook(rv, gaya.get("hook") or {}), "dari": 0.0,
                                                "sampai": round(hook_sampai, 2)},
              "cta": cta_teks, "_shots": shots,
              "_pembuka": pembuka, "_per_kalimat": per_kalimat}
@@ -524,7 +577,7 @@ def jalankan(job_dir: Path) -> int:
         bukan_iklan = bool(m and not m["lisensi_iklan"])
         ops, menunggu = buat_ops(v, brand, mode_ops, hak_jelas, gaya)
         kunci_brand = {a["kunci"] for a in brand_raw.get("aset", []) if a.get("kunci")}
-        aset_lokal = {o["media"] for o in ops if o.get("media") and not o["media"].startswith("$sumber")
+        aset_lokal = {o["media"] for o in ops if o.get("media") and not o["media"].startswith(("$sumber", "$vo:"))
                       and o["media"] not in kunci_brand  # aset Brand Kit (SFX, musik) dikenal runner lewat Brand Kit
                       and not (m and o["media"] == m["kunci"] and m["sumber"] == "brand_kit")}
         for o in ops:
@@ -536,6 +589,8 @@ def jalankan(job_dir: Path) -> int:
                 media[ph] = path_media(lib["footage"][fid]["video"])
             elif kind == "$vokal":
                 media[ph] = path_media(lib["footage"][fid]["vokal"])
+            # §22: "$vo:" = aset VO Brand Kit (Media workspace, di luar root mesin): app/runner sudah mengenalnya
+            # lewat Brand Kit/refs, jadi TIDAK ditulis ke aset_lokal; path hanya dipakai untuk cek durasi.
             elif kind == "$sfx" and ph not in kunci_brand:  # SFX bawaan mesin (public/sfx)
                 media[ph] = path_media(str(ROOT / "public" / "sfx" / f"{fid}.wav"))
             elif kind == "$musik" and m and ph == m["kunci"] and m["sumber"] != "brand_kit":
@@ -544,6 +599,8 @@ def jalankan(job_dir: Path) -> int:
         # Pengaman (venus, 14 Nov): tiap klip <= panjang ASLI file sumbernya. Satu klip yang kelebihan
         # dulu membuat Motion Studio menolak Simpan keputusan untuk SEMUA varian (KORSET varian-003).
         aset_brand = {a["kunci"]: a.get("path") for a in brand_raw.get("aset", []) if a.get("kunci")}
+        if vo_path is not None:
+            aset_brand.setdefault(cfg_vo["media"], str(vo_path))
         path_of = lambda k, media=media, aset_brand=aset_brand: media.get(k) or aset_brand.get(k)  # noqa: E731
         catatan_durasi = jaga_durasi(ops, path_of) + buang_teks_kosong(ops) + rapikan_kata(ops)
         masih_lebih = cek_durasi(ops, path_of)
@@ -654,8 +711,12 @@ def jalankan(job_dir: Path) -> int:
         "schema": "batch-remix/1", "job_id": job.get("job_id"), "batch": batch, "tujuan": tujuan,
         "jumlah_diminta": n, "jumlah_jadi": len(tabel), "alasan_kurang": alasan_kurang or None,
         "vo_ditolak": vo_tolak, "musik_tersedia": len(mlib), "media": media,
+        "calon_ditolak": dict(gagal_alasan),
         "akun_watermark": akun_footage, "footage_milik_lain": sorted(milik_lain), "varian": tabel,
     }
+    if cfg_vo:
+        batch_json["sumber_suara"] = "vo_library"
+        batch_json["vo_library"] = vo_library.laporan(cfg_vo, idx_vo)
     # R6: catat varian batch ini ke riwayat brand (status "direncanakan"; mesin belum tahu keputusan tim).
     # Varian "rusak" tidak dicatat (tidak bisa dirender). Jalan ulang job yang sama mengganti entrinya sendiri.
     if abaikan_riwayat:

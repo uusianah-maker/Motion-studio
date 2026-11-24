@@ -1,7 +1,7 @@
 """Y2 Shot Library (Batch Remix): potong tiap footage jadi shot pendek + label otomatis.
 
 Pakai (dari D:\\VIBECODING\\remotion, Python Batch Remix punya OpenCV):
-  D:\\VIBECODING\\tools\\demucs-venv\\Scripts\\python pipeline\\batch\\shotlib.py 2026-11-13_video-winning
+  <TOOLS>\\demucs-venv\\Scripts\\python pipeline\\batch\\shotlib.py 2026-11-13_video-winning
 
 Butuh hasil pipeline/pisah.py: konten/2-dipisah/<batch>/video-bisu/ dan vokal/.
 Menulis konten/2-dipisah/<batch>/shots.json + thumb/<footage>__NN.jpg (1 frame tengah tiap shot, 270x480). Label dibuat dengan aturan (tanpa AI) dan boleh
