@@ -43,7 +43,7 @@ export const TTS_MODELS = ['andika', 'chatterbox', 'zonos'] as const;
 export type TtsModel = (typeof TTS_MODELS)[number];
 export const TTS_GAYA = ['natural', 'jualan', 'ramah', 'cerita', 'tegas', 'heboh'] as const;
 export type TtsGaya = (typeof TTS_GAYA)[number];
-export const TTS_LIMITS = { kalimat: 60, huruf: 1000, kecepatan: [0.5, 2] as const, jeda_ms: [0, 3000] as const };
+export const TTS_LIMITS = { kalimat: 60, kalimat_neural: 25, huruf: 1000, kecepatan: [0.5, 2] as const, jeda_ms: [0, 3000] as const };
 export const DEFAULT_VOICE = 'windows:Andika';
 
 const bad = (msg: string): never => {
@@ -82,6 +82,7 @@ export function validateTtsJob(o: Record<string, unknown>): EngineJobInput {
   if (kalimat.length > TTS_LIMITS.kalimat) bad(`Maksimal ${TTS_LIMITS.kalimat} kalimat per job (sekarang ${kalimat.length})`);
   const long = kalimat.findIndex((k) => k.length > TTS_LIMITS.huruf);
   if (long >= 0) bad(`Kalimat ${long + 1} terlalu panjang (maks ${TTS_LIMITS.huruf} huruf)`);
+  if (model !== 'andika' && kalimat.length > TTS_LIMITS.kalimat_neural) bad(`Model ${model} maksimal ${TTS_LIMITS.kalimat_neural} kalimat per job (±4 menit proses per 30 detik suara)`);
   return {
     ...base,
     sources: [],

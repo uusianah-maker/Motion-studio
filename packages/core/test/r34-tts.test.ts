@@ -44,6 +44,7 @@ describe('R34 core', () => {
     for (const bad of [
       { project_id: 'p', mode: 'tts', tts: { teks: 'a', model: 'chatterbox' } }, // Windows voice
       { project_id: 'p', mode: 'tts', tts: { teks: 'a', suara: 'grace:x', model: 'elevenlabs' } },
+      { project_id: 'p', mode: 'tts', tts: { kalimat: Array.from({ length: 26 }, () => 'a.'), suara: 'grace:x', model: 'zonos' } },
       { project_id: 'p', mode: 'tts', tts: { teks: 'a', suara: 'grace:x', model: 'zonos', gaya: 'marah' } },
       { project_id: 'p', mode: 'tts', tts: { teks: 'a', suara: 'grace:x', model: 'zonos', perkuat_warna: 'ya' } },
       { project_id: 'p', mode: 'tts', sources: [{ kunci: '$sumber', ref }], tts: { teks: 'a' } }, // sources only for Ubah suara

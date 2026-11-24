@@ -235,7 +235,7 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
                 Teks yang diucapkan (paragraf / kalimat)
                 <textarea aria-label="Teks yang diucapkan" rows={5} style={{ width: '100%' }} maxLength={20000} value={teks} onChange={(e) => setTeks(e.target.value)} placeholder="Halo kak, ini Loose Pants dari Aysilla. Bahannya adem, harganya cuma 99 ribu! Cek keranjang kuning sekarang." />
               </label>
-              <div className="muted small">{kalimat.length} kalimat{kalimat.length > 60 ? ' — maksimal 60 per job' : ''}</div>
+              <div className="muted small">{kalimat.length} kalimat{kalimat.length > 60 ? ' — maksimal 60 per job' : neural && kalimat.length > 25 ? ' — Chatterbox / ZONOS maksimal 25 per job' : ''}</div>
             </>
           ) : (
             <>
@@ -304,7 +304,7 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
           <div className="muted small">
             Pelafalan brand: {brand?.pelafalan?.length ? brand.pelafalan.map((p) => `${p.tulisan} → ${p.ucapan}`).join(' · ') : 'belum ada'} (atur di Brand → C).
           </div>
-          <button className="btn primary" disabled={busy || running || reviewer || engineOk === false || !brand || !pilihanSuara.length || (asal === 'teks' ? kalimat.length === 0 || kalimat.length > 60 || (neural && !modelInfo?.siap) : !rekaman)} onClick={() => void start()}>
+          <button className="btn primary" disabled={busy || running || reviewer || engineOk === false || !brand || !pilihanSuara.length || (asal === 'teks' ? kalimat.length === 0 || kalimat.length > 60 || (neural && (!modelInfo?.siap || kalimat.length > 25)) : !rekaman)} onClick={() => void start()}>
             {asal === 'rekaman' ? '🔁 Ubah suara' : '🔊 Buat suara'}
           </button>
           {butuhProfil && !pilihanSuara.length && <div className="notice warn">Belum ada profil suara yang siap. Latih dulu di tab Suara saya.</div>}
