@@ -859,6 +859,13 @@ export interface EngineRencana {
   menunggu_u3?: string[];
   /** §26: several footage joined by the engine (in the order chosen), seconds / ms on the joined video. */
   sumber_gabungan?: { kunci?: string; durasi?: number; bagian?: { kunci: string; mulai_ms: number; durasi_ms: number; suara?: boolean; utuh?: boolean }[] };
+  /** §27: how the engine read the team's prompt (brief.catatan). */
+  instruksi_tim?: {
+    teks?: string;
+    dipahami?: { kalimat: string; aksi?: string; footage?: number[]; teks?: string; ditemukan?: number; hasil?: { footage: number; kata_dibuang?: number }[] }[];
+    otomatis?: { kalimat: string; catatan?: string }[];
+    tidak_dipahami?: { kalimat: string; alasan?: string }[];
+  };
 }
 export interface EngineQc {
   butir: { butir: string; lulus: boolean; nilai?: unknown }[];

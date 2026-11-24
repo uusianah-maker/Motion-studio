@@ -1,7 +1,7 @@
 import { promises as fsp } from 'node:fs';
 import { framingFilters } from './framing.js';
 import { zoomExpr } from './effects.js';
-import { DEFAULT_DUCK, type LookId, denoiseFilter, duckFilter, effectiveLook, effectiveLut, fadeFilter, fitFilters, lookFilters, speechRanges, xfadeTransition } from './clipLook.js';
+import { DEFAULT_DUCK, type LookId, denoiseFilter, duckFilter, edgeFadeFilter, effectiveLook, effectiveLut, fadeFilter, fitFilters, lookFilters, pullOutFilter, speechRanges, xfadeTransition } from './clipLook.js';
 export { speechRanges } from './clipLook.js';
 import { kfExpr, keyframeFilters } from './keyframes.js';
 import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
@@ -156,16 +156,26 @@ function pictureEffects(t: Timeline, o: { W: number; H: number; fps: number; tot
   let label = 'vraw';
   const zooms = clipsOf(t, 'effects').filter((c) => c.effect && c.start_ms < o.total_ms);
   if (zooms.length) {
-    // One expression for the whole video: the effect covering the frame's time (`it`, seconds),
-    // else 1 (effects never overlap). Commas inside expressions are escaped for the filtergraph.
-    const when = (c: Clip) => `between(it\\,${(c.start_ms / 1000).toFixed(3)}\\,${(Math.min(c.end_ms, o.total_ms) / 1000 - 0.0005).toFixed(4)})`;
-    const zz = zooms.reduceRight((acc, c) => `if(${when(c)}\\,${zoomExpr(c.effect!, c.start_ms, c.end_ms).replace(/\bt\b/g, 'it').replace(/,/g, '\\,')}\\,${acc})`, '1');
-    const xx = zooms.reduceRight((acc, c) => `if(${when(c)}\\,${c.effect!.x}\\,${acc})`, '0.5');
-    const yy = zooms.reduceRight((acc, c) => `if(${when(c)}\\,${c.effect!.y}\\,${acc})`, '0.5');
-    // zoompan: one output frame per input frame (d=1), the visible window shrinks by `zoom` around
-    // the effect centre and is scaled back to the canvas. (A per-frame `scale` + `crop` does not
-    // work: crop keeps its first input size.)
-    out.push(`[${label}]zoompan=z='${zz}':x='(iw-iw/zoom)*(${xx})':y='(ih-ih/zoom)*(${yy})':d=1:s=${W}x${H}:fps=${o.fps},setsar=1,format=yuv420p[vzoom]`);
+    // One expression for the whole video: the effect covering the frame's time (seconds), else 1
+    // (effects never overlap). Commas inside expressions are escaped for the filtergraph.
+    // Keluhan tim "zoom belum smooth": `zoompan` crops a whole-pixel window, so a slow zoom shook
+    // (the window edge jumped ±1–2 px per frame). `perspective` maps the same window (same anchor
+    // math as the preview's CSS transform-origin) with sub-pixel float coordinates + bicubic, and
+    // only runs while an effect is on screen (`enable`). It has no `t`: its `in` counts every
+    // input frame from 1 (also the disabled ones), and [vraw] is constant-rate from 0, so
+    // t = (in−1)/fps.
+    const T = `((in-1)/${o.fps})`;
+    const when = (c: Clip, tv: string, sep = '\\,') => `between(${tv}${sep}${(c.start_ms / 1000).toFixed(3)}${sep}${(Math.min(c.end_ms, o.total_ms) / 1000 - 0.0005).toFixed(4)})`;
+    const zz = zooms.reduceRight((acc, c) => `if(${when(c, T)}\\,${zoomExpr(c.effect!, c.start_ms, c.end_ms).replace(/\bt\b/g, T).replace(/,/g, '\\,')}\\,${acc})`, '1');
+    const xx = zooms.reduceRight((acc, c) => `if(${when(c, T)}\\,${c.effect!.x}\\,${acc})`, '0.5');
+    const yy = zooms.reduceRight((acc, c) => `if(${when(c, T)}\\,${c.effect!.y}\\,${acc})`, '0.5');
+    // Visible window of the source: size W/z × H/z, left/top = (W − W/z)·x, (H − H/z)·y.
+    const left = `(W-W/(${zz}))*(${xx})`;
+    const top = `(H-H/(${zz}))*(${yy})`;
+    const right = `${left}+W/(${zz})`;
+    const bottom = `${top}+H/(${zz})`;
+    const on = zooms.map((c) => when(c, 't', ',')).join('+');
+    out.push(`[${label}]perspective=x0='${left}':y0='${top}':x1='${right}':y1='${top}':x2='${left}':y2='${bottom}':x3='${right}':y3='${bottom}':interpolation=cubic:sense=source:eval=frame:enable='${on}',setsar=1,format=yuv420p[vzoom]`);
     label = 'vzoom';
   }
   // Glass boxes: blur the picture under each text box that asks for it, for the clip's time.
@@ -390,7 +400,10 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const h = half[g.into]!;
       const tr = segments[g.into]!.clip!.transition!;
       const out = i === groups.length - 1 ? 'vraw' : `vx${i}`;
-      graph.push(`[${acc}][${label}]xfade=transition=${xfadeTransition(tr.type)}:duration=${s6((2 * h) / fps)}:offset=${s6((accFrames - 2 * h) / fps)}[${out}]`);
+      // Keluhan tim: pull out zooms B (sub-pixel) before a plain fade, see pullOutFilter.
+      const into = tr.type === 'pull_out' ? `${label}po` : label;
+      if (tr.type === 'pull_out') graph.push(`[${label}]${pullOutFilter(2 * h)}[${into}]`);
+      graph.push(`[${acc}][${into}]xfade=transition=${xfadeTransition(tr.type)}:duration=${s6((2 * h) / fps)}:offset=${s6((accFrames - 2 * h) / fps)}[${out}]`);
       acc = out;
       accFrames += g.frames - 2 * h;
     });
@@ -414,7 +427,13 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     const idx = input(src, c.in_ms ?? 0, durMs * sp);
     const delay = Math.round((startFrame * 1000) / fps);
     const isMusic = trackOf.get(c.clip_id)?.kind === 'music';
-    const fx = [denoiseFilter(c.denoise), ...audioFxFilters(c, AFMT), fadeFilter(c, c.end_ms - c.start_ms), isMusic ? duckFilter(duckRanges, duckLevel, delay) : ''].filter(Boolean).map((f) => `,${f}`).join('');
+    // Keluhan tim "SFX terpotong kasar": a sound cut before its natural end (or started inside its
+    // source) gets a 20 ms afade at that edge instead of a hard cut (a click), unless it has its own fade.
+    const inMs = c.in_ms ?? 0;
+    // A clip cut short by the end of the video never reaches its own fade-out: it gets the edge fade too.
+    const cutByEnd = durMs < c.end_ms - c.start_ms - 1;
+    const edge = edgeFadeFilter(cutByEnd ? { fade_in_ms: c.fade_in_ms } : c, { lenMs: durMs, cutStart: inMs > 0, cutEnd: cutByEnd || (src.probe.duration_ms - inMs) / sp > durMs + 5 });
+    const fx = [denoiseFilter(c.denoise), ...audioFxFilters(c, AFMT), fadeFilter(c, c.end_ms - c.start_ms), edge, isMusic ? duckFilter(duckRanges, duckLevel, delay) : ''].filter(Boolean).map((f) => `,${f}`).join('');
     graph.push(`[${idx}:a:0]asetpts=PTS-STARTPTS,${AFMT}${atempoChain(sp).map((f) => `,${f}`).join('')}${gainFilter(gainOf(c))}${fx},apad,atrim=end_sample=${(endFrame - startFrame) * samplesPerFrame},adelay=delays=${delay}:all=1[m${mixes.length}]`);
     mixes.push(`[m${mixes.length}]`);
   }
@@ -426,7 +445,29 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   // (textStyle.ts), so line breaks, size and placement match what the editor shows.
   const files: { name: string; content: string }[] = [];
   const short = Math.min(W, H);
-  const draws: string[] = [];
+  /** Text filters in drawing order; a moving text (keyframes) is a picture layer overlaid in its place. */
+  const draws: (string | { layer: string; enable: string })[] = [];
+  const drawChain = (from: string, to: string): string[] => {
+    const out: string[] = [];
+    let cur = from;
+    let run: string[] = [];
+    let n = 0;
+    for (const d of draws) {
+      if (typeof d === 'string') {
+        run.push(d);
+        continue;
+      }
+      if (run.length) {
+        out.push(`[${cur}]${run.join(',')}[td${n}]`);
+        cur = `td${n++}`;
+        run = [];
+      }
+      out.push(`[${cur}][${d.layer}]overlay=eof_action=pass:format=auto:enable='${d.enable}'[td${n}]`);
+      cur = `td${n++}`;
+    }
+    out.push(`[${cur}]${run.length ? run.join(',') : 'null'}[${to}]`);
+    return out;
+  };
   const hex = (c: string) => `0x${c.slice(1)}`;
   const assClips: { kind: 'text' | 'subtitle'; clip: Clip }[] = [];
   for (const kind of ['text', 'subtitle'] as const) {
@@ -463,6 +504,33 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const ky = kfs ? `+(${kfExpr(kfs, 'y', T)})*${H}` : '';
       const size = kfs && kfs.some((k) => k.scale !== 1) ? `'max(4,${fs}*(${kfExpr(kfs, 'scale', T)}))'` : `${fs}`;
       const alpha = kfs && kfs.some((k) => k.opacity !== 1) ? `:alpha='${kfExpr(kfs, 'opacity', T)}'` : '';
+      const moves = !!kfs && (['x', 'y', 'scale'] as const).some((p) => kfs.some((k) => k[p] !== kfs[0]![p]));
+      if (moves) {
+        // Keluhan tim "keyframe teks belum smooth": a per-frame `fontsize` jumps between whole font
+        // sizes and drawtext x/y are whole pixels. Moving text is drawn ONCE at its normal size on a
+        // transparent canvas layer, then scaled/moved as a picture with sub-pixel `perspective` (the
+        // box/outline scale with it, like the preview's CSS transform) and laid over the video.
+        const from = c.start_ms;
+        const to = Math.min(c.end_ms, total_ms);
+        const P = 4;
+        const ax = Math.round(s.x * W) + P;
+        const ay = Math.round(s.y * H) + P;
+        const Tl = `((in-1)/${fps})`;
+        const Sx = kfExpr(kfs!, 'scale', Tl);
+        const dx = `${ax}+(${kfExpr(kfs!, 'x', Tl)})*${W}`;
+        const dy = `${ay}+(${kfExpr(kfs!, 'y', Tl)})*${H}`;
+        const l = `${dx}-(${Sx})*${ax}`;
+        const r = `${dx}+(${Sx})*${W + P - ax + P}`;
+        const tp = `${dy}-(${Sx})*${ay}`;
+        const b = `${dy}+(${Sx})*${H + P - ay + P}`;
+        const la = kfs!.some((k) => k.opacity !== 1) ? `:alpha='${kfExpr(kfs!, 'opacity', 't')}'` : '';
+        const id = `tk${draws.length}`;
+        graph.push(
+          `color=c=black@0:s=${W}x${H}:r=${fps}:d=${s6((to - from) / 1000)},format=yuva420p,drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}${la},pad=${W + 2 * P}:${H + 2 * P}:${P}:${P}:color=black@0,perspective=x0='${l}':y0='${tp}':x1='${r}':y1='${tp}':x2='${l}':y2='${b}':x3='${r}':y3='${b}':interpolation=cubic:sense=destination:eval=frame,crop=${W}:${H}:${P}:${P},setpts=PTS-STARTPTS+${s6(from / 1000)}/TB[${id}]`,
+        );
+        draws.push({ layer: id, enable: `gte(t,${s6(from / 1000)})*lt(t,${s6(to / 1000)})` });
+        continue;
+      }
       draws.push(
         `drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${size}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${kfs ? `'${Math.round(s.x * W)}-text_w/2${kx}'` : `${Math.round(s.x * W)}-text_w/2`}:y=${kfs ? `'${Math.round(s.y * H)}-text_h/2${ky}'` : `${Math.round(s.y * H)}-text_h/2`}${look ? `:${look}` : ''}${alpha}:enable='gte(t,${s6(c.start_ms / 1000)})*lt(t,${s6(c.end_ms / 1000)})'`,
       );
@@ -523,7 +591,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     layers.push({ input: 'logo', x: lg.corner.endsWith('l') ? `${m}` : `W-w-${m}`, y: lg.corner.startsWith('t') ? `${m}` : `H-h-${m}`, enable: '' });
   }
   if (layers.length) {
-    graph.push(draws.length ? `[vcat]${draws.join(',')}[vl0]` : `[vcat]null[vl0]`);
+    graph.push(...drawChain('vcat', 'vl0'));
     layers.forEach((l, i) => {
       const last = i === layers.length - 1;
       const tail = last ? `,format=yuv420p,trim=end_frame=${total_frames}[vout]` : `[vl${i + 1}]`;
@@ -535,7 +603,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       }
       graph.push(`[vl${i}][${l.input}]overlay=x=${l.x}:y=${l.y}:eof_action=pass:format=auto${l.enable ? `:enable='${l.enable}'` : ''}${tail}`);
     });
-  } else graph.push(draws.length ? `[vcat]${draws.join(',')}[vout]` : `[vcat]null[vout]`);
+  } else graph.push(...drawChain('vcat', 'vout'));
 
   args.push(
     '-/filter_complex', 'graph.txt',

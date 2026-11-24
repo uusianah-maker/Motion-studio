@@ -12,7 +12,9 @@
  *  - the right side is the brand's own word (brand name, Brand Kit vocabulary / keywords), or
  *  - the wrong word sounds like a clipped form of the right one (letters in the same order,
  *    "cana" ⊂ "celana") — a typical Whisper mishearing, not a different word.
- * Other pairs ("janganlah" → "Join Live": a real word, fixed once) are only suggestions (`usulan`).
+ * …but never by the last two rules when the wrong side is an everyday Indonesian word (`kataUmum`):
+ * "janganlah" → "Join Live" (a real word, fixed once) stays a suggestion (`usulan`) even when
+ * "Join Live" is in the vocabulary.
  * The Brand Kit dictionary always wins: a pair the team wrote is never overridden.
  */
 
@@ -85,6 +87,30 @@ export function mirip(salah: string, benar: string): boolean {
   return k === s.length && s.length >= b.length * 0.6;
 }
 
+/** Everyday Indonesian words (base forms); `-lah`, `-kah`, `-pun`, `-nya` are stripped before the lookup. */
+const KATA_UMUM = new Set(
+  (
+    'jangan yang dan di ke dari ini itu ada tidak tak bukan sudah belum akan bisa mau ingin harus boleh perlu ' +
+    'saya aku kamu kau dia kita kami mereka anda kalian gue gua lu lo beliau ' +
+    'apa siapa mana kapan kenapa mengapa bagaimana berapa gimana ' +
+    'untuk dengan pada dalam atau tapi tetapi juga lagi saja aja hanya cuma sangat banget sekali paling lebih kurang ' +
+    'kalau kalo jika karena biar agar supaya sampai hingga sejak setelah sebelum sambil ' +
+    'sini situ sana begini begitu gini gitu semua setiap banyak sedikit ' +
+    'satu dua tiga empat lima enam tujuh delapan sembilan sepuluh ' +
+    'baru lama besar kecil bagus baik jelek murah mahal cantik keren enak nyaman ' +
+    'sekarang nanti tadi besok kemarin hari ini malam pagi siang sore ' +
+    'beli jual pakai coba lihat liat datang pergi ambil kasih kirim pesan order ' +
+    'ya iya ayo yuk deh dong sih kok nah wah kan loh lho tuh nih'
+  ).split(/\s+/),
+);
+
+/** True when every word of `s` is an everyday Indonesian word (so a "fix" of it may be wrong for other videos). */
+export function kataUmum(s: string): boolean {
+  const ws = s.toLowerCase().split(/\s+/).filter(Boolean);
+  const umum = (w: string) => KATA_UMUM.has(w) || [/lah$/, /kah$/, /pun$/, /nya$/].some((r) => r.test(w) && KATA_UMUM.has(w.replace(r, '')));
+  return ws.length > 0 && ws.every(umum);
+}
+
 /**
  * All pairs learned from a brand's notes. `kataBrand` = brand name + vocabulary + keywords;
  * `kamusTim` = the Brand Kit dictionary (its wrong words are skipped: the team already decided).
@@ -111,7 +137,11 @@ export function kamusBelajar(notes: readonly Record<string, unknown>[], kataBran
     const [benar, v] = [...m.entries()].sort((x, y) => y[1].kali - x[1].kali || y[1].terakhir - x[1].terakhir)[0]!;
     const b = benar.toLowerCase();
     const milikBrand = brand.some((w) => w === b || w.includes(b) || b.includes(w));
-    out.push({ salah, benar, kali: v.kali, terakhir: v.terakhir, otomatis: v.kali >= 2 || milikBrand || mirip(salah, benar) });
+    // Keluhan tim: "janganlah" → "Join Live" (Join Live is in the vocabulary) was applied to every
+    // job after ONE fix. A common Indonesian word on the wrong side is a real word the speaker may
+    // have said: the brand / clipped-letters rules do not make it safe, it stays a suggestion.
+    const aman = !kataUmum(salah) && (milikBrand || mirip(salah, benar));
+    out.push({ salah, benar, kali: v.kali, terakhir: v.terakhir, otomatis: v.kali >= 2 || aman });
   }
   return out.sort((x, y) => y.kali - x.kali || y.terakhir - x.terakhir);
 }

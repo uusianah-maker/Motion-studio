@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkPlan } from '../src/storage/copilot.js';
-import { validateEffect, zoomAt } from '../src/storage/effects.js';
+import { validateEffect, zoomAt, zoomExpr } from '../src/storage/effects.js';
 import { isStorageError } from '../src/storage/errors.js';
 import { DEFAULT_RENDER, buildRenderPlan, listOutputs, renderProject } from '../src/storage/render.js';
 import { StorageService } from '../src/storage/service.js';
@@ -41,7 +41,17 @@ describe('U3c zoom effects + glass boxes', () => {
     expect(zoomAt({ type: 'zoom', scale: 1.5, mode: 'cut', x: 0.5, y: 0.5 }, 0, 1000)).toBe(1.5);
     expect(zoomAt({ type: 'zoom', scale: 1.5, mode: 'smooth', x: 0.5, y: 0.5 }, 125, 1000)).toBeCloseTo(1.25);
     expect(zoomAt({ type: 'zoom_through', scale: 1.4, x: 0.5, y: 0.5 }, 150, 300)).toBeCloseTo(1.2);
-    const t = applyOps({ tracks: [] }, validateOps([{ op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 4000 }, { op: 'add_clip', track_kind: 'effects', effect: { type: 'zoom', scale: 1.3 }, start_ms: 1000, duration_ms: 1000 }]), ids);
+    // Keluhan tim: smooth = cosine ease in AND back out at the end (render expression = preview curve).
+    const sm = { type: 'zoom', scale: 1.5, mode: 'smooth', x: 0.5, y: 0.5 } as const;
+    expect(zoomAt(sm, 62.5, 1000)).toBeCloseTo(1 + 0.5 * (0.5 - 0.5 * Math.cos(Math.PI * 0.25)));
+    expect(zoomAt(sm, 500, 1000)).toBe(1.5);
+    expect(zoomAt(sm, 875, 1000)).toBeCloseTo(1.25);
+    expect(zoomAt(sm, 1000, 1000)).toBe(1);
+    expect(zoomAt(sm, 100, 200)).toBe(1.5); // short clip: in and out share it
+    const ex = zoomExpr(sm, 2000, 3000);
+    const evalAt = (t: number) => Function('t', 'clip', 'min', 'cos', 'PI', `return ${ex}`)(t, (v: number, a: number, b: number) => Math.min(b, Math.max(a, v)), Math.min, Math.cos, Math.PI) as number;
+    for (const ms of [0, 40, 125, 300, 700, 900, 990]) expect(evalAt(2 + ms / 1000)).toBeCloseTo(zoomAt(sm, ms, 1000), 3);
+    const t =applyOps({ tracks: [] }, validateOps([{ op: 'add_clip', track_kind: 'video', media: V, start_ms: 0, duration_ms: 4000 }, { op: 'add_clip', track_kind: 'effects', effect: { type: 'zoom', scale: 1.3 }, start_ms: 1000, duration_ms: 1000 }]), ids);
     expect(t.tracks.find((x) => x.kind === 'effects')!.clips[0]!.effect).toMatchObject({ type: 'zoom', scale: 1.3 });
     expect(code(() => applyOps(t, validateOps([{ op: 'add_clip', track_kind: 'effects', start_ms: 3000, duration_ms: 500 }]), ids))).toBe('EDIT_INVALID'); // no effect
     expect(code(() => applyOps(t, validateOps([{ op: 'add_clip', track_kind: 'text', text: 'x', effect: { type: 'zoom' }, start_ms: 0, duration_ms: 500 }]), ids))).toBe('EDIT_INVALID');
@@ -66,7 +76,7 @@ describe('U3c zoom effects + glass boxes', () => {
     expect(ev).toMatch(/\\c&HD0FDFF&[^}]*\}anti/); // normal word: cream text, normal border
   });
 
-  it('render plan: zoom before text (zoompan), glass blur limited to the clip time', () => {
+  it('render plan: zoom before text (sub-pixel perspective), glass blur limited to the clip time', () => {
     const t: Timeline = {
       tracks: [
         { track_id: 'v', kind: 'video', clips: [{ clip_id: 'a', start_ms: 0, end_ms: 3000, media: V }] },
@@ -76,17 +86,19 @@ describe('U3c zoom effects + glass boxes', () => {
     };
     const probe = { duration_ms: 8000, width: 360, height: 640, video_codec: 'h264', audio_codec: 'aac' };
     const g = buildRenderPlan(t, new Map([['v_1', { path: 'C:/s.mp4', probe }]]), { ...DEFAULT_RENDER, short_side: 1080 }, 'C:/f/arialbd.ttf').graph;
-    const zoom = g.indexOf('zoompan=');
+    const zoom = g.indexOf('perspective=');
     const blur = g.indexOf('gblur=sigma=10');
     const text = g.indexOf('drawtext=');
     expect(zoom).toBeGreaterThan(0);
     expect(blur).toBeGreaterThan(zoom); // zoom first, then glass, then the text on top
     expect(text).toBeGreaterThan(blur);
     expect(g).toContain("enable='between(t,0.500,1.500)'");
-    expect(g).toContain(':d=1:s=1080x1920:fps=30'); // one zoomed frame per input frame, canvas size kept
-    expect(g).toContain("z='if(between(it\\,1.000\\,1.9995)\\,1.5\\,1)'");
+    // Keluhan tim: float window (no whole-pixel zoompan crop), only while the effect is on screen.
+    expect(g).not.toContain('zoompan');
+    expect(g).toContain("x0='(W-W/(if(between(((in-1)/30)\\,1.000\\,1.9995)\\,1.5\\,1)))*(if(between(((in-1)/30)\\,1.000\\,1.9995)\\,0.5\\,0.5))'");
+    expect(g).toContain(":interpolation=cubic:sense=source:eval=frame:enable='between(t,1.000,1.9995)'");
     const plain = buildRenderPlan({ tracks: [t.tracks[0]!] }, new Map([['v_1', { path: 'C:/s.mp4', probe }]]), { ...DEFAULT_RENDER, short_side: 1080 }, null).graph;
-    expect(plain).not.toContain('zoompan');
+    expect(plain).not.toContain('perspective');
     expect(plain).not.toContain('gblur');
   });
 

@@ -150,10 +150,31 @@ export function keyframeFilters(kfs: readonly Keyframe[], o: { W: number; H: num
   const A = kfExpr(kfs, 'opacity', T);
   const varies = (p: keyof KfValues) => kfs.some((k) => k[p] !== kfs[0]![p]);
   const f: string[] = [];
+  const fade = kfs.some((k) => k.opacity < 1) ? `eq=contrast='${A}':brightness='(0.0627-0.5)*(1-(${A}))':saturation='${A}':eval=${varies('opacity') ? 'frame' : 'init'}` : '';
+  if (varies('x') || varies('y') || varies('scale')) {
+    // Keluhan tim "keyframe belum smooth": a per-frame `scale` (even whole-pixel sizes) + integer
+    // `overlay` position stepped 1–2 px per frame. `perspective` places the picture with sub-pixel
+    // float corners (bicubic) instead: the canvas picture, padded with P px of black (perspective
+    // repeats the edge pixels outside the source, so the edge is black), scaled by S around its
+    // centre and moved by (X·W, Y·H) — the same transform as the preview's CSS — then the padding is
+    // cropped off. `in` counts this chain's frames from 1, so the clip time is (in−1)/fps + offset.
+    const P = 4;
+    const Tp = `((in-1)/${o.fps}+${(o.offMs / 1000).toFixed(4)})`;
+    const Sp = kfExpr(kfs, 'scale', Tp);
+    const cx = `(${o.W / 2 + P}+(${kfExpr(kfs, 'x', Tp)})*${o.W})`;
+    const cy = `(${o.H / 2 + P}+(${kfExpr(kfs, 'y', Tp)})*${o.H})`;
+    const l = `${cx}-(${Sp})*${o.W / 2 + P}`;
+    const r = `${cx}+(${Sp})*${o.W / 2 + P}`;
+    const tp = `${cy}-(${Sp})*${o.H / 2 + P}`;
+    const b = `${cy}+(${Sp})*${o.H / 2 + P}`;
+    f.push(`[${o.inLabel}]${fade ? `${fade},` : ''}pad=${o.W + 2 * P}:${o.H + 2 * P}:${P}:${P}:color=black,perspective=x0='${l}':y0='${tp}':x1='${r}':y1='${tp}':x2='${l}':y2='${b}':x3='${r}':y3='${b}':interpolation=cubic:sense=destination:eval=frame,crop=${o.W}:${o.H}:${P}:${P}[${o.outLabel}]`);
+    return f;
+  }
+  // Still picture (only opacity moves, or a fixed scale/offset): one fixed scale + overlay, as before.
   // Even sizes (yuv420p); never below 2 px.
-  f.push(`[${o.inLabel}]scale=w='max(2,trunc(${o.W}*${S}/2)*2)':h='max(2,trunc(${o.H}*${S}/2)*2)':eval=${varies('scale') ? 'frame' : 'init'}${kfs.some((k) => k.opacity < 1) ? `,eq=contrast='${A}':brightness='(0.0627-0.5)*(1-(${A}))':saturation='${A}':eval=${varies('opacity') ? 'frame' : 'init'}` : ''}[${o.id}kf]`);
+  f.push(`[${o.inLabel}]scale=w='max(2,trunc(${o.W}*${S}/2)*2)':h='max(2,trunc(${o.H}*${S}/2)*2)':eval=init${fade ? `,${fade}` : ''}[${o.id}kf]`);
   f.push(`color=c=black:s=${o.W}x${o.H}:r=${o.fps}:d=${(o.frames / o.fps).toFixed(4)},format=yuv420p[${o.id}kb]`);
-  f.push(`[${o.id}kb][${o.id}kf]overlay=x='(W-w)/2+(${X})*W':y='(H-h)/2+(${Y})*H':eval=${varies('x') || varies('y') || varies('scale') ? 'frame' : 'init'}:shortest=1[${o.outLabel}]`);
+  f.push(`[${o.id}kb][${o.id}kf]overlay=x='(W-w)/2+(${X})*W':y='(H-h)/2+(${Y})*H':eval=init:shortest=1[${o.outLabel}]`);
   return f;
 }
 

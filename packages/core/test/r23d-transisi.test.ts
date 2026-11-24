@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TRANSITIONS, TRANSITION_LABEL, transitionCss, validateTransition, xfadeTransition } from '../src/storage/clipLook.js';
+import { TRANSITIONS, TRANSITION_LABEL, pullOutFilter, transitionCss, validateTransition, xfadeTransition } from '../src/storage/clipLook.js';
 import { listOutputs, renderProject } from '../src/storage/render.js';
 import { StorageService } from '../src/storage/service.js';
 import { createProject } from '../src/storage/workspace.js';
@@ -26,8 +26,10 @@ describe('R23d transisi', () => {
     }
     expect([TRANSITION_LABEL.hitam, TRANSITION_LABEL.zoom_in, TRANSITION_LABEL.blur, TRANSITION_LABEL.pull_out]).toEqual(['Fade ke hitam', 'Zoom in', 'Blur', 'Pull out (zoom out)']);
     expect([xfadeTransition('hitam'), xfadeTransition('zoom_in'), xfadeTransition('blur')]).toEqual(['fadeblack', 'zoomin', 'hblur']);
-    expect(xfadeTransition('pull_out')).toMatch(/^custom:expr='if\(eq\(PLANE,0\),b0\(floor/);
-    expect(xfadeTransition('pull_out')).not.toMatch(/st\(|ld\(/); // no shared registers (slice threads)
+    // Keluhan tim: pull out = plain fade over B zoomed sub-pixel beforehand (no nearest-pixel floor()).
+    expect(xfadeTransition('pull_out')).toBe('fade');
+    const z = '(1+0.5*(1-(in-1)/12))';
+    expect(pullOutFilter(12)).toBe(`perspective=x0='(W-W/${z})/2':y0='(H-H/${z})/2':x1='(W-W/${z})/2+W/${z}':y1='(H-H/${z})/2':x2='(W-W/${z})/2':y2='(H-H/${z})/2+H/${z}':x3='(W-W/${z})/2+W/${z}':y3='(H-H/${z})/2+H/${z}':interpolation=cubic:sense=source:eval=frame:enable='lt(n,12)'`);
   });
   it('preview approximations peak at the cut', () => {
     expect(transitionCss('hitam', 0.5).black).toBe(1);
