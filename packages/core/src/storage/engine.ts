@@ -15,6 +15,7 @@
  */
 import { execFile, spawn } from 'node:child_process';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type BrandKit, assetKunci, brandReferences, exportBrandKit, readBrand, readBrandFor, sharedLibrary } from './brand.js';
@@ -313,6 +314,10 @@ const str = (v: unknown, what: string, max: number, allowEmpty = true): string =
   return (v as string).trim();
 };
 const KUNCI = /^\$sumber(?::[A-Za-z0-9_-]{1,40})?$/;
+/** §26: footage per Video Iklan (the engine refuses more, see pipeline/gabung.py). */
+export const MAKS_FOOTAGE_IKLAN = 20;
+/** §26: the engine's joined footage (`out/gabungan.mp4`), imported as project media. */
+export const KUNCI_GABUNGAN = '$gabungan:video';
 const PLACEMENTS = ['tiktok', 'instagram', 'shopee', 'youtube'] as const;
 
 /** Validate the browser's request (untrusted). */
@@ -328,7 +333,8 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
   if (o.mode !== 'generate' && o.mode !== 'batch') bad('mode harus generate | batch');
-  if (!Array.isArray(o.sources) || o.sources.length > 50 || (o.mode === 'generate' && o.sources.length !== 1)) bad(o.mode === 'generate' ? 'Generate Otomatis butuh tepat satu video sumber' : 'sumber maksimal 50');
+  // §26: Video Iklan boleh beberapa footage (digabung mesin sesuai urutan daftar).
+  if (!Array.isArray(o.sources) || o.sources.length > 50 || (o.mode === 'generate' && (o.sources.length < 1 || o.sources.length > MAKS_FOOTAGE_IKLAN))) bad(o.mode === 'generate' ? `Video iklan butuh 1–${MAKS_FOOTAGE_IKLAN} footage` : 'sumber maksimal 50');
   const sources = (o.sources as unknown[]).map((s, i) => {
     const so = (s ?? {}) as Record<string, unknown>;
     const r = (so.ref ?? {}) as Record<string, unknown>;
@@ -337,7 +343,9 @@ export function validateEngineJob(x: unknown): EngineJobInput {
     return { kunci: so.kunci as string, ref: { media_id: r.media_id as string, version_id: r.version_id as string } };
   });
   if (new Set(sources.map((s) => s.kunci)).size !== sources.length) bad('kunci sumber harus unik');
-  if (o.mode === 'generate' && sources[0]!.kunci !== '$sumber') bad('Generate Otomatis: kunci sumber harus $sumber');
+  // One video = `$sumber` (as before); several = `$sumber:<id>` each, in the order they are joined.
+  if (o.mode === 'generate' && sources.length === 1 && sources[0]!.kunci !== '$sumber') bad('Generate Otomatis: kunci sumber harus $sumber');
+  if (o.mode === 'generate' && sources.length > 1 && sources.some((s) => s.kunci === '$sumber')) bad('Video iklan dengan beberapa footage: kunci tiap footage harus $sumber:<id>');
   const preset = str(o.preset, 'preset', 60, false);
   if (!/^[a-z0-9-]+$/.test(preset)) bad('preset hanya huruf kecil, angka, tanda minus');
   const b = (o.brief ?? {}) as Record<string, unknown>;
@@ -762,7 +770,9 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
     }
     for (const s of input.sources) refs[s.kunci] = s.ref;
     await writeJsonAtomic(path.join(jdir, 'refs.json'), { schema: 'engine-refs/1', brand_id: kit.brand_id, refs });
-    lease ??= await createLease(ws, { job: 'engine', label: `Mesin ${job_id}`, media: input.sources.map((s) => s.ref), actor: opts.actor ?? 'user', worker_pid: process.pid });
+    // §26: the same footage may appear twice in a Video Iklan; one pin per version is enough.
+    const pinned = [...new Map(input.sources.map((s) => [s.ref.version_id, s.ref])).values()];
+    lease ??= await createLease(ws, { job: 'engine', label: `Mesin ${job_id}`, media: pinned, actor: opts.actor ?? 'user', worker_pid: process.pid });
     const status: EngineStatus = { schema: 'engine-status/1', job_id, project_id: input.project_id, mode: input.mode, state: 'menunggu', tahap: 'antre', persen: 0, pesan: '', created_at: now, started_at: null, finished_at: null, exit_code: null, alasan: null, lease_id: lease.lease_id };
     await writeStatus(ws, status);
     await audit(ws, { op: 'engine.prepare', actor: opts.actor ?? 'user', outcome: 'ok', project_id: input.project_id, job_id, mode: input.mode, sources: input.sources.length });
@@ -955,11 +965,14 @@ export async function continueRefusedJob(ws: Workspace, projectId: string, jobId
   const jdir = jobAbs(ws, projectId, jobId);
   const job = await readJson<{ preset?: unknown; brief?: unknown; ai?: unknown; mode_ops?: unknown; audio_pilihan?: unknown; sumber?: { kunci?: unknown }[] }>(path.join(jdir, 'job.json'));
   const refs = (await readJson<{ refs?: Record<string, MediaRef> }>(path.join(jdir, 'refs.json')))?.refs ?? {};
-  if (!job || !refs.$sumber) throw new StorageError('PRECONDITION', 'Job lama tidak lengkap; jalankan Generate baru dari awal');
+  // §26: the same footage in the same order (job.json `sumber` keeps the order; `$vo:` is not footage).
+  const kunci = (job?.sumber ?? []).map((s) => s?.kunci).filter((k): k is string => typeof k === 'string' && KUNCI.test(k));
+  const sources = kunci.map((k) => ({ kunci: k, ref: refs[k] }));
+  if (!job || !sources.length || sources.some((s) => !s.ref)) throw new StorageError('PRECONDITION', 'Job lama tidak lengkap; jalankan Generate baru dari awal');
   const input = validateEngineJob({
     project_id: projectId,
     mode: 'generate',
-    sources: [{ kunci: '$sumber', ref: refs.$sumber }],
+    sources,
     preset: job.preset,
     brief: job.brief,
     ai: job.ai === true,
@@ -1008,6 +1021,26 @@ async function assertEnginePath(cfg: EngineConfig | null, p: string): Promise<st
   return real;
 }
 
+/** §26: `out/gabungan.mp4` of THIS job only (no symlink out of it, video only). */
+async function assertJobOutPath(jdir: string, p: string): Promise<string> {
+  const out = await fsp.realpath(path.join(jdir, 'out')).catch(() => null);
+  const real = await fsp.realpath(path.resolve(jdir, p)).catch(() => null);
+  if (!out || !real || !isInside(out, real) || !/\.mp4$/i.test(real)) throw new StorageError('PRECONDITION', 'Video gabungan harus di folder out job ini', { path: path.basename(p) });
+  return real;
+}
+
+/** A file inside the workspace (job out/) is imported through a temp copy, like Visual Tools results. */
+async function importJobFile(ws: Workspace, abs: string, scope: Parameters<typeof importMedia>[1]['scope'], display_name: string) {
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'msc-gabung-'));
+  try {
+    const copy = path.join(tmp, path.basename(abs));
+    await fsp.copyFile(abs, copy);
+    return await importMedia(ws, { sourcePath: copy, scope, display_name, actor: 'user' });
+  } finally {
+    await fsp.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 /**
  * Read `out/[varian-NNN/]ops.json` and replace placeholders with MediaRefs (sources, brand assets,
  * `aset_lokal` imported as project media; Batch Remix footage from `batch.json` as shared media).
@@ -1051,8 +1084,10 @@ export async function loadEnginePlan(ws: Workspace, cfg: EngineConfig | null, pr
   // Import once (deduplicated by content), remembered in refs.json.
   for (const f of found) {
     if (refs[f.kunci]) continue;
-    const abs = await assertEnginePath(cfg, f.path);
-    const r = await importMedia(ws, { sourcePath: abs, scope, display_name: `${f.kunci.slice(1).replace(/:/g, '-')}${path.extname(abs)}`, actor: 'user' });
+    // §26: the joined footage is the one file the engine writes in the job's own out/ folder.
+    const gab = f.kunci === KUNCI_GABUNGAN && !shared;
+    const abs = gab ? await assertJobOutPath(jdir, f.path) : await assertEnginePath(cfg, f.path);
+    const r = gab ? await importJobFile(ws, abs, scope, 'Footage gabungan.mp4') : await importMedia(ws, { sourcePath: abs, scope, display_name: `${f.kunci.slice(1).replace(/:/g, '-')}${path.extname(abs)}`, actor: 'user' });
     refs[f.kunci] = { media_id: r.media.media_id, version_id: r.version.version_id };
     imported.push(f.kunci);
   }

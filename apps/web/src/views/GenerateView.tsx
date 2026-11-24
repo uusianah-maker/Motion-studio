@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { proyekFitur } from '../fitur';
 import type { Api, BrandKit, DiffItem, EditPlan, EngineBrief, EngineJob, EngineQc, EngineRencana, JobOverlay, JobVo, ProjectSummary, Role } from '../api';
+import { type Footage, FootageList } from './FootageList';
 import { JobOverlays } from './JobOverlays';
 import { SuaraPilihan } from './SuaraPilihan';
 import { type PenutupOption, PenutupPicker, type PenutupValue } from './PenutupPicker';
@@ -14,7 +15,7 @@ import { AudioPilihanSelect } from './PresetGaya';
  * ONE undo step → render + QC in the Editor. Nothing is rendered here, nothing applies by itself.
  */
 export const ENGINE_STATE: Record<EngineJob['state'], string> = { menunggu: 'Antre', berjalan: 'Berjalan', siap: 'Rencana siap', ditolak: 'Ditolak mesin', gagal: 'Gagal' };
-const TAHAP: Record<string, string> = { antre: 'Menunggu giliran', mulai: 'Memulai mesin', cek_input: 'Cek video', transkrip: 'Transkrip (Whisper)', rencana: 'Menyusun rencana', pisah: 'Memisah audio (Demucs)', shot_library: 'Menyusun Shot Library', adegan: 'Mencari adegan', gambar: 'Mengambil gambar adegan', ketukan: 'Membaca ketukan', shot: 'Memotong footage per orang', susun: 'Menyusun potongan', tulis: 'Menulis hasil', selesai: 'Selesai' };
+const TAHAP: Record<string, string> = { antre: 'Menunggu giliran', mulai: 'Memulai mesin', cek_input: 'Cek video', gabung: 'Menggabung footage', transkrip: 'Transkrip (Whisper)', rencana: 'Menyusun rencana', pisah: 'Memisah audio (Demucs)', shot_library: 'Menyusun Shot Library', adegan: 'Mencari adegan', gambar: 'Mengambil gambar adegan', ketukan: 'Membaca ketukan', shot: 'Memotong footage per orang', susun: 'Menyusun potongan', tulis: 'Menulis hasil', selesai: 'Selesai' };
 const sec = (n: number | undefined) => (typeof n === 'number' ? `${n.toFixed(1).replace('.', ',')} dtk` : '–');
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -121,6 +122,11 @@ export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }:
           {rencana.audio?.alasan_tanpa_musik && <span className="muted small">{rencana.audio.alasan_tanpa_musik}</span>}
         </div>
       </div>
+      {!!rencana.sumber_gabungan?.bagian?.length && (
+        <div className="small" aria-label="Footage digabung">
+          Footage digabung ({rencana.sumber_gabungan.bagian.length}, {sec(rencana.sumber_gabungan.durasi)}): {rencana.sumber_gabungan.bagian.map((b, i) => `${i + 1}. ${sec(b.durasi_ms / 1000)}${b.suara === false ? ' tanpa suara' : ''}`).join(' · ')}
+        </div>
+      )}
       {typeof rencana.posisi_caption === 'number' && <div className="small">Posisi caption: {Math.round(rencana.posisi_caption * 100)}% dari atas</div>}
       {qc && qc.butir.length > 0 && (
         <ul className="qcList small" aria-label="Cek rencana mesin">
@@ -171,7 +177,9 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
   const [defaultBrand, setDefaultBrand] = useState<string | null>(null);
   const [target, setTarget] = useState('new');
   const [name, setName] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  /** §26: one or more footage, joined by the engine in this order. */
+  const [footage, setFootage] = useState<Footage[]>([]);
+  const file = footage[0]?.file ?? null;
   const [brief, setBrief] = useState<EngineBrief>({ produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' });
   const [preset, setPreset] = useState('');
   const [ai, setAi] = useState(false);
@@ -189,7 +197,6 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
   const [history, setHistory] = useState<EngineJob[]>([]);
   const [plan, setPlan] = useState<{ plan: EditPlan; diff: DiffItem[]; rencana: EngineRencana; qc: EngineQc | null } | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const { job, log, error: jobError } = useEngineJob(api, current?.project_id ?? null, current?.job_id ?? null);
   useEffect(() => {
     if (!fokus) return;
@@ -267,11 +274,22 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
       }
       const p = await api.project(projectId);
       if (p.brand_id !== brand.brand_id) await api.updateProject(projectId, p.revision, { brand_id: brand.brand_id });
+      // §26: upload one by one (progress over all files); one footage keeps `$sumber` (old jobs).
+      const files = footage.map((f) => f.file);
+      const total = files.reduce((a, f) => a + f.size, 0) || 1;
+      const sources: { kunci: string; ref: { media_id: string; version_id: string } }[] = [];
+      let done = 0;
       setUpload(0);
-      const up = await api.importFile(file, { kind: 'project', project_id: projectId }, setUpload);
+      for (const [i, f] of files.entries()) {
+        const up = await api.importFile(f, { kind: 'project', project_id: projectId }, (p) => setUpload((done + p * f.size) / total));
+        done += f.size;
+        sources.push({ kunci: files.length === 1 ? '$sumber' : `$sumber:f${String(i + 1).padStart(2, '0')}`, ref: { media_id: up.media_id, version_id: up.version.version_id } });
+      }
       setUpload(null);
-      const j = await api.engineStart(projectId, { mode: 'generate', sources: [{ kunci: '$sumber', ref: { media_id: up.media_id, version_id: up.version.version_id } }], preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}), ...(vo ? { vo } : {}), ...(overlays.length ? { overlay: overlays } : {}), ...(penutup.value === 'none' ? { penutup: null } : penutup.value !== 'default' && penutup.opt ? { penutup: { ref: penutup.opt.ref } } : {}) });
+      const j = await api.engineStart(projectId, { mode: 'generate', sources, preset, brief, ai, ...(audio ? { audio_pilihan: audio } : {}), ...(vo ? { vo } : {}), ...(overlays.length ? { overlay: overlays } : {}), ...(penutup.value === 'none' ? { penutup: null } : penutup.value !== 'default' && penutup.opt ? { penutup: { ref: penutup.opt.ref } } : {}) });
       unstarted.current = null;
+      // The next ad starts from an empty footage list (the job keeps its own copy of the order).
+      setFootage([]);
       setTarget(projectId);
       setCurrent({ project_id: projectId, job_id: j.job_id });
     } catch (e) {
@@ -348,10 +366,9 @@ export function GenerateView({ api, role = 'owner', projects, onOpenProject, onP
                 <input aria-label="Nama proyek baru" value={name} maxLength={120} placeholder={`Generate ${brief.produk || brand?.name || ''} ${today()}`} onChange={(e) => setName(e.target.value)} />
               </label>
             )}
-            <label>
-              Video bicara
-              <input ref={fileRef} aria-label="Video bicara" type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-            </label>
+            <div className="inspFull">
+              <FootageList value={footage} onChange={setFootage} disabled={busy} />
+            </div>
             <label>
               Produk
               {products.length ? (

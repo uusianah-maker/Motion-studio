@@ -307,8 +307,19 @@ const ops = [
   ...(what === 'asing' ? [{ op: 'add_clip', track_kind: 'sfx', media: '$sfx:tidak-ada', start_ms: 1300, duration_ms: 100 }] : []),
 ];
 const lokalPath = what === 'kabur' ? 'C:/Windows/win.ini' : 'aset/musik-lokal.wav';
-fs.writeFileSync(path.join(out, 'ops.json'), JSON.stringify({ schema: 'ms-ops/1', mode: job.mode_ops ?? 'kompat', ops, aset_lokal: [{ kunci: '$musik:lokal-01', path: lokalPath }] }));
+const asetLokal = [{ kunci: '$musik:lokal-01', path: lokalPath }];
+// §26: several footage → out/gabungan.mp4 (stand-in: the first footage + a tag) as `$gabungan:video`.
+const footage = (job.sumber ?? []).filter((s) => /^\$sumber:/.test(s.kunci));
+let gabungan = null;
+if (footage.length > 1) {
+  const g = what === 'gabung-kabur' ? 'C:/Windows/win.ini' : path.join(out, 'gabungan.mp4');
+  if (what !== 'gabung-kabur') fs.writeFileSync(g, Buffer.concat([fs.readFileSync(footage[0].path), Buffer.from(`\ngabungan ${footage.length}`)]));
+  for (const o of ops) if (o.media === '$sumber') o.media = '$gabungan:video';
+  asetLokal.push({ kunci: '$gabungan:video', path: g });
+  gabungan = { kunci: '$gabungan:video', durasi: footage.length * 3, bagian: footage.map((s, i) => ({ kunci: s.kunci, nama: path.basename(s.path), mulai_ms: i * 3000, durasi_ms: 3000, suara: true })) };
+}
+fs.writeFileSync(path.join(out, 'ops.json'), JSON.stringify({ schema: 'ms-ops/1', mode: job.mode_ops ?? 'kompat', ops, aset_lokal: asetLokal }));
 fs.writeFileSync(path.join(out, 'qc_rencana.json'), JSON.stringify({ butir: [{ butir: 'durasi sesuai target', lulus: false, nilai: 1.5 }, { butir: 'hook di 3 detik pertama', lulus: true }] }));
-fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap', posisi_caption: 0.72, audio: { sfx: 1, musik: '$musik:lokal-01', lisensi_musik: 'milik_sendiri' }, durasi: { mentah: 3, akhir: 1.5, target: null, saran: [15, 30] }, hook: { teks: 'Celana adem', dari: 0, sampai: 1.2, sumber: 'aturan' }, peringatan: [], ragu: [{ detik: 0.6, teks: 'adem', alasan: 'Whisper kurang yakin (0.41)' }], mode_job: mode }));
+fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap', posisi_caption: 0.72, audio: { sfx: 1, musik: '$musik:lokal-01', lisensi_musik: 'milik_sendiri' }, durasi: { mentah: 3, akhir: 1.5, target: null, saran: [15, 30] }, hook: { teks: 'Celana adem', dari: 0, sampai: 1.2, sumber: 'aturan' }, peringatan: [], ragu: [{ detik: 0.6, teks: 'adem', alasan: 'Whisper kurang yakin (0.41)' }], mode_job: mode, ...(gabungan ? { sumber_gabungan: gabungan } : {}) }));
 say('selesai', 100);
 process.exit(0);
