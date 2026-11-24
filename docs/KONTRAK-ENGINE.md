@@ -961,3 +961,33 @@ SHA256 yang sama tertulis di `SHA` dalam `pipeline/suara_mesin.py`.
   - `edge-tts` **dilepas** dari suara-venv dan `import edge_tts` diblokir di `suara_mesin.py`, karena mengirim teks ke server Microsoft.
   - Watermark OpenVoice (`wavmark`, mengunduh model) dan `openvoice.api` tidak dipakai; konverternya dipanggil langsung.
   - UI Gradio Applio, `pypresence`, pemeriksa versi, dan pengunduh prasyarat Applio tidak dipanggil.
+
+## 26. Video Iklan dengan beberapa footage (v0.4.9, 24 Nov 2026; permintaan owner lewat venus) — DRAF
+
+Owner ingin satu video iklan bisa memakai beberapa footage sekaligus (mis. `Konten 1 (1)`, `Konten 2 (2)`, `Konten 3 (1)`). Mesin menggabungkannya sesuai urutan pilihan tim menjadi satu video, lalu menyusun draf seperti biasa. Nomor 24 dan 25 sudah dipakai draf suara di branch `hotfix/suara-*`, maka bagian ini memakai nomor 26.
+
+**26.1 `job.json` (mode `generate`), aditif**
+
+- Satu footage: tetap `sumber: [{ "kunci": "$sumber", "path": … }]` (job lama tidak berubah).
+- Beberapa footage (2–20): `sumber` berisi `$sumber:<id>` untuk tiap footage. **Urutan daftar adalah urutan di video.** App memakai `$sumber:f01`, `$sumber:f02`, dan seterusnya. Footage yang sama boleh dipakai dua kali dengan kunci berbeda. `$vo:<aset>` (§22) tetap boleh ikut dan bukan footage.
+- App menolak campuran `$sumber` dan `$sumber:<id>`, kunci kembar, atau lebih dari 20 footage. Mesin juga menolaknya (kode 2).
+
+**26.2 Penggabungan (`pipeline/gabung.py`)**
+
+- Tiap footage disamakan dulu: gambar **1080×1920**, skala menutup bingkai lalu dipotong di tengah (sama seperti satu video yang "dipotong ke 9:16"), **30 fps**, yuv420p. Suara **48 kHz stereo**. Footage tanpa suara diberi hening sepanjang gambarnya.
+- Panjang tiap bagian = panjang gambarnya, dibulatkan ke frame utuh 30 fps. Gambar yang sedikit lebih pendek diisi frame terakhir dan suara dipotong atau ditambah hening, jadi suara bagian berikutnya tidak bergeser.
+- Hasil: `<job_dir>/out/gabungan.mp4` (H.264 CRF 18 + AAC 192k) dan `out/gabungan.json` (`gabungan/1`: `bagian`, `durasi`, `sidik`). Bila isi dan urutan footage sama (`engine ulang`, "Tetap lanjut" di job yang sama), file dipakai ulang. File asli tidak pernah diubah.
+- Progres: tahap baru `gabung` (`persen` 8–12).
+- Ditolak (kode 2): file bukan video, video kosong, lebih dari 20 footage, atau semua footage tanpa suara padahal tidak memakai VO dari Library.
+
+**26.3 Hasil**
+
+- Transkrip, potongan, caption, hook, dan efek berjalan di atas `gabungan.mp4`, sama seperti satu video.
+- `ops.json`: klip video memakai placeholder **`$gabungan:video`** (bukan `$sumber`) dan `aset_lokal` memuat `{ "kunci": "$gabungan:video", "path": "<job_dir>/out/gabungan.mp4" }`.
+- `rencana.json` mendapat `sumber_gabungan`: `{ kunci, durasi, kanvas: [1080, 1920], fps: 30, bagian: [{ kunci, nama, mulai_ms, durasi_ms, suara }] }`. `mulai_ms` adalah posisi bagian itu di video gabungan.
+
+**26.4 App (Motion Studio)**
+
+- Form Video iklan: pilih beberapa file sekaligus, tambah lagi, ubah urutan (↑/↓), hapus satu per satu. Durasi tiap file dan totalnya tampil sebelum diunggah. File diunggah satu per satu.
+- `$gabungan:video` hanya diterima bila berada di folder `out/` job itu sendiri (bukan symlink ke luar, harus `.mp4`). File diimpor sekali lewat salinan sementara sebagai media proyek dan diingat di `refs.json`.
+- Draf tetap hybrid: potongan ada di timeline sebagai klip biasa yang bisa digeser, dipotong, atau dihapus, dengan satu undo. Kartu rencana menampilkan jumlah footage dan durasi tiap bagian.

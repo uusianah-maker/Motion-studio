@@ -98,6 +98,32 @@ def sumber_utama(job: dict) -> Path:
     raise ValueError("job.json: sumber dengan kunci $sumber tidak ada")
 
 
+def sumber_video(job: dict, out: Path, butuh_suara: bool) -> tuple[Path, dict | None]:
+    """§26: satu footage -> file itu (perilaku lama). Banyak footage (`$sumber:<id>`, urut) ->
+    out/gabungan.mp4 (disamakan + disambung oleh gabung.py) beserta laporannya. gabung.Ditolak = kode 2."""
+    import gabung
+
+    daftar = gabung.daftar_footage(job)
+    if len(daftar) <= 1:
+        return sumber_utama(job), None
+    if butuh_suara:
+        info = [gabung.periksa(Path(s["path"])) for s in daftar]
+        if not any(f["suara"] for f in info):
+            raise gabung.Ditolak("semua footage tanpa suara; Generate Otomatis butuh orang bicara (atau pilih VO dari Library)")
+    progres("gabung", 8, f"menggabung {len(daftar)} footage")
+    hasil = gabung.gabung(job, out, log)
+    progres("gabung", 12, f"{len(daftar)} footage -> {hasil['durasi']:.1f} dtk")
+    return Path(hasil["path"]), hasil
+
+
+def pasang_gabungan(out: Path, gab: dict | None) -> None:
+    if gab:
+        import gabung
+
+        n = gabung.pasang_di_ops(out, gab)
+        log(f"gabungan: {n} klip video -> {gab['kunci']}")
+
+
 def sumber_vo(job: dict, kunci: str) -> Path | None:
     for s in job.get("sumber", []):
         if s.get("kunci") == kunci and s.get("path"):
@@ -191,14 +217,16 @@ def selesai(out: Path, cek: dict | None = None, kamus_baru=None) -> int:
 
 
 def generate(job_dir: Path) -> int:
+    import gabung
+
     job = baca_job(job_dir)
     out = job_dir / "out"
-    video = sumber_utama(job)
-    progres("cek_input", 5, video.name)
+    progres("cek_input", 5, f"{len(gabung.daftar_footage(job))} footage")
     try:
         vo = siapkan_vo(job, job_dir)
+        video, gab = sumber_video(job, out, butuh_suara=not vo)  # §26: banyak footage -> out/gabungan.mp4
         cek = cek_input(video, min_dtk=1 if vo else 5, butuh_suara=not vo)  # §22: footage hanya gambar (diulang bila pendek)
-    except (Ditolak, vo_library.Ditolak) as e:
+    except (Ditolak, vo_library.Ditolak, gabung.Ditolak) as e:
         tulis_ditolak(out, str(e))
         progres("selesai", 100, f"ditolak: {e}")
         return 2
@@ -221,6 +249,7 @@ def generate(job_dir: Path) -> int:
         rc = jalankan(cmd)
         if rc != 0:
             raise RuntimeError(f"rencana VO gagal (kode {rc})")
+        pasang_gabungan(out, gab)
         return selesai(out, cek)
     progres("transkrip", 15, f"{cek['durasi']:.0f} dtk audio")
     t0 = time.perf_counter()
@@ -239,6 +268,7 @@ def generate(job_dir: Path) -> int:
         return 2
     if rc != 0:
         raise RuntimeError(f"rencana gagal (kode {rc})")
+    pasang_gabungan(out, gab)
     return selesai(out, cek)
 
 
@@ -252,7 +282,8 @@ def ulang(job_dir: Path) -> int:
     p = job_dir / "koreksi.json"
     koreksi = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     progres("rencana", 30, "menerapkan koreksi")
-    cmd = argumen_edit(job, job_dir, transkrip, sumber_utama(job), out)
+    video, gab = sumber_video(job, out, butuh_suara=False)  # §26: gabungan dipakai ulang bila footage sama
+    cmd = argumen_edit(job, job_dir, transkrip, video, out)
     kata = koreksi.get("kata", [])
     if kata:
         cmd += ["--koreksi", *[f"{k['detik']}:{k['jadi']}" for k in kata]]
@@ -279,6 +310,7 @@ def ulang(job_dir: Path) -> int:
             kamus_baru[asal] = k["jadi"]
     if koreksi.get("pakai"):
         log("catatan: 'pakai' (paksa pakai bagian yang dibuang mesin) belum didukung; diabaikan")
+    pasang_gabungan(out, gab)
     return selesai(out, kamus_baru=kamus_baru or None)
 
 
