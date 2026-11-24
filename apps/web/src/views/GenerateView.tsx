@@ -92,6 +92,14 @@ export function EngineProgress({ job, log, onCancel }: { job: EngineJob; log: st
 }
 
 /** "Rencana edit siap, render ditahan" card (contract §5.1). */
+/** §27: what the engine did with one understood instruction from the team's prompt. */
+function instruksiHasil(x: { aksi?: string; teks?: string; ditemukan?: number; hasil?: { footage: number }[] }): string {
+  if (x.aksi === 'buang_footage' || x.aksi === 'hanya_footage') return x.hasil?.length ? `footage ${x.hasil.map((h) => h.footage).join(', ')} tidak dipakai` : 'tidak ada footage yang dibuang';
+  if (x.ditemukan === 0) return `“${x.teks ?? ''}” tidak ditemukan di ucapan, tidak ada yang dibuang`;
+  if (typeof x.ditemukan === 'number') return `dibuang ${x.ditemukan}×`;
+  return 'diterapkan';
+}
+
 export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }: { rencana: EngineRencana; qc: EngineQc | null; plan: EditPlan; diff: DiffItem[]; busy: boolean; onApprove: () => void; onReject: () => void }) {
   const d = rencana.durasi;
   return (
@@ -127,6 +135,25 @@ export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }:
           Footage digabung ({rencana.sumber_gabungan.bagian.length}, {sec(rencana.sumber_gabungan.durasi)}): {rencana.sumber_gabungan.bagian.map((b, i) => `${i + 1}. ${sec(b.durasi_ms / 1000)}${b.suara === false ? ' tanpa suara' : ''}${b.utuh ? ' (tanpa ucapan, dipakai utuh)' : ''}`).join(' · ')}
         </div>
       )}
+      {rencana.instruksi_tim && (rencana.instruksi_tim.dipahami?.length || rencana.instruksi_tim.otomatis?.length || rencana.instruksi_tim.tidak_dipahami?.length) ? (
+        <ul className="qcList small" aria-label="Instruksi tim dari prompt">
+          {rencana.instruksi_tim.dipahami?.map((x, i) => (
+            <li key={`d${i}`} data-ok={x.ditemukan !== 0}>
+              {x.ditemukan === 0 ? '⚠' : '✓'} “{x.kalimat}” → {instruksiHasil(x)}
+            </li>
+          ))}
+          {rencana.instruksi_tim.otomatis?.map((x, i) => (
+            <li key={`o${i}`} data-ok>
+              ✓ “{x.kalimat}”{x.catatan ? ` → ${x.catatan}` : ''}
+            </li>
+          ))}
+          {rencana.instruksi_tim.tidak_dipahami?.map((x, i) => (
+            <li key={`t${i}`} data-ok={false}>
+              ⚠ Tidak dipahami mesin: “{x.kalimat}”{x.alasan ? ` (${x.alasan})` : ''}. Atur manual di Edit.
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {typeof rencana.posisi_caption === 'number' && <div className="small">Posisi caption: {Math.round(rencana.posisi_caption * 100)}% dari atas</div>}
       {qc && qc.butir.length > 0 && (
         <ul className="qcList small" aria-label="Cek rencana mesin">
