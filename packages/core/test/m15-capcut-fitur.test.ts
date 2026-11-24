@@ -138,12 +138,17 @@ describe('shared math: preview = render', () => {
     expect(fadeGainAt({ fade_out_ms: 1000 }, 2500, 3000)).toBeCloseTo(0.5);
     expect(fadeGainAt({}, 10, 3000)).toBe(1);
     expect(fadeFilter({}, 1000)).toBe('');
-    expect(fadeFilter({ fade_in_ms: 500, fade_out_ms: 500 }, 2000, 250)).toBe("volume='clip(min((t+0.2500)/0.5000,(2.0000-(t+0.2500))/0.5000),0,1)':eval=frame");
+    // Keluhan tim: per-sample afade; a piece starting inside the fade-in starts at that gain.
+    expect(fadeFilter({ fade_in_ms: 500, fade_out_ms: 500 }, 2000, 250)).toBe('afade=t=in:st=0:d=0.250:silence=0.5,afade=t=out:st=1.250:d=0.500');
+    expect(fadeFilter({ fade_out_ms: 1000 }, 2000, 1500)).toBe('afade=t=out:st=0:d=0.500:unity=0.5'); // starts halfway down the fade-out
+    expect(fadeFilter({ fade_in_ms: 300 }, 2000, 500)).toBe(''); // fade-in already over
+    expect(fadeFilter({ fade_out_ms: 300 }, 2000, 0, 1000)).toBe(''); // fade-out after this piece
     const r = mergeRanges([[1000, 2000], [2200, 3000], [5000, 6000]]);
     expect(r).toEqual([[1000, 3000], [5000, 6000]]);
     expect(duckGainAt(r, 0.2, 0)).toBe(1);
     expect(duckGainAt(r, 0.2, 1500)).toBeCloseTo(0.2);
-    expect(duckGainAt(r, 0.2, 900)).toBeCloseTo(0.6); // halfway down the 200 ms ramp
+    expect(duckGainAt(r, 0.2, 800)).toBeCloseTo(0.6); // halfway down the 400 ms ramp (cosine ease)
+    expect(duckGainAt(r, 0.2, 700)).toBeCloseTo(1 - 0.8 * (0.5 - 0.5 * Math.cos(Math.PI * 0.25)));
     expect(duckGainAt(r, 0.2, 4000)).toBe(1);
     // Looks: own presets; the brand default only when the clip has none; 'none' turns it off.
     expect(Object.keys(LOOKS)).toHaveLength(13); // R23c: + vintage, produk, kulit, sinematik; R35: + soft
@@ -189,6 +194,46 @@ describe('shared math: preview = render', () => {
     const plain = buildRenderPlan({ tracks: [t.tracks[0]!] .map((tr) => ({ ...tr, clips: tr.clips.map(({ transition: _, ...c }) => c) })) }, inputs, DEFAULT_RENDER, null).graph;
     expect(plain).not.toContain('xfade');
     expect(plain).toContain('concat=n=3:v=1:a=0[vraw]');
+  });
+
+  it('keluhan tim "belum smooth": sub-pixel keyframes, per-sample fades, anti-click SFX edges, smooth ducking', () => {
+    const probe = { duration_ms: 8000, width: 360, height: 640, video_codec: 'h264', audio_codec: 'aac' };
+    const sfxProbe = { duration_ms: 3000, width: null, height: null, video_codec: null, audio_codec: 'aac' };
+    const inputs = new Map([['v_1', { path: 'C:/a.mp4', probe }], ['v_2', { path: 'C:/s.wav', probe: sfxProbe }]]);
+    const t: Timeline = {
+      tracks: [
+        { track_id: 'v', kind: 'video', clips: [
+          { clip_id: 'a', start_ms: 0, end_ms: 2000, media: V, keyframes: [{ at_ms: 0, x: 0, y: 0, scale: 1, opacity: 1, ease: 'linear' }, { at_ms: 2000, x: 0.1, y: 0, scale: 1.2, opacity: 1, ease: 'ease' }] },
+          { clip_id: 'b', start_ms: 2000, end_ms: 3000, media: V, keyframes: [{ at_ms: 0, x: 0, y: 0, scale: 0.8, opacity: 0, ease: 'linear' }, { at_ms: 500, x: 0, y: 0, scale: 0.8, opacity: 1, ease: 'ease' }] },
+        ] },
+        { track_id: 's', kind: 'sfx', clips: [
+          { clip_id: 's1', start_ms: 500, end_ms: 1000, media: V2 }, // 0.5 s of a 3 s sound: cut before its end
+          { clip_id: 's2', start_ms: 1000, end_ms: 3000, media: V2, in_ms: 1000, fade_in_ms: 100, fade_out_ms: 300 }, // own fades
+        ] },
+        { track_id: 'm', kind: 'music', duck: 0.3, clips: [{ clip_id: 'm', start_ms: 0, end_ms: 3000, media: V }] },
+      ],
+    };
+    const g = buildRenderPlan(t, inputs, { ...DEFAULT_RENDER, short_side: 360 }, null).graph;
+    // Moving keyframes: float corners (no even-pixel scale / integer overlay steps); still ones keep the old path.
+    expect(g).toMatch(/\[kp0\]pad=368:648:4:4:color=black,perspective=x0='[^']*\(in-1\)\/30[^']*':.*:interpolation=cubic:sense=destination:eval=frame,crop=360:640:4:4\[kq0\]/);
+    expect(g).toMatch(/\[kp1\]scale=w='max\(2,trunc\(360\*if\([^']*':h='[^']*':eval=init,eq=/);
+    // SFX: s1 is trimmed → 20 ms afade at its end; s2 starts inside its source but has its own fades.
+    expect(g).toContain('afade=t=out:st=0.480:d=0.020');
+    expect(g).toContain('afade=t=in:st=0:d=0.100,afade=t=out:st=1.700:d=0.300');
+    expect(g).not.toMatch(/volume='clip\(/); // no per-frame fade gain any more
+    // Ducking: small frames + cosine ramp.
+    expect(g).toContain("asetnsamples=n=128:p=0,volume='1-0.700*(0.5-0.5*cos(PI*");
+    // Moving text: drawn once at its normal size on a transparent layer, scaled/moved sub-pixel, overlaid
+    // in its drawing order; fading-only text stays a plain drawtext.
+    const tt: Timeline = { tracks: [t.tracks[0]!, { track_id: 't', kind: 'text', clips: [
+      { clip_id: 't1', start_ms: 500, end_ms: 1500, text: 'Halo', keyframes: [{ at_ms: 0, x: 0, y: 0, scale: 1, opacity: 1, ease: 'linear' }, { at_ms: 1000, x: 0, y: 0, scale: 1.5, opacity: 1, ease: 'ease' }] },
+      { clip_id: 't2', start_ms: 0, end_ms: 3000, text: 'Diam', keyframes: [{ at_ms: 0, x: 0, y: 0, scale: 1, opacity: 0, ease: 'linear' }, { at_ms: 500, x: 0, y: 0, scale: 1, opacity: 1, ease: 'ease' }] },
+    ] }] };
+    const gt = buildRenderPlan(tt, inputs, { ...DEFAULT_RENDER, short_side: 360 }, 'C:/f/arialbd.ttf').graph;
+    expect(gt).toMatch(/color=c=black@0:s=360x640:r=30:d=1,format=yuva420p,drawtext=[^;]*fontsize=\d+:[^;]*,pad=368:648:4:4:color=black@0,perspective=[^;]*sense=destination:eval=frame,crop=360:640:4:4,setpts=PTS-STARTPTS\+0\.5\/TB\[tk0\]/);
+    expect(gt).toContain("[vcat][tk0]overlay=eof_action=pass:format=auto:enable='gte(t,0.5)*lt(t,1.5)'[td0]");
+    expect(gt).toMatch(/\[td0\]drawtext=[^;]*alpha='[^;]*\[vout\]/);
+    expect(gt).not.toMatch(/fontsize='max/);
   });
 });
 

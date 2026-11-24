@@ -90,7 +90,7 @@ describe('X04 audio volume & mute', () => {
     const plan = (tl: Timeline) => buildRenderPlan(tl, inputs, { ...DEFAULT_RENDER, short_side: 360 }, 'C:/f/arialbd.ttf').graph;
     const g = plan(t);
     expect(g).toContain('volume=0.25,apad');
-    expect(g).toContain('volume=0.50,apad');
+    expect(g).toContain('volume=0.50,afade=t=out:st=0.980:d=0.020,apad'); // trimmed from a longer source: 20 ms anti-click fade
     expect(g).toContain('amix=inputs=2');
     const muted = plan({ tracks: t.tracks.map((tr) => ({ ...tr, muted: true })) });
     expect(muted).not.toContain('volume=0.25');

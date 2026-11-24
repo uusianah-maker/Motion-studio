@@ -74,8 +74,8 @@ export interface Transition {
 }
 export const TRANSITION_LABEL: Record<TransitionType, string> = { dissolve: 'Dissolve (larut)', geser_kiri: 'Geser ke kiri', geser_kanan: 'Geser ke kanan', wipe: 'Wipe (sapu)', flash: 'Flash putih', hitam: 'Fade ke hitam', zoom_in: 'Zoom in', blur: 'Blur', pull_out: 'Pull out (zoom out)', spin: 'Spin (putar)', glitch: 'Glitch' };
 export const TRANSITION_MS: readonly [number, number] = [200, 1500];
-/** FFmpeg xfade names (R23d: `pull_out` is our own custom expression, see `xfadeTransition`). */
-export const XFADE: Record<TransitionType, string> = { dissolve: 'fade', geser_kiri: 'slideleft', geser_kanan: 'slideright', wipe: 'wipeleft', flash: 'fadewhite', hitam: 'fadeblack', zoom_in: 'zoomin', blur: 'hblur', pull_out: 'custom', spin: 'custom', glitch: 'custom' };
+/** FFmpeg xfade names (R23d: spin / glitch are own custom expressions; pull_out = a fade over a pre-zoomed B, see `pullOutFilter`). */
+export const XFADE: Record<TransitionType, string> = { dissolve: 'fade', geser_kiri: 'slideleft', geser_kanan: 'slideright', wipe: 'wipeleft', flash: 'fadewhite', hitam: 'fadeblack', zoom_in: 'zoomin', blur: 'hblur', pull_out: 'fade', spin: 'custom', glitch: 'custom' };
 // R23d tahap 2 — own expressions. t = 1 − P runs 0 → 1 across the transition; plane-wise sampling
 // (chroma planes have the same aspect, so rotations stay round); outside the picture = black.
 const T = '(1-P)';
@@ -107,24 +107,43 @@ export function glitchJump(t: number): number {
 export const PULL_OUT_ZOOM = 0.5;
 
 /**
- * The `transition=…` value of an FFmpeg xfade. xfade's progress P runs 1 → 0; the custom pull-out
- * samples B around the centre at scale 1 + 0,5·P (no st()/ld(): xfade is slice-threaded and the
- * registers would be shared between threads).
+ * The `transition=…` value of an FFmpeg xfade. xfade's progress P runs 1 → 0 (custom expressions use
+ * no st()/ld(): xfade is slice-threaded and the registers would be shared between threads).
  */
 export function xfadeTransition(type: TransitionType): string {
   if (type === 'spin') return `custom:expr='${SPIN_EXPR}'`;
   if (type === 'glitch') return `custom:expr='${GLITCH_EXPR}'`;
-  if (type !== 'pull_out') return XFADE[type];
-  const x = `floor(W/2+(X-W/2)/(1+${PULL_OUT_ZOOM}*P))`;
-  const y = `floor(H/2+(Y-H/2)/(1+${PULL_OUT_ZOOM}*P))`;
-  return `custom:expr='if(eq(PLANE,0),b0(${x},${y}),if(eq(PLANE,1),b1(${x},${y}),b2(${x},${y})))*(1-P)+A*P'`;
+  // Keluhan tim: pull out sampled B with floor() (nearest pixel) → shimmering edges. B is now zoomed
+  // BEFORE the xfade by `pullOutFilter` (sub-pixel, bicubic) and the xfade is a plain fade: the same
+  // picture (B at 1 + 0,5·P around the centre, mixed with A by P), smooth, and ~10× cheaper.
+  if (type === 'pull_out') return 'fade';
+  return XFADE[type];
+}
+
+/**
+ * R23d pull out, keluhan tim: zoom of the incoming picture B over the first `frames` frames of its
+ * run (xfade's P = 1 − k/frames at B's frame k): visible window W/z × H/z around the centre,
+ * z = 1 + 0,5·P. `perspective`'s `in` counts from 1.
+ */
+export function pullOutFilter(frames: number): string {
+  const z = `(1+${PULL_OUT_ZOOM}*(1-(in-1)/${frames}))`;
+  const l = `(W-W/${z})/2`;
+  const tp = `(H-H/${z})/2`;
+  const r = `${l}+W/${z}`;
+  const b = `${tp}+H/${z}`;
+  return `perspective=x0='${l}':y0='${tp}':x1='${r}':y1='${tp}':x2='${l}':y2='${b}':x3='${r}':y3='${b}':interpolation=cubic:sense=source:eval=frame:enable='lt(n,${frames})'`;
 }
 
 export const MAX_FADE_MS = 10_000;
 export const DUCK_RANGE: readonly [number, number] = [0.1, 0.8];
 export const DEFAULT_DUCK = 0.3;
-/** Ducking ramps (music goes down just before speech, back up after). */
-export const DUCK_RAMP_MS = 200;
+/**
+ * Ducking ramps (music goes down just before speech, back up after). Keluhan tim: 200 ms linear was
+ * a hard dip; now 400 ms with a cosine ease, gain updated every 128 samples (see `duckFilter`).
+ */
+export const DUCK_RAMP_MS = 400;
+/** Samples per gain step of the ducking volume (2.7 ms at 48 kHz: no audible steps). */
+export const DUCK_STEP_SAMPLES = 128;
 
 // ------------------------------------------------------------------ validation
 
@@ -249,23 +268,47 @@ export function fitFilters(mode: FitMode | undefined, color: string | undefined,
 
 // ------------------------------------------------------------------ sound (shared math)
 
-/** Gain 0..1 of a clip's fades at `ms` into the clip (clip length `len`). */
+/** Gain 0..1 of a clip's fades at `ms` into the clip (clip length `len`); both fades multiply (as in the render). */
 export function fadeGainAt(clip: { fade_in_ms?: number; fade_out_ms?: number }, ms: number, len: number): number {
   let g = 1;
-  if (clip.fade_in_ms) g = Math.min(g, Math.max(0, ms / clip.fade_in_ms));
-  if (clip.fade_out_ms) g = Math.min(g, Math.max(0, (len - ms) / clip.fade_out_ms));
+  if (clip.fade_in_ms) g *= Math.min(1, Math.max(0, ms / clip.fade_in_ms));
+  if (clip.fade_out_ms) g *= Math.min(1, Math.max(0, (len - ms) / clip.fade_out_ms));
   return Math.max(0, Math.min(1, g));
 }
 
-/** FFmpeg `volume` filter for the fades; `offMs` = where the piece starts inside the clip. Empty = no fade. */
-export function fadeFilter(clip: { fade_in_ms?: number; fade_out_ms?: number }, len: number, offMs = 0): string {
-  const T = `(t+${(offMs / 1000).toFixed(4)})`;
-  const terms: string[] = [];
-  if (clip.fade_in_ms) terms.push(`${T}/${(clip.fade_in_ms / 1000).toFixed(4)}`);
-  if (clip.fade_out_ms) terms.push(`(${(len / 1000).toFixed(4)}-${T})/${(clip.fade_out_ms / 1000).toFixed(4)}`);
-  if (!terms.length) return '';
-  const e = terms.length === 1 ? terms[0]! : `min(${terms[0]},${terms[1]})`;
-  return `volume='clip(${e},0,1)':eval=frame`;
+const g4 = (v: number) => (Math.round(Math.max(0, Math.min(1, v)) * 10000) / 10000).toString();
+
+/**
+ * FFmpeg `afade` filters (linear, per sample) for the fades; `offMs` = where the piece starts inside
+ * the clip. Empty = no fade. Keluhan tim: the old `volume=…:eval=frame` changed the gain once per audio
+ * frame (~21 ms steps, audible as a zipper). A piece that starts inside a fade starts at that gain
+ * (`silence` / `unity`), so a split clip keeps exactly the same curve.
+ */
+export function fadeFilter(clip: { fade_in_ms?: number; fade_out_ms?: number }, len: number, offMs = 0, pieceMs = Infinity): string {
+  const out: string[] = [];
+  const s = (ms: number) => (Math.round(ms) / 1000).toFixed(3);
+  const fi = clip.fade_in_ms ?? 0;
+  if (fi && offMs < fi - 1) out.push(`afade=t=in:st=0:d=${s(fi - offMs)}${offMs > 0 ? `:silence=${g4(offMs / fi)}` : ''}`);
+  const fo = clip.fade_out_ms ?? 0;
+  if (fo) {
+    const st = len - fo - offMs; // where the fade-out starts in this piece
+    if (st < pieceMs) out.push(st >= 0 ? `afade=t=out:st=${s(st)}:d=${s(fo)}` : `afade=t=out:st=0:d=${s(Math.max(1, len - offMs))}:unity=${g4((len - offMs) / fo)}`);
+  }
+  return out.join(',');
+}
+
+/**
+ * Short anti-click fades for a sound cut out of a longer source (trimmed before its natural end /
+ * started after its natural start): `afade` of `ms` at the cut edges, only where the clip has no own fade.
+ */
+export const EDGE_FADE_MS = 20;
+export function edgeFadeFilter(clip: { fade_in_ms?: number; fade_out_ms?: number }, o: { lenMs: number; cutStart: boolean; cutEnd: boolean }, ms = EDGE_FADE_MS): string {
+  const d = Math.min(ms, o.lenMs / 4);
+  if (d < 1) return '';
+  const out: string[] = [];
+  if (o.cutStart && !clip.fade_in_ms) out.push(`afade=t=in:st=0:d=${(d / 1000).toFixed(3)}`);
+  if (o.cutEnd && !clip.fade_out_ms) out.push(`afade=t=out:st=${((o.lenMs - d) / 1000).toFixed(3)}:d=${(d / 1000).toFixed(3)}`);
+  return out.join(',');
 }
 
 export function denoiseFilter(d: Denoise | undefined): string {
@@ -304,7 +347,7 @@ export function speechRanges<C extends { start_ms: number; end_ms: number; media
 export function duckGainAt(ranges: readonly [number, number][], level: number, ms: number): number {
   let w = 0;
   for (const [a, b] of ranges) w = Math.max(w, Math.max(0, Math.min(1, (ms - a + DUCK_RAMP_MS) / DUCK_RAMP_MS, (b + DUCK_RAMP_MS - ms) / DUCK_RAMP_MS)));
-  return 1 - (1 - level) * w;
+  return 1 - (1 - level) * (0.5 - 0.5 * Math.cos(Math.PI * w));
 }
 
 /** The same curve as an FFmpeg volume filter; `startMs` = timeline time of the chain's t = 0. */
@@ -314,7 +357,8 @@ export function duckFilter(ranges: readonly [number, number][], level: number, s
   const R = (DUCK_RAMP_MS / 1000).toFixed(3);
   const one = ([a, b]: [number, number]) => `clip(min((${T}-${(a / 1000).toFixed(3)}+${R})/${R},(${(b / 1000).toFixed(3)}+${R}-${T})/${R}),0,1)`;
   const w = ranges.map(one).reduce((acc, x) => `max(${acc},${x})`);
-  return `volume='1-${(1 - level).toFixed(3)}*${w}':eval=frame`;
+  // Small audio frames first: `volume` evaluates once per frame (a decoded AAC frame is ~21 ms).
+  return `asetnsamples=n=${DUCK_STEP_SAMPLES}:p=0,volume='1-${(1 - level).toFixed(3)}*(0.5-0.5*cos(PI*${w}))':eval=frame`;
 }
 
 // ------------------------------------------------------------------ transitions (preview)
