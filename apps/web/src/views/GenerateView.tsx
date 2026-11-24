@@ -124,7 +124,7 @@ export function PlanCard({ rencana, qc, plan, diff, busy, onApprove, onReject }:
       </div>
       {!!rencana.sumber_gabungan?.bagian?.length && (
         <div className="small" aria-label="Footage digabung">
-          Footage digabung ({rencana.sumber_gabungan.bagian.length}, {sec(rencana.sumber_gabungan.durasi)}): {rencana.sumber_gabungan.bagian.map((b, i) => `${i + 1}. ${sec(b.durasi_ms / 1000)}${b.suara === false ? ' tanpa suara' : ''}`).join(' · ')}
+          Footage digabung ({rencana.sumber_gabungan.bagian.length}, {sec(rencana.sumber_gabungan.durasi)}): {rencana.sumber_gabungan.bagian.map((b, i) => `${i + 1}. ${sec(b.durasi_ms / 1000)}${b.suara === false ? ' tanpa suara' : ''}${b.utuh ? ' (tanpa ucapan, dipakai utuh)' : ''}`).join(' · ')}
         </div>
       )}
       {typeof rencana.posisi_caption === 'number' && <div className="small">Posisi caption: {Math.round(rencana.posisi_caption * 100)}% dari atas</div>}

@@ -850,7 +850,7 @@ export interface EngineRencana {
   cta?: string;
   menunggu_u3?: string[];
   /** §26: several footage joined by the engine (in the order chosen), seconds / ms on the joined video. */
-  sumber_gabungan?: { kunci?: string; durasi?: number; bagian?: { kunci: string; mulai_ms: number; durasi_ms: number; suara?: boolean }[] };
+  sumber_gabungan?: { kunci?: string; durasi?: number; bagian?: { kunci: string; mulai_ms: number; durasi_ms: number; suara?: boolean; utuh?: boolean }[] };
 }
 export interface EngineQc {
   butir: { butir: string; lulus: boolean; nilai?: unknown }[];
