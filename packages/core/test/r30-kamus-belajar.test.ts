@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kamusBelajar, mirip, pasanganDari } from '../src/storage/kamusBelajar.js';
+import { kamusBelajar, kataUmum, mirip, pasanganDari } from '../src/storage/kamusBelajar.js';
 
 const kor = (sebelum: string, sesudah: string, at = 1) => ({ jenis: 'koreksi', bagian: 'kata', track: 'subtitle', op: 'set_text', sebelum, sesudah, at });
 
@@ -32,5 +32,18 @@ describe('R30 kamus belajar dari koreksi subtitle', () => {
     expect(by['janganlah']!.otomatis).toBe(false); // kata asli, baru sekali → usulan
     expect(kamusBelajar([...notes, kor('Janganlah sekarang', 'Join Live sekarang', 2)], ['Aysilla Factory']).find((p) => p.salah === 'janganlah')!.otomatis).toBe(true);
     expect(kamusBelajar(notes, ['Aysilla Factory'], [{ salah: 'cana' }]).some((p) => p.salah === 'cana')).toBe(false);
+  });
+
+  it('kata umum Indonesia tidak otomatis walau kata benarnya ada di kosakata brand', () => {
+    expect(kataUmum('janganlah')).toBe(true);
+    expect(kataUmum('yang')).toBe(true);
+    expect(kataUmum('mau beli')).toBe(true);
+    expect(kataUmum('icy love')).toBe(false);
+    expect(kataUmum('cana')).toBe(false);
+    const notes = [kor('Janganlah sekarang yuk', 'Join Live sekarang yuk!!'), kor('Icy Love Factory.', 'Aysilla Factory.'), kor('yang murah', 'Yuki murah')];
+    const by = Object.fromEntries(kamusBelajar(notes, ['Aysilla Factory', 'Join Live', 'Yuki']).map((p) => [p.salah, p]));
+    expect(by['janganlah']!.otomatis).toBe(false); // keluhan tim: dulu otomatis ke semua job
+    expect(by['yang']!.otomatis).toBe(false);
+    expect(by['icy love']!.otomatis).toBe(true); // bukan kata umum + kata brand → tetap otomatis
   });
 });
