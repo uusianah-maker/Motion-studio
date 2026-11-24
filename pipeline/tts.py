@@ -55,6 +55,7 @@ IDLE = 0x40  # IDLE_PRIORITY_CLASS: PC kantor = server live
 BAWAAN_SUARA = "windows:Andika"
 MODEL = ("andika", "chatterbox", "zonos")
 MAKS_UBAH_DTK = 600
+MAKS_KALIMAT_NEURAL = 25  # job mesin dibatasi 30 menit oleh server
 # §28 gaya bicara -> parameter model. Chatterbox: exaggeration (ekspresi), cfg_weight (rendah = tempo lebih santai),
 # temperature (variasi). ZONOS: speaking_rate (huruf UTF-8 per detik), loudness (LUFS) sebagai kondisi model.
 GAYA = {
@@ -447,6 +448,8 @@ def jalankan(job_dir: Path) -> int:
             raise Ditolak(f"model {model} meniru rekaman asli: pilih suara profil (Ayu/Grace/Julia/Niar), bukan suara Windows")
         if model != "andika" and not BACKEND[be].daftar():
             raise Ditolak(f"Profil suara '{be}' belum siap: latih profil dulu")
+        if model != "andika" and len(kal) > MAKS_KALIMAT_NEURAL:
+            raise Ditolak(f"model {model} maksimal {MAKS_KALIMAT_NEURAL} kalimat per job (±4 menit proses per 30 dtk suara)")
         perkuat = bool(cfg.get("perkuat_warna", True))
         jeda = int(angka_dari(cfg, "jeda_ms", 300, 0, 3000, "jeda antar kalimat"))
         lufs = angka_dari(cfg, "lufs", -16, -30, -8, "target loudness")

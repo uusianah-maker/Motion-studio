@@ -72,6 +72,7 @@ class TesGaya(unittest.TestCase):
                            ({"teks": "halo", "model": "elevenlabs", "suara": "grace:x"}, "tidak dikenal"),
                            ({"teks": "halo", "model": "zonos", "suara": "grace:x", "gaya": "marah"}, "gaya"),
                            ({"audio": "$media:x", "suara": "grace:x"}, "job.sumber"),
+                           ({"kalimat": ["a."] * 26, "model": "zonos", "suara": "grace:x"}, "maksimal 25"),
                            ({"audio": "$media:x", "suara": "windows:Andika"}, "profil")]:
             k, lap = self.jalan(cfg)
             self.assertEqual(k, 2, cfg)
