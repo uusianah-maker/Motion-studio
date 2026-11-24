@@ -13,7 +13,7 @@ import {
   listEngineBatches,
   listProjectIds,
   listEngineJobs,
-  listTtsVoices,
+  listTtsOptions,
   pendingPlan,
   readTtsResult,
   addSuaraOwner,
@@ -23,7 +23,7 @@ import {
   removeSuaraOwner,
   readVisualResult,
   readVoIndex,
-  type TtsVoice,
+  type TtsOptions,
   loadEnginePlan,
   prepareEngineJob,
   readBatchDecisions,
@@ -69,7 +69,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
  */
 export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal; proxies?: ProxyQueue }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number> } {
   const queue: { project_id: string; job_id: string; mode: EngineMode }[] = [];
-  let voices: { at: number; list: TtsVoice[] } | null = null;
+  let voices: { at: number; list: TtsOptions } | null = null;
   const active = new Map<string, AbortController>();
   /**
    * R25b: the media an engine plan / approved Batch variant brings into a project get their light
@@ -184,9 +184,9 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
       method: 'GET',
       path: '/api/engine/suara',
       handle: async () => {
-        if (!opts.config) return { tersedia: false, suara: [] };
-        if (!voices || Date.now() - voices.at > 600_000) voices = { at: Date.now(), list: await listTtsVoices(opts.config).catch(() => [] as TtsVoice[]) };
-        return { tersedia: true, suara: voices.list };
+        if (!opts.config) return { tersedia: false, suara: [], model: [], gaya: [] };
+        if (!voices || Date.now() - voices.at > 600_000) voices = { at: Date.now(), list: await listTtsOptions(opts.config).catch((): TtsOptions => ({ suara: [], model: [], gaya: [] })) };
+        return { tersedia: true, ...voices.list };
       },
     },
     {

@@ -33,6 +33,26 @@ describe('R34 core', () => {
       { project_id: 'p', mode: 'tts', tts: { teks: 'a', lain: 1 } },
     ]) expect(code(() => validateTtsJob(bad)), JSON.stringify(bad).slice(0, 80)).toMatch(/^EDIT_INVALID/);
   });
+  it('§28 reader, speaking style and Ubah suara', () => {
+    const ref = { media_id: 'm1', version_id: 'v1' };
+    expect(validateTtsJob({ project_id: 'p', mode: 'tts', tts: { teks: 'Halo.', suara: 'grace:Suara Grace', model: 'chatterbox', gaya: 'jualan' } }).tts).toEqual({ kalimat: ['Halo.'], suara: 'grace:Suara Grace', kecepatan: 1, jeda_ms: 300, model: 'chatterbox', gaya: 'jualan', perkuat_warna: true });
+    expect(validateTtsJob({ project_id: 'p', mode: 'tts', tts: { teks: 'Halo.', suara: 'owner:x', model: 'zonos', perkuat_warna: false } }).tts).toMatchObject({ model: 'zonos', gaya: 'natural', perkuat_warna: false });
+    expect(validateTtsJob({ project_id: 'p', mode: 'tts', tts: { teks: 'Halo.', model: 'andika', gaya: 'heboh' } }).tts).toEqual({ kalimat: ['Halo.'], suara: 'windows:Andika', kecepatan: 1, jeda_ms: 300 });
+    const u = validateTtsJob({ project_id: 'p', mode: 'tts', sources: [{ kunci: '$sumber', ref }], tts: { audio: '$sumber', suara: 'niar:Suara Niar', kecepatan: 1.2 } });
+    expect(u.sources).toEqual([{ kunci: '$sumber', ref }]);
+    expect(u.tts).toEqual({ kalimat: [], suara: 'niar:Suara Niar', kecepatan: 1.2, jeda_ms: 0, audio: '$sumber' });
+    for (const bad of [
+      { project_id: 'p', mode: 'tts', tts: { teks: 'a', model: 'chatterbox' } }, // Windows voice
+      { project_id: 'p', mode: 'tts', tts: { teks: 'a', suara: 'grace:x', model: 'elevenlabs' } },
+      { project_id: 'p', mode: 'tts', tts: { teks: 'a', suara: 'grace:x', model: 'zonos', gaya: 'marah' } },
+      { project_id: 'p', mode: 'tts', tts: { teks: 'a', suara: 'grace:x', model: 'zonos', perkuat_warna: 'ya' } },
+      { project_id: 'p', mode: 'tts', sources: [{ kunci: '$sumber', ref }], tts: { teks: 'a' } }, // sources only for Ubah suara
+      { project_id: 'p', mode: 'tts', sources: [{ kunci: '$sumber', ref }], tts: { audio: '$sumber' } }, // Windows voice
+      { project_id: 'p', mode: 'tts', sources: [], tts: { audio: '$sumber', suara: 'grace:x' } },
+      { project_id: 'p', mode: 'tts', sources: [{ kunci: '$sumber', ref: { media_id: '../x', version_id: 'v' } }], tts: { audio: '$sumber', suara: 'grace:x' } },
+      { project_id: 'p', mode: 'tts', sources: [{ kunci: '$sumber', ref }], tts: { audio: 'C:/x.wav', suara: 'grace:x' } },
+    ]) expect(code(() => validateTtsJob(bad)), JSON.stringify(bad).slice(0, 100)).toMatch(/^EDIT_INVALID/);
+  });
   it('Brand Kit pelafalan + asset kind vo are valid', () => {
     const k = validateBrandInput({ name: 'A', pelafalan: [{ tulisan: 'Aysilla', ucapan: 'Ay-si-la' }] });
     expect(k.pelafalan).toEqual([{ tulisan: 'Aysilla', ucapan: 'Ay-si-la' }]);

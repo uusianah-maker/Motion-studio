@@ -30,7 +30,19 @@ export interface TtsSettings {
   suara: string;
   kecepatan: number;
   jeda_ms: number;
+  /** §28 reader: andika (Windows, default) | chatterbox | zonos (neural, copy the profile's own recording). */
+  model?: TtsModel;
+  /** §28 speaking style (neural readers only). */
+  gaya?: TtsGaya;
+  /** §28 neural take re-coloured by the profile's Applio model (default true). */
+  perkuat_warna?: boolean;
+  /** §28 "Ubah suara": the team's own VO recording (job source `$sumber`) turned into the profile voice. */
+  audio?: '$sumber';
 }
+export const TTS_MODELS = ['andika', 'chatterbox', 'zonos'] as const;
+export type TtsModel = (typeof TTS_MODELS)[number];
+export const TTS_GAYA = ['natural', 'jualan', 'ramah', 'cerita', 'tegas', 'heboh'] as const;
+export type TtsGaya = (typeof TTS_GAYA)[number];
 export const TTS_LIMITS = { kalimat: 60, huruf: 1000, kecepatan: [0.5, 2] as const, jeda_ms: [0, 3000] as const };
 export const DEFAULT_VOICE = 'windows:Andika';
 
@@ -40,27 +52,40 @@ const bad = (msg: string): never => {
 
 /** Browser request → engine input (untrusted). Either `teks` (split here) or `kalimat`. */
 export function validateTtsJob(o: Record<string, unknown>): EngineJobInput {
-  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'tts'].includes(k));
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'tts', 'sources'].includes(k));
   if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
   if (!isSafeId(o.project_id)) bad('project_id tidak valid');
   const t = (o.tts ?? {}) as Record<string, unknown>;
-  const te = Object.keys(t).filter((k) => !['teks', 'kalimat', 'suara', 'kecepatan', 'jeda_ms'].includes(k));
+  const te = Object.keys(t).filter((k) => !['teks', 'kalimat', 'suara', 'kecepatan', 'jeda_ms', 'model', 'gaya', 'perkuat_warna', 'audio'].includes(k));
   if (te.length) bad(`tts: field tidak dikenal ${te.join(', ')}`);
+  const suara0 = t.suara === undefined || t.suara === '' ? DEFAULT_VOICE : typeof t.suara === 'string' && /^[a-z0-9_-]{1,20}:[\p{L}\p{N} ._()-]{1,60}$/u.test(t.suara) ? t.suara : bad('suara tidak valid');
+  const profil = !suara0.startsWith('windows:');
+  const num0 = (v: unknown, what: string, [lo, hi]: readonly [number, number], dflt: number) => (v === undefined ? dflt : typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : bad(`${what} harus ${lo}–${hi}`));
+  const kec = Math.round(num0(t.kecepatan, 'kecepatan', TTS_LIMITS.kecepatan, 1) * 100) / 100;
+  const base = { project_id: o.project_id as string, mode: 'tts' as const, preset: 'tts', brief: { produk: '', varian: '', harga: '', placement: 'tiktok' as const, catatan: '' }, ai: false };
+  // §28 Ubah suara: one recording (any voice) → a trained profile; no text, reader or style.
+  if (t.audio !== undefined) {
+    if (t.audio !== '$sumber') bad('tts.audio harus $sumber');
+    if (!profil) bad('Ubah suara butuh suara profil (Ayu/Grace/Julia/Niar)');
+    const src = Array.isArray(o.sources) && o.sources.length === 1 ? ((o.sources[0] ?? {}) as Record<string, unknown>) : bad('Ubah suara butuh tepat satu rekaman');
+    const r = (src.ref ?? {}) as Record<string, unknown>;
+    if (src.kunci !== '$sumber' || !isSafeId(r.media_id) || !isSafeId(r.version_id)) bad('rekaman VO tidak valid');
+    return { ...base, sources: [{ kunci: '$sumber', ref: { media_id: r.media_id as string, version_id: r.version_id as string } }], tts: { kalimat: [], suara: suara0, kecepatan: kec, jeda_ms: 0, audio: '$sumber' } };
+  }
+  if (o.sources !== undefined && !(Array.isArray(o.sources) && o.sources.length === 0)) bad('sources hanya untuk Ubah suara');
+  const model = t.model === undefined ? 'andika' : (TTS_MODELS as readonly unknown[]).includes(t.model) ? (t.model as TtsModel) : bad('model pembaca tidak dikenal');
+  const gaya = t.gaya === undefined ? 'natural' : (TTS_GAYA as readonly unknown[]).includes(t.gaya) ? (t.gaya as TtsGaya) : bad('gaya bicara tidak dikenal');
+  if (t.perkuat_warna !== undefined && typeof t.perkuat_warna !== 'boolean') bad('perkuat_warna harus true/false');
+  if (model !== 'andika' && !profil) bad(`Model ${model} meniru rekaman asli: pilih suara profil (Ayu/Grace/Julia/Niar)`);
   const kalimat = Array.isArray(t.kalimat) ? (t.kalimat as unknown[]).map((k) => (typeof k === 'string' ? k.replace(/\s+/g, ' ').trim() : bad('kalimat harus teks'))).filter(Boolean) : typeof t.teks === 'string' ? splitKalimat(t.teks) : bad('Isi teks yang mau diucapkan');
   if (!kalimat.length) bad('Isi teks yang mau diucapkan');
   if (kalimat.length > TTS_LIMITS.kalimat) bad(`Maksimal ${TTS_LIMITS.kalimat} kalimat per job (sekarang ${kalimat.length})`);
   const long = kalimat.findIndex((k) => k.length > TTS_LIMITS.huruf);
   if (long >= 0) bad(`Kalimat ${long + 1} terlalu panjang (maks ${TTS_LIMITS.huruf} huruf)`);
-  const suara = t.suara === undefined || t.suara === '' ? DEFAULT_VOICE : typeof t.suara === 'string' && /^[a-z0-9_-]{1,20}:[\p{L}\p{N} ._()-]{1,60}$/u.test(t.suara) ? t.suara : bad('suara tidak valid');
-  const num = (v: unknown, what: string, [lo, hi]: readonly [number, number], dflt: number) => (v === undefined ? dflt : typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : bad(`${what} harus ${lo}–${hi}`));
   return {
-    project_id: o.project_id as string,
-    mode: 'tts',
+    ...base,
     sources: [],
-    preset: 'tts',
-    brief: { produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' },
-    ai: false,
-    tts: { kalimat, suara, kecepatan: Math.round(num(t.kecepatan, 'kecepatan', TTS_LIMITS.kecepatan, 1) * 100) / 100, jeda_ms: Math.round(num(t.jeda_ms, 'jeda antar kalimat (ms)', TTS_LIMITS.jeda_ms, 300)) },
+    tts: { kalimat, suara: suara0, kecepatan: kec, jeda_ms: Math.round(num0(t.jeda_ms, 'jeda antar kalimat (ms)', TTS_LIMITS.jeda_ms, 300)), ...(model !== 'andika' ? { model, gaya, perkuat_warna: t.perkuat_warna !== false } : {}) },
   };
 }
 
@@ -83,6 +108,10 @@ export interface TtsView {
   kecepatan: number;
   jeda_ms: number;
   total_durasi: number;
+  /** §28: reader used (`andika`, `chatterbox`, `zonos`, `ubah_suara`); word times are estimates for neural readers. */
+  model: string;
+  gaya: string | null;
+  kata_perkiraan: boolean;
   gabungan: MediaRef | null;
   /** Brand Kit asset id of the whole take (`$vo:<id>` for the engine). */
   aset_id: string | null;
@@ -138,6 +167,8 @@ export async function readTtsResult(ws: Workspace, projectId: string, jobId: str
     kata: words(f.kata),
   }));
   const fullText = sentences.map((k) => k.teks).join(' ');
+  const model = typeof raw.model === 'string' && /^[a-z_]{1,20}$/.test(raw.model) ? raw.model : 'andika';
+  const label = fullText.trim() ? fullText : `Ubah suara ke ${typeof raw.suara === 'string' ? raw.suara.split(':').slice(1).join(':').slice(0, 40) : 'profil'}`;
   if (!imp) {
     const project = await readProject(ws, projectId);
     const kit = await readBrandFor(ws, project.brand_id);
@@ -170,7 +201,7 @@ export async function readTtsResult(ws: Workspace, projectId: string, jobId: str
       // The whole take joins the brand's library as kind "vo" (own voice → usable in ads).
       asetId = `vo-${tag}`.slice(0, 40);
       if (!kit.aset.some((a) => a.id === asetId)) {
-        const asset: BrandAsset = { id: asetId, ref: gref, jenis: 'vo', nama: `VO: ${fullText.slice(0, 70)}`, tag: ['vo', 'tts'], lisensi: { status: 'milik_sendiri', bukti: '', iklan: true }, mood: '', bpm: null, instrumental: null, produk: '', varian: '', ada_teks_bawaan: false, catatan: fullText.slice(0, 200) };
+        const asset: BrandAsset = { id: asetId, ref: gref, jenis: 'vo', nama: `VO: ${label.slice(0, 70)}`, tag: ['vo', model === 'ubah_suara' ? 'ubah-suara' : 'tts'], lisensi: { status: 'milik_sendiri', bukti: '', iklan: true }, mood: '', bpm: null, instrumental: null, produk: '', varian: '', ada_teks_bawaan: false, catatan: label.slice(0, 200) };
         const { schema_version: _s, brand_id: _b, revision: _r, updated_at: _u, ...input } = kit;
         void _s;
         void _b;
@@ -189,6 +220,9 @@ export async function readTtsResult(ws: Workspace, projectId: string, jobId: str
     kecepatan: typeof raw.kecepatan === 'number' ? raw.kecepatan : 1,
     jeda_ms: typeof raw.jeda_ms === 'number' ? raw.jeda_ms : 300,
     total_durasi: sec(raw.total_durasi),
+    model,
+    gaya: typeof raw.gaya === 'string' && (TTS_GAYA as readonly string[]).includes(raw.gaya) ? raw.gaya : null,
+    kata_perkiraan: raw.kata_perkiraan === true,
     gabungan: imp.gabungan,
     aset_id: imp.aset_id,
     kalimat: sentences.map((k, i) => ({ ...k, ref: imp!.kalimat[i] ?? null })),
@@ -205,8 +239,30 @@ export interface TtsVoice {
   backend: string;
 }
 
+export interface TtsModelInfo {
+  id: TtsModel;
+  nama: string;
+  siap: boolean;
+  gaya: boolean;
+}
+export interface TtsGayaInfo {
+  id: TtsGaya;
+  label: string;
+  jeda_ms: number;
+}
+export interface TtsOptions {
+  suara: TtsVoice[];
+  model: TtsModelInfo[];
+  gaya: TtsGayaInfo[];
+}
+
 /** `engine tts` with `{"tts":{"daftar_suara":true}}` in a temporary job folder (a few seconds). */
 export async function listTtsVoices(cfg: EngineConfig, opts: { timeoutMs?: number } = {}): Promise<TtsVoice[]> {
+  return (await listTtsOptions(cfg, opts)).suara;
+}
+
+/** §28: voices + readers (with install state) + speaking styles, from the engine. */
+export async function listTtsOptions(cfg: EngineConfig, opts: { timeoutMs?: number } = {}): Promise<TtsOptions> {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'msc-suara-'));
   try {
     await writeJsonAtomic(path.join(dir, 'job.json'), { schema: 'engine-job/1', job_id: 'SUARA', mode: 'tts', tts: { daftar_suara: true } });
@@ -217,12 +273,18 @@ export async function listTtsVoices(cfg: EngineConfig, opts: { timeoutMs?: numbe
       child.on('close', () => (clearTimeout(t), resolve()));
       child.on('error', () => (clearTimeout(t), resolve()));
     });
-    const r = JSON.parse(await fsp.readFile(path.join(dir, 'out', 'tts.json'), 'utf8').catch(() => '{}')) as { suara?: unknown };
+    const r = JSON.parse(await fsp.readFile(path.join(dir, 'out', 'tts.json'), 'utf8').catch(() => '{}')) as { suara?: unknown; model?: unknown; gaya?: unknown };
     const s = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : '');
-    return (Array.isArray(r.suara) ? (r.suara as Record<string, unknown>[]) : [])
-      .slice(0, 100)
-      .filter((v) => v && typeof v.id === 'string')
-      .map((v) => ({ id: s(v.id, 80), nama: s(v.nama, 80), bahasa: s(v.bahasa, 20), gender: s(v.gender, 20), backend: s(v.backend, 20) }));
+    const arr = (x: unknown) => (Array.isArray(x) ? (x as Record<string, unknown>[]) : []).slice(0, 100).filter((v) => v && typeof v.id === 'string');
+    return {
+      suara: arr(r.suara).map((v) => ({ id: s(v.id, 80), nama: s(v.nama, 80), bahasa: s(v.bahasa, 20), gender: s(v.gender, 20), backend: s(v.backend, 20) })),
+      model: arr(r.model)
+        .filter((v) => (TTS_MODELS as readonly unknown[]).includes(v.id))
+        .map((v) => ({ id: v.id as TtsModel, nama: s(v.nama, 60), siap: v.siap === true, gaya: v.gaya === true })),
+      gaya: arr(r.gaya)
+        .filter((v) => (TTS_GAYA as readonly unknown[]).includes(v.id))
+        .map((v) => ({ id: v.id as TtsGaya, label: s(v.label, 60), jeda_ms: typeof v.jeda_ms === 'number' && v.jeda_ms >= 0 && v.jeda_ms <= 3000 ? Math.round(v.jeda_ms) : 300 })),
+    };
   } finally {
     await fsp.rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
   }

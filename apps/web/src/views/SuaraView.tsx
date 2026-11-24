@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { splitKalimat, voSubtitleOps } from '../../../../packages/core/dist/storage/voText.js';
-import type { Api, BrandKit, EditOp, ProjectSummary, Role, TtsView, TtsVoice } from '../api';
+import type { Api, BrandKit, EditOp, ProjectSummary, Role, TtsGayaInfo, TtsModelId, TtsModelInfo, TtsRequest, TtsView, TtsVoice } from '../api';
 import { ErrorNotice } from '../ui';
 import { useEngineJob } from './GenerateView';
 import { SuaraOwnerPanel } from './SuaraOwnerPanel';
@@ -40,6 +40,15 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
   const [suara, setSuara] = useState('windows:Andika');
   const [kecepatan, setKecepatan] = useState(1);
   const [jeda, setJeda] = useState(300);
+  /** §28 (owner 24 Nov): ketik teks / upload rekaman VO -> suara -> kecepatan -> gaya -> model. */
+  const [asal, setAsal] = useState<'teks' | 'rekaman'>('teks');
+  const [rekaman, setRekaman] = useState<File | null>(null);
+  const [upload, setUpload] = useState<number | null>(null);
+  const [models, setModels] = useState<TtsModelInfo[]>([]);
+  const [gayaList, setGayaList] = useState<TtsGayaInfo[]>([]);
+  const [model, setModel] = useState<TtsModelId>('andika');
+  const [gaya, setGaya] = useState('natural');
+  const [perkuat, setPerkuat] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [current, setCurrent] = useState<{ project_id: string; job_id: string } | null>(null);
@@ -58,11 +67,27 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
     void api.engineSuara().then((r) => {
       setEngineOk(r.tersedia);
       setVoices(r.suara);
+      setModels(r.model ?? []);
+      setGayaList(r.gaya ?? []);
       if (r.suara.length && !r.suara.some((v) => v.id === 'windows:Andika')) setSuara(r.suara.find((v) => v.bahasa.startsWith('id'))?.id ?? r.suara[0]!.id);
     }, setError);
   }, [api]);
   const brand = brands.find((b) => b.brand_id === brandId) ?? null;
   const kalimat = useMemo(() => splitKalimat(teks), [teks]);
+  const neural = asal === 'teks' && model !== 'andika';
+  /** Neural readers and Ubah suara copy a trained profile's own recording: Windows voices do not apply. */
+  const butuhProfil = neural || asal === 'rekaman';
+  const pilihanSuara = (voices?.length ? voices : [{ id: 'windows:Andika', nama: 'Microsoft Andika', bahasa: 'id-ID', gender: 'Male', backend: 'windows' }]).filter((v) => !butuhProfil || v.backend !== 'windows');
+  useEffect(() => {
+    if (pilihanSuara.length && !pilihanSuara.some((v) => v.id === suara)) setSuara(pilihanSuara[0]!.id);
+  }, [pilihanSuara, suara]);
+  const modelInfo = models.find((m) => m.id === model);
+  const pilihGaya = (g: string) => {
+    setGaya(g);
+    const j = gayaList.find((x) => x.id === g)?.jeda_ms;
+    if (j !== undefined) setJeda(j);
+  };
+  const ttsRequest = (k: string[]): TtsRequest => ({ kalimat: k, suara, kecepatan, jeda_ms: jeda, ...(neural ? { model, gaya, perkuat_warna: perkuat } : {}) });
   // Projects of this brand (any feature): the VO can be placed on one right away.
   const usable = projects.filter((p) => !p.error && p.status !== 'archived' && !p.variant && (p.brand_id ?? defaultBrand) === brandId);
 
@@ -89,7 +114,15 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
     setPlaced(null);
     try {
       const pid = await ensureProject();
-      const j = await api.engineTts(pid, { kalimat, suara, kecepatan, jeda_ms: jeda });
+      if (asal === 'rekaman') {
+        if (!rekaman) return;
+        const up = await api.importFile(rekaman, { kind: 'project', project_id: pid }, setUpload);
+        setUpload(null);
+        const j = await api.engineUbahSuara(pid, { media_id: up.media_id, version_id: up.version.version_id }, { suara, kecepatan });
+        setCurrent({ project_id: pid, job_id: j.job_id });
+        return;
+      }
+      const j = await api.engineTts(pid, ttsRequest(kalimat));
       setCurrent({ project_id: pid, job_id: j.job_id });
     } catch (e) {
       setError(e);
@@ -102,7 +135,7 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
     if (!current || !r?.text.trim()) return;
     setError(null);
     try {
-      const j = await api.engineTts(current.project_id, { kalimat: [r.text.trim()], suara, kecepatan, jeda_ms: jeda });
+      const j = await api.engineTts(current.project_id, ttsRequest([r.text.trim()]));
       setRedo((x) => ({ ...x, [no]: { ...r, job: { project_id: current.project_id, job_id: j.job_id } } }));
       // Wait for it (small job) and read its take.
       for (let i = 0; i < 120; i++) {
@@ -188,16 +221,36 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
               </select>
             </label>
           </div>
-          <label className="inspFull">
-            Teks yang diucapkan (paragraf / kalimat)
-            <textarea aria-label="Teks yang diucapkan" rows={5} style={{ width: '100%' }} maxLength={20000} value={teks} onChange={(e) => setTeks(e.target.value)} placeholder="Halo kak, ini Loose Pants dari Aysilla. Bahannya adem, harganya cuma 99 ribu! Cek keranjang kuning sekarang." />
-          </label>
-          <div className="muted small">{kalimat.length} kalimat{kalimat.length > 60 ? ' — maksimal 60 per job' : ''}</div>
+          <div className="tabs" role="radiogroup" aria-label="Asal suara">
+            <button type="button" role="radio" aria-checked={asal === 'teks'} className={`btn small${asal === 'teks' ? ' primary' : ''}`} onClick={() => setAsal('teks')}>
+              ⌨️ Ketik teks
+            </button>
+            <button type="button" role="radio" aria-checked={asal === 'rekaman'} className={`btn small${asal === 'rekaman' ? ' primary' : ''}`} onClick={() => setAsal('rekaman')}>
+              🎙️ Upload rekaman VO
+            </button>
+          </div>
+          {asal === 'teks' ? (
+            <>
+              <label className="inspFull">
+                Teks yang diucapkan (paragraf / kalimat)
+                <textarea aria-label="Teks yang diucapkan" rows={5} style={{ width: '100%' }} maxLength={20000} value={teks} onChange={(e) => setTeks(e.target.value)} placeholder="Halo kak, ini Loose Pants dari Aysilla. Bahannya adem, harganya cuma 99 ribu! Cek keranjang kuning sekarang." />
+              </label>
+              <div className="muted small">{kalimat.length} kalimat{kalimat.length > 60 ? ' — maksimal 60 per job' : ''}</div>
+            </>
+          ) : (
+            <>
+              <label className="inspFull">
+                Rekaman VO (suara siapa pun, maks 10 menit)
+                <input aria-label="Rekaman VO" type="file" accept="audio/*,video/*" onChange={(e) => setRekaman(e.target.files?.[0] ?? null)} />
+              </label>
+              <div className="muted small">Rekaman diubah ke suara yang dipilih. Intonasi, gaya, dan jeda ikut rekaman aslinya, jadi gaya &amp; model tidak dipakai.{upload !== null ? ` Mengunggah ${Math.round(upload * 100)}%…` : ''}</div>
+            </>
+          )}
           <div className="inspGrid">
             <label>
               Suara
               <select aria-label="Suara" value={suara} onChange={(e) => setSuara(e.target.value)}>
-                {(voices?.length ? voices : [{ id: 'windows:Andika', nama: 'Microsoft Andika', bahasa: 'id-ID', gender: 'Male', backend: 'windows' }]).map((v) => (
+                {pilihanSuara.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.nama} ({v.bahasa})
                   </option>
@@ -208,17 +261,53 @@ export function SuaraView({ api, role = 'owner', projects, onOpenProject, onProj
               Kecepatan {kecepatan.toFixed(2).replace('.', ',')}×
               <input type="range" aria-label="Kecepatan bicara" min={0.5} max={2} step={0.05} value={kecepatan} onChange={(e) => setKecepatan(Number(e.target.value))} />
             </label>
-            <label>
-              Jeda antar kalimat (ms)
-              <input aria-label="Jeda antar kalimat (ms)" type="number" min={0} max={3000} step={50} value={jeda} onChange={(e) => setJeda(Math.max(0, Math.min(3000, Number(e.target.value) || 0)))} />
-            </label>
+            {asal === 'teks' && (
+              <label>
+                Jeda antar kalimat (ms)
+                <input aria-label="Jeda antar kalimat (ms)" type="number" min={0} max={3000} step={50} value={jeda} onChange={(e) => setJeda(Math.max(0, Math.min(3000, Number(e.target.value) || 0)))} />
+              </label>
+            )}
           </div>
+          {asal === 'teks' && (
+            <div className="inspGrid">
+              <label>
+                Gaya bicara
+                <select aria-label="Gaya bicara" value={gaya} disabled={!neural} onChange={(e) => pilihGaya(e.target.value)}>
+                  {(gayaList.length ? gayaList : [{ id: 'natural', label: 'Natural (ngobrol biasa)', jeda_ms: 300 }]).map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Model pembaca
+                <select aria-label="Model pembaca" value={model} onChange={(e) => setModel(e.target.value as TtsModelId)}>
+                  {(models.length ? models : [{ id: 'andika' as const, nama: 'Andika (cepat, kaku)', siap: true, gaya: false }]).map((m) => (
+                    <option key={m.id} value={m.id} disabled={!m.siap}>
+                      {m.nama}
+                      {m.siap ? '' : ' — belum terpasang'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+          {neural && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" aria-label="Perkuat warna suara" checked={perkuat} onChange={(e) => setPerkuat(e.target.checked)} />
+              Perkuat warna suara (lebih mirip, sedikit lebih lama)
+            </label>
+          )}
+          {asal === 'teks' && !neural && <div className="muted small">Andika cepat tapi intonasinya kaku; gaya bicara hanya untuk Chatterbox / ZONOS.</div>}
+          {neural && <div className="muted small">{modelInfo?.id === 'zonos' ? 'ZONOS jalan di CPU: ±3 menit per 30 detik suara.' : 'Chatterbox: ±4 menit per 30 detik suara (lebih lama bila GPU sedang dipakai).'} Waktu kata subtitle berupa perkiraan, cek di Edit.</div>}
           <div className="muted small">
             Pelafalan brand: {brand?.pelafalan?.length ? brand.pelafalan.map((p) => `${p.tulisan} → ${p.ucapan}`).join(' · ') : 'belum ada'} (atur di Brand → C).
           </div>
-          <button className="btn primary" disabled={busy || running || reviewer || engineOk === false || !brand || kalimat.length === 0 || kalimat.length > 60} onClick={() => void start()}>
-            🔊 Buat suara
+          <button className="btn primary" disabled={busy || running || reviewer || engineOk === false || !brand || !pilihanSuara.length || (asal === 'teks' ? kalimat.length === 0 || kalimat.length > 60 || (neural && !modelInfo?.siap) : !rekaman)} onClick={() => void start()}>
+            {asal === 'rekaman' ? '🔁 Ubah suara' : '🔊 Buat suara'}
           </button>
+          {butuhProfil && !pilihanSuara.length && <div className="notice warn">Belum ada profil suara yang siap. Latih dulu di tab Suara saya.</div>}
         </section>
         {job && (
           <div className="notice info" role="status" aria-label="Status suara" data-state={job.state}>

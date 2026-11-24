@@ -43,7 +43,7 @@ export const FITUR: { id: BuatFitur; nama: string; sym: string; kapan: string; b
     nama: 'Suara dari Teks',
     sym: '🔊',
     kapan: 'Butuh voice over dari tulisan (tanpa rekam suara): naskah iklan, CTA, penjelasan produk.',
-    bahan: ['Teks / naskah (paragraf)', 'Pilihan suara (sekarang Andika, Indonesia)', 'Pelafalan kata sulit di Brand Kit (opsional)'],
+    bahan: ['Teks / naskah (paragraf)', 'Ketik teks atau upload rekaman VO, lalu pilih suara (Andika / Ayu / Grace / Julia / Niar), gaya bicara, dan model pembaca', 'Pelafalan kata sulit di Brand Kit (opsional)'],
     hasil: 'VO per kalimat + lengkap → tersimpan di Aset (VO) → linimasa + subtitle dari teks (tanpa Whisper).',
   },
 ];
