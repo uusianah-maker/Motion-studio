@@ -184,7 +184,7 @@ def cek_input(video: Path, min_dtk: float = 5, butuh_suara: bool = True) -> dict
     return {"lebar": w, "tinggi": h, "durasi": dur, "peringatan": peringatan}
 
 
-def argumen_edit(job: dict, job_dir: Path, transkrip: Path, video: Path, out: Path) -> list[str]:
+def argumen_edit(job: dict, job_dir: Path, transkrip: Path, video: Path, out: Path, gab: dict | None = None) -> list[str]:
     brief = job.get("brief", {})
     cmd = [PY, "pipeline/edit.py", str(transkrip), "--brandkit", str(job_dir / job.get("brand_kit", "brand_kit.json")),
            "--video", str(video), "--out", str(out), "--placement", brief.get("placement", "tiktok"),
@@ -201,6 +201,26 @@ def argumen_edit(job: dict, job_dir: Path, transkrip: Path, video: Path, out: Pa
         cmd += ["--audio", job["audio_pilihan"]]
     if job.get("vo") is not None:
         cmd += argumen_vo(job, job_dir)
+    # Keluhan tim 24 Nov: prompt tim (brief.catatan) dibaca mesin dengan aturan (pipeline/instruksi.py).
+    catatan = brief.get("catatan")
+    if isinstance(catatan, str) and catatan.strip():
+        cmd += ["--catatan", catatan.strip()[:4000]]
+    if gab:
+        cmd += ["--gabungan", str(out / "gabungan.json")]
+    return cmd
+
+
+def argumen_transkrip(job: dict, job_dir: Path, video: Path, transkrip: Path) -> list[str]:
+    """Whisper + petunjuk kata: Brand Kit job, ditambah produk/varian dari brief (keluhan tim 24 Nov)."""
+    brief = job.get("brief") or {}
+    cmd = [PY, "pipeline/transcribe.py", str(video), str(transkrip),
+           "--brandkit", str(job_dir / job.get("brand_kit", "brand_kit.json"))]
+    for kunci in ("produk", "varian"):
+        nilai = brief.get(kunci)
+        if isinstance(nilai, list):
+            nilai = ", ".join(map(str, nilai))
+        if nilai and str(nilai).strip():
+            cmd += [f"--{kunci}", " ".join(str(nilai).split())[:300]]
     return cmd
 
 
@@ -242,7 +262,7 @@ def generate(job_dir: Path) -> int:
         progres("transkrip", 60, f"VO dari Library: {len(kata)} kata, tanpa Whisper")
         progres("rencana", 70, "caption dari teks VO, footage jadi gambar, hook, efek")
         try:
-            cmd = argumen_edit(job, job_dir, transkrip, video, out)
+            cmd = argumen_edit(job, job_dir, transkrip, video, out, gab)
         except vo_library.Ditolak as e:
             tulis_ditolak(out, str(e))
             return 2
@@ -253,8 +273,7 @@ def generate(job_dir: Path) -> int:
         return selesai(out, cek)
     progres("transkrip", 15, f"{cek['durasi']:.0f} dtk audio")
     t0 = time.perf_counter()
-    rc = jalankan([PY, "pipeline/transcribe.py", str(video), str(transkrip),
-                   "--brandkit", str(job_dir / job.get("brand_kit", "brand_kit.json"))])
+    rc = jalankan(argumen_transkrip(job, job_dir, video, transkrip))
     if rc != 0:
         raise RuntimeError(f"transkrip gagal (kode {rc})")
     if gab:  # §26: footage tanpa ucapan tidak dipotong sebagai jeda
@@ -264,7 +283,7 @@ def generate(job_dir: Path) -> int:
     n = len(json.loads(transkrip.read_text(encoding="utf-8"))["words"])
     progres("transkrip", 60, f"{n} kata, {time.perf_counter() - t0:.0f} dtk")
     progres("rencana", 70, "potong, caption, hook, efek")
-    rc = jalankan(argumen_edit(job, job_dir, transkrip, video, out))
+    rc = jalankan(argumen_edit(job, job_dir, transkrip, video, out, gab))
     if rc == 2:
         alasan = json.loads((out / "potongan.json").read_text(encoding="utf-8")).get("alasan", "ditolak")
         tulis_ditolak(out, alasan)
@@ -287,7 +306,7 @@ def ulang(job_dir: Path) -> int:
     koreksi = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     progres("rencana", 30, "menerapkan koreksi")
     video, gab = sumber_video(job, out, butuh_suara=False)  # §26: gabungan dipakai ulang bila footage sama
-    cmd = argumen_edit(job, job_dir, transkrip, video, out)
+    cmd = argumen_edit(job, job_dir, transkrip, video, out, gab)
     kata = koreksi.get("kata", [])
     if kata:
         cmd += ["--koreksi", *[f"{k['detik']}:{k['jadi']}" for k in kata]]

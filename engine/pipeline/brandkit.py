@@ -208,24 +208,48 @@ def ke_ekspor(lama: dict, kode: str) -> dict:
     return d
 
 
-MAKS_KOSAKATA = 40
+# Batas petunjuk Whisper dalam TOKEN, bukan jumlah entri (keluhan tim 24 Nov: Aysilla punya 42 kosakata, batas
+# lama 40 entri membuang kata kamus yang selalu di belakang). faster-whisper memotong hotwords dan initial_prompt
+# masing-masing di max_length // 2 - 1 = 223 token (hotwords: token AWAL dipakai, prompt: token AKHIR dipakai,
+# jadi prompt yang kepanjangan membuang contoh "Eee, jadi... emm" di depannya). Sisakan margin.
+BATAS_TOKEN = 200
+MAKS_KOSAKATA = 120  # pengaman bila penghitung token tidak ada (perkiraan dipakai)
 
 
-def kosakata_brand(bk: dict) -> list[str]:
-    """R30: petunjuk kata untuk Whisper (initial_prompt + hotwords). Nama brand SELALU ikut
-    (audit 16 Nov: "Aysilla Factory" terdengar "Icy Love Factory" saat kosakata Brand Kit kosong),
-    lalu kosakata tim, kata kunci, dan kata benar dari kamus. Urutan = prioritas; maks 40 entri."""
-    calon = [bk.get("nama", ""), *bk.get("kosakata_whisper", []), *bk.get("kata_kunci", []),
-             *(bk.get("kamus_kata") or {}).values()]
+def perkiraan_token(teks: str) -> int:
+    """Perkiraan token Whisper tanpa tokenizer (dibulatkan ke atas, sengaja boros): ~1 token per 2,5 huruf."""
+    return -(-len(teks) * 2 // 5) + 1
+
+
+def _pecah(nilai) -> list[str]:
+    if isinstance(nilai, (list, tuple)):
+        return [str(x) for x in nilai]
+    return re.split(r"[,;/\n]+", str(nilai or ""))
+
+
+def kosakata_brand(bk: dict, brief: dict | None = None, hitung=None, batas_token: int = BATAS_TOKEN) -> list[str]:
+    """R30: petunjuk kata untuk Whisper (initial_prompt + hotwords). Urutan = prioritas:
+    nama brand (SELALU; audit 16 Nov "Icy Love Factory") -> produk & varian dari brief job -> kata benar kamus
+    -> kosakata tim -> kata kunci -> nama produk Brand Kit. Diisi sampai `", ".join(...)` mencapai
+    `batas_token` (`hitung(teks) -> jumlah token`, tokenizer model yang dipakai; tanpa itu dipakai perkiraan)."""
+    brief = brief or {}
+    calon = [bk.get("nama", ""), *_pecah(brief.get("produk")), *_pecah(brief.get("varian")),
+             *(bk.get("kamus_kata") or {}).values(), *bk.get("kosakata_whisper", []), *bk.get("kata_kunci", [])]
     for p in bk.get("produk", []) or []:
         calon.append(p.get("nama", "") if isinstance(p, dict) else str(p))
+    hitung = hitung or perkiraan_token
     out, lihat = [], set()
     for c in calon:
         c = " ".join(str(c).split())
-        if c and c.lower() not in lihat:
-            lihat.add(c.lower())
-            out.append(c)
-    return out[:MAKS_KOSAKATA]
+        if not c or c.lower() in lihat:
+            continue
+        if out and hitung(", ".join(out + [c])) > batas_token:
+            continue  # yang lebih pendek di belakang masih boleh masuk
+        lihat.add(c.lower())
+        out.append(c)
+        if len(out) >= MAKS_KOSAKATA:
+            break
+    return out
 
 
 def main() -> None:

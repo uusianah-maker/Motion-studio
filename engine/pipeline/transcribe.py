@@ -69,6 +69,23 @@ def load_model(name: str, device: str):
     return WhisperModel(name, device="cpu", compute_type="int8"), "cpu"
 
 
+def hitung_token(model):
+    """Penghitung token dengan tokenizer model yang dipakai (sama seperti faster-whisper: " " + teks)."""
+    tok = getattr(model, "hf_tokenizer", None)
+    if tok is None:
+        return None
+    return lambda teks: len(tok.encode(" " + teks, add_special_tokens=False).ids)
+
+
+def petunjuk(bk: dict, brief: dict, hitung=None) -> list[str]:
+    """Kosakata untuk hotwords DAN initial_prompt. Batas = yang lebih ketat: prompt juga memuat INITIAL_PROMPT,
+    dan faster-whisper membuang token AWAL prompt yang kepanjangan (contoh kata pengisi ikut hilang)."""
+    from brandkit import BATAS_TOKEN, kosakata_brand, perkiraan_token
+
+    n = (hitung or perkiraan_token)(INITIAL_PROMPT)
+    return kosakata_brand(bk, brief, hitung, BATAS_TOKEN - n - 2)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("source")
@@ -77,18 +94,20 @@ def main() -> None:
     ap.add_argument("--language", default="id")
     ap.add_argument("--brandkit", help="brand kit JSON; kosakata_whisper dipakai sebagai petunjuk")
     ap.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
+    ap.add_argument("--produk", help="produk dari brief job (petunjuk Whisper, prioritas sesudah nama brand)")
+    ap.add_argument("--varian", help="varian dari brief job, dipisah koma")
     args = ap.parse_args()
-
-    vocab = []
-    if args.brandkit:
-        from brandkit import kosakata_brand, muat
-
-        vocab = kosakata_brand(muat(args.brandkit))
-    prompt = INITIAL_PROMPT + (" " + ", ".join(vocab) + "." if vocab else "")
 
     t0 = time.perf_counter()
     model, device = load_model(args.model, args.device)
     t_load = time.perf_counter() - t0
+
+    vocab = []
+    if args.brandkit:
+        from brandkit import muat
+
+        vocab = petunjuk(muat(args.brandkit), {"produk": args.produk, "varian": args.varian}, hitung_token(model))
+    prompt = INITIAL_PROMPT + (" " + ", ".join(vocab) + "." if vocab else "")
 
     t1 = time.perf_counter()
     segments, info = model.transcribe(

@@ -140,6 +140,75 @@ def efek_video(framing, zoom_throughs, video_ms):
     return sorted(out, key=lambda e: e[0])
 
 
+# Keluhan tim 24 Nov: zoom terasa kasar (ramp app 250 ms linear, kembali ke 1.0 = lompat, zoom-through lompat
+# 150 ms sesudah potong). Generate sekarang menulis gerakan halus sebagai KEYFRAME klip video (kontrak 12.5:
+# skala + ease), karena efek `zoom` di track effects tidak punya ramp keluar. Batch tetap memakai efek_video.
+DORONG_SKALA = 1.05  # dorong pelan (relatif ke skala dasar framing)
+DORONG_RAMP_MS = (600, 1200)  # naik/turun dorong pelan
+DORONG_MIN_MS = 1400  # rentang lebih pendek dari ini: tanpa dorong
+ZT_SKALA = 1.35
+ZT_NAIK_MS = 250  # zoom-through: 1 -> ZT_SKALA sebelum potong ...
+ZT_TURUN_MS = 300  # ... lalu kembali ke 1 sesudahnya (keduanya ease)
+MAKS_KF = 20  # app keyframes.ts MAX_KEYFRAMES
+
+
+def gerak_framing(framing, zoom_throughs, video_ms):
+    """-> (efek, jendela). efek = (mulai, akhir, effect) untuk track `effects`: hanya zoom "cut" (lompat di
+    sambungan, skala dasar berlaku sampai titik "cut" berikutnya). jendela = [[(ms, skala, ease), ...], ...]
+    kurva keyframe di timeline hasil yang selalu mulai & berakhir di 1.0 (dorong pelan + zoom-through)."""
+    fr = sorted(framing, key=lambda f: f["atMs"])
+    cut = [f for f in fr if f.get("mode", "cut") == "cut"]
+    efek = []
+    for i, f in enumerate(cut):
+        if f["scale"] < ZOOM_MIN:
+            continue
+        a, b = f["atMs"], cut[i + 1]["atMs"] if i + 1 < len(cut) else video_ms
+        if b - a >= MIN_CLIP_MS:
+            efek.append((a, b, {"type": "zoom", "scale": round(min(f["scale"], 2.5), 3), "mode": "cut", "x": 0.5, "y": 0.5}))
+    jendela = []
+    for z in sorted(zoom_throughs):
+        a, b = z - ZT_NAIK_MS, z + ZT_TURUN_MS
+        if a >= 0 and b <= video_ms and (not jendela or a > jendela[-1][-1][0]):
+            jendela.append([(a, 1.0, "linear"), (z, ZT_SKALA, "ease"), (b, 1.0, "ease")])
+    zt = [(w[0][0] - 100, w[-1][0] + 100) for w in jendela]
+    for i, f in enumerate(fr):
+        if f.get("mode") != "smooth":
+            continue
+        a, b = f["atMs"], fr[i + 1]["atMs"] if i + 1 < len(fr) else video_ms
+        b = min(b, video_ms)
+        if b - a < DORONG_MIN_MS or any(a < y and b > x for x, y in zt):
+            continue
+        r = round(min(DORONG_RAMP_MS[1], max(DORONG_RAMP_MS[0], (b - a) * 0.3)))
+        jendela.append([(a, 1.0, "linear"), (a + r, DORONG_SKALA, "ease"), (b - r, DORONG_SKALA, "linear"), (b, 1.0, "ease")])
+    return sorted(efek, key=lambda e: e[0]), sorted(jendela, key=lambda w: w[0][0])
+
+
+def pasang_keyframe(klip_video, jendela):
+    """Kurva `jendela` -> `keyframes` tiap klip video (at_ms relatif ke awal klip; titik di luar klip ikut sebagai
+    jangkar supaya gerakan menyambung lintas potongan). Maks MAKS_KF per klip: zoom-through didahulukan."""
+    for o in klip_video:
+        a, b = o["start_ms"], o["start_ms"] + o["duration_ms"]
+        kena = [w for w in jendela if w[0][0] < b and w[-1][0] > a]
+        kena.sort(key=lambda w: -max(p[1] for p in w))  # zoom-through (skala terbesar) dulu
+        kf, dipakai = [], 0
+        for w in kena:
+            if dipakai + len(w) > MAKS_KF:
+                continue
+            dipakai += len(w)
+            kf += w
+        kf.sort(key=lambda p: p[0])
+        out, lihat = [], set()
+        for t, sk, ease in kf:
+            at = round(t - a)
+            if at in lihat:
+                continue  # ujung jendela yang bersentuhan (keduanya 1.0)
+            lihat.add(at)
+            out.append({"at_ms": at, "scale": sk, "ease": ease})
+        if out:
+            o["keyframes"] = out
+    return klip_video
+
+
 MAKS_KATA_KLIP = 30
 MAKS_HURUF_KATA = 40
 
@@ -323,8 +392,10 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
     maks_shot = (preset.get("shot") or {}).get("maks_dtk")
     if maks_shot:
         framing = punch_in(framing, [o for o in ops if o.get("track_kind") == "video"], float(maks_shot) * 1000)
-    for e in efek_video(framing, props.get("zoomThroughs") or [], video_ms):
+    efek, jendela = gerak_framing(framing, props.get("zoomThroughs") or [], video_ms)
+    for e in efek:
         ops.append({"op": "add_clip", "track_kind": "effects", "start_ms": e[0], "duration_ms": e[1] - e[0], "effect": e[2]})
+    pasang_keyframe([o for o in ops if o.get("track_kind") == "video"], jendela)
 
     # 6b. R29 SFX lebih banyak (yuki): kejadian dari timeline jadi (hook, potong/zoom/transisi, kata kunci, harga,
     #     CTA, halaman subtitle), kepadatan dari preset `sfx.kepadatan` (bawaan sedang), volume di bawah VO.
@@ -388,7 +459,7 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         "status": status,
         "durasi": {"mentah": laporan["originalSec"], "akhir": akhir, "target": target, "saran": saran},
         "dibuang": [{"dari": r["fromSec"], "sampai": r["toSec"], "jenis": r["reason"], "teks": r["text"],
-                     "sumber": "user" if "pilihan user" in r["reason"] else "aturan"} for r in laporan["removed"]],
+                     "sumber": "user" if ("pilihan user" in r["reason"] or "instruksi tim" in r["reason"]) else "aturan"} for r in laporan["removed"]],
         "hook": {"teks": hook["text"], "dari": hook.get("startMs", 0) / 1000, "sampai": hook_end / 1000, "sumber": "aturan"} if hook else None,
         "kata_kunci": [{"teks": k["text"], "detik": round(k["atMs"] / 1000, 2)} for k in laporan.get("kataKunci", [])],
         "efek": [{"jenis": "kotak_kaca", "dari": 0, "sampai": hook_end / 1000}] if hook else [],
@@ -405,6 +476,10 @@ def susun(props: dict, laporan: dict, bk: dict, *, placement: str, root: Path, m
         "menunggu_u3": menunggu,
     }
     rencana["efek"] += [{"jenis": o["effect"]["type"], "detik": round(o["start_ms"] / 1000, 2)} for o in ops if o.get("track_kind") == "effects"]
+    # Gerakan keyframe (dorong pelan = digital zoom, zoom-through) ikut dilaporkan dengan jenis yang sama seperti dulu.
+    rencana["efek"] += [{"jenis": "zoom_through" if max(p[1] for p in w) >= ZT_SKALA else "zoom", "detik": round(w[0][0] / 1000, 2),
+                         "keyframe": True} for w in jendela]
+    rencana["efek"].sort(key=lambda e: e.get("detik", e.get("dari", 0)))
 
     # qc_rencana.json (5.4)
     teks_layar = " ".join(o.get("text", "") for o in ops).lower()
