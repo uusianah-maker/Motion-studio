@@ -15,6 +15,8 @@ const sama = (a: File, b: File) => a.name === b.name && a.size === b.size && a.l
 const dtk = (n: number) => `${n.toFixed(1).replace('.', ',')} dtk`;
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1).replace('.', ',')} MB`;
 let seq = 0;
+/** Video by MIME type, or by extension when the browser gives none (drag & drop on Windows). */
+export const isVideo = (f: File) => f.type.startsWith('video/') || (!f.type && /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(f.name));
 
 /** Add picked files after the current list: same file twice is skipped, the list stops at the limit. */
 export function tambahFootage(cur: readonly Footage[], picked: readonly File[]): { list: Footage[]; dilewati: string[] } {
@@ -68,10 +70,38 @@ export function FootageList({ value, onChange, disabled = false }: { value: Foot
   useEffect(() => {
     if (!value.length && ref.current) ref.current.value = '';
   }, [value.length]);
+  const [over, setOver] = useState(false);
+  /** Picker and drag & drop both ADD after the current list (never replace it). */
+  const tambah = (picked: File[]) => {
+    const video = picked.filter(isVideo);
+    const bukan = picked.filter((f) => !isVideo(f)).map((f) => `${f.name} bukan file video`);
+    if (!video.length && !bukan.length) return;
+    const r = tambahFootage(value, video);
+    setNote([...bukan, ...r.dilewati]);
+    if (video.length) onChange(r.list);
+  };
   const known = value.map((f) => dur[f.id]);
   const total = known.every((d) => typeof d === 'number') ? (known as number[]).reduce((a, b) => a + b, 0) : null;
   return (
-    <div className="footageList">
+    <div
+      className={`footageList${over ? ' dropOver' : ''}`}
+      aria-label="Tempat taruh footage"
+      onDragOver={(e) => {
+        if (disabled || !e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+      }}
+      onDrop={(e) => {
+        if (disabled) return;
+        e.preventDefault();
+        setOver(false);
+        tambah([...e.dataTransfer.files]);
+      }}
+    >
       <label>
         Video bicara
         <input
@@ -84,15 +114,12 @@ export function FootageList({ value, onChange, disabled = false }: { value: Foot
           onChange={(e) => {
             const picked = [...(e.target.files ?? [])];
             e.target.value = ''; // the same file can be picked again after it was removed
-            if (!picked.length) return;
-            const r = tambahFootage(value, picked);
-            setNote(r.dilewati);
-            onChange(r.list);
+            tambah(picked);
           }}
         />
       </label>
       <span className="muted small">
-        Boleh pilih beberapa file sekaligus (Ctrl/Shift + klik) atau tambah lagi nanti. Mesin menggabungkannya sesuai urutan di bawah jadi satu video.
+        Pilih File lagi atau seret file ke kotak ini untuk MENAMBAH (daftar tidak tertimpa). Boleh beberapa sekaligus (Ctrl/Shift + klik). Mesin menggabungkannya sesuai urutan di bawah jadi satu video.
       </span>
       {note.map((n) => (
         <div key={n} className="notice warn small">

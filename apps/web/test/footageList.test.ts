@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAKS_FOOTAGE, geser, tambahFootage } from '../src/views/FootageList';
+import { MAKS_FOOTAGE, geser, isVideo, tambahFootage } from '../src/views/FootageList';
 
 const file = (name: string, size = 10) => new File([new Uint8Array(size)], name, { type: 'video/mp4', lastModified: 1 });
 
@@ -24,5 +24,17 @@ describe('§26 daftar footage Video Iklan', () => {
     expect(geser(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c']);
     expect(geser(['a', 'b', 'c'], 0, -1)).toEqual(['a', 'b', 'c']);
     expect(geser(['a', 'b', 'c'], 2, 1)).toEqual(['a', 'b', 'c']);
+  });
+  it('drag & drop: only video files (MIME, or extension when the type is empty)', () => {
+    expect(isVideo(file('a.mp4'))).toBe(true);
+    expect(isVideo(new File([''], 'b.MOV'))).toBe(true);
+    expect(isVideo(new File([''], 'c.jpg', { type: 'image/jpeg' }))).toBe(false);
+    expect(isVideo(new File([''], 'd.txt'))).toBe(false);
+  });
+  it('picking one file, then one more, then two at once ADDS (never replaces)', () => {
+    let list = tambahFootage([], [file('1.mp4')]).list;
+    list = tambahFootage(list, [file('2.mp4')]).list;
+    list = tambahFootage(list, [file('3.mp4'), file('4.mp4')]).list;
+    expect(list.map((f) => f.file.name)).toEqual(['1.mp4', '2.mp4', '3.mp4', '4.mp4']);
   });
 });
