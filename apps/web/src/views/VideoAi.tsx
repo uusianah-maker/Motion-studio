@@ -107,9 +107,9 @@ export function VideoAiDialog({ media, aset, ratio, playhead, jobs, start, onClo
   return (
     <Modal title="Video AI (OMNI FLASH 1.2)" onClose={onClose}>
       <p className="muted small">Klip baru dibuat oleh beliapi.com, masuk ke Media, lalu otomatis ditaruh di track B-roll di playhead {formatDuration(playhead)} (tanpa suara). Satu video dibuat bergiliran; tab boleh ditutup, hasil tetap masuk Media.</p>
-      <label className="col">
+      <label className="videoAiPrompt">
         Prompt (apa yang terjadi di video)
-        <textarea aria-label="Prompt Video AI" rows={3} maxLength={4400} value={prompt} placeholder="mis. Celana kulot coklat tertiup angin di taman, kamera mendekat pelan, cahaya sore" onChange={(e) => setPrompt(e.target.value)} />
+        <textarea aria-label="Prompt Video AI" rows={4} maxLength={4400} value={prompt} placeholder="mis. Celana kulot coklat tertiup angin di taman, kamera mendekat pelan, cahaya sore" onChange={(e) => setPrompt(e.target.value)} />
       </label>
       <div className="row wrap" style={{ gap: 8, alignItems: 'center', marginTop: 6 }}>
         <label>

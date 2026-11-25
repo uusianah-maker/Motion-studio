@@ -589,3 +589,5 @@ kbd { font-size: 10px; border: 1px solid #ffffff44; border-radius: 4px; padding:
 .videoAiJobs { margin-top: 10px; display: flex; flex-direction: column; gap: 3px; }
 .videoAiJob.gagal { color: #ff8a80; }
 .videoAiJob.siap { color: #8ee6a0; }
+.videoAiPrompt { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.videoAiPrompt textarea { width: 100%; min-width: 420px; box-sizing: border-box; resize: vertical; }
