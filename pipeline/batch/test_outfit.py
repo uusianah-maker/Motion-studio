@@ -189,5 +189,22 @@ class GantiOutfit(unittest.TestCase):
             outfit.jalankan(r)
 
 
+class PenutupBeatSpot(unittest.TestCase):
+    """Beat Spot tahap 1: end card video tanpa durasi_ms (penutup pilihan job) tetap dipotong sepanjang filenya."""
+
+    def test_durasi_file(self):
+        import beatspot
+        with tempfile.TemporaryDirectory() as d:
+            v, g = Path(d) / "p.mp4", Path(d) / "p.png"
+            ff("-f", "lavfi", "-i", "testsrc2=size=320x568:rate=30:duration=1.37", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(v))
+            ff("-f", "lavfi", "-i", "testsrc2=size=320x568:rate=1", "-frames:v", "1", str(g))
+            self.assertAlmostEqual(beatspot.durasi_file_ms(v), 1370, delta=40)
+            self.assertIsNone(beatspot.durasi_file_ms(g))  # gambar: panjang bebas
+            self.assertIsNone(beatspot.durasi_file_ms(Path(d) / "tidak-ada.mp4"))
+            ops, _, _ = beatspot.buat_ops([], None, 16.0, 18.0, {"penutup": {"aset": "$penutup", "detik": 2}, "aset": [{"kunci": "$penutup", "path": str(v)}]}, None, logo=False)
+            pen = next(o for o in ops if o.get("media") == "$penutup")
+            self.assertEqual(pen["duration_ms"], beatspot.durasi_file_ms(v) - 34)  # tidak melebihi file
+
+
 if __name__ == "__main__":
     unittest.main()
