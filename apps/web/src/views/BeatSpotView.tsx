@@ -3,6 +3,7 @@ import { proyekFitur } from '../fitur';
 import type { Api, BeatspotSettings, BeatspotView, BrandKit, DiffItem, DriveEntry, EditPlan, EngineJob, EngineQc, EngineRencana, JobVo, ProjectSummary, Role } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
+import { OutfitView } from './OutfitView';
 import { AudioPilihanSelect } from './PresetGaya';
 import { SuaraPilihan } from './SuaraPilihan';
 import { ENGINE_STATE, EngineProgress, PlanCard, useEngineJob } from './GenerateView';
@@ -52,6 +53,8 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const [brandId, setBrandId] = useState('');
   // R22: projects without a brand use the workspace default brand.
   const [defaultBrand, setDefaultBrand] = useState<string | null>(null);
+  // Owner 25 Nov: Ganti Outfit is a mode of Beat Spot (one menu), not a page of its own.
+  const [modeBs, setModeBs] = useSessionState<'potong' | 'outfit'>('beatspot.mode', 'potong');
   const [target, setTarget] = useSessionState('beatspot.proyek', 'new');
   const [name, setName] = useState('');
   const [footage, setFootage] = useState<File[]>([]);
@@ -286,10 +289,34 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const changed = !!view?.pengaturan && !!pilih && JSON.stringify(view.pengaturan) !== JSON.stringify(pilih);
   const lap = view?.laporan ?? null;
 
+  const modeSwitch = (
+    <div className="row" role="radiogroup" aria-label="Mode Beat Spot" style={{ gap: 6 }}>
+      <button className={`btn small${modeBs === 'potong' ? ' sel' : ''}`} role="radio" aria-checked={modeBs === 'potong'} onClick={() => setModeBs('potong')}>
+        ♪ Potong di ketukan
+      </button>
+      <button className={`btn small${modeBs === 'outfit' ? ' sel' : ''}`} role="radio" aria-checked={modeBs === 'outfit'} onClick={() => setModeBs('outfit')}>
+        👗 Ganti outfit (AI)
+      </button>
+    </div>
+  );
+  if (modeBs === 'outfit')
+    return (
+      <>
+        <header className="top">
+          <h1>Beat Spot</h1>
+          {modeSwitch}
+          <div className="spacer" />
+          <span className="muted small hideNarrow">Footage model sendiri + sound → potong di ketukan ke gambar AI 1 look katalog per footage</span>
+        </header>
+        <OutfitView api={api} role={role} projects={projects} active={active} onOpenProject={onOpenProject} {...(onProjectsChanged ? { onProjectsChanged } : {})} embedded />
+      </>
+    );
+
   return (
     <>
       <header className="top">
         <h1>Beat Spot</h1>
+        {modeSwitch}
         <div className="spacer" />
         <span className="muted small hideNarrow">Footage orang pakai produk + sound → potong tepat di ketukan, logo + end card (awareness)</span>
       </header>

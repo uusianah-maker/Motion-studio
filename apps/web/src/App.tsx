@@ -8,7 +8,6 @@ import { EditorView } from './views/EditorView';
 import { GenerateView } from './views/GenerateView';
 import { HasilView } from './views/HasilView';
 import { BeatSpotView } from './views/BeatSpotView';
-import { OutfitView } from './views/OutfitView';
 import { type BuatFitur, BuatTabs, BuatVideoView } from './views/BuatVideoView';
 import { SuaraView } from './views/SuaraView';
 import { MotionTransferView } from './views/MotionTransferView';
@@ -19,10 +18,10 @@ import { TrashView } from './views/TrashView';
 import { ErrorNotice, ProjectList, useMediaQuery } from './ui';
 import { Logo } from './Logo';
 
-export type View = 'buat' | 'generate' | 'batch' | 'shots' | 'transfer' | 'beatspot' | 'outfit' | 'suara' | 'editor' | 'hasil' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
+export type View = 'buat' | 'generate' | 'batch' | 'shots' | 'transfer' | 'beatspot' | 'suara' | 'editor' | 'hasil' | 'media' | 'brand' | 'trash' | 'storage' | 'ai' | 'team';
 
 /** The four ways of "Buat video" (shown inside it, no menu items of their own). */
-const BUAT: readonly View[] = ['generate', 'batch', 'beatspot', 'outfit', 'transfer', 'suara'];
+const BUAT: readonly View[] = ['generate', 'batch', 'beatspot', 'transfer', 'suara'];
 
 // R17 (owner: "Ya, rapikan"): the work flow in order, then materials, then settings.
 const NAV: { group: string; items: { id: View; sym: string; label: string }[] }[] = [
@@ -59,7 +58,6 @@ const ROUTE: Record<View, string> = {
   generate: 'buat/video-iklan',
   batch: 'buat/batch-remix',
   beatspot: 'buat/beat-spot',
-  outfit: 'buat/ganti-outfit',
   suara: 'buat/suara-dari-teks',
   transfer: 'buat/motion-transfer',
   editor: 'edit',
@@ -72,7 +70,7 @@ const ROUTE: Record<View, string> = {
   storage: 'storage',
   trash: 'trash',
 };
-const OLD_ROUTE: Record<string, View> = { generate: 'generate', batch: 'batch', beatspot: 'beatspot', 'beat-spot': 'beatspot', transfer: 'transfer', 'motion-transfer': 'transfer', editor: 'editor', setujui: 'hasil', persetujuan: 'hasil', shots: 'shots', team: 'team' };
+const OLD_ROUTE: Record<string, View> = { 'buat/ganti-outfit': 'beatspot', generate: 'generate', batch: 'batch', beatspot: 'beatspot', 'beat-spot': 'beatspot', transfer: 'transfer', 'motion-transfer': 'transfer', editor: 'editor', setujui: 'hasil', persetujuan: 'hasil', shots: 'shots', team: 'team' };
 export function viewFromHash(hash: string): View | null {
   const slug = hash.replace(/^#\/?/, '').replace(/\/+$/, '').toLowerCase();
   if (!slug) return null;
@@ -251,7 +249,6 @@ export function App({ api, workspaceId, account = null, role = 'owner' }: { api:
         {BUAT.includes(view) && <BuatTabs current={view as BuatFitur} onOpen={(f) => setView(f)} onHub={() => setView('buat')} />}
         {keep('generate', <GenerateView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} fokus={genFokus} />)}
         {keep('batch', <BatchView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} active={view === 'batch'} />)}
-        {keep('outfit', <OutfitView api={api} role={role} projects={projects ?? []} active={view === 'outfit'} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
         {keep('beatspot', <BeatSpotView api={api} role={role} projects={projects ?? []} active={view === 'beatspot'} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
         {keep('suara', <SuaraView api={api} role={role} projects={projects ?? []} onOpenProject={(id) => void openNew(id)} onProjectsChanged={() => void loadProjects()} />)}
         {keep('transfer', <MotionTransferView api={api} role={role} projects={projects ?? []} active={view === 'transfer'} onProjectsChanged={() => void loadProjects()} />)}

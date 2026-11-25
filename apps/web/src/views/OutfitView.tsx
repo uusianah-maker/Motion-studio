@@ -212,7 +212,7 @@ function KatalogPanel({ api, brand, readOnly, onChanged }: { api: Api; brand: Br
   );
 }
 
-export function OutfitView({ api, role = 'owner', projects, active = true, onOpenProject, onProjectsChanged }: { api: Api; role?: Role; projects: ProjectSummary[]; active?: boolean; onOpenProject: (id: string) => void; onProjectsChanged?: () => void }) {
+export function OutfitView({ api, role = 'owner', projects, active = true, onOpenProject, onProjectsChanged, embedded = false }: { api: Api; role?: Role; projects: ProjectSummary[]; active?: boolean; onOpenProject: (id: string) => void; onProjectsChanged?: () => void; embedded?: boolean }) {
   const readOnly = role === 'reviewer';
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [brands, setBrands] = useState<BrandKit[]>([]);
@@ -376,11 +376,13 @@ export function OutfitView({ api, role = 'owner', projects, active = true, onOpe
 
   return (
     <>
-      <header className="top">
-        <h1>Beat Spot · Ganti Outfit</h1>
-        <div className="spacer" />
-        <span className="muted small hideNarrow">Footage model sendiri + sound template → potong di ketukan ke gambar AI 1 look katalog per footage</span>
-      </header>
+      {!embedded && (
+        <header className="top">
+          <h1>Beat Spot · Ganti Outfit</h1>
+          <div className="spacer" />
+          <span className="muted small hideNarrow">Footage model sendiri + sound template → potong di ketukan ke gambar AI 1 look katalog per footage</span>
+        </header>
+      )}
       <div className="body enginePage">
         <ErrorNotice error={error ?? jobError} />
         {installed === false && <div className="notice warn">Mesin belum dipasang di server ini (MOTION_ENGINE_ROOT).</div>}
