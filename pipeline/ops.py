@@ -147,8 +147,11 @@ DORONG_SKALA = 1.05  # dorong pelan (relatif ke skala dasar framing)
 DORONG_RAMP_MS = (600, 1200)  # naik/turun dorong pelan
 DORONG_MIN_MS = 1400  # rentang lebih pendek dari ini: tanpa dorong
 ZT_SKALA = 1.35
-ZT_NAIK_MS = 250  # zoom-through: 1 -> ZT_SKALA sebelum potong ...
-ZT_TURUN_MS = 300  # ... lalu kembali ke 1 sesudahnya (keduanya ease)
+# 25 Nov (owner: "key frame, zoom in zoom out pergerakannya masih kasar"): 250/300 ms terlalu cepat (±8 frame).
+# Sekarang 450/600 ms; naik "in" (makin cepat menuju potong), turun "lembut" (melambat panjang). Easing in/lembut
+# butuh app dengan keyframes.ts KF_EASES (kontrak §30): rilis app dulu, baru mesin.
+ZT_NAIK_MS = 450  # zoom-through: 1 -> ZT_SKALA sebelum potong ...
+ZT_TURUN_MS = 600  # ... lalu kembali ke 1 sesudahnya
 MAKS_KF = 20  # app keyframes.ts MAX_KEYFRAMES
 
 
@@ -169,7 +172,7 @@ def gerak_framing(framing, zoom_throughs, video_ms):
     for z in sorted(zoom_throughs):
         a, b = z - ZT_NAIK_MS, z + ZT_TURUN_MS
         if a >= 0 and b <= video_ms and (not jendela or a > jendela[-1][-1][0]):
-            jendela.append([(a, 1.0, "linear"), (z, ZT_SKALA, "ease"), (b, 1.0, "ease")])
+            jendela.append([(a, 1.0, "linear"), (z, ZT_SKALA, "in"), (b, 1.0, "lembut")])
     zt = [(w[0][0] - 100, w[-1][0] + 100) for w in jendela]
     for i, f in enumerate(fr):
         if f.get("mode") != "smooth":
