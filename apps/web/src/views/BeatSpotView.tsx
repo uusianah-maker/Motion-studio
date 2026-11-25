@@ -3,7 +3,7 @@ import { proyekFitur } from '../fitur';
 import type { Api, BeatspotSettings, BeatspotView, BrandKit, DiffItem, DriveEntry, EditPlan, EngineJob, EngineQc, EngineRencana, JobVo, ProjectSummary, Role } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
-import { OutfitView } from './OutfitView';
+import { KatalogPanel, OutfitRun } from './OutfitView';
 import { AudioPilihanSelect } from './PresetGaya';
 import { SuaraPilihan } from './SuaraPilihan';
 import { ENGINE_STATE, EngineProgress, PlanCard, useEngineJob } from './GenerateView';
@@ -53,8 +53,13 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const [brandId, setBrandId] = useState('');
   // R22: projects without a brand use the workspace default brand.
   const [defaultBrand, setDefaultBrand] = useState<string | null>(null);
-  // Owner 25 Nov: Ganti Outfit is a mode of Beat Spot (one menu), not a page of its own.
-  const [modeBs, setModeBs] = useSessionState<'potong' | 'outfit'>('beatspot.mode', 'potong');
+  // §32 owner 25 Nov ("fiturnya yang digabung"): one Beat Spot; footage marked Kreator also gets an AI catalog look.
+  const [aiOutfit, setAiOutfit] = useSessionState('beatspot.ai', false);
+  const [outfitCur, setOutfitCur] = useSessionState<{ project_id: string; job_id: string } | null>('beatspot.outfit', null);
+  const [katalogOk, setKatalogOk] = useState(false);
+  const [modelSendiri, setModelSendiri] = useState(false);
+  const [teksAtas, setTeksAtas] = useState('');
+  const [judulAkhir, setJudulAkhir] = useState('');
   const [target, setTarget] = useSessionState('beatspot.proyek', 'new');
   const [name, setName] = useState('');
   const [footage, setFootage] = useState<File[]>([]);
@@ -146,7 +151,8 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
       (r) => {
         if (!stale && r.plan) setPlan({ plan: r.plan, diff: r.diff, rencana: r.rencana, qc: r.qc });
       },
-      (e) => !stale && setError(e),
+      // Owner 25 Nov: a draft already applied to this project cannot be applied again (clips would overlap).
+      (e) => !stale && setError(/tumpang tindih/i.test(e instanceof Error ? e.message : '') ? new Error('Draf job ini sudah pernah diterapkan ke proyek ini (timeline-nya sudah terisi). Untuk menyusun lagi, pilih "+ Proyek baru" lalu klik Susun Beat Spot.') : e),
     );
     return () => {
       stale = true;
@@ -225,16 +231,30 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
       const sources = ups.map((u, i) => ({ kunci: `$sumber:${ids[i]}`, ref: u.ref }));
       setUpload(null);
       const b = Number(bpm);
+      const settings = {
+        // Only "kreator" needs saying: "umum" is the engine's default.
+        sumber_orang: Object.fromEntries(footageItems.map((it, i) => [ids[i]!, orang[it.key] ?? 'umum'] as const).filter(([, v]) => v === 'kreator')),
+        sound: soundItem ? `$sumber:${ids[ids.length - 1]}` : null, bpm: !soundItem && b ? b : null, ketukan_per_potong: kpp, durasi: [durMin, durMax] as [number, number], tagline: tagline.trim() || null,
+      };
+      if (aiOutfit) {
+        // Owner 25 Nov ("persis V2"): every footage walks 3–4 beats, then cuts on the beat to an AI picture of the
+        // same person in 1 catalog look (4 beats); top text; catalog end card. The Ganti Outfit engine (§29).
+        if (!soundItem) throw new Error('Ganti outfit (AI) butuh sound (ketukannya dibaca dari sound).');
+        const j = await api.outfitStart(projectId, sources, { sound: `$sumber:${ids[ids.length - 1]}`, model_sendiri: true, teks_atas: teksAtas.trim() || null, judul_akhir: judulAkhir.trim() || null });
+        unstarted.current = null;
+        setTarget(projectId);
+        setCurrent(null);
+        setOutfitCur({ project_id: projectId, job_id: j.job_id });
+        return;
+      }
+      setOutfitCur(null);
       const j = await api.engineBeatspot(projectId, {
         mode: 'beatspot',
         sources,
         ...(preset ? { preset } : {}),
         ...(audio ? { audio_pilihan: audio } : {}),
         ...(vo ? { vo } : {}),
-        beatspot: {
-          // Only "kreator" needs saying: "umum" is the engine's default.
-          sumber_orang: Object.fromEntries(footageItems.map((it, i) => [ids[i]!, orang[it.key] ?? 'umum'] as const).filter(([, v]) => v === 'kreator')),
-          sound: soundItem ? `$sumber:${ids[ids.length - 1]}` : null, bpm: !soundItem && b ? b : null, ketukan_per_potong: kpp, durasi: [durMin, durMax], tagline: tagline.trim() || null },
+        beatspot: settings,
       });
       unstarted.current = null;
       setTarget(projectId);
@@ -289,34 +309,10 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const changed = !!view?.pengaturan && !!pilih && JSON.stringify(view.pengaturan) !== JSON.stringify(pilih);
   const lap = view?.laporan ?? null;
 
-  const modeSwitch = (
-    <div className="row" role="radiogroup" aria-label="Mode Beat Spot" style={{ gap: 6 }}>
-      <button className={`btn small${modeBs === 'potong' ? ' sel' : ''}`} role="radio" aria-checked={modeBs === 'potong'} onClick={() => setModeBs('potong')}>
-        ♪ Potong di ketukan
-      </button>
-      <button className={`btn small${modeBs === 'outfit' ? ' sel' : ''}`} role="radio" aria-checked={modeBs === 'outfit'} onClick={() => setModeBs('outfit')}>
-        👗 Ganti outfit (AI)
-      </button>
-    </div>
-  );
-  if (modeBs === 'outfit')
-    return (
-      <>
-        <header className="top">
-          <h1>Beat Spot</h1>
-          {modeSwitch}
-          <div className="spacer" />
-          <span className="muted small hideNarrow">Footage model sendiri + sound → potong di ketukan ke gambar AI 1 look katalog per footage</span>
-        </header>
-        <OutfitView api={api} role={role} projects={projects} active={active} onOpenProject={onOpenProject} {...(onProjectsChanged ? { onProjectsChanged } : {})} embedded />
-      </>
-    );
-
   return (
     <>
       <header className="top">
         <h1>Beat Spot</h1>
-        {modeSwitch}
         <div className="spacer" />
         <span className="muted small hideNarrow">Footage orang pakai produk + sound → potong tepat di ketukan, logo + end card (awareness)</span>
       </header>
@@ -500,8 +496,38 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
                 <input aria-label="Tagline" value={tagline} maxLength={120} onChange={(e) => setTagline(e.target.value)} />
               </label>
             </div>
+            <div className="inspFull" role="group" aria-label="Ganti outfit AI" style={{ marginTop: 8 }}>
+              <label className="row" style={{ gap: 8, alignItems: 'center' }}>
+                <input aria-label="Ganti outfit (AI)" type="checkbox" checked={aiOutfit} onChange={(e) => setAiOutfit(e.target.checked)} />
+                <span className="small">
+                  <b>👗 Ganti outfit (AI)</b> — tiap footage: orang jalan 3–4 ketukan (crop mengikuti orang), lalu tepat di ketukan berganti ke gambar AI orang yang sama memakai 1 look katalog (4 ketukan). Penutup: kartu foto katalog. Maks 5 footage, sound wajib, biaya API per gambar.
+                </span>
+              </label>
+              {aiOutfit && (
+                <div className="inspGrid" style={{ marginTop: 6 }}>
+                  <label className="inspFull">
+                    Teks atas (tetap sampai penutup)
+                    <input aria-label="Teks atas" value={teksAtas} maxLength={120} placeholder="mis. kemeja + kulot, auto rapi ke mana aja" onChange={(e) => setTeksAtas(e.target.value)} />
+                  </label>
+                  <label className="inspFull">
+                    Judul penutup katalog
+                    <input aria-label="Judul penutup katalog" value={judulAkhir} maxLength={60} placeholder="Mix & Match" onChange={(e) => setJudulAkhir(e.target.value)} />
+                  </label>
+                  <label className="inspFull row" style={{ gap: 8, alignItems: 'center' }}>
+                    <input aria-label="Model sendiri" type="checkbox" checked={modelSendiri} onChange={(e) => setModelSendiri(e.target.checked)} />
+                    <span className="small">
+                      Orang di semua footage ini <b>model / kreator sendiri</b> yang setuju bajunya diganti AI (wajib).
+                    </span>
+                  </label>
+                </div>
+              )}
+              {aiOutfit && footageItems.length > 5 && <div className="notice warn small">Ganti outfit (AI): maksimal 5 footage (dipilih {footageItems.length}).</div>}
+              {aiOutfit && !sound && !linkSound && <div className="notice warn small">Ganti outfit (AI) butuh sound.</div>}
+              {aiOutfit && (preset || vo) && <div className="notice info small">Preset dan VO dari Library tidak dipakai saat Ganti outfit (AI) aktif.</div>}
+              {aiOutfit && brand && <KatalogPanel api={api} brand={brand} readOnly={readOnly} onChanged={(k) => setKatalogOk(k.produk.length > 0)} />}
+            </div>
             <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-              <button className="btn primary" disabled={!installed || !footageItems.length || linkSalah.length > 0 || folderMuat || folderGagal.length > 0 || !brand || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
+              <button className="btn primary" disabled={!installed || !footageItems.length || linkSalah.length > 0 || folderMuat || folderGagal.length > 0 || !brand || busy || job?.state === 'berjalan' || job?.state === 'menunggu' || (aiOutfit && (footageItems.length > 5 || (!sound && !linkSound) || !modelSendiri || !katalogOk))} onClick={() => void start()}>
                 ♪ Susun Beat Spot
               </button>
               {upload !== null && <span className="muted small">{upload}…</span>}
@@ -512,6 +538,9 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
         )}
         {readOnly && <div className="notice info">Peran Reviewer: bisa melihat hasil Beat Spot. Menjalankan, memilih shot dan menerapkan ke timeline dilakukan Editor / Owner.</div>}
 
+        {outfitCur && !current && (
+          <OutfitRun api={api} role={role} brandId={brandId} current={outfitCur} setCurrent={setOutfitCur} onOpenProject={onOpenProject} />
+        )}
         {job && current && (
           <section className="card" aria-label="Proses mesin">
             <h2>2 · Proses mesin</h2>

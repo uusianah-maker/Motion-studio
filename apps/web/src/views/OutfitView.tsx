@@ -1,20 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { proyekFitur } from '../fitur';
-import type { Api, BrandKit, DiffItem, EditPlan, EngineQc, EngineRencana, Katalog, KatalogProduk, OutfitItem, OutfitView as OutfitViewData, ProjectSummary, Role } from '../api';
-import { ErrorNotice, useSessionState } from '../ui';
-import { sourceIds } from './BeatSpotView';
+import { useCallback, useEffect, useState } from 'react';
+import type { Api, BrandKit, DiffItem, EditPlan, EngineQc, EngineRencana, Katalog, KatalogProduk, OutfitItem, OutfitView as OutfitViewData, Role } from '../api';
+import { ErrorNotice } from '../ui';
 import { EngineProgress, PlanCard, useEngineJob } from './GenerateView';
 
 /**
- * §29 Beat Spot "Ganti Outfit" (owner 24–25 Nov 2026): 1–5 footage of the brand's own model + the
- * template sound → per footage the walk cuts on the beat to an AI picture of the same person in ONE
- * catalog look (1 atasan + 1 bawahan, 1 colour) → end card of the real catalog photos. The team
- * checks before/after, may make a picture again or change a look, then opens the draft in Edit
- * (render held until approved).
+ * §29/§32 Ganti Outfit parts used by the Beat Spot page (owner 25 Nov: one Beat Spot): the Katalog
+ * Produk panel and one run's progress → before/after check (make again, change look) → plan → Edit.
  */
-const MAKS = 5;
-const today = () => new Date().toISOString().slice(0, 10);
-const AUDIO = /\.(wav|mp3|m4a|aac|ogg|flac)$/i;
 const sec = (n: number | null | undefined) => (typeof n === 'number' ? `${n.toFixed(1).replace('.', ',')} dtk` : '–');
 const TAHAP: Record<OutfitViewData['tahap'], string> = {
   menyiapkan: 'Mesin menyiapkan footage (orang, crop, frame diam, look)',
@@ -75,7 +67,7 @@ function FotoMedia({ api, versionId, alt }: { api: Api; versionId: string; alt: 
 }
 
 /** Katalog Produk of one brand: import a folder (1 subfolder = 1 product, 1 file = 1 colour), name colours, set atasan / bawahan. */
-function KatalogPanel({ api, brand, readOnly, onChanged }: { api: Api; brand: BrandKit; readOnly: boolean; onChanged: (k: Katalog) => void }) {
+export function KatalogPanel({ api, brand, readOnly, onChanged }: { api: Api; brand: BrandKit; readOnly: boolean; onChanged: (k: Katalog) => void }) {
   const [kat, setKat] = useState<Katalog | null>(null);
   const [draft, setDraft] = useState<KatalogProduk[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -212,43 +204,23 @@ function KatalogPanel({ api, brand, readOnly, onChanged }: { api: Api; brand: Br
   );
 }
 
-export function OutfitView({ api, role = 'owner', projects, active = true, onOpenProject, onProjectsChanged, embedded = false }: { api: Api; role?: Role; projects: ProjectSummary[]; active?: boolean; onOpenProject: (id: string) => void; onProjectsChanged?: () => void; embedded?: boolean }) {
+/**
+ * §32: one Ganti Outfit run (progress → before/after check → plan → Edit), shown inside the Beat Spot page.
+ * The job is a siapkan job (mode outfit); pictures are made by the app, then the rakit job assembles.
+ */
+export function OutfitRun({ api, role = 'owner', brandId, current, setCurrent, onOpenProject }: { api: Api; role?: Role; brandId: string; current: { project_id: string; job_id: string }; setCurrent: (c: { project_id: string; job_id: string }) => void; onOpenProject: (id: string) => void }) {
   const readOnly = role === 'reviewer';
-  const [installed, setInstalled] = useState<boolean | null>(null);
-  const [brands, setBrands] = useState<BrandKit[]>([]);
-  const [brandId, setBrandId] = useState('');
-  const [defaultBrand, setDefaultBrand] = useState<string | null>(null);
   const [katalog, setKatalog] = useState<Katalog | null>(null);
-  const [target, setTarget] = useSessionState('outfit.proyek', 'new');
-  const [name, setName] = useState('');
-  const [footage, setFootage] = useState<File[]>([]);
-  const [sound, setSound] = useState<File | null>(null);
-  const [modelSendiri, setModelSendiri] = useState(false);
-  const [teks, setTeks] = useState('');
-  const [judul, setJudul] = useState('');
-  const [sub, setSub] = useState('');
-  const [upload, setUpload] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [current, setCurrent] = useSessionState<{ project_id: string; job_id: string } | null>('outfit.job', null);
   const [view, setView] = useState<OutfitViewData | null>(null);
   const [ubah, setUbah] = useState<Record<string, { atasan?: string | null; bawahan?: string | null; target?: 'utama' | 'semua' }>>({});
   const [plan, setPlan] = useState<{ plan: EditPlan; diff: DiffItem[]; rencana: EngineRencana; qc: EngineQc | null } | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
-  const { job, log, error: jobError } = useEngineJob(api, current?.project_id ?? null, current?.job_id ?? null);
-
+  const { job, log, error: jobError } = useEngineJob(api, current.project_id, current.job_id);
   useEffect(() => {
-    if (!active) return;
-    void api.engineInfo().then((r) => setInstalled(r.installed), setError);
-    void api.brands().then((r) => {
-      setBrands(r.brands);
-      setBrandId((cur) => cur || r.default_id || r.brands[0]?.brand_id || '');
-      setDefaultBrand(r.default_id ?? null);
-    }, setError);
-  }, [api, active]);
-  const brand = brands.find((b) => b.brand_id === brandId) ?? null;
-  const onKatalog = useCallback((k: Katalog) => setKatalog(k), []);
-
+    if (brandId) void api.katalog(brandId).then(setKatalog, () => undefined);
+  }, [api, brandId]);
   // The run: poll while the app / engine is still working.
   const final = !!job && job.state !== 'menunggu' && job.state !== 'berjalan';
   useEffect(() => {
@@ -289,45 +261,6 @@ export function OutfitView({ api, role = 'owner', projects, active = true, onOpe
 
   const atasan = (katalog?.produk ?? []).filter((p) => p.jenis === 'atasan');
   const bawahan = (katalog?.produk ?? []).filter((p) => p.jenis === 'bawahan');
-  const katalogOk = atasan.length + bawahan.length > 0;
-
-  const unstarted = useRef<string | null>(null);
-  const start = async () => {
-    if (!brand || !footage.length || !sound) return;
-    if (!brand.kode) return setError(new Error('Brand ini belum punya kode (Brand Kit → A). Isi dulu, baru jalankan mesin.'));
-    setBusy(true);
-    setError(null);
-    setApplied(null);
-    setUbah({});
-    try {
-      let projectId = target;
-      if (target === 'new') {
-        projectId = unstarted.current ?? (await api.createProject(name.trim() || `Ganti Outfit ${brand.name} ${today()}`, 'beatspot')).project_id;
-        unstarted.current = projectId;
-        onProjectsChanged?.();
-      }
-      const p = await api.project(projectId);
-      if (p.brand_id !== brand.brand_id) await api.updateProject(projectId, p.revision, { brand_id: brand.brand_id });
-      const files = [...footage, sound];
-      const ids = sourceIds(files.map((f) => f.name));
-      const sources = [];
-      for (const [i, f] of files.entries()) {
-        setUpload(`${i + 1}/${files.length} ${f.name}`);
-        const up = await api.importFile(f, { kind: 'project', project_id: projectId });
-        sources.push({ kunci: `$sumber:${ids[i]}`, ref: { media_id: up.media_id, version_id: up.version.version_id } });
-      }
-      setUpload(null);
-      const j = await api.outfitStart(projectId, sources, { sound: `$sumber:${ids[ids.length - 1]}`, model_sendiri: true, teks_atas: teks.trim() || null, judul_akhir: judul.trim() || null, sub_akhir: sub.trim() || null });
-      unstarted.current = null;
-      setTarget(projectId);
-      setCurrent({ project_id: projectId, job_id: j.job_id });
-    } catch (e) {
-      setError(e);
-      setUpload(null);
-    } finally {
-      setBusy(false);
-    }
-  };
   const act = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -376,87 +309,7 @@ export function OutfitView({ api, role = 'owner', projects, active = true, onOpe
 
   return (
     <>
-      {!embedded && (
-        <header className="top">
-          <h1>Beat Spot · Ganti Outfit</h1>
-          <div className="spacer" />
-          <span className="muted small hideNarrow">Footage model sendiri + sound template → potong di ketukan ke gambar AI 1 look katalog per footage</span>
-        </header>
-      )}
-      <div className="body enginePage">
-        <ErrorNotice error={error ?? jobError} />
-        {installed === false && <div className="notice warn">Mesin belum dipasang di server ini (MOTION_ENGINE_ROOT).</div>}
-        {brand && <KatalogPanel api={api} brand={brand} readOnly={readOnly} onChanged={onKatalog} />}
-        {!readOnly && (
-          <section className="card" aria-label="Footage dan sound">
-            <h2>1 · Footage &amp; sound template</h2>
-            <div className="inspGrid">
-              <label>
-                Brand
-                <select aria-label="Brand" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
-                  {brands.map((b) => (
-                    <option key={b.brand_id} value={b.brand_id}>
-                      {b.name} ({b.kode})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Proyek
-                <select aria-label="Proyek tujuan" value={target} onChange={(e) => setTarget(e.target.value)}>
-                  <option value="new">＋ Proyek baru</option>
-                  {proyekFitur(projects, 'beatspot', brandId, defaultBrand, target).map((p) => (
-                    <option key={p.project_id} value={p.project_id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {target === 'new' && (
-                <label>
-                  Nama proyek
-                  <input aria-label="Nama proyek baru" value={name} maxLength={120} placeholder={`Ganti Outfit ${brand?.name ?? ''} ${today()}`} onChange={(e) => setName(e.target.value)} />
-                </label>
-              )}
-              <label>
-                Footage model (1–{MAKS} video, tiap footage = 1 look)
-                <input aria-label="Footage model" type="file" accept="video/*" multiple onChange={(e) => setFootage([...(e.target.files ?? [])].filter((f) => !AUDIO.test(f.name)))} />
-              </label>
-              {footage.length > MAKS && <div className="notice warn inspFull">Maksimal {MAKS} footage per video (dipilih {footage.length}).</div>}
-              <label>
-                Sound template (video / audio contoh)
-                <input aria-label="Sound template" type="file" accept="audio/*,video/*" onChange={(e) => setSound(e.target.files?.[0] ?? null)} />
-              </label>
-              <label className="inspFull">
-                Teks atas (tetap sampai end card)
-                <input aria-label="Teks atas" value={teks} maxLength={120} placeholder="mis. kemeja + kulot, auto rapi ke mana aja" onChange={(e) => setTeks(e.target.value)} />
-              </label>
-              <label>
-                Judul end card
-                <input aria-label="Judul end card" value={judul} maxLength={60} placeholder="Mix & Match" onChange={(e) => setJudul(e.target.value)} />
-              </label>
-              <label>
-                Sub judul end card
-                <input aria-label="Sub judul end card" value={sub} maxLength={90} placeholder="(otomatis: nama produk)" onChange={(e) => setSub(e.target.value)} />
-              </label>
-              <label className="inspFull row" style={{ gap: 8, alignItems: 'center' }}>
-                <input aria-label="Model sendiri" type="checkbox" checked={modelSendiri} onChange={(e) => setModelSendiri(e.target.checked)} />
-                <span className="small">
-                  Orang di semua footage ini <b>model / kreator sendiri</b> yang setuju bajunya diganti AI (wajib).
-                </span>
-              </label>
-            </div>
-            <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button className="btn primary" disabled={!installed || !brand || !footage.length || footage.length > MAKS || !sound || !modelSendiri || !katalogOk || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
-                ♪ Buat Ganti Outfit
-              </button>
-              {upload !== null && <span className="muted small">Mengunggah {upload}…</span>}
-              {!katalogOk && <span className="muted small">Isi Katalog Produk dulu (minimal 1 produk atasan / bawahan).</span>}
-              <span className="muted small">Gambar dibuat dengan API key AI gambar (biaya per gambar, lihat menu AI). Sistem memilih look; bisa diganti setelah jadi.</span>
-            </div>
-          </section>
-        )}
-
+      <ErrorNotice error={error ?? jobError} />
         {job && current && (
           <section className="card" aria-label="Proses mesin">
             <h2>2 · Proses</h2>
@@ -592,7 +445,6 @@ export function OutfitView({ api, role = 'owner', projects, active = true, onOpe
             </button>
           </section>
         )}
-      </div>
     </>
   );
 }
