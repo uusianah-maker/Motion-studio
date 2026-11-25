@@ -4,6 +4,7 @@ import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
 import { type KfValues, keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
 import { effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { KeyframeHandles } from './KeyframeHandles';
+import { PlayerBar } from './PlayerBar';
 import { DepanLayer } from './DepanLayer';
 import { DEFAULT_DUCK, duckGainAt, effectiveLook, effectiveLut, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import { orientCss, sourceAt } from '../../../../packages/core/dist/storage/clipMotion.js';
@@ -16,7 +17,7 @@ import type { TextStyle } from '../../../../packages/core/dist/storage/textStyle
 import { TextOverlay } from './TextOverlay';
 import { OverlayLayer } from './OverlayLayer';
 import { type Overlay, contentEnd } from '../../../../packages/core/dist/storage/overlay.js';
-import { CANVAS_RATIOS, type CanvasRatio, aspectCss, clipAt, formatDuration, safeInsets, sourceSeconds } from '../lib';
+import { CANVAS_RATIOS, type CanvasRatio, aspectCss, clipAt, safeInsets, sourceSeconds } from '../lib';
 
 type Layer = 'visual' | 'audio';
 
@@ -77,6 +78,33 @@ export function Preview({
   const ratio: CanvasRatio = project.timeline.canvas?.ratio ?? '9:16';
   const [safe, setSafe] = useState(true);
   const [muted, setMuted] = useState(false);
+  // 25 Nov (owner: player bar baru): preview speed, loop, volume and "Ringan" (lighter preview).
+  // Preview only — the render never changes. Remembered per browser (try/catch: storage may be off).
+  const remembered = <T,>(k: string, d: T): T => {
+    try {
+      const v = localStorage.getItem(`ms.player.${k}`);
+      return v === null ? d : (JSON.parse(v) as T);
+    } catch {
+      return d;
+    }
+  };
+  const [speed, setSpeed] = useState<number>(() => remembered('speed', 1));
+  const [loop, setLoop] = useState<'off' | 'semua' | 'klip'>(() => remembered('loop', 'off'));
+  const [volume, setVolume] = useState<number>(() => remembered('volume', 1));
+  const [ringan, setRingan] = useState<boolean>(() => remembered('ringan', false));
+  useEffect(() => {
+    try {
+      localStorage.setItem('ms.player.speed', JSON.stringify(speed));
+      localStorage.setItem('ms.player.loop', JSON.stringify(loop));
+      localStorage.setItem('ms.player.volume', JSON.stringify(volume));
+      localStorage.setItem('ms.player.ringan', JSON.stringify(ringan));
+    } catch {
+      /* storage off: settings last for this page only */
+    }
+  }, [speed, loop, volume, ringan]);
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
+  const loopRef = useRef<{ mode: typeof loop; from: number; to: number }>({ mode: 'off', from: 0, to: 0 });
   const [problem, setProblem] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -109,6 +137,10 @@ export function Preview({
   const clipsOf = (kind: string) => tracks.filter((t) => t.kind === kind).flatMap((t) => t.clips);
   const end = contentEnd(tracks); // R26: whole-video overlays follow the video, as in the render
   const t = playhead;
+  {
+    const sc = loop === 'klip' && selectedClipId ? tracks.flatMap((x) => x.clips).find((c) => c.clip_id === selectedClipId) : null;
+    loopRef.current = loop === 'semua' ? { mode: 'semua', from: 0, to: end } : sc ? { mode: 'klip', from: sc.start_ms, to: sc.end_ms } : { mode: 'off', from: 0, to: 0 };
+  }
   const visual = clipAt(clipsOf('broll'), t) ?? clipAt(clipsOf('video'), t);
   // 25 Nov (keluhan "keyframe/zoom masih kasar" di preview): the clock below follows wall time while
   // <video> plays natively, so the transform could drift up to the 0.3 s re-seek tolerance from the
@@ -197,7 +229,7 @@ export function Preview({
       // R23a: speed = playback rate (pitch kept, like atempo); a reversed or frozen clip is not played
       // but stepped: the element stays paused and is seeked to the right frame on every tick.
       const stepped = layer === 'visual' && (!!clip.reverse || !!clip.freeze);
-      const rate = clip.speed ?? 1;
+      const rate = (clip.speed ?? 1) * speedRef.current;
       if (!stepped && el.playbackRate !== rate) el.playbackRate = rate;
       const tolerance = isPlaying && !stepped ? 0.3 * Math.max(1, rate) : 0.04;
       // Before metadata the element cannot seek; the next sync (every frame while playing, or on
@@ -232,22 +264,33 @@ export function Preview({
       lastTick.current = null;
       return;
     }
-    clock.current = { wall: performance.now(), base: playhead >= end ? 0 : playhead };
+    clock.current = { wall: performance.now(), base: playhead >= end ? loopRef.current.from : playhead };
     let raf = 0;
+    let lastWall = performance.now();
     const tick = () => {
       const c = clock.current;
       if (!c) return;
-      let now = c.base + (performance.now() - c.wall);
+      // speed: advance by wall time × speed since the last frame (speed may change while playing)
+      const w = performance.now();
+      c.base += (w - lastWall) * (speedRef.current - 1);
+      lastWall = w;
+      let now = c.base + (w - c.wall);
       const el = videoRef.current;
       const vc = visualRef.current;
       if (el && vc?.media && !el.paused && !el.seeking && el.readyState >= 2 && !vc.reverse && !vc.freeze && now >= vc.start_ms && now < vc.end_ms) {
-        const drift = ((el.currentTime - sourceSeconds(vc, now)) * 1000) / (vc.speed ?? 1);
+        const drift = ((el.currentTime - sourceSeconds(vc, now)) * 1000) / ((vc.speed ?? 1) * speedRef.current);
         if (Math.abs(drift) < 250) {
           c.base += drift * 0.2;
           now += drift * 0.2;
         }
       }
-      if (now >= end) {
+      const lp = loopRef.current;
+      if (lp.mode !== 'off' && lp.to > lp.from && now >= lp.to) {
+        // loop: back to the start of the range, keep playing
+        c.base = lp.from;
+        c.wall = performance.now();
+        now = lp.from;
+      } else if (now >= end) {
         setPlayhead(end);
         setPlaying(false);
         return;
@@ -307,14 +350,15 @@ export function Preview({
   const sfx4Gain = gainOf(sfx4);
   const musicGain = Math.round(gainOf(music) * (duck !== undefined ? duckGainAt(duckRanges, duck ?? DEFAULT_DUCK, t) : 1) * 1000) / 1000;
   useEffect(() => {
-    if (musicRef.current) musicRef.current.volume = musicGain;
-    if (videoRef.current) videoRef.current.volume = visualGain;
-    if (audioRef.current) audioRef.current.volume = audioGain;
-    if (sfxRef.current) sfxRef.current.volume = sfxGain;
-    if (sfx2Ref.current) sfx2Ref.current.volume = sfx2Gain;
-    if (sfx3Ref.current) sfx3Ref.current.volume = sfx3Gain;
-    if (sfx4Ref.current) sfx4Ref.current.volume = sfx4Gain;
-  }, [visualGain, audioGain, sfxGain, sfx2Gain, sfx3Gain, sfx4Gain, musicGain]);
+    const v = (g: number) => Math.max(0, Math.min(1, g * volume));
+    if (musicRef.current) musicRef.current.volume = v(musicGain);
+    if (videoRef.current) videoRef.current.volume = v(visualGain);
+    if (audioRef.current) audioRef.current.volume = v(audioGain);
+    if (sfxRef.current) sfxRef.current.volume = v(sfxGain);
+    if (sfx2Ref.current) sfx2Ref.current.volume = v(sfx2Gain);
+    if (sfx3Ref.current) sfx3Ref.current.volume = v(sfx3Gain);
+    if (sfx4Ref.current) sfx4Ref.current.volume = v(sfx4Gain);
+  }, [visualGain, audioGain, sfxGain, sfx2Gain, sfx3Gain, sfx4Gain, musicGain, volume]);
   // R23b: EQ + "Perjelas suara" of each playing clip (Web Audio, same numbers as the render).
   const fxKey = [visual, audio, sfx, sfx2, sfx3, sfx4, music].map((c) => (c ? `${c.clip_id}:${JSON.stringify(c.eq ?? null)}:${c.voice ? 1 : 0}` : '-')).join('|');
   useEffect(() => {
@@ -339,7 +383,8 @@ export function Preview({
   // R38b(2): colour LUT (clip > Brand default) as an SVG colour matrix after the look (render: lut3d).
   const lutRef = visual?.media ? effectiveLut(visual, brand?.kit.lut_bawaan ?? null) : null;
   const lutVals = useLutValues(api, lutRef?.version_id);
-  const css = look && lutVals ? { ...look, filter: `${look.filter} url(#lutPreview)`.trim() } : look;
+  // "Ringan": no LUT colour matrix (an SVG filter re-run on every frame), no blur boxes, no grain.
+  const css = look && lutVals && !ringan ? { ...look, filter: `${look.filter} url(#lutPreview)`.trim() } : look;
   const fit = visual?.fit;
   const allVisual = [...clipsOf('video'), ...clipsOf('broll')];
   const halfMs = (c: Clip, prev: Clip | null) => (c.transition ? Math.min(c.transition.ms / 2, c.end_ms - c.start_ms, prev ? prev.end_ms - prev.start_ms : 0) : 0);
@@ -475,10 +520,10 @@ export function Preview({
           />
           {css && css.warmth !== 0 && visual?.media && <div className="lookWash" aria-hidden="true" data-warmth={css.warmth.toFixed(2)} style={{ background: css.warmth > 0 ? '#ff9a3c' : '#3c8cff', opacity: Math.abs(css.warmth) * 0.28 }} />}
           {css && css.vignette > 0 && visual?.media && <div className="lookVignette" aria-hidden="true" style={{ background: `radial-gradient(ellipse at center, transparent ${Math.round(70 - css.vignette * 50)}%, rgba(0,0,0,${(css.vignette * 0.9).toFixed(2)}) 100%)` }} />}
-          {css && css.grain > 0 && visual?.media && <div className="lookGrain" aria-hidden="true" data-grain={css.grain} style={{ opacity: Math.min(0.35, css.grain / 40) }} />}
+          {!ringan && css && css.grain > 0 && visual?.media && <div className="lookGrain" aria-hidden="true" data-grain={css.grain} style={{ opacity: Math.min(0.35, css.grain / 40) }} />}
           {trans?.flash !== undefined && trans.flash > 0 && <div className="transFlash" aria-hidden="true" style={{ opacity: trans.flash }} />}
           {trans?.black !== undefined && trans.black > 0 && <div className="transBlack" aria-hidden="true" style={{ opacity: trans.black }} />}
-          {blurs.length > 0 && srcSize && (
+          {!ringan && blurs.length > 0 && srcSize && (
             <div className="blurLayer" style={zoomStyle} aria-hidden="true">
               {blurs.map((b, i) => {
                 const r = placeOnCanvas(srcSize, crop, canvasPx, b, fit === 'isi');
@@ -553,20 +598,24 @@ export function Preview({
           <span className="canvasTag">● PREVIEW</span>
         </div>
       </div>
-      <div className="player">
-        <button className="tiny" onClick={() => setPlayhead(0)} aria-label="Ke awal">
-          ⏮
-        </button>
-        <button className="play" onClick={() => (resumeAudioFx(), setPlaying(!playing))} aria-label={playing ? 'Jeda' : 'Putar'} disabled={end === 0}>
-          {playing ? '❚❚' : '▶'}
-        </button>
-        <span className="time">
-          {formatDuration(t)} / {formatDuration(end)}
-        </span>
-        <button className="tiny" onClick={() => setMuted(!muted)} aria-label={muted ? 'Nyalakan suara' : 'Bisukan'}>
-          {muted ? '🔇' : '🔊'}
-        </button>
-      </div>
+      <PlayerBar
+        t={t}
+        end={end}
+        playing={playing}
+        onPlay={() => (resumeAudioFx(), setPlaying(!playing))}
+        onSeek={(ms) => setPlayhead(Math.max(0, Math.min(end, ms)))}
+        muted={muted}
+        setMuted={setMuted}
+        volume={volume}
+        setVolume={setVolume}
+        speed={speed}
+        setSpeed={setSpeed}
+        loop={loop}
+        setLoop={setLoop}
+        loopClip={selectedClipId ? (project.timeline.tracks.flatMap((x) => x.clips).find((c) => c.clip_id === selectedClipId) ?? null) : null}
+        ringan={ringan}
+        setRingan={setRingan}
+      />
     </>
   );
 }

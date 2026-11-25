@@ -1260,6 +1260,9 @@ export function createApi(token: string | null, base = '') {
     ttsResult: (id: string, jobId: string) => call<{ tts: TtsView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/tts`).then((r) => r.tts),
     /** R35 Visual Tools (contract §18.10). */
     engineVisual: (id: string, ref: { media_id: string; version_id: string }, visual: Record<string, unknown>) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'visual', ref, visual } }).then((r) => r.job),
+    /** 25 Nov "Cetakan per kalimat": AI re-picks templates + highlight words (null = AI not usable, see alasan). */
+    copilotCetakanAi: (id: string, body: { kalimat: string[]; usulan: string[]; connection_id?: string }) =>
+      call<{ ai: { pilihan: string[]; sorot: string[]; provider: { connection_id: string; provider: string; model: string }; cost_usd: number } | null; alasan?: string }>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/cetakan-ai`, { json: body }),
     /** 25 Nov "Objek di depan teks": step 1 (picture under the text) → engine job. */
     depanStart: (id: string, clipId: string) => call<{ depan: DepanStatus }>('POST', `/api/projects/${encodeURIComponent(id)}/depan`, { json: { clip_id: clipId } }).then((r) => r.depan),
     depanStatus: (id: string, clipId: string) => call<{ depan: DepanStatus }>('GET', `/api/projects/${encodeURIComponent(id)}/depan/${encodeURIComponent(clipId)}`).then((r) => r.depan),

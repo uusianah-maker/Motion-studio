@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { errorText } from '../lib';
 import { type Api, ApiError, type DiffItem, type EditPlan, type Project } from '../api';
 import { ErrorNotice } from '../ui';
+import type { BrandAsset, Clip, EditOp, Media } from '../api';
+import { CetakanPanel } from './CetakanPanel';
 
 const QUICK = ['hook "Diskon 50% hari ini!" 2 detik', 'CTA "Join live jam 7" di akhir', 'ubah rasio ke 1:1'];
 
@@ -18,7 +20,16 @@ export function CopilotPanel({
   busy,
   onApplied,
   onUndo,
+  media = [],
+  aset = [],
+  selectedClip = null,
+  edit,
 }: {
+  media?: readonly Media[];
+  aset?: readonly BrandAsset[];
+  selectedClip?: Clip | null;
+  /** 25 Nov "Cetakan per kalimat": ordinary edits (one Undo each). */
+  edit?: (ops: EditOp[]) => Promise<void>;
   api: Api;
   project: Project;
   selectedClipId: string | null;
@@ -142,6 +153,7 @@ export function CopilotPanel({
           {mode === 'local' ? 'Lokal · tanpa AI' : mode === 'auto' ? 'Otomatis · AI jika perlu' : 'AI'}
         </span>
       </div>
+      {edit && <CetakanPanel api={api} project={project} media={media} aset={aset} selectedClip={selectedClip} playheadMs={playheadMs} busy={busy} edit={edit} />}
       <textarea
         aria-label="Perintah Copilot"
         placeholder={'Contoh: hook "Diskon 50%" 2 detik; subtitle "Cek keranjang" detik 2-5'}

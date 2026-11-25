@@ -23,6 +23,7 @@ import {
   localDate,
   type GuardIssue,
   markEngineOrigin,
+  CETAKAN,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
@@ -47,6 +48,16 @@ export interface AiPlanner {
     ops: unknown;
     rationale: string;
     warnings: string[];
+    provider: { connection_id: string; provider: string; model: string };
+    cost_usd: number;
+  }>;
+  /**
+   * 25 Nov "Cetakan per kalimat": the model re-picks the template of each sentence (by its shape)
+   * and names the words worth highlighting. Optional: `connection_id` = the model the user chose.
+   */
+  cetakan?(input: { project_id: string; kalimat: string[]; usulan: string[]; connection_id?: string }): Promise<{
+    pilihan: string[];
+    sorot: string[];
     provider: { connection_id: string; provider: string; model: string };
     cost_usd: number;
   }>;
@@ -156,6 +167,28 @@ export function createCopilot(ws: Workspace, opts: CopilotOptions = {}) {
   const view = (r: PlanRecord) => ({ plan: r.plan, status: r.status, applied_revision: r.applied_revision, accepted: r.accepted });
 
   const routes: Route[] = [
+    {
+      // 25 Nov "Cetakan per kalimat" with AI: same rules shown to the model, which only returns
+      // template ids + highlight words (never ops); the editor builds the clips (hybrid).
+      method: 'POST',
+      path: '/api/projects/:project_id/copilot/cetakan-ai',
+      handle: async ({ req, params }) => {
+        const body = await readJsonBody(req);
+        onlyKeys(body, ['kalimat', 'usulan', 'connection_id']);
+        const kal = body.kalimat;
+        const us = body.usulan;
+        if (!Array.isArray(kal) || !kal.length || kal.length > 80 || !kal.every((x) => typeof x === 'string' && x.length <= 400)) throw bad('kalimat harus daftar 1–80 teks');
+        if (!Array.isArray(us) || us.length !== kal.length || !us.every((x) => typeof x === 'string' && (CETAKAN as readonly string[]).includes(x))) throw bad('usulan tidak valid');
+        const cid = body.connection_id;
+        if (cid !== undefined && (typeof cid !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(cid))) throw bad('connection_id tidak valid');
+        await readProject(ws, params.project_id!);
+        if (!opts.ai?.cetakan) return { ai: null, alasan: 'AI belum dipasang di server ini.' };
+        const why = await opts.ai.unavailable();
+        if (why) return { ai: null, alasan: why };
+        const out = await opts.ai.cetakan({ project_id: params.project_id!, kalimat: kal as string[], usulan: us as string[], ...(cid ? { connection_id: cid as string } : {}) });
+        return { ai: out };
+      },
+    },
     {
       method: 'POST',
       path: '/api/projects/:project_id/copilot/plan',

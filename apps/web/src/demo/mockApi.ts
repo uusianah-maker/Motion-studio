@@ -811,6 +811,7 @@ export function createDemoApi(): Api {
     stabilStatus: async () => ({ stabil: null, alasan: null }),
     stabilStart: async () => fail(409, 'UNAVAILABLE', 'Stabilisasi tidak tersedia di demo browser'),
     engineVisual: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
+    copilotCetakanAi: async () => ({ ai: null, alasan: 'AI tidak tersedia di demo browser' }),
     depanStart: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
     depanStatus: async () => fail(404, 'NOT_FOUND', 'Tidak ada proses'),
     visualResult: async () => fail(404, 'NOT_FOUND', 'Job mesin tidak ditemukan'),

@@ -568,3 +568,19 @@ kbd { font-size: 10px; border: 1px solid #ffffff44; border-radius: 4px; padding:
 .sfxPickList { max-height: 46vh; overflow: auto; margin-top: 8px; }
 /* 25 Nov: "Objek di depan teks" cut-out over the text in the preview */
 .canvas.live video.depanLayer, .depanLayer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; z-index: 2; background: transparent; } /* = text z-index, later in the DOM: above text, below overlays (3) like the render */
+/* 25 Nov: player bar (frame, timecode, seek, speed, loop, volume, Ringan) */
+.player.playerBar { gap: 8px 10px; padding: 6px 12px; height: auto; min-height: 53px; flex-wrap: wrap; }
+.playerBar .tc { font-size: 12px; min-width: 0; white-space: nowrap; text-align: center; }
+.playerBar .seek { flex: 1 1 140px; min-width: 100px; max-width: 520px; accent-color: #7863f2; }
+.playerBar .vol { width: 70px; accent-color: #7863f2; }
+.playerBar .speed { background: #1d2230; color: #c3cada; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; padding: 2px 4px; }
+.playerBar .tiny.on { color: #b9a6ff; }
+.playerBar .tiny sup { font-size: 8px; }
+.playerBar .ringan.on { background: #2f2a52; border-color: #7863f2; color: #fff; }
+/* 25 Nov: Copilot "Cetakan per kalimat" */
+.cetakanPanel { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 6px 0 10px; background: #141824; }
+.cetakanList { max-height: 300px; overflow: auto; margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.cetakanRow { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 6px; align-items: center; padding: 4px; border-radius: 6px; background: #1a1f2c; }
+.cetakanRow select { grid-column: 2 / 4; font-size: 12px; }
+.cetakanRow .cetakanText { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cetakanRow .cetakanWhy { grid-column: 2 / 4; font-size: 11px; }
