@@ -394,6 +394,8 @@ export function clipRefs(c: Clip): MediaRef[] {
   const f = fontRef(c.style?.font);
   if (f) out.push(f);
   if (c.lut) out.push(c.lut);
+  // 25 Nov: "objek di depan teks" mask + its transparent preview copy are held like clip media.
+  if (c.depan) out.push(c.depan.masker, c.depan.potongan);
   return out;
 }
 

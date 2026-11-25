@@ -4,6 +4,7 @@ import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
 import { type KfValues, keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
 import { effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
 import { KeyframeHandles } from './KeyframeHandles';
+import { DepanLayer } from './DepanLayer';
 import { DEFAULT_DUCK, duckGainAt, effectiveLook, effectiveLut, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import { orientCss, sourceAt } from '../../../../packages/core/dist/storage/clipMotion.js';
 import { applyAudioFx, resumeAudioFx } from '../audioFx';
@@ -508,6 +509,9 @@ export function Preview({
               time={t}
               kf={c.keyframes?.length ? keyframeAt(c.keyframes, t - c.start_ms) : null}
             />
+          ))}
+          {[...clipsOf('text'), ...clipsOf('subtitle')].filter((c) => c.depan && c.text?.trim()).map((c) => (
+            <DepanLayer key={`depan-${c.clip_id}`} api={api} clip={c} time={t} playing={playing} />
           ))}
           <OverlayLayer
             api={api}

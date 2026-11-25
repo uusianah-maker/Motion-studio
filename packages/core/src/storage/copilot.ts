@@ -131,6 +131,8 @@ export function describeOp(op: EditOp, t: Timeline): string {
       return [op.fade_in_ms !== undefined ? `fade masuk ${(op.fade_in_ms / 1000).toFixed(1).replace('.', ',')} dtk` : '', op.fade_out_ms !== undefined ? `fade keluar ${(op.fade_out_ms / 1000).toFixed(1).replace('.', ',')} dtk` : '', op.denoise !== undefined ? `reduksi noise ${op.denoise === 'off' ? 'mati' : op.denoise}` : '', op.eq !== undefined ? (op.eq ? `EQ bass ${op.eq.bass} / mid ${op.eq.mid} / treble ${op.eq.treble} dB` : 'EQ datar') : '', op.voice !== undefined ? `perjelas suara ${op.voice ? 'aktif' : 'mati'}` : ''].filter(Boolean).join(', ').replace(/^/, `Suara ${ref(op.clip_id)}: `);
     case 'set_picture':
       return `Ubah tampilan gambar ${ref(op.clip_id)}`;
+    case 'set_depan':
+      return op.depan ? `Objek di depan teks ${ref(op.clip_id)}` : `Matikan objek di depan teks ${ref(op.clip_id)}`;
     case 'set_keyframes':
       return op.keyframes.length ? `Keyframe ${ref(op.clip_id)}: ${op.keyframes.length} titik` : `Hapus keyframe ${ref(op.clip_id)}`;
     case 'set_motion':

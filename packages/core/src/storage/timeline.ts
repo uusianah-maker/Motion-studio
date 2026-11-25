@@ -8,7 +8,7 @@ import { type Keyframe, cutKeyframes, sliceKeyframes, validateKeyframes } from '
 import { needsAss } from './ass.js';
 import { type Chroma, validateChroma } from './chroma.js';
 import { OVERLAY_DEFAULT, type Overlay, contentEnd, patchOverlay, validateOverlay, validateOverlayPatch } from './overlay.js';
-import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateLutRef, validateTransition } from './clipLook.js';
+import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateDepan, type Depan, validateLook, validateLutRef, validateTransition } from './clipLook.js';
 import { type Eq, validateEq } from './clipAudio.js';
 import { FREEZE_MS, MAX_REVERSE_MS, type Rotation, type StabilLevel, type VDenoise, validateStabil, sliceIn, sourceAt, sourceLength, validateBool, validateRotate, validateSpeed, validateVDenoise } from './clipMotion.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, clipRefs, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
@@ -60,6 +60,8 @@ export type EditOp =
   | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null; lut?: { media_id: string; version_id: string } | null }
   /** Malam 15 Nov: music ducking under speech; `level` = music gain while someone speaks. */
   | { op: 'set_ducking'; on: boolean; level?: number }
+  /** 25 Nov: "objek di depan teks" of a text/subtitle clip (null = off). */
+  | { op: 'set_depan'; clip_id: string; depan: Depan | null }
   /** Malam 15 Nov: keyframes of a video/b-roll/text/subtitle clip ([] = none). */
   | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }
   /** R23a: direction / speed / reverse / picture noise of a video/b-roll clip. A new speed changes the
@@ -250,6 +252,9 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           ...opt('lut', validateLutRef),
         } as EditOp;
       }
+      case 'set_depan':
+        keys(['op', 'clip_id', 'depan']);
+        return { op: 'set_depan', clip_id: clipId(o.clip_id), depan: o.depan === null ? null : guard(() => validateDepan(o.depan, `ops[${i}].depan`)) };
       case 'set_keyframes':
         keys(['op', 'clip_id', 'keyframes']);
         return { op: 'set_keyframes', clip_id: clipId(o.clip_id), keyframes: validateKeyframes(o.keyframes, `ops[${i}].keyframes`) };
@@ -719,6 +724,13 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         else if (op.adjust) clip.adjust = { ...op.adjust };
         if (op.lut === null) delete clip.lut;
         else if (op.lut) clip.lut = { ...op.lut };
+        break;
+      }
+      case 'set_depan': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (!TEXT_TRACKS.includes(track.kind)) bad('Objek di depan teks hanya untuk klip teks/subtitle', { clip_id: op.clip_id });
+        if (op.depan) clip.depan = { ...op.depan, masker: { ...op.depan.masker }, potongan: { ...op.depan.potongan } };
+        else delete clip.depan;
         break;
       }
       case 'set_keyframes': {

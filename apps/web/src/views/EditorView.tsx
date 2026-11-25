@@ -1,6 +1,7 @@
 import { CopilotPanel } from './CopilotPanel';
 import { KeyframeDiamonds } from './KeyframeDiamonds';
 import { SfxPicker } from './SfxPicker';
+import { DepanPanel } from './DepanPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Role, type Track } from '../api';
@@ -845,6 +846,11 @@ export function EditorView({
               cancelBox={() => setBoxPick(null)}
               picking={!!boxPick}
             />
+          )}
+          {sel && project && group.length < 2 && (sel.kind === 'text' || sel.kind === 'subtitle') && (
+            <section className="inspector" aria-label="Alat AI teks">
+              <DepanPanel key={`depan-${sel.clip_id}`} api={api} projectId={project.project_id} clip={sel} locked={locked} submit={(ops) => void edit(ops)} />
+            </section>
           )}
           {group.length > 1 && project && <MultiPanel clips={group} busy={busy} readOnly={locked} onEdit={(ops) => void edit(ops).then(() => ops[0]?.op === 'delete_clips' && setPicked([]))} onClear={() => setPicked([])} />}
           {sel && project && group.length < 2 && (

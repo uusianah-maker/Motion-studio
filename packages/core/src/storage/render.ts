@@ -541,6 +541,35 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   // R26: picture/video overlays over the text, back to front by layer (same box as the preview's
   // overlayBox: width % of W, height from the picture, preset corner + margin + nudge).
   const layers: { input: string; x: string; y: string; enable: string; blend?: string; opacity?: number }[] = [];
+  // 25 Nov (objek di depan teks): the picture under the text (before any text) masked by the
+  // engine's subject mask is laid back ON TOP of the text for the mask's span. A copy of [vcat] is
+  // split off before the text is drawn, so the subject keeps every frame (the mask may be 15 fps).
+  const depans = [...clipsOf(t, 'text'), ...clipsOf(t, 'subtitle')]
+    .filter((c) => c.depan && c.text?.trim())
+    .map((c) => {
+      const d = c.depan!;
+      const from = Math.max(d.dari_ms, c.start_ms);
+      const to = Math.min(d.dari_ms + d.durasi_ms, c.end_ms, total_ms);
+      return { c, d, from, to };
+    })
+    .filter((x) => x.to - x.from >= 40);
+  let textIn = 'vcat';
+  if (depans.length) {
+    textIn = 'vcatT';
+    graph.push(`[vcat]split=${depans.length + 1}[vcatT]${depans.map((_, i) => `[dp${i}]`).join('')}`);
+    depans.forEach(({ d, from, to }, i) => {
+      const src = brand.overlays?.get(d.masker.version_id);
+      if (!src) throw new StorageError('PRECONDITION', 'Masker "objek di depan teks" tidak tersedia untuk render', { version_id: d.masker.version_id });
+      const idx = inputCount++;
+      // the mask file starts at d.dari_ms on the timeline
+      args.push('-ss', s6((from - d.dari_ms) / 1000), '-t', s6((to - from) / 1000), '-i', src.path);
+      const soft = d.halus > 0 ? `,boxblur=${Math.max(1, Math.round((d.halus * Math.min(W, H)) / 1080))}:1` : '';
+      graph.push(`[dp${i}]trim=start=${s6(from / 1000)}:end=${s6(to / 1000)},setpts=PTS-STARTPTS,format=yuv420p[dpv${i}]`);
+      graph.push(`[${idx}:v:0]setpts=PTS-STARTPTS,fps=${fps},scale=${W}:${H}:flags=bicubic,format=gray${soft}[dpm${i}]`);
+      graph.push(`[dpv${i}][dpm${i}]alphamerge,setpts=PTS-STARTPTS+${s6(from / 1000)}/TB[dpo${i}]`);
+      layers.push({ input: `dpo${i}`, x: '0', y: '0', enable: `between(t,${s6(from / 1000)},${s6(to / 1000)})` });
+    });
+  }
   overlayOrder(clipsOf(t, 'overlay')).forEach((c, k) => {
     const o = c.overlay;
     const src = c.media ? brand.overlays?.get(c.media.version_id) : undefined;
@@ -610,7 +639,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     layers.push({ input: 'logo', x: lg.corner.endsWith('l') ? `${m}` : `W-w-${m}`, y: lg.corner.startsWith('t') ? `${m}` : `H-h-${m}`, enable: '' });
   }
   if (layers.length) {
-    graph.push(...drawChain('vcat', 'vl0'));
+    graph.push(...drawChain(textIn, 'vl0'));
     layers.forEach((l, i) => {
       const last = i === layers.length - 1;
       const tail = last ? `,format=yuv420p,trim=end_frame=${total_frames}[vout]` : `[vl${i + 1}]`;
@@ -622,7 +651,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       }
       graph.push(`[vl${i}][${l.input}]overlay=x=${l.x}:y=${l.y}:eof_action=pass:format=auto${l.enable ? `:enable='${l.enable}'` : ''}${tail}`);
     });
-  } else graph.push(...drawChain('vcat', 'vout'));
+  } else graph.push(...drawChain(textIn, 'vout'));
 
   args.push(
     '-/filter_complex', 'graph.txt',
@@ -690,6 +719,12 @@ export interface RenderHooks {
   worker_pid?: number;
   /** Test seam: runs on the encoded temp file right before verification. */
   afterEncode?: (file: string) => Promise<void>;
+  /**
+   * 25 Nov (objek di depan teks): render only the PICTURE (video, b-roll, zoom effects — no text,
+   * overlays, logo or sound) of [from_ms, to_ms) and hand the file to `deliver` instead of saving
+   * an output. Used to make the source the engine's hapus_latar cuts the subject from.
+   */
+  pictureSpan?: { from_ms: number; to_ms: number; deliver: (file: string) => Promise<void> };
 }
 
 export const RENDER_TMP_PREFIX = 'motion-render-';
@@ -761,7 +796,8 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     for (const r of [brandRefs.font, brandRefs.font_caption, brandRefs.logo?.ref, brandRefs.lut]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
     const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.font_caption?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
     const clipVersions = new Set(project.timeline.tracks.flatMap((tr) => (tr.kind === 'overlay' ? [] : tr.clips.flatMap((c) => (c.media ? [c.media.version_id] : [])))));
-    const overlayVersions = new Set(clipsOf(project.timeline, 'overlay').flatMap((c) => (c.media ? [c.media.version_id] : [])));
+    const span = hooks.pictureSpan ?? null;
+    const overlayVersions = new Set([...clipsOf(project.timeline, 'overlay').flatMap((c) => (c.media ? [c.media.version_id] : [])), ...(span ? [] : [...clipsOf(project.timeline, 'text'), ...clipsOf(project.timeline, 'subtitle')].flatMap((c) => (c.depan ? [c.depan.masker.version_id] : [])))]);
     // R38a: Aset fonts of texts and colour LUTs are leased with the clips but are not timeline media.
     const asetFontRefs = [...clipsOf(project.timeline, 'text'), ...clipsOf(project.timeline, 'subtitle')].flatMap((c) => (c.text?.trim() && fontRef(c.style?.font) ? [fontRef(c.style?.font)!] : []));
     const asetFontVersions = new Set(asetFontRefs.map((r) => r.version_id));
@@ -841,7 +877,9 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
         await fsp.copyFile(file, path.join(jobDir, name));
         luts.set(vid, name);
       }
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays, aset_fonts: asetFonts, lut: brandRefs.lut, luts });
+      const picture: Timeline = span ? { ...project.timeline, tracks: project.timeline.tracks.filter((tr) => tr.kind === 'video' || tr.kind === 'broll' || tr.kind === 'effects'), brand_logo: false } : project.timeline;
+      if (span) delete picture.loudness_lufs;
+      const plan = buildRenderPlan(picture, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: span ? null : brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays, aset_fonts: asetFonts, lut: brandRefs.lut, luts });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));
@@ -856,9 +894,19 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
         ...(hooks.signal ? { signal: hooks.signal } : {}),
         onTime: (ms) => hooks.onProgress?.(Math.min(0.999, Math.max(0, ms / plan.total_ms))),
       });
-      if (project.timeline.loudness_lufs !== undefined) await normalizeLoudness(jobDir, project.timeline.loudness_lufs, hooks.signal);
+      if (!span && project.timeline.loudness_lufs !== undefined) await normalizeLoudness(jobDir, project.timeline.loudness_lufs, hooks.signal);
+      if (span) {
+        // Only the span, picture only, a clean H.264 file for the engine.
+        const cut = path.join(jobDir, 'span.mp4');
+        await runFfmpeg(['-y', '-ss', s6(span.from_ms / 1000), '-t', s6((span.to_ms - span.from_ms) / 1000), '-i', 'out.mp4', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-pix_fmt', 'yuv420p', ...STRIP_METADATA_ARGS, cut], { cwd: jobDir, ...(hooks.signal ? { signal: hooks.signal } : {}) });
+        await span.deliver(cut);
+      }
       return { plan, markers: [...markers] };
     });
+    if (span) {
+      outcome = 'completed';
+      return { status: 'completed', preflight, output: { rel: '', name: '', size: 0, hash: '', duration_ms: span.to_ms - span.from_ms, width: result.plan.width, height: result.plan.height, metadata_clean: true, kept_tags: [] } };
+    }
 
     hooks.onPhase?.('verifying');
     if (hooks.signal?.aborted) throw new StorageError('CANCELLED', 'Render dibatalkan');
