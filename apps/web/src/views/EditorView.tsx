@@ -959,6 +959,10 @@ export function EditorView({
                 setSelected((s) => (s && p.timeline.tracks.some((t) => t.clips.some((c) => c.clip_id === s)) ? s : null));
               }}
               onUndo={() => void step('undo')}
+              media={media}
+              aset={brand?.library?.aset ?? brand?.kit.aset ?? []}
+              selectedClip={sel}
+              edit={(ops) => edit(ops)}
             />
           )}
         </div>

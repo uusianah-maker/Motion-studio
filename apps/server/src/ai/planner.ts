@@ -1,5 +1,5 @@
 import type { AiPlanner } from '../copilot.js';
-import { TEXT_PRESETS } from '../core.js';
+import { CETAKAN, TEXT_PRESETS } from '../core.js';
 import { ApiError } from '../errors.js';
 import { AiCallError, completeJson, parseJsonObject } from './adapters.js';
 import type { AiRouter } from './router.js';
@@ -50,10 +50,51 @@ export function timelineSummary(timeline: unknown): unknown {
 /** Conservative token estimate (≈3 chars per token) for the budget gate. */
 export const estimateTokens = (s: string) => Math.ceil(s.length / 3);
 
+/** 25 Nov "Cetakan per kalimat": pick a visual template per sentence by its SHAPE, not its meaning. */
+export const CETAKAN_SYSTEM = `You pick a visual template for each spoken sentence of a short Indonesian product video.
+Judge each sentence by its SHAPE, not by what it is about. Templates (ids):
+intro = the opening line / hook; list = three or more short points in a row; samping = two things joined by "dan"/"atau"/"vs";
+aksi = an action on screen (buka, klik, cek, keranjang, follow, swipe); sale = a price or discount; cta = the closing call to action;
+broll = a story, estimate or comparison that is better shown with other footage; polos = none of these.
+You get the sentences and a rule-based suggestion for each. Keep a suggestion unless it is clearly wrong.
+Also give up to 8 important words to highlight (numbers, prices, product features), copied exactly from the sentences.
+Answer ONLY JSON: {"pilihan": ["<id>", ...one per sentence...], "sorot": ["word", ...]}`;
+
 export function createAiPlanner(store: AiStore, router: AiRouter, fetchImpl: typeof fetch = fetch): AiPlanner {
   return {
     async unavailable() {
       return router.available('planner');
+    },
+    async cetakan(input) {
+      const user = JSON.stringify({ kalimat: input.kalimat, usulan: input.usulan });
+      const maxOut = Math.min(1500, store.settings().max_output_tokens);
+      const inTok = estimateTokens(CETAKAN_SYSTEM) + estimateTokens(user);
+      const r = await router.call(
+        'planner',
+        {
+          project_id: input.project_id,
+          estimate: (c) => (inTok * c.prices.input_per_mtok + maxOut * c.prices.output_per_mtok) / 1e6,
+          // the model the user picked in the Copilot (others are skipped, never silently used)
+          ...(input.connection_id ? { skip: (c) => (c.connection_id === input.connection_id ? null : 'bukan model yang dipilih') } : {}),
+        },
+        async (target, signal) => {
+          const out = await completeJson(target, { system: CETAKAN_SYSTEM, user, max_output_tokens: maxOut }, signal, fetchImpl);
+          return { value: out.text, usage: out.usage, request_id: out.request_id };
+        },
+      );
+      let obj: Record<string, unknown>;
+      try {
+        obj = parseJsonObject(r.value);
+      } catch {
+        throw new ApiError(422, 'AI_OUTPUT_INVALID', `Jawaban AI tidak valid (biaya tetap tercatat: $${r.cost_usd.toFixed(4)})`);
+      }
+      const ids = CETAKAN as readonly string[];
+      const raw = Array.isArray(obj.pilihan) ? obj.pilihan : [];
+      // anything missing / unknown keeps the rule-based suggestion
+      const pilihan = input.usulan.map((u, i) => (typeof raw[i] === 'string' && ids.includes(raw[i] as string) ? (raw[i] as string) : u));
+      const text = input.kalimat.join(' ').toLowerCase();
+      const sorot = (Array.isArray(obj.sorot) ? obj.sorot : []).filter((w): w is string => typeof w === 'string' && w.length <= 40 && text.includes(w.toLowerCase())).slice(0, 8);
+      return { pilihan, sorot, provider: { connection_id: r.connection.connection_id, provider: r.connection.provider, model: r.connection.model }, cost_usd: r.cost_usd };
     },
     async plan(input) {
       const user = JSON.stringify({ instruction: input.prompt, timeline: timelineSummary(input.timeline), selected_clip_ids: input.selected_clip_ids, playhead_ms: Math.round(input.playhead_ms), ...(input.brand ? { brand: input.brand } : {}) });

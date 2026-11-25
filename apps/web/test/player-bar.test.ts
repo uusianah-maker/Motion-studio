@@ -8,6 +8,7 @@ describe('25 Nov player bar', () => {
     expect(timecode(1500)).toBe('00:00:01:15');
     expect(timecode(3_311_000)).toBe('00:55:11:00');
     expect(timecode(3_600_000 + 33.4)).toBe('01:00:00:01');
+    expect(timecode(33)).toBe('00:00:00:01'); // one frame step from 0
   });
   it('frame steps land on frame boundaries and never go below 0', () => {
     expect(stepFrame(0, 1)).toBe(33);

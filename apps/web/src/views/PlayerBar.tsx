@@ -6,7 +6,7 @@ const SPEEDS = [0.5, 1, 1.5, 2];
 
 /** HH:MM:SS:FF at 30 fps. */
 export function timecode(ms: number, fps = PLAYER_FPS): string {
-  const total = Math.max(0, Math.floor((ms * fps) / 1000 + 1e-6));
+  const total = Math.max(0, Math.round((ms * fps) / 1000)); // a step lands on 33 ms = frame 1
   const f = total % fps;
   const s = Math.floor(total / fps);
   const p = (n: number) => String(n).padStart(2, '0');
