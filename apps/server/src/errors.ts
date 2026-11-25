@@ -27,6 +27,11 @@ export type HttpErrorCode =
   | 'SELF_CHANGE'
   | 'LAST_OWNER'
   | 'TEAM_FULL'
+  // Import from a Google Drive share link (driveLink.ts).
+  | 'DRIVE_LINK'
+  | 'DRIVE_UNREACHABLE'
+  | 'DRIVE_FAILED'
+  | 'DRIVE_LIMIT'
   | 'INTERNAL';
 
 /** Typed API error: `{ error: { code, message } }` with a fitting HTTP status. */

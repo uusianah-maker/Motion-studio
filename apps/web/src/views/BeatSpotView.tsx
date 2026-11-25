@@ -17,6 +17,18 @@ import { ENGINE_STATE, EngineProgress, PlanCard, useEngineJob } from './Generate
 const sec = (n: number) => n.toFixed(2).replace('.', ',');
 const today = () => new Date().toISOString().slice(0, 10);
 const AUDIO = /\.(wav|mp3|m4a|aac|ogg|flac)$/i;
+const MAKS_FOOTAGE = 39;
+/** Owner 25 Nov 2026: footage / sound may also come from a Google Drive share link (the server downloads it). */
+const DRIVE = /^https:\/\/(drive\.google\.com|docs\.google\.com|drive\.usercontent\.google\.com)\//i;
+/** Links pasted one per line (or separated by spaces), duplicates dropped. */
+export function driveLinks(text: string): string[] {
+  return [...new Set(text.split(/\s+/).map((l) => l.trim()).filter(Boolean))];
+}
+/** Short label for a Drive link before it is downloaded (the file name comes from Drive). */
+const driveLabel = (l: string) => {
+  const id = l.match(/\/d\/([^/?#]+)/)?.[1] ?? l.match(/[?&]id=([^&#]+)/)?.[1] ?? l;
+  return `Google Drive …${id.slice(-6)}`;
+};
 
 /** File name → a source id the engine accepts (`$sumber:<id>`), unique in this job. */
 export function sourceIds(names: string[]): string[] {
@@ -42,8 +54,11 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const [name, setName] = useState('');
   const [footage, setFootage] = useState<File[]>([]);
   /** Per footage (index): creator / model who agreed, or the public (default) — contract §16, PC-R7. */
-  const [orang, setOrang] = useState<Record<number, 'kreator' | 'umum'>>({});
+  /** Key: `f:<index>` (file from this computer) or `d:<link>` (Google Drive). */
+  const [orang, setOrang] = useState<Record<string, 'kreator' | 'umum'>>({});
+  const [driveFootage, setDriveFootage] = useState('');
   const [sound, setSound] = useState<File | null>(null);
+  const [driveSound, setDriveSound] = useState('');
   const [bpm, setBpm] = useState('');
   const [kpp, setKpp] = useState<BeatspotSettings['ketukan_per_potong']>('auto');
   const [durMin, setDurMin] = useState(15);
@@ -131,8 +146,17 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   }, [api, readOnly, current, job?.state, job?.job_id, applied]);
 
   const unstarted = useRef<string | null>(null);
+  const linksFootage = driveLinks(driveFootage);
+  const linkSound = driveSound.trim();
+  const linkSalah = [...linksFootage, ...(linkSound ? [linkSound] : [])].filter((l) => !DRIVE.test(l));
+  /** Footage in job order: files from this computer first, then Google Drive links. */
+  const footageItems: { key: string; label: string; file?: File; link?: string }[] = [
+    ...footage.map((f, i) => ({ key: `f:${i}`, label: f.name, file: f })),
+    ...linksFootage.filter((l) => DRIVE.test(l)).map((l) => ({ key: `d:${l}`, label: driveLabel(l), link: l })),
+  ].slice(0, MAKS_FOOTAGE);
+  const adaSound = !!sound || !!linkSound;
   const start = async () => {
-    if (!footage.length || !brand) return;
+    if (!footageItems.length || !brand || linkSalah.length) return;
     if (!brand.kode) return setError(new Error('Brand ini belum punya kode (Brand Kit → A). Isi dulu, baru jalankan mesin.'));
     if (durMin < 5 || durMax > 60 || durMin > durMax) return setError(new Error('Durasi: min ≤ maks, antara 5 dan 60 detik.'));
     setBusy(true);
@@ -148,14 +172,24 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
       }
       const p = await api.project(projectId);
       if (p.brand_id !== brand.brand_id) await api.updateProject(projectId, p.revision, { brand_id: brand.brand_id });
-      const files = [...footage, ...(sound ? [sound] : [])];
-      const ids = sourceIds(files.map((f) => f.name));
-      const sources = [];
-      for (const [i, f] of files.entries()) {
-        setUpload(`${i + 1}/${files.length} ${f.name}`);
-        const up = await api.importFile(f, { kind: 'project', project_id: projectId });
-        sources.push({ kunci: `$sumber:${ids[i]}`, ref: { media_id: up.media_id, version_id: up.version.version_id } });
+      const soundItem: { file?: File; link?: string } | null = sound ? { file: sound } : linkSound ? { link: linkSound } : null;
+      const items = [...footageItems, ...(soundItem ? [soundItem] : [])];
+      const scope = { kind: 'project' as const, project_id: projectId };
+      const ups: { name: string; ref: { media_id: string; version_id: string } }[] = [];
+      for (const [i, it] of items.entries()) {
+        const n = `${i + 1}/${items.length}`;
+        if (it.file) {
+          setUpload(`Mengunggah ${n} ${it.file.name}`);
+          const up = await api.importFile(it.file, scope);
+          ups.push({ name: it.file.name, ref: { media_id: up.media_id, version_id: up.version.version_id } });
+        } else {
+          setUpload(`Mengambil dari Google Drive ${n}`);
+          const up = await api.importDriveLink(it.link!, scope);
+          ups.push({ name: up.name, ref: { media_id: up.media_id, version_id: up.version.version_id } });
+        }
       }
+      const ids = sourceIds(ups.map((u) => u.name));
+      const sources = ups.map((u, i) => ({ kunci: `$sumber:${ids[i]}`, ref: u.ref }));
       setUpload(null);
       const b = Number(bpm);
       const j = await api.engineBeatspot(projectId, {
@@ -166,8 +200,8 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
         ...(vo ? { vo } : {}),
         beatspot: {
           // Only "kreator" needs saying: "umum" is the engine's default.
-          sumber_orang: Object.fromEntries(footage.map((_, i) => [ids[i]!, orang[i] ?? 'umum'] as const).filter(([, v]) => v === 'kreator')),
-          sound: sound ? `$sumber:${ids[ids.length - 1]}` : null, bpm: !sound && b ? b : null, ketukan_per_potong: kpp, durasi: [durMin, durMax], tagline: tagline.trim() || null },
+          sumber_orang: Object.fromEntries(footageItems.map((it, i) => [ids[i]!, orang[it.key] ?? 'umum'] as const).filter(([, v]) => v === 'kreator')),
+          sound: soundItem ? `$sumber:${ids[ids.length - 1]}` : null, bpm: !soundItem && b ? b : null, ketukan_per_potong: kpp, durasi: [durMin, durMax], tagline: tagline.trim() || null },
       });
       unstarted.current = null;
       setTarget(projectId);
@@ -263,28 +297,40 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
                   <input aria-label="Nama proyek baru" value={name} maxLength={120} placeholder={`Beat Spot ${brand?.name ?? ''} ${today()}`} onChange={(e) => setName(e.target.value)} />
                 </label>
               )}
-              <label>
-                Footage orang (bisa banyak video)
-                <input
-                  aria-label="Footage orang"
-                  type="file"
-                  accept="video/*"
-                  multiple
-                  onChange={(e) => {
-                    setFootage([...(e.target.files ?? [])].filter((f) => !AUDIO.test(f.name)).slice(0, 39));
-                    setOrang({});
-                  }}
-                />
-              </label>
-              {footage.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                <label>
+                  Footage orang (bisa banyak video)
+                  <input
+                    aria-label="Footage orang"
+                    type="file"
+                    accept="video/*"
+                    multiple
+                    onChange={(e) => {
+                      setFootage([...(e.target.files ?? [])].filter((f) => !AUDIO.test(f.name)).slice(0, MAKS_FOOTAGE));
+                      setOrang((o) => Object.fromEntries(Object.entries(o).filter(([k]) => k.startsWith('d:'))));
+                    }}
+                  />
+                </label>
+                <label>
+                  atau link Google Drive (1 link per baris)
+                  <textarea
+                    aria-label="Link Google Drive footage"
+                    rows={2}
+                    placeholder="https://drive.google.com/file/d/…/view"
+                    value={driveFootage}
+                    onChange={(e) => setDriveFootage(e.target.value)}
+                  />
+                </label>
+              </div>
+              {footageItems.length > 0 && (
                 <div className="inspFull" role="group" aria-label="Orang di footage">
                   <div className="small">Orang di tiap footage (umum = orang lewat yang memakai produk; kreator = model/kreator sendiri yang setuju):</div>
-                  {footage.map((f, i) => (
-                    <label key={`${f.name}-${i}`} className="row" style={{ gap: 8, alignItems: 'center' }}>
+                  {footageItems.map((it) => (
+                    <label key={it.key} className="row" style={{ gap: 8, alignItems: 'center' }}>
                       <span className="small" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                        {f.name}
+                        {it.label}
                       </span>
-                      <select aria-label={`Orang di ${f.name}`} value={orang[i] ?? 'umum'} onChange={(e) => setOrang((o) => ({ ...o, [i]: e.target.value as 'kreator' | 'umum' }))}>
+                      <select aria-label={`Orang di ${it.label}`} value={orang[it.key] ?? 'umum'} onChange={(e) => setOrang((o) => ({ ...o, [it.key]: e.target.value as 'kreator' | 'umum' }))}>
                         <option value="umum">Umum</option>
                         <option value="kreator">Kreator</option>
                       </select>
@@ -292,11 +338,24 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
                   ))}
                 </div>
               )}
-              <label>
-                Sound tim (opsional, video atau audio)
-                <input aria-label="Sound tim" type="file" accept="audio/*,video/*" onChange={(e) => setSound(e.target.files?.[0] ?? null)} />
-              </label>
-              {!sound && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                <label>
+                  Sound tim (opsional, video atau audio)
+                  <input aria-label="Sound tim" type="file" accept="audio/*,video/*" disabled={!!linkSound} onChange={(e) => setSound(e.target.files?.[0] ?? null)} />
+                </label>
+                <label>
+                  atau link Google Drive
+                  <input aria-label="Link Google Drive sound" placeholder="https://drive.google.com/file/d/…/view" value={driveSound} disabled={!!sound} onChange={(e) => setDriveSound(e.target.value)} />
+                </label>
+              </div>
+              {(linksFootage.length > 0 || !!linkSound) && (
+                <div className={`inspFull small ${linkSalah.length ? 'notice err' : 'muted'}`} role={linkSalah.length ? 'alert' : undefined}>
+                  {linkSalah.length
+                    ? `Bukan link Google Drive: ${linkSalah.join(', ')}`
+                    : 'File Google Drive harus dibagikan "Siapa saja yang memiliki link" (Bagikan → Akses umum). Link folder belum bisa: salin link tiap file. Server mengunduh file lalu menyimpannya di proyek ini.'}
+                </div>
+              )}
+              {!adaSound && (
                 <label>
                   BPM (tanpa sound; kosong = 120)
                   <input aria-label="BPM" type="number" min={60} max={200} value={bpm} onChange={(e) => setBpm(e.target.value)} />
@@ -350,10 +409,10 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
               </label>
             </div>
             <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-              <button className="btn primary" disabled={!installed || !footage.length || !brand || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
+              <button className="btn primary" disabled={!installed || !footageItems.length || linkSalah.length > 0 || !brand || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
                 ♪ Susun Beat Spot
               </button>
-              {upload !== null && <span className="muted small">Mengunggah {upload}…</span>}
+              {upload !== null && <span className="muted small">{upload}…</span>}
               {!brand && <span className="muted small">{brandsLoaded ? 'Buat brand dulu di menu Brand.' : 'Memuat brand…'}</span>}
               <span className="muted small">Tanpa blur wajah; orang umum hanya dipakai kalau memang memakai produk brand.</span>
             </div>

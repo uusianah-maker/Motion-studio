@@ -1107,6 +1107,12 @@ export function createApi(token: string | null, base = '') {
         xhr.send(file);
       });
     },
+    /** Owner 25 Nov 2026: the server downloads a Google Drive share link ("Siapa saja yang memiliki link") and imports it like an upload. */
+    importDriveLink: (link: string, scope: { kind: 'shared' } | { kind: 'project'; project_id: string }) => {
+      const p = new URLSearchParams({ scope: scope.kind });
+      if (scope.kind === 'project') p.set('project_id', scope.project_id);
+      return call<{ media_id: string; version: Version; duplicate: boolean; name: string }>('POST', `/api/media/import-drive?${p}`, { json: { link } });
+    },
     trash: () => call<{ items: TrashItem[] }>('GET', '/api/trash').then((r) => r.items),
     restore: (versionId: string, opts: { on_conflict?: 'ask' | 'alternate' } = {}) =>
       call<{ result: { status: 'restored' | 'conflict' | 'failed'; reason?: string; wanted?: string; suggested?: string } }>('POST', `/api/trash/${encodeURIComponent(versionId)}/restore`, { json: opts }).then((r) => r.result),

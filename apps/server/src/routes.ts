@@ -45,6 +45,7 @@ import {
   resolveFitur,
   type ProjectFitur,
 } from './core.js';
+import { downloadDrive, driveFileId } from './driveLink.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { createImportQueue } from './importQueue.js';
@@ -201,6 +202,8 @@ export interface UploadOptions {
   tmpDir: string;
   /** Hard cap per upload (bytes). */
   maxBytes: number;
+  /** Tests only: stands in for Google Drive (import from a share link). */
+  driveFetch?: typeof fetch;
 }
 
 /**
@@ -318,7 +321,7 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
   const stabilJobs = new Map<string, Promise<void>>();
   const stabilFailed = new Map<string, string>();
   let stabilChain: Promise<void> = Promise.resolve();
-  const uploadOpts: UploadOptions = { tmpDir: upload.tmpDir ?? os.tmpdir(), maxBytes: upload.maxBytes ?? 50 * 1024 ** 3 };
+  const uploadOpts: UploadOptions = { tmpDir: upload.tmpDir ?? os.tmpdir(), maxBytes: upload.maxBytes ?? 50 * 1024 ** 3, ...(upload.driveFetch ? { driveFetch: upload.driveFetch } : {}) };
   let jobs = render;
   const jobsFor = (ws: Workspace) => (jobs ??= createRenderJobs(ws, { tmpRoot: os.tmpdir() }));
   // One import at a time per server: parallel uploads would each pass the free-space check
@@ -691,6 +694,44 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
             await fsp.rm(up.dir, { recursive: true, force: true });
           }
         } finally {
+          release();
+        }
+      },
+    },
+    {
+      // Owner 25 Nov 2026: import from a Google Drive share link ("Siapa saja yang memiliki link"). The server
+      // downloads the file once (same queue, space checks and import as an upload); the file then lives locally.
+      method: 'POST',
+      path: '/api/media/import-drive',
+      handle: async ({ req, res, url, ws, svc, actor }) => {
+        const scope = scopeFrom(url);
+        if (scope.kind === 'project') await readProject(ws, scope.project_id);
+        const body = (await readJsonBody(req)) as { link?: unknown };
+        const id = driveFileId(typeof body?.link === 'string' ? body.link : '');
+        const release = await imports.acquire(req, res);
+        const dir = await fsp.mkdtemp(path.join(uploadOpts.tmpDir, UPLOAD_PREFIX));
+        try {
+          const sameVolume = await Promise.all([fsp.stat(uploadOpts.tmpDir), fsp.stat(ws.root)]).then(([a, b]) => a.dev === b.dev, () => true);
+          const dl = await downloadDrive(id, {
+            dir,
+            maxBytes: uploadOpts.maxBytes,
+            ...(uploadOpts.driveFetch ? { fetchImpl: uploadOpts.driveFetch } : {}),
+            beforeBody: async (size) => {
+              const need = size ?? 0; // unknown size: checked as it streams against maxBytes only
+              const s = await estimateSpace(ws, { bytes_needed: sameVolume ? need * 2 : need });
+              if (!s.ok) throw new ApiError(507, 'INSUFFICIENT_STORAGE', s.reason ?? 'Ruang workspace tidak cukup');
+              const t = await diskSpace(uploadOpts.tmpDir);
+              if (!t || t.free_bytes < need) throw new ApiError(507, 'INSUFFICIENT_STORAGE', 'Ruang folder upload sementara tidak cukup');
+            },
+          });
+          const name = safeUploadName(encodeURIComponent(dl.name));
+          const file = path.join(dir, name === 'drive.bin' ? 'drive-file.bin' : name);
+          await fsp.rename(dl.file, file);
+          const r = await svc.importMedia({ sourcePath: file, scope, actor, display_name: name });
+          void proxies.enqueue(ws, r.version.version_id);
+          return { media_id: r.media.media_id, version: versionView(r.version), duplicate: r.duplicate, name };
+        } finally {
+          await fsp.rm(dir, { recursive: true, force: true });
           release();
         }
       },
