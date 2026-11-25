@@ -1061,3 +1061,33 @@ Alur di app: ketik teks **atau** upload rekaman VO → suara → kecepatan → g
 - `audio: "$sumber"` + `job.sumber[{kunci:"$sumber"}]`: **ubah suara** rekaman siapa pun ke profil (Applio). Intonasi & jeda ikut rekaman; model/gaya diabaikan; kecepatan berlaku; maks 10 menit; laporan `model: "ubah_suara"`, satu file tanpa kata.
 - Laporan `tts.json` tambahan: `model`, `gaya`, `perkuat_warna`, `kata_perkiraan: true` (cap waktu kata neural = perkiraan menurut panjang huruf di bagian bersuara). Daftar suara (`daftar_suara`) tambahan: `model[{id,nama,siap,gaya}]`, `gaya[{id,label,jeda_ms}]`.
 - Mesin: `pipeline/tts_neural.py` jalan di `<TOOLS>/chatterbox-venv` atau `<TOOLS>/zonos-venv`, bobot `<TOOLS>/models/tts-uji` (offline, SHA256 di folder bobot), di bawah kunci AI global, prioritas Idle, maks 4 thread. Chatterbox GPU, jatuh ke CPU bila memori GPU penuh; ZONOS CPU.
+
+## 29. Beat Spot tahap 2 "Ganti Outfit" (v0.5.2, 25 Nov 2026, jenius; owner 24–25 Nov: format v2 disetujui, Tahap B untuk semua tim, maks 5 footage, look otomatis, sound dari template) — DRAF
+Mode baru `outfit`. Aditif: mode lain tidak berubah. Owner menyetujui tahap 2 Beat Spot untuk **footage model/kreator sendiri** (`model_sendiri: true` wajib, ditolak kode 2 kalau tidak).
+- Pola: setiap footage = 1 look (1 atasan + 1 bawahan, 1 warna dari Katalog Produk). Video jalan 4 ketukan (3 kalau footage pendek), lalu terpotong tepat di ketukan ke gambar diam AI 4 ketukan. Setelah semua footage, end card 4 ketukan berisi **foto katalog asli** semua look. Kalau ada 2 orang jalan bersama, keduanya memakai look yang sama (`target: "semua"`). Teks atas tampil sampai end card.
+- Dua job, karena API key tidak pernah sampai ke mesin. Di antara keduanya, **app** yang membuat gambar:
+  1. `outfit.tahap: "siapkan"`. Mesin menjalankan langkah berikut:
+     - membaca ketukan sound template;
+     - mendeteksi orang dengan `pipeline/visual/deteksi.py` (MediaPipe, visual-venv), lalu memilih subjek utama dan teman jalan;
+     - memilih segmen jalan dengan frame akhir yang orangnya utuh, dekat tengah, dan tajam;
+     - membuat crop 9:16 yang mengikuti orang. Kalau muat, crop diam dan menghindari orang lain yang besar di depan kamera; kalau tidak, crop bergeser linear;
+     - merender klip jalan 1080x1920 30 fps tepat sejumlah frame segmennya;
+     - menjadikan **frame terakhir klip** sebagai frame diam;
+     - menyiapkan frame API 2:3 1024x1536 (bingkai kiri-kanan diburamkan);
+     - mengusulkan look: atasan bergiliran antar produk/warna, bawahan dipilih dari skor serasi warna Lab, dengan warna bawahan yang tidak berulang;
+     - menulis prompt per footage.
+
+     Hasilnya `out/outfit.json` (`schema: "beatspot-outfit/1"`, `tahap: "siapkan"`, `status: "menunggu_gambar"`, `items[]` dengan `jalan{mulai,ketukan,crop,orang,kotak}`, `klip`, `frame`, `api{gambar,ukuran,pad_kiri,lebar_pad}`, `acuan_katalog[]`, `prompt`, `look`, `hasil`) dan `rencana.json` status `siap`.
+  2. App: satu gambar per footage lewat `/v1/images/edits` (gambar 1 = frame API, lalu foto katalog), lalu ditulis ke `out/<item.hasil>` job siapkan.
+  3. `outfit.tahap: "rakit"` + `outfit.siapkan: <folder job siapkan>`. Mesin menjalankan langkah berikut:
+     - menyalin klip dan frame;
+     - mengembalikan gambar API ke 1080x1920 (skala ke tinggi 1920, buang bingkai);
+     - **QC per gambar**: `ukuran`, `latar_tetap` (korelasi ≥ 0,80 dan selisih ≤ 22 di luar kotak orang), `baju_berubah` (≥ 6), `warna_bawahan` (ΔE Lab ≤ 38 ke foto katalog);
+     - membuat end card;
+     - menulis `ops.json`.
+
+     Isi `ops.json`: klip `video` jalan (`volume: 0`) → diam → … → end card tanpa celah, `text` teks atas, `music` sound template (`in_ms` = ketukan pertama, dipotong sepanjang file − 34 ms + peringatan kalau sound lebih pendek dari video). Semua file lewat `aset_lokal` `$outfit:<fid>_jalan|<fid>_diam|end_card` di `out/outfit/` job ini; app hanya menerima `.mp4/.png` di folder itu. Selain itu ditulis `qc_rencana.json` dan `outfit.json` tahap `rakit` (items + `qc`).
+- Ketukan: `outfit.ketukan_sound` tidak memakai `musik.analisis`, karena lag bulatnya membaca sound referensi 123 BPM (WAV) dan 117,5 BPM (MP4) padahal tempo aslinya 119,95. Ketukan ditentukan lewat onset hop 128, interpolasi puncak autokorelasi, lalu pencarian periode ±1,5 % dan fase sub-frame, plus koreksi serangan 75 ms. Dikalibrasi dengan klik 100/120/140 BPM: selisih ≤ 3 ms dan BPM ±0,03. Batas potong dibulatkan ke frame 30 fps.
+- `job.json`: `mode: "outfit"`, `sumber` (1–5 footage + 1 sound), `katalog: "katalog.json"` (tahap siapkan; `katalog-produk/1`: `produk[{id,nama,jenis: atasan|bawahan,deskripsi,warna[{id,nama,path}]}]`, ditulis app dari Katalog Produk brand), `outfit{tahap, sound, model_sendiri, teks_atas, judul_akhir, sub_akhir, look{fid:{atasan,bawahan}}, target{fid: utama|semua}, seed, siapkan}`.
+- Mesin: `pipeline/batch/outfit.py`, jalan di Python Batch (OpenCV + Pillow). Tes ada di `pipeline/batch/test_outfit.py`: video & sound sintetis, deteksi palsu, gambar bergeser ditangkap QC, ops lulus `validasi_ops.mjs`.
+- App (Motion Studio): `POST /api/projects/:p/outfit`, `GET …/outfit/:job` (tahap `menyiapkan → membuat_gambar → merakit → siap`), `…/gambar/:fid/frame|hasil|diam`, `…/gambar/end/end`, `POST …/ulang` (maks 2 per footage; gambar gagal boleh diulang tanpa dihitung), `POST …/ubah` (job siapkan baru; gambar footage yang frame + prompt + acuannya sama dipakai lagi), `POST …/berhenti`. Katalog: `GET/POST /api/katalog/:brand`. Gambar dibuat satu per satu untuk seluruh server. Budget R12a: batas bulanan × `harga_per_gambar`; tiap percobaan dicatat di `<state>/ai-gambar-pakai.jsonl`. Draf masuk editor lewat rencana biasa (setujui = 1 langkah undo, render ditahan).
