@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { blurAt, placeOnCanvas } from '../../../../packages/core/dist/storage/framing.js';
 import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
-import { keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
+import { type KfValues, keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
+import { effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
+import { KeyframeHandles } from './KeyframeHandles';
+import { DepanLayer } from './DepanLayer';
 import { DEFAULT_DUCK, duckGainAt, effectiveLook, effectiveLut, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import { orientCss, sourceAt } from '../../../../packages/core/dist/storage/clipMotion.js';
 import { applyAudioFx, resumeAudioFx } from '../audioFx';
@@ -42,10 +45,15 @@ export function Preview({
   onBrandLogo,
   overlayDraft = null,
   onMoveOverlay,
+  kfMode = false,
+  onKeyframe,
 }: {
   api: Api;
   project: Project;
   media: Media[];
+  /** 25 Nov: "◆ Atur di layar" — handles that save a keyframe at the playhead for the selected clip. */
+  kfMode?: boolean;
+  onKeyframe?: (clipId: string, v: KfValues) => void;
   playhead: number;
   setPlayhead: (ms: number) => void;
   playing: boolean;
@@ -76,6 +84,9 @@ export function Preview({
   const sfxRef = useRef<HTMLAudioElement>(null);
   /** Keluhan tim: two SFX can overlap (the render mixes them all) — a second element for the overlap. */
   const sfx2Ref = useRef<HTMLAudioElement>(null);
+  /** 25 Nov (＋ SFX di timeline): up to 4 overlapping sounds in the preview (the render mixes all). */
+  const sfx3Ref = useRef<HTMLAudioElement>(null);
+  const sfx4Ref = useRef<HTMLAudioElement>(null);
   const musicRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasPx, setCanvasPx] = useState({ w: 360, h: 640 });
@@ -99,11 +110,17 @@ export function Preview({
   const end = contentEnd(tracks); // R26: whole-video overlays follow the video, as in the render
   const t = playhead;
   const visual = clipAt(clipsOf('broll'), t) ?? clipAt(clipsOf('video'), t);
+  // 25 Nov (keluhan "keyframe/zoom masih kasar" di preview): the clock below follows wall time while
+  // <video> plays natively, so the transform could drift up to the 0.3 s re-seek tolerance from the
+  // picture (then jump). The tick reads the playing clip through this ref and pulls the clock gently
+  // toward the video's own time, so motion stays glued to the frames.
+  const visualRef = useRef(visual);
+  visualRef.current = visual;
   const audio = clipAt(clipsOf('audio'), t);
   // Each SFX clip keeps one element (greedy by start time), so an overlap never restarts a sound.
   const sfxSlot = new Map<string, number>();
   {
-    const ends = [-Infinity, -Infinity];
+    const ends = [-Infinity, -Infinity, -Infinity, -Infinity];
     for (const c of [...clipsOf('sfx')].sort((a, b) => a.start_ms - b.start_ms)) {
       const k = ends.findIndex((e) => e <= c.start_ms);
       if (k < 0) continue;
@@ -113,6 +130,8 @@ export function Preview({
   }
   const sfx = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 0), t);
   const sfx2 = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 1), t);
+  const sfx3 = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 2), t);
+  const sfx4 = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 3), t);
   const music = clipAt(clipsOf('music'), t);
   // U3c: zoom effect covering the playhead (same curve + anchor as the render's perspective window).
   const fx = clipsOf('effects').find((c) => c.effect && t >= c.start_ms && t < c.end_ms);
@@ -202,8 +221,10 @@ export function Preview({
     void sync(audioRef.current, audio, t, playing, 'audio');
     void sync(sfxRef.current, sfx, t, playing, 'audio');
     void sync(sfx2Ref.current, sfx2, t, playing, 'audio');
+    void sync(sfx3Ref.current, sfx3, t, playing, 'audio');
+    void sync(sfx4Ref.current, sfx4, t, playing, 'audio');
     void sync(musicRef.current, music, t, playing, 'audio');
-  }, [visual, audio, sfx, sfx2, music, t, playing, sync, retry]);
+  }, [visual, audio, sfx, sfx2, sfx3, sfx4, music, t, playing, sync, retry]);
 
   useEffect(() => {
     if (!playing) {
@@ -216,7 +237,16 @@ export function Preview({
     const tick = () => {
       const c = clock.current;
       if (!c) return;
-      const now = c.base + (performance.now() - c.wall);
+      let now = c.base + (performance.now() - c.wall);
+      const el = videoRef.current;
+      const vc = visualRef.current;
+      if (el && vc?.media && !el.paused && !el.seeking && el.readyState >= 2 && !vc.reverse && !vc.freeze && now >= vc.start_ms && now < vc.end_ms) {
+        const drift = ((el.currentTime - sourceSeconds(vc, now)) * 1000) / (vc.speed ?? 1);
+        if (Math.abs(drift) < 250) {
+          c.base += drift * 0.2;
+          now += drift * 0.2;
+        }
+      }
       if (now >= end) {
         setPlayhead(end);
         setPlaying(false);
@@ -242,12 +272,12 @@ export function Preview({
   }, [playhead, playing]);
 
   useEffect(() => {
-    for (const el of [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, musicRef.current]) if (el) el.muted = muted;
+    for (const el of [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, sfx3Ref.current, sfx4Ref.current, musicRef.current]) if (el) el.muted = muted;
   }, [muted]);
   // Audit 14 Nov: a stream link expires after 10 min; seeking into an unbuffered part then fails
   // silently. On a media error the layer forgets its link, so the next sync fetches a fresh one.
   useEffect(() => {
-    const els = [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, musicRef.current].filter((e): e is HTMLMediaElement => !!e);
+    const els = [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, sfx3Ref.current, sfx4Ref.current, musicRef.current].filter((e): e is HTMLMediaElement => !!e);
     const onError = (e: Event) => {
       const el = e.currentTarget as HTMLMediaElement;
       const vid = el.dataset.vid;
@@ -273,6 +303,8 @@ export function Preview({
   const audioGain = gainOf(audio);
   const sfxGain = gainOf(sfx);
   const sfx2Gain = gainOf(sfx2);
+  const sfx3Gain = gainOf(sfx3);
+  const sfx4Gain = gainOf(sfx4);
   const musicGain = Math.round(gainOf(music) * (duck !== undefined ? duckGainAt(duckRanges, duck ?? DEFAULT_DUCK, t) : 1) * 1000) / 1000;
   useEffect(() => {
     if (musicRef.current) musicRef.current.volume = musicGain;
@@ -280,14 +312,18 @@ export function Preview({
     if (audioRef.current) audioRef.current.volume = audioGain;
     if (sfxRef.current) sfxRef.current.volume = sfxGain;
     if (sfx2Ref.current) sfx2Ref.current.volume = sfx2Gain;
-  }, [visualGain, audioGain, sfxGain, sfx2Gain, musicGain]);
+    if (sfx3Ref.current) sfx3Ref.current.volume = sfx3Gain;
+    if (sfx4Ref.current) sfx4Ref.current.volume = sfx4Gain;
+  }, [visualGain, audioGain, sfxGain, sfx2Gain, sfx3Gain, sfx4Gain, musicGain]);
   // R23b: EQ + "Perjelas suara" of each playing clip (Web Audio, same numbers as the render).
-  const fxKey = [visual, audio, sfx, sfx2, music].map((c) => (c ? `${c.clip_id}:${JSON.stringify(c.eq ?? null)}:${c.voice ? 1 : 0}` : '-')).join('|');
+  const fxKey = [visual, audio, sfx, sfx2, sfx3, sfx4, music].map((c) => (c ? `${c.clip_id}:${JSON.stringify(c.eq ?? null)}:${c.voice ? 1 : 0}` : '-')).join('|');
   useEffect(() => {
     applyAudioFx(videoRef.current, visual);
     applyAudioFx(audioRef.current, audio);
     applyAudioFx(sfxRef.current, sfx);
     applyAudioFx(sfx2Ref.current, sfx2);
+    applyAudioFx(sfx3Ref.current, sfx3);
+    applyAudioFx(sfx4Ref.current, sfx4);
     applyAudioFx(musicRef.current, music);
   }, [fxKey]);
 
@@ -454,6 +490,8 @@ export function Preview({
           <audio ref={audioRef} preload="auto" />
           <audio ref={sfxRef} preload="auto" data-layer="sfx" />
           <audio ref={sfx2Ref} preload="auto" data-layer="sfx2" />
+          <audio ref={sfx3Ref} preload="auto" data-layer="sfx3" />
+          <audio ref={sfx4Ref} preload="auto" data-layer="sfx4" />
           <audio ref={musicRef} preload="auto" data-layer="music" />
           {!visual && <div className="emptyFrame">{end === 0 ? 'Tambahkan media ke linimasa' : 'Tidak ada video di titik ini'}</div>}
           {(unsupported || problem) && <div className="emptyFrame warnFrame">{unsupported ?? problem}</div>}
@@ -472,6 +510,9 @@ export function Preview({
               kf={c.keyframes?.length ? keyframeAt(c.keyframes, t - c.start_ms) : null}
             />
           ))}
+          {[...clipsOf('text'), ...clipsOf('subtitle')].filter((c) => c.depan && c.text?.trim()).map((c) => (
+            <DepanLayer key={`depan-${c.clip_id}`} api={api} clip={c} time={t} playing={playing} />
+          ))}
           <OverlayLayer
             api={api}
             clips={clipsOf('overlay')}
@@ -484,6 +525,15 @@ export function Preview({
             {...(onSelectClip ? { onSelect: onSelectClip } : {})}
             {...(onMoveOverlay && !busy ? { onMove: onMoveOverlay } : {})}
           />
+          {kfMode && onKeyframe && !busy && !playing && (() => {
+            if (visual && visual.clip_id === selectedClipId)
+              return <KeyframeHandles key={visual.clip_id} values={keyframeAt(visual.keyframes, t - visual.start_ms)} anchor={{ x: 0.5, y: 0.5 }} size={{ w: 1, h: 1 }} onCommit={(v) => onKeyframe(visual.clip_id, v)} />;
+            const tc = [...texts.map((c) => ['text', c] as const), ...subs.map((c) => ['subtitle', c] as const)].find(([, c]) => c.clip_id === selectedClipId);
+            if (!tc) return null;
+            const [kind, c] = tc;
+            const s = effectiveStyle(kind, c.style);
+            return <KeyframeHandles key={c.clip_id} values={keyframeAt(c.keyframes, t - c.start_ms)} anchor={{ x: s.x, y: s.y }} size={{ w: 0.5, h: 0.12 }} onCommit={(v) => onKeyframe(c.clip_id, v)} />;
+          })()}
           {project.timeline.brand_logo && brand?.kit.logo && brand.logoUrl && (
             <img
               className="brandLogo"

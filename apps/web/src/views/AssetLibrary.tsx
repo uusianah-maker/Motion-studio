@@ -241,7 +241,7 @@ export function AssetLibrary({
       )}
       {error && <div className="notice err small">{error}</div>}
       {draft.aset.length === 0 && <div className="muted small">Belum ada aset. Pilih jenis lalu unggah (mis. SFX pop + whoosh, musik berlisensi, b-roll produk, logo/stiker PNG transparan).</div>}
-      {OVERLAY_KINDS.includes(kind as BrandAsset['jenis']) && <div className="muted small">Gambar overlay: pakai PNG transparan supaya latarnya tidak menutupi video. Dipakai di Editor (＋ Overlay) dan di Buat video.</div>}
+      {OVERLAY_KINDS.includes(kind as BrandAsset['jenis']) && <div className="muted small">Gambar overlay: pakai PNG transparan supaya latarnya tidak menutupi video. Dipakai di Editor (＋ Overlay gambar) dan di Buat video.</div>}
       {shown.map(({ a, i }) => (
         <div key={i} className="assetRow" role="group" aria-label={`Aset ${a.id}`}>
           <div className="row wrap" style={{ gap: 6 }}>

@@ -426,6 +426,36 @@ export interface ClipExtras extends MotionFields {
   voice?: boolean;
   /** R38a: colour LUT (`.cube` media from the Aset library) applied after the look. */
   lut?: { media_id: string; version_id: string };
+  /** 25 Nov: text/subtitle — the subject of the picture under it is cut out and drawn IN FRONT of the text. */
+  depan?: Depan;
+}
+
+/**
+ * 25 Nov (owner: "auto masking untuk overlay … objek yang berada di depan teks highlight"):
+ * `masker` = grey mask video (white = subject) made by the engine's hapus_latar from the canvas
+ * picture of [dari_ms, dari_ms + durasi_ms) on the timeline (absolute, so moving the text keeps it
+ * glued to the video); `potongan` = the same subject as a transparent WebM (preview only);
+ * `halus` = soft edge (px of blur on the mask at 1080).
+ */
+export interface Depan {
+  masker: { media_id: string; version_id: string };
+  potongan: { media_id: string; version_id: string };
+  dari_ms: number;
+  durasi_ms: number;
+  halus: number;
+}
+export const DEPAN_MAX_MS = 15_000;
+export function validateDepan(v: unknown, where: string): Depan {
+  const o = (v ?? {}) as Record<string, unknown>;
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return bad(`${where} harus objek`);
+  const extra = Object.keys(o).filter((k) => !['masker', 'potongan', 'dari_ms', 'durasi_ms', 'halus'].includes(k));
+  if (extra.length) bad(`${where}: field tidak dikenal ${extra.join(', ')}`);
+  const int = (k: string, lo: number, hi: number) => {
+    const n = o[k];
+    if (typeof n !== 'number' || !Number.isFinite(n) || n < lo || n > hi) return bad(`${where}.${k} harus angka ${lo}–${hi}`);
+    return Math.round(n);
+  };
+  return { masker: validateLutRef(o.masker, `${where}.masker`), potongan: validateLutRef(o.potongan, `${where}.potongan`), dari_ms: int('dari_ms', 0, 24 * 3_600_000), durasi_ms: int('durasi_ms', 100, DEPAN_MAX_MS), halus: o.halus === undefined ? 3 : int('halus', 0, 12) };
 }
 export const SOUND_FIELDS = ['fade_in_ms', 'fade_out_ms', 'denoise', 'eq', 'voice'] as const;
 export const PICTURE_FIELDS = ['fit', 'fit_color', 'adjust', 'look', 'transition', 'lut'] as const;
@@ -442,7 +472,8 @@ export function validateLutRef(v: unknown, where: string): { media_id: string; v
  * "Tanpa filter" (`look: 'none'`).
  */
 export const effectiveLut = (clip: { look?: LookId | 'none'; lut?: { media_id: string; version_id: string } }, brandLut: { media_id: string; version_id: string } | null = null) => clip.lut ?? (clip.look === 'none' ? null : brandLut);
-export const EXTRA_FIELDS = [...SOUND_FIELDS, ...PICTURE_FIELDS, ...MOTION_FIELDS] as const;
+export const TEXT_EXTRA_FIELDS = ['depan'] as const;
+export const EXTRA_FIELDS = [...SOUND_FIELDS, ...PICTURE_FIELDS, ...MOTION_FIELDS, ...TEXT_EXTRA_FIELDS] as const;
 
 /**
  * Read the extra fields of an untrusted clip / add_clip op. `kind` is the track, `hasMedia` whether
@@ -482,6 +513,10 @@ export function readExtras(o: Record<string, unknown>, where: string, kind: stri
   if (o.look !== undefined) out.look = validateLook(o.look, `${where}.look`);
   if (o.transition !== undefined) out.transition = validateTransition(o.transition, `${where}.transition`);
   if (o.lut !== undefined) out.lut = validateLutRef(o.lut, `${where}.lut`);
+  if (o.depan !== undefined) {
+    if (kind !== 'text' && kind !== 'subtitle') bad(`${where}.depan: hanya untuk klip teks/subtitle`);
+    out.depan = validateDepan(o.depan, `${where}.depan`);
+  }
   Object.assign(out, readMotion(o, where, visual && hasMedia, hasMedia));
   return out;
 }
@@ -500,6 +535,7 @@ export function copyExtras(c: ClipExtras): ClipExtras {
     ...(c.look ? { look: c.look } : {}),
     ...(c.transition ? { transition: { ...c.transition } } : {}),
     ...(c.lut ? { lut: { ...c.lut } } : {}),
+    ...(c.depan ? { depan: { ...c.depan, masker: { ...c.depan.masker }, potongan: { ...c.depan.potongan } } } : {}),
     ...copyMotion(c),
   };
 }

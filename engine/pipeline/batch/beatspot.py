@@ -155,6 +155,23 @@ def susun(potong: list[float], shots: list[dict], durasi_footage: dict, rng: ran
 
 # ------------------------------------------------------------------ ops
 
+def durasi_file_ms(path) -> int | None:
+    """Panjang video/audio (ms) lewat ffprobe; None untuk gambar diam / file tidak terbaca.
+    Penutup pilihan job (R28) di brand_kit.json tidak membawa durasi_ms, jadi dibaca dari filenya."""
+    if not path or not Path(path).exists():
+        return None
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name",
+                        "-of", "json", str(path)], capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL)
+    try:
+        d = json.loads(r.stdout or "{}")
+        jenis = {(st.get("codec_type"), st.get("codec_name")) for st in d.get("streams") or []}
+        if jenis and all(t == "video" and c in ("png", "mjpeg", "webp", "bmp", "gif") for t, c in jenis):
+            return None  # gambar: panjang bebas
+        return int(float(d["format"]["duration"]) * 1000)
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
 def buat_ops(potongan, sound, video_akhir, total, brand, tagline, watermark=None, logo=True) -> tuple[list[dict], list[str], float]:
     """Kembali (ops, menunggu, durasi_penutup)."""
     warna = brand.get("warna", {})
@@ -171,8 +188,9 @@ def buat_ops(potongan, sound, video_akhir, total, brand, tagline, watermark=None
     pen_aset = next((a for a in brand.get("aset", []) if pen.get("aset") and a.get("kunci") == pen["aset"]
                      and a.get("lisensi_iklan", True)), None)
     pen_ms = ms(total) - v_ms
-    if pen_aset and pen_aset.get("durasi_ms"):
-        pen_ms = min(pen_ms, int(pen_aset["durasi_ms"]) - 34)
+    pen_file_ms = int(pen_aset["durasi_ms"]) if pen_aset and pen_aset.get("durasi_ms") else durasi_file_ms(pen_aset.get("path")) if pen_aset else None
+    if pen_file_ms:  # end card video lebih pendek dari jatah end card: klip tidak boleh melebihi file (Motion Studio menolak)
+        pen_ms = min(pen_ms, pen_file_ms - 34)
     if pen_aset and pen_ms >= MIN_CLIP_MS:
         ops.append({"op": "add_clip", "track_kind": "broll", "media": pen_aset["kunci"], "start_ms": v_ms,
                     "duration_ms": pen_ms, "in_ms": 0})

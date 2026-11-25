@@ -1,5 +1,5 @@
 import type { TextStyle } from '../../../packages/core/dist/storage/textStyle.js';
-import type { Adjust, ClipExtras, Denoise, FitMode, LookId, Transition } from '../../../packages/core/dist/storage/clipLook.js';
+import type { Adjust, ClipExtras, Denoise, Depan, FitMode, LookId, Transition } from '../../../packages/core/dist/storage/clipLook.js';
 import type { Keyframe } from '../../../packages/core/dist/storage/keyframes.js';
 import type { Overlay } from '../../../packages/core/dist/storage/overlay.js';
 /**
@@ -222,6 +222,18 @@ export interface ProjectSummary {
 }
 
 /** Malam 15 Nov: + fades, denoise, fit, adjust, look, transition (ClipExtras). */
+/** 25 Nov "Objek di depan teks": progress of step 1 (server), then the engine job. */
+export interface DepanStatus {
+  clip_id: string;
+  state: 'antre' | 'gambar' | 'mesin' | 'gagal';
+  at: number;
+  job_id?: string;
+  sumber?: { media_id: string; version_id: string };
+  dari_ms?: number;
+  durasi_ms?: number;
+  pesan?: string;
+}
+
 export interface Clip extends ClipExtras {
   /** Malam 15 Nov: position / scale / opacity keyframes. */
   keyframes?: Keyframe[];
@@ -249,7 +261,7 @@ export interface Clip extends ClipExtras {
 }
 export type Crop = { x: number; y: number; w: number; h: number };
 export type BlurRegion = Crop & { dari_ms: number; sampai_ms: number; radius: number };
-export type ClipEffect = { type: 'zoom'; scale: number; mode: 'cut' | 'smooth'; x: number; y: number } | { type: 'zoom_through'; scale: number; x: number; y: number };
+export type ClipEffect = { type: 'zoom'; scale: number; mode: 'cut' | 'smooth'; x: number; y: number; ramp_ms?: number } | { type: 'zoom_through'; scale: number; x: number; y: number };
 
 export type EditOp =
   | ({ op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[]; keyframes?: Keyframe[]; overlay?: Overlay } & ClipExtras)
@@ -271,6 +283,7 @@ export type EditOp =
   | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null; lut?: { media_id: string; version_id: string } | null }
   | { op: 'set_ducking'; on: boolean; level?: number }
   | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }
+  | { op: 'set_depan'; clip_id: string; depan: Depan | null }
   | { op: 'set_motion'; clip_id: string; rotate?: 0 | 90 | 180 | 270; flip_h?: boolean; flip_v?: boolean; speed?: number; reverse?: boolean; vdenoise?: 'off' | 'ringan' | 'sedang'; stabil?: 'off' | 'ringan' | 'kuat' }
   | { op: 'freeze_frame'; clip_id: string; at_ms: number; duration_ms: number }
   | { op: 'delete_clips'; clip_ids: string[] }
@@ -1247,6 +1260,9 @@ export function createApi(token: string | null, base = '') {
     ttsResult: (id: string, jobId: string) => call<{ tts: TtsView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/tts`).then((r) => r.tts),
     /** R35 Visual Tools (contract §18.10). */
     engineVisual: (id: string, ref: { media_id: string; version_id: string }, visual: Record<string, unknown>) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'visual', ref, visual } }).then((r) => r.job),
+    /** 25 Nov "Objek di depan teks": step 1 (picture under the text) → engine job. */
+    depanStart: (id: string, clipId: string) => call<{ depan: DepanStatus }>('POST', `/api/projects/${encodeURIComponent(id)}/depan`, { json: { clip_id: clipId } }).then((r) => r.depan),
+    depanStatus: (id: string, clipId: string) => call<{ depan: DepanStatus }>('GET', `/api/projects/${encodeURIComponent(id)}/depan/${encodeURIComponent(clipId)}`).then((r) => r.depan),
     visualResult: (id: string, jobId: string) => call<{ visual: VisualView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/visual`).then((r) => r.visual),
     voIndex: (versionId: string) => call<{ vo: VoIndex | null }>('GET', `/api/vo/${encodeURIComponent(versionId)}`).then((r) => r.vo),
     /** R25: projects whose newest Generate plan is ready but not applied. */

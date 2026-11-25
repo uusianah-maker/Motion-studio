@@ -39,13 +39,13 @@ describe('U3c zoom effects + glass boxes', () => {
     expect(validateEffect({ type: 'zoom_through', scale: 1.6, x: 0.3 })).toEqual({ type: 'zoom_through', scale: 1.6, x: 0.3, y: 0.5 });
     for (const bad of [{ type: 'spin' }, { type: 'zoom', scale: 5 }, { type: 'zoom', mode: 'wobble' }, { type: 'zoom', x: 2 }, { type: 'zoom_through', mode: 'cut' }]) expect(code(() => validateEffect(bad)), JSON.stringify(bad)).toBe('EDIT_INVALID');
     expect(zoomAt({ type: 'zoom', scale: 1.5, mode: 'cut', x: 0.5, y: 0.5 }, 0, 1000)).toBe(1.5);
-    expect(zoomAt({ type: 'zoom', scale: 1.5, mode: 'smooth', x: 0.5, y: 0.5 }, 125, 1000)).toBeCloseTo(1.25);
+    expect(zoomAt({ type: 'zoom', scale: 1.5, mode: 'smooth', x: 0.5, y: 0.5 }, 250, 1000)).toBeCloseTo(1.25); // 25 Nov: ramp 600 ms (half of a 1 s clip)
     expect(zoomAt({ type: 'zoom_through', scale: 1.4, x: 0.5, y: 0.5 }, 150, 300)).toBeCloseTo(1.2);
     // Keluhan tim: smooth = cosine ease in AND back out at the end (render expression = preview curve).
     const sm = { type: 'zoom', scale: 1.5, mode: 'smooth', x: 0.5, y: 0.5 } as const;
-    expect(zoomAt(sm, 62.5, 1000)).toBeCloseTo(1 + 0.5 * (0.5 - 0.5 * Math.cos(Math.PI * 0.25)));
+    expect(zoomAt(sm, 125, 1000)).toBeCloseTo(1 + 0.5 * (0.5 - 0.5 * Math.cos(Math.PI * 0.25)));
     expect(zoomAt(sm, 500, 1000)).toBe(1.5);
-    expect(zoomAt(sm, 875, 1000)).toBeCloseTo(1.25);
+    expect(zoomAt(sm, 750, 1000)).toBeCloseTo(1.25);
     expect(zoomAt(sm, 1000, 1000)).toBe(1);
     expect(zoomAt(sm, 100, 200)).toBe(1.5); // short clip: in and out share it
     const ex = zoomExpr(sm, 2000, 3000);

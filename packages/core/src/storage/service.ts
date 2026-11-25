@@ -303,6 +303,7 @@ const OP_LABEL: Record<EditOp['op'], string> = {
   set_picture: 'Tampilan gambar',
   set_ducking: 'Ducking musik',
   set_keyframes: 'Keyframe',
+  set_depan: 'Objek di depan teks',
   set_motion: 'Putar / kecepatan / mundur',
   freeze_frame: 'Bekukan frame',
   delete_clips: 'Hapus beberapa klip',

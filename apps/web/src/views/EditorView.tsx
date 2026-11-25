@@ -1,4 +1,7 @@
 import { CopilotPanel } from './CopilotPanel';
+import { KeyframeDiamonds } from './KeyframeDiamonds';
+import { SfxPicker } from './SfxPicker';
+import { DepanPanel } from './DepanPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Role, type Track } from '../api';
@@ -280,6 +283,33 @@ export function EditorView({
   const lastEnd = Math.max(0, ...allClips.map((c) => c.end_ms));
   const duration = visibleDuration(lastEnd);
   const sel = allClips.find((c) => c.clip_id === selected) ?? null;
+  // 25 Nov (keyframe manual): "◆ Atur di layar" = handles on the preview; each drop saves a keyframe
+  // at the playhead (an existing one within 40 ms is updated; the first one gets a still start at 0).
+  const [kfMode, setKfMode] = useState(false);
+  /** 25 Nov: "＋ SFX" on the timeline toolbar. */
+  const [sfxOpen, setSfxOpen] = useState(false);
+  const kfAble = !!sel && ['video', 'broll', 'text', 'subtitle'].includes(sel.kind); // overlay: keyframes via the panel (it can already be dragged in the preview)
+  const saveKeyframeAt = (clipId: string, v: { x: number; y: number; scale: number; opacity: number; rot: number }) => {
+    const c = allClips.find((x) => x.clip_id === clipId);
+    if (!c) return;
+    const at = Math.round(Math.max(0, Math.min(c.end_ms - c.start_ms, playhead - c.start_ms)));
+    const r3 = (n: number) => Math.round(n * 1000) / 1000;
+    const vals = { x: r3(v.x), y: r3(v.y), scale: r3(v.scale), opacity: r3(v.opacity), ...(Math.round(v.rot) ? { rot: Math.round(v.rot) } : {}) };
+    const kfs = [...(c.keyframes ?? [])];
+    const near = kfs.findIndex((k) => Math.abs(k.at_ms - at) <= 40);
+    if (near >= 0) {
+      const old = kfs[near]!;
+      kfs[near] = { at_ms: old.at_ms, ease: old.ease, ...vals };
+    } else {
+      if (!kfs.length && at > 50) kfs.push({ at_ms: 0, x: 0, y: 0, scale: 1, opacity: 1, ease: 'linear' });
+      kfs.push({ at_ms: at, ...vals, ease: 'ease' });
+    }
+    if (kfs.length > 20) {
+      setError(new Error('Maksimal 20 keyframe per klip. Hapus satu dulu di panel Keyframe.'));
+      return;
+    }
+    void edit([{ op: 'set_keyframes', clip_id: clipId, keyframes: kfs.sort((a, b) => a.at_ms - b.at_ms) }]);
+  };
   // R34: a selected VO (from "Suara dari Teks") knows its text → subtitles without Whisper.
   const [vo, setVo] = useState<{ version_id: string; index: VoIndex } | null>(null);
   const selVersion = sel?.media?.version_id ?? null;
@@ -659,6 +689,20 @@ export function EditorView({
         />
       )}
       {penutupOpen && project && <PenutupDialog api={api} kit={brand?.kit ?? null} onPick={(o) => void addPenutup(o)} onClose={() => setPenutupOpen(false)} onKitSaved={() => setBrandReload((n) => n + 1)} />}
+      {sfxOpen && project && (
+        <SfxPicker
+          api={api}
+          project={project}
+          media={media}
+          sfx={(brand?.library?.aset ?? brand?.kit.aset ?? []).filter((a) => a.jenis === 'sfx')}
+          playhead={playhead}
+          onAdd={(ops) => {
+            setSfxOpen(false);
+            void edit(ops);
+          }}
+          onClose={() => setSfxOpen(false)}
+        />
+      )}
       {overlayOpen && project && <OverlayPicker api={api} kit={brand?.kit ?? null} onPick={addOverlay} onClose={() => setOverlayOpen(false)} onKitSaved={() => setBrandReload((n) => n + 1)} />}
       {cutClip && project && (
         <CutReviewDialog
@@ -750,6 +794,8 @@ export function EditorView({
             brand={brand}
             onBrandLogo={(on) => void edit([{ op: 'set_brand_logo', on }])}
             overlayDraft={overlayDraft}
+            kfMode={kfMode && kfAble}
+            onKeyframe={saveKeyframeAt}
             onMoveOverlay={(id, dx, dy) => void edit([{ op: 'set_overlay', clip_id: id, overlay: { dx, dy } }])}
             onMoveText={(id, x, y) => {
               setSelected(id);
@@ -800,6 +846,11 @@ export function EditorView({
               cancelBox={() => setBoxPick(null)}
               picking={!!boxPick}
             />
+          )}
+          {sel && project && group.length < 2 && (sel.kind === 'text' || sel.kind === 'subtitle') && (
+            <section className="inspector" aria-label="Alat AI teks">
+              <DepanPanel key={`depan-${sel.clip_id}`} api={api} projectId={project.project_id} clip={sel} locked={locked} submit={(ops) => void edit(ops)} />
+            </section>
           )}
           {group.length > 1 && project && <MultiPanel clips={group} busy={busy} readOnly={locked} onEdit={(ops) => void edit(ops).then(() => ops[0]?.op === 'delete_clips' && setPicked([]))} onClear={() => setPicked([])} />}
           {sel && project && group.length < 2 && (
@@ -924,8 +975,11 @@ export function EditorView({
           <button className="smallbtn" disabled={locked || !project} onClick={() => addText('subtitle')} title="Tambah subtitle di playhead">
             ＋ Subtitle
           </button>
-          <button className="smallbtn" disabled={locked || !project} onClick={() => setOverlayOpen(true)} title="Tambah logo / watermark / stiker / frame (gambar) di atas video">
-            ＋ Overlay
+          <button className="smallbtn" disabled={locked || !project} onClick={() => setOverlayOpen(true)} title="Tambah gambar di atas video: stiker, logo, watermark, frame — dari Aset brand atau upload baru">
+            ＋ Overlay gambar
+          </button>
+          <button className="smallbtn" aria-label="Tambah SFX di playhead" disabled={locked || !project} onClick={() => setSfxOpen(true)} title="Tambah sound effect di playhead: dari Aset brand (cari tag, dengar dulu) atau upload file sendiri">
+            ＋ SFX
           </button>
           <button className="smallbtn" disabled={locked || !project} onClick={() => setPenutupOpen(true)} title="Tambah video penutup (end card) sesudah klip video terakhir">
             ＋ Penutup
@@ -933,15 +987,24 @@ export function EditorView({
           <button
             className="smallbtn"
             disabled={locked || !project}
-            title="Tambah zoom (punch-in) 1 detik di playhead"
+            title="Tambah zoom (punch-in) 1,5 detik di playhead"
             onClick={() => {
               const taken = tracks.find((x) => x.kind === 'effects')?.clips ?? [];
               let start = Math.round(playhead / 100) * 100;
-              for (const c of [...taken].sort((a, b) => a.start_ms - b.start_ms)) if (c.start_ms < start + 1000 && start < c.end_ms) start = c.end_ms;
-              void edit([{ op: 'add_clip', track_kind: 'effects', start_ms: start, duration_ms: 1000, effect: { type: 'zoom', scale: 1.2, mode: 'smooth', x: 0.5, y: 0.5 } }]);
+              for (const c of [...taken].sort((a, b) => a.start_ms - b.start_ms)) if (c.start_ms < start + 1500 && start < c.end_ms) start = c.end_ms;
+              void edit([{ op: 'add_clip', track_kind: 'effects', start_ms: start, duration_ms: 1500, effect: { type: 'zoom', scale: 1.2, mode: 'smooth', x: 0.5, y: 0.5 } }]);
             }}
           >
             ＋ Zoom
+          </button>
+          <button
+            className={`smallbtn${kfMode && kfAble ? ' on' : ''}`}
+            disabled={locked || !project || !kfAble}
+            aria-pressed={kfMode && kfAble}
+            title={kfAble ? 'Atur gerak langsung di layar preview: seret = posisi, sudut = zoom, bulatan atas = putar. Tiap lepas = keyframe di playhead.' : 'Pilih klip video, b-roll, atau teks dulu'}
+            onClick={() => setKfMode((m) => !m)}
+          >
+            ◆ Atur di layar
           </button>
           <button className="smallbtn" disabled={locked || !project?.history.undo} onClick={() => step('undo')} title={project?.history.undo_label ? `Undo: ${project.history.undo_label} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}>
             ↶ Undo
@@ -1122,6 +1185,9 @@ export function EditorView({
                         )}
                         <span className="handle start" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-start')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={() => setDrag(null)} />
                         <span className="clipLabel">{ellipsize(clipName(c), 28)}</span>
+                        {!!c.keyframes?.length && !(drag?.clip.clip_id === c.clip_id && drag.mode !== 'move') && (
+                          <KeyframeDiamonds clip={c} msPerPx={msPerPx} locked={locked} onSeek={(ms) => (setPlaying(false), setPlayhead(ms), setSelected(c.clip_id))} submit={(ops) => void edit(ops)} />
+                        )}
                         {c.clip_id === selected && groupIds.length < 2 && !locked && ((live.end_ms - live.start_ms) / Math.max(1, duration)) * viewPx * zoom >= 64 && (
                           // only on clips wide enough: on a narrow clip it would cover the clip itself
                           // R33: the delete button sits ON the selected clip (owner could not find it).

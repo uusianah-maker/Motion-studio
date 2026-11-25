@@ -326,7 +326,7 @@ function validateTracks(timeline: Obj, where: string): Track[] {
         }
       }
       if (co.keyframes !== undefined) {
-        if (!((kind === 'video' || kind === 'broll') && clip.media) && kind !== 'text' && kind !== 'subtitle') fail(`${cw}.keyframes`, 'keyframe hanya untuk klip video, b-roll, teks, subtitle');
+        if (!((kind === 'video' || kind === 'broll' || kind === 'overlay') && clip.media) && kind !== 'text' && kind !== 'subtitle') fail(`${cw}.keyframes`, 'keyframe hanya untuk klip video, b-roll, overlay, teks, subtitle');
         try {
           const k = validateKeyframes(co.keyframes, `${cw}.keyframes`);
           if (k.length) clip.keyframes = k;
@@ -394,6 +394,8 @@ export function clipRefs(c: Clip): MediaRef[] {
   const f = fontRef(c.style?.font);
   if (f) out.push(f);
   if (c.lut) out.push(c.lut);
+  // 25 Nov: "objek di depan teks" mask + its transparent preview copy are held like clip media.
+  if (c.depan) out.push(c.depan.masker, c.depan.potongan);
   return out;
 }
 
