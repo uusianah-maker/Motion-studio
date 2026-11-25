@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { proyekFitur } from '../fitur';
-import type { Api, BeatspotSettings, BeatspotView, BrandKit, DiffItem, EditPlan, EngineJob, EngineQc, EngineRencana, JobVo, ProjectSummary, Role } from '../api';
+import type { Api, BeatspotSettings, BeatspotView, BrandKit, DiffItem, DriveEntry, EditPlan, EngineJob, EngineQc, EngineRencana, JobVo, ProjectSummary, Role } from '../api';
 import { readyJobShown } from '../lib';
 import { ErrorNotice, useSessionState } from '../ui';
 import { AudioPilihanSelect } from './PresetGaya';
@@ -20,6 +20,8 @@ const AUDIO = /\.(wav|mp3|m4a|aac|ogg|flac)$/i;
 const MAKS_FOOTAGE = 39;
 /** Owner 25 Nov 2026: footage / sound may also come from a Google Drive share link (the server downloads it). */
 const DRIVE = /^https:\/\/(drive\.google\.com|docs\.google\.com|drive\.usercontent\.google\.com)\//i;
+const FOLDER = /\/drive\/(u\/\d+\/)?folders\//;
+type FolderIsi = { state: 'muat' } | { state: 'ok'; files: DriveEntry[] } | { state: 'gagal'; pesan: string };
 /** Links pasted one per line (or separated by spaces), duplicates dropped. */
 export function driveLinks(text: string): string[] {
   return [...new Set(text.split(/\s+/).map((l) => l.trim()).filter(Boolean))];
@@ -59,6 +61,9 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const [driveFootage, setDriveFootage] = useState('');
   const [sound, setSound] = useState<File | null>(null);
   const [driveSound, setDriveSound] = useState('');
+  /** Drive folder links (key = link) → what is inside; ticked files (key = file id, default: every video). */
+  const [folders, setFolders] = useState<Record<string, FolderIsi>>({});
+  const [centang, setCentang] = useState<Record<string, boolean>>({});
   const [bpm, setBpm] = useState('');
   const [kpp, setKpp] = useState<BeatspotSettings['ketukan_per_potong']>('auto');
   const [durMin, setDurMin] = useState(15);
@@ -150,13 +155,38 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
   const linkSound = driveSound.trim();
   const linkSalah = [...linksFootage, ...(linkSound ? [linkSound] : [])].filter((l) => !DRIVE.test(l));
   /** Footage in job order: files from this computer first, then Google Drive links. */
+  const folderLinks = linksFootage.filter((l) => DRIVE.test(l) && FOLDER.test(l));
+  const folderKey = folderLinks.join('\n');
+  useEffect(() => {
+    // Read each new folder link once, after typing stops (a half-typed id would only fail).
+    const t = setTimeout(() => {
+      for (const l of folderKey ? folderKey.split('\n') : []) {
+        setFolders((f) => {
+          if (f[l]) return f;
+          void api.driveFolder(l).then(
+            (r) => setFolders((x) => ({ ...x, [l]: { state: 'ok', files: r.files } })),
+            (e: unknown) => setFolders((x) => ({ ...x, [l]: { state: 'gagal', pesan: e instanceof Error ? e.message : String(e) } })),
+          );
+          return { ...f, [l]: { state: 'muat' } };
+        });
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [api, folderKey]);
+  const isiFolder = folderLinks.map((l) => ({ link: l, isi: folders[l] ?? ({ state: 'muat' } as FolderIsi) }));
+  const folderMuat = isiFolder.some((f) => f.isi.state === 'muat');
+  const folderGagal = isiFolder.filter((f) => f.isi.state === 'gagal');
+  const dipilih = (e: DriveEntry) => e.jenis === 'video' && (centang[e.id] ?? true);
+  const seen = new Set<string>();
   const footageItems: { key: string; label: string; file?: File; link?: string }[] = [
     ...footage.map((f, i) => ({ key: `f:${i}`, label: f.name, file: f })),
-    ...linksFootage.filter((l) => DRIVE.test(l)).map((l) => ({ key: `d:${l}`, label: driveLabel(l), link: l })),
+    ...linksFootage.filter((l) => DRIVE.test(l) && !FOLDER.test(l)).map((l) => ({ key: `d:${l}`, label: driveLabel(l), link: l })),
+    ...isiFolder.flatMap((f) => (f.isi.state === 'ok' ? f.isi.files.filter(dipilih) : [])).filter((e) => !seen.has(e.id) && !!seen.add(e.id))
+      .map((e) => ({ key: `d:${e.id}`, label: e.name, link: `https://drive.google.com/file/d/${e.id}/view` })),
   ].slice(0, MAKS_FOOTAGE);
   const adaSound = !!sound || !!linkSound;
   const start = async () => {
-    if (!footageItems.length || !brand || linkSalah.length) return;
+    if (!footageItems.length || !brand || linkSalah.length || folderMuat || folderGagal.length) return;
     if (!brand.kode) return setError(new Error('Brand ini belum punya kode (Brand Kit → A). Isi dulu, baru jalankan mesin.'));
     if (durMin < 5 || durMax > 60 || durMin > durMax) return setError(new Error('Durasi: min ≤ maks, antara 5 dan 60 detik.'));
     setBusy(true);
@@ -316,12 +346,47 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
                   <textarea
                     aria-label="Link Google Drive footage"
                     rows={2}
-                    placeholder="https://drive.google.com/file/d/…/view"
+                    placeholder="link file atau folder: https://drive.google.com/drive/folders/…"
                     value={driveFootage}
                     onChange={(e) => setDriveFootage(e.target.value)}
                   />
                 </label>
               </div>
+              {isiFolder.map(({ link, isi }) => (
+                <div key={link} className={`inspFull small ${isi.state === 'gagal' ? 'notice err' : ''}`} role="group" aria-label="Isi folder Google Drive">
+                  {isi.state === 'muat' && <span className="muted">Membuka folder Google Drive…</span>}
+                  {isi.state === 'gagal' && <span role="alert">{isi.pesan}</span>}
+                  {isi.state === 'ok' && (
+                    <>
+                      <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span>
+                          Folder Google Drive: {isi.files.filter((e) => e.jenis === 'video').length} video, {isi.files.filter(dipilih).length} dipilih
+                        </span>
+                        <button type="button" className="btn small" onClick={() => setCentang((c) => ({ ...c, ...Object.fromEntries(isi.files.map((e) => [e.id, true])) }))}>
+                          Pilih semua
+                        </button>
+                        <button type="button" className="btn small" onClick={() => setCentang((c) => ({ ...c, ...Object.fromEntries(isi.files.map((e) => [e.id, false])) }))}>
+                          Kosongkan
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px' }}>
+                        {isi.files.map((e) =>
+                          e.jenis === 'video' ? (
+                            <label key={e.id} className="inline">
+                              <input type="checkbox" aria-label={`Pakai ${e.name}`} checked={centang[e.id] ?? true} onChange={(ev) => setCentang((c) => ({ ...c, [e.id]: ev.target.checked }))} />
+                              {e.name}
+                            </label>
+                          ) : (
+                            <span key={e.id} className="muted">
+                              {e.name} ({e.jenis === 'folder' ? 'subfolder, tidak dibuka' : 'bukan video, dilewati'})
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
               {footageItems.length > 0 && (
                 <div className="inspFull" role="group" aria-label="Orang di footage">
                   <div className="small">Orang di tiap footage (umum = orang lewat yang memakai produk; kreator = model/kreator sendiri yang setuju):</div>
@@ -352,7 +417,7 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
                 <div className={`inspFull small ${linkSalah.length ? 'notice err' : 'muted'}`} role={linkSalah.length ? 'alert' : undefined}>
                   {linkSalah.length
                     ? `Bukan link Google Drive: ${linkSalah.join(', ')}`
-                    : 'File Google Drive harus dibagikan "Siapa saja yang memiliki link" (Bagikan → Akses umum). Link folder belum bisa: salin link tiap file. Server mengunduh file lalu menyimpannya di proyek ini.'}
+                    : 'File/folder Google Drive harus dibagikan "Siapa saja yang memiliki link" (Bagikan → Akses umum). Link folder: centang video yang dipakai (subfolder tidak dibuka). Server mengunduh file lalu menyimpannya di proyek ini; hasil video tetap di menu 3. Hasil.'}
                 </div>
               )}
               {!adaSound && (
@@ -409,7 +474,7 @@ export function BeatSpotView({ api, role = 'owner', projects, active = true, onO
               </label>
             </div>
             <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-              <button className="btn primary" disabled={!installed || !footageItems.length || linkSalah.length > 0 || !brand || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
+              <button className="btn primary" disabled={!installed || !footageItems.length || linkSalah.length > 0 || folderMuat || folderGagal.length > 0 || !brand || busy || job?.state === 'berjalan' || job?.state === 'menunggu'} onClick={() => void start()}>
                 ♪ Susun Beat Spot
               </button>
               {upload !== null && <span className="muted small">{upload}…</span>}

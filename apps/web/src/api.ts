@@ -1113,6 +1113,8 @@ export function createApi(token: string | null, base = '') {
       if (scope.kind === 'project') p.set('project_id', scope.project_id);
       return call<{ media_id: string; version: Version; duplicate: boolean; name: string }>('POST', `/api/media/import-drive?${p}`, { json: { link } });
     },
+    /** Files in a Drive folder shared by link (subfolders are listed, not opened). */
+    driveFolder: (link: string) => call<{ folder_id: string; files: DriveEntry[] }>('POST', '/api/media/drive-folder', { json: { link } }),
     trash: () => call<{ items: TrashItem[] }>('GET', '/api/trash').then((r) => r.items),
     restore: (versionId: string, opts: { on_conflict?: 'ask' | 'alternate' } = {}) =>
       call<{ result: { status: 'restored' | 'conflict' | 'failed'; reason?: string; wanted?: string; suggested?: string } }>('POST', `/api/trash/${encodeURIComponent(versionId)}/restore`, { json: opts }).then((r) => r.result),
@@ -1295,3 +1297,11 @@ export function createApi(token: string | null, base = '') {
 }
 
 export type Api = ReturnType<typeof createApi>;
+
+/** One entry of a Google Drive folder shared by link. */
+export interface DriveEntry {
+  id: string;
+  name: string;
+  mime: string;
+  jenis: 'video' | 'audio' | 'gambar' | 'folder' | 'lain';
+}

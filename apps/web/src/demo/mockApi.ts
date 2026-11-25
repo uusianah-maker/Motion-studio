@@ -480,6 +480,7 @@ export function createDemoApi(): Api {
     backupAdd: async () => fail(409, 'PRECONDITION', 'Folder backup tidak tersedia di demo browser'),
     backupVerify: async () => fail(409, 'PRECONDITION', 'Folder backup tidak tersedia di demo browser'),
     importDriveLink: async () => fail(409, 'PRECONDITION', 'Ambil dari Google Drive tidak tersedia di demo browser'),
+    driveFolder: async () => fail(409, 'PRECONDITION', 'Ambil dari Google Drive tidak tersedia di demo browser'),
     importFile: async (file, scope, onProgress) => {
       for (let i = 1; i <= 10; i++) {
         await wait(60);

@@ -45,7 +45,7 @@ import {
   resolveFitur,
   type ProjectFitur,
 } from './core.js';
-import { downloadDrive, driveFileId } from './driveLink.js';
+import { downloadDrive, driveFileId, driveFolderId, listDriveFolder } from './driveLink.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
 import { createImportQueue } from './importQueue.js';
@@ -734,6 +734,16 @@ export function apiRoutes(upload: Partial<UploadOptions> = {}, signer: StreamSig
           await fsp.rm(dir, { recursive: true, force: true });
           release();
         }
+      },
+    },
+    {
+      // What is in a Drive folder shared by link (the team ticks which files to import, one by one, above).
+      method: 'POST',
+      path: '/api/media/drive-folder',
+      handle: async ({ req }) => {
+        const body = (await readJsonBody(req)) as { link?: unknown };
+        const id = driveFolderId(typeof body?.link === 'string' ? body.link : '');
+        return { folder_id: id, files: await listDriveFolder(id, uploadOpts.driveFetch) };
       },
     },
     {

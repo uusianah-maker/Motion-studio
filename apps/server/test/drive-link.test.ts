@@ -8,7 +8,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HOST, createApp } from '../src/app.js';
 import { createProject, initWorkspace } from '../src/core.js';
-import { confirmUrl, dispositionName, downloadDrive, driveFileId } from '../src/driveLink.js';
+import { confirmUrl, dispositionName, downloadDrive, driveFileId, driveFolderId, listDriveFolder, parseFolder } from '../src/driveLink.js';
 import { apiRoutes } from '../src/routes.js';
 
 const ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345';
@@ -169,5 +169,57 @@ describe('POST /api/media/import-drive', () => {
     expect(bad.json.error.message).toMatch(/Bukan link Google Drive/);
     expect((await s.post('/api/media/import-drive?scope=project&project_id=nope', { link: `https://drive.google.com/file/d/${ID}/view` })).status).toBe(404);
     expect(g.asked).toEqual([]);
+  });
+});
+
+const entry = (id: string, name: string, href: string, type: string) =>
+  `<div class="flip-entry" id="entry-${id}" tabindex="0" role="link"><div class="flip-entry-info"><a href="${href}" target="_blank"><div class="flip-entry-visual"></div>` +
+  `<div class="flip-entry-list-icon"><img src="https://drive-thirdparty.googleusercontent.com/16/type/${type}" alt=""/></div><div class="flip-entry-title">${name}</div></a></div></div>`;
+const FOLDER = '1JHzcYAxV4X6DUzEoCPY09LEPYMJ13DPC';
+const V2 = '1Y3pM6iUUowQmIlMXICkcBmYZmfrdCObl';
+const SUB = '1OJbFYMA0JDllvIqeol1zpPrmw97v3Hk9';
+const FOLDER_HTML = `<html><div class="flip-entries">${entry(ID, 'DJI_0017_D.MP4', `https://drive.google.com/file/d/${ID}/view?usp=drive_web`, 'video/mp4')}${entry(V2, 'Mall &amp; jalan.MOV', `https://drive.google.com/file/d/${V2}/view?usp=drive_web`, 'video/quicktime')}${entry(SUB, 'Kemeja', `https://drive.google.com/drive/folders/${SUB}`, 'application/vnd.google-apps.folder')}</div></html>`;
+
+describe('Drive folder (shared by link)', () => {
+  it('reads the folder id and lists videos, other files and subfolders', async () => {
+    expect(driveFolderId(`https://drive.google.com/drive/folders/${FOLDER}?usp=drive_link`)).toBe(FOLDER);
+    expect(driveFolderId(`https://drive.google.com/drive/u/0/folders/${FOLDER}`)).toBe(FOLDER);
+    expect(() => driveFolderId(`https://drive.google.com/file/d/${ID}/view`)).toThrow(/folder/);
+    expect(() => driveFolderId(`https://evil.example/drive/folders/${FOLDER}`)).toThrow(/folder/);
+    expect(() => driveFileId(`https://drive.google.com/drive/folders/${FOLDER}`)).toThrow(/link folder/);
+    expect(parseFolder(FOLDER_HTML)).toEqual([
+      { id: ID, name: 'DJI_0017_D.MP4', mime: 'video/mp4', jenis: 'video' },
+      { id: V2, name: 'Mall & jalan.MOV', mime: 'video/quicktime', jenis: 'video' },
+      { id: SUB, name: 'Kemeja', mime: '', jenis: 'folder' },
+    ]);
+    const g = fakeDrive((u) => (u.hostname === 'drive.google.com' && u.pathname === '/embeddedfolderview' && u.searchParams.get('id') === FOLDER ? { headers: { 'content-type': 'text/html' }, body: FOLDER_HTML } : { status: 404 }));
+    expect(await listDriveFolder(FOLDER, g.f)).toHaveLength(3);
+    await expect(listDriveFolder(SUB, g.f)).rejects.toThrow(/Siapa saja yang memiliki link/);
+  });
+
+  it('POST /api/media/drive-folder lists a folder; files are then imported one by one by id', async () => {
+    const dir = await tmp();
+    const ws = await initWorkspace(path.join(dir, 'ws'));
+    const g = fakeDrive((u) => (u.pathname === '/embeddedfolderview' ? { headers: { 'content-type': 'text/html' }, body: FOLDER_HTML } : okFile(u)));
+    const app = createApp({ ws, roleOf: () => 'editor', routes: apiRoutes({ tmpDir: dir, driveFetch: g.f }) });
+    const port = await app.listen(0);
+    cleanup.push(() => app.close());
+    const post = (p: string, body: unknown) =>
+      new Promise<{ status: number; json: ReturnType<typeof JSON.parse> }>((resolve, reject) => {
+        const data = Buffer.from(JSON.stringify(body));
+        const r = http.request({ host: HOST, port, path: p, method: 'POST', headers: { host: `${HOST}:${port}`, authorization: `Bearer ${app.token}`, 'content-type': 'application/json', 'content-length': String(data.length) } }, (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, json: JSON.parse(Buffer.concat(chunks).toString('utf8') || 'null') }));
+        });
+        r.on('error', reject);
+        r.end(data);
+      });
+    const list = await post('/api/media/drive-folder', { link: `https://drive.google.com/drive/folders/${FOLDER}?usp=drive_link` });
+    expect(list.status).toBe(200);
+    expect(list.json.files.map((f: { jenis: string }) => f.jenis)).toEqual(['video', 'video', 'folder']);
+    const imp = await post('/api/media/import-drive?scope=shared', { link: `https://drive.google.com/file/d/${list.json.files[0].id}/view` });
+    expect(imp.json.name).toBe('mall 1.mp4');
+    expect((await post('/api/media/drive-folder', { link: 'https://example.com/folders/x' })).status).toBe(400);
   });
 });

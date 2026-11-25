@@ -33,12 +33,84 @@ export function driveFileId(link: string): string {
     throw tolak('Bukan link Google Drive (contoh: https://drive.google.com/file/d/…/view)');
   }
   if (u.protocol !== 'https:' || !LINK_HOSTS.has(u.hostname)) throw tolak('Bukan link Google Drive (contoh: https://drive.google.com/file/d/…/view)');
-  if (/\/folders\//.test(u.pathname) || /\/drive\/(u\/\d+\/)?folders/.test(u.pathname)) throw tolak('Link folder belum bisa: buka foldernya, lalu salin link tiap file');
+  if (/\/folders\//.test(u.pathname) || /\/drive\/(u\/\d+\/)?folders/.test(u.pathname)) throw tolak('Ini link folder, bukan file: tempel di kotak footage Beat Spot untuk memilih isinya');
   const m = u.pathname.match(/\/(?:file\/)?d\/([^/]+)/);
   const id = m?.[1] ?? u.searchParams.get('id') ?? '';
   if (!ID.test(id)) throw tolak('Link Google Drive tidak berisi id file (contoh: https://drive.google.com/file/d/…/view)');
   if (/^\/(document|spreadsheets|presentation|forms)\//.test(u.pathname)) throw tolak('Link ini dokumen Google (Docs/Sheets/Slides), bukan file video/audio');
   return id;
+}
+
+/** The Drive FOLDER id in a folder share link (https://drive.google.com/drive/folders/<id>). */
+export function driveFolderId(link: string): string {
+  const raw = (link ?? '').trim();
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw tolak('Bukan link folder Google Drive (contoh: https://drive.google.com/drive/folders/…)');
+  }
+  const id = u.pathname.match(/\/folders\/([^/]+)/)?.[1] ?? '';
+  if (u.protocol !== 'https:' || u.hostname !== 'drive.google.com' || !ID.test(id)) throw tolak('Bukan link folder Google Drive (contoh: https://drive.google.com/drive/folders/…)');
+  return id;
+}
+
+export interface DriveEntry {
+  id: string;
+  name: string;
+  /** MIME type Drive shows (e.g. video/mp4), '' if unknown. */
+  mime: string;
+  jenis: 'video' | 'audio' | 'gambar' | 'folder' | 'lain';
+}
+
+const entity = (s: string) =>
+  s
+    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+
+/** Entries of Drive's public folder view (embeddedfolderview). Exported for tests. */
+export function parseFolder(html: string): DriveEntry[] {
+  const out: DriveEntry[] = [];
+  for (const block of html.split('<div class="flip-entry" id="entry-').slice(1)) {
+    const id = block.match(/^([A-Za-z0-9_-]+)"/)?.[1] ?? '';
+    const href = block.match(/<a href="([^"]+)"/)?.[1] ?? '';
+    const name = entity(block.match(/<div class="flip-entry-title">([^<]*)<\/div>/)?.[1] ?? '').trim();
+    if (!ID.test(id) || !name) continue;
+    const folder = /\/drive\/(u\/\d+\/)?folders\//.test(href);
+    const mime = folder ? 'folder' : (block.match(/\/type\/([a-z0-9.+-]+\/[a-z0-9.+-]+)/i)?.[1] ?? '').toLowerCase();
+    const jenis = folder ? 'folder' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : mime.startsWith('image/') ? 'gambar' : 'lain';
+    out.push({ id, name, mime: folder ? '' : mime, jenis });
+  }
+  return out;
+}
+
+/** List a folder shared "Siapa saja yang memiliki link" (no sign-in). Subfolders are listed, not opened. */
+export async function listDriveFolder(id: string, fetchImpl: typeof fetch = fetch): Promise<DriveEntry[]> {
+  if (!ID.test(id)) throw tolak('Id folder Google Drive tidak valid');
+  let r: Response;
+  try {
+    r = await fetchImpl(`https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(id)}`, { redirect: 'manual', signal: AbortSignal.timeout(30_000), headers: { 'user-agent': 'MotionStudio/1 (drive import)' } });
+  } catch {
+    throw new ApiError(502, 'DRIVE_UNREACHABLE', 'Google Drive tidak bisa dihubungi dari server. Coba lagi sebentar.');
+  }
+  if (r.status >= 300 && r.status < 400) {
+    await r.body?.cancel();
+    throw tolak('Folder Google Drive belum bisa dibuka: ubah aksesnya jadi "Siapa saja yang memiliki link" (Bagikan → Akses umum), lalu coba lagi.');
+  }
+  if (r.status === 404 || r.status === 403 || r.status === 401) {
+    await r.body?.cancel();
+    throw tolak('Folder Google Drive tidak ditemukan, atau belum dibagikan "Siapa saja yang memiliki link".');
+  }
+  if (!r.ok) {
+    await r.body?.cancel();
+    throw new ApiError(502, 'DRIVE_FAILED', `Google Drive menolak membuka folder (HTTP ${r.status})`);
+  }
+  return parseFolder((await r.text()).slice(0, 5_000_000)).slice(0, 500);
 }
 
 /** File name from Content-Disposition (RFC 5987 filename* first). Unsafe characters are cleaned by the caller. */
