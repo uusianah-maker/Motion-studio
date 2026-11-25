@@ -445,6 +445,86 @@ def shots_bs(n_footage=4, per=4, dur=3.0):
     return out
 
 
+def klik(path: Path, bpm: float, fase: float, durasi: float = 20.0) -> Path:
+    """Sound klik tajam 2 kHz (12 ms) tiap 60/bpm dtk mulai `fase` dtk (ffmpeg)."""
+    import subprocess
+    p = 60.0 / bpm
+    subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
+                    f"aevalsrc='if(gte(t\\,{fase})*lt(mod(t-{fase}\\,{p})\\,0.012)\\,sin(2*PI*2000*t)\\,0)':s=22050:d={durasi}",
+                    str(path)], check=True, stdin=subprocess.DEVNULL)
+    return path
+
+
+class TempoPresisi(unittest.TestCase):
+    """Pembaca tempo bersama (musik.tempo): Batch Remix, Beat Spot tahap 1, Ganti Outfit. Dulu lag bulat hop 512."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        cls.tmp = Path(tempfile.mkdtemp(prefix="uji-tempo-"))
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_klik_100_120_140_tanpa_geser(self):
+        import musik
+        for bpm, fase in ((100, 0.10), (120, 0.25), (140, 0.37), (119.95, 0.20)):
+            a = musik.analisis(klik(self.tmp / f"k{bpm}.wav", bpm, fase))
+            self.assertEqual(set(a), {"durasi", "db", "bpm", "ketukan"})
+            self.assertAlmostEqual(a["bpm"], bpm, delta=0.1, msg=bpm)
+            k = a["ketukan"]
+            self.assertAlmostEqual(k[0], fase, delta=0.01, msg=bpm)
+            # Ketukan ke-30 tidak bergeser (lag bulat lama: 119,95 terbaca 123 -> meleset ±0,4 dtk di sini).
+            self.assertAlmostEqual(k[30], fase + 30 * 60 / bpm, delta=0.02, msg=bpm)
+            self.assertEqual(musik.mood(a["bpm"]), "santai" if bpm < 90 else ("sedang" if bpm < 118 else "ceria"))
+
+    def test_puncak_di_tepi_rentang_pakai_puncak_dalam(self):
+        """139,7 BPM dengan aksen tiap 2 ketukan (seperti stem A__6): autokorelasi terkuat di 69,85 BPM, tepat di luar
+        tepi 70 -> dipakai puncak dalam rentang (139,7), bukan tepi (±70) atau tanpa tempo."""
+        import subprocess
+        import musik
+        p, fase = 60 / 139.7, 0.2
+        f = self.tmp / "aksen.wav"
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
+                        f"aevalsrc='if(gte(t\\,{fase})*lt(mod(t-{fase}\\,{2 * p})\\,0.012)\\,1\\,"
+                        f"if(gte(t\\,{fase})*lt(mod(t-{fase}\\,{p})\\,0.012)\\,0.25\\,0))*sin(2*PI*2000*t)':s=22050:d=20",
+                        str(f)], check=True, stdin=subprocess.DEVNULL)
+        a = musik.analisis(f)
+        self.assertAlmostEqual(a["bpm"], 139.7, delta=0.1)
+        self.assertAlmostEqual(a["ketukan"][0], fase, delta=0.01)
+        self.assertAlmostEqual(a["ketukan"][30], fase + 30 * p, delta=0.02)
+
+    def test_tanpa_ketukan_bpm_none(self):
+        import subprocess
+        import musik
+        for nama, src in (("hening", "anullsrc=r=22050:cl=mono"), ("pendek", "sine=f=440:r=22050")):
+            p = self.tmp / f"{nama}.wav"
+            subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", src, "-t",
+                            "10" if nama == "hening" else "1.5", str(p)], check=True, stdin=subprocess.DEVNULL)
+            a = musik.analisis(p)
+            self.assertIsNone(a["bpm"], nama)
+            self.assertEqual(a["ketukan"], [], nama)
+
+    def test_cache_lama_dihitung_ulang(self):
+        import json as _json
+        import musik
+        b = self.tmp / "batch"
+        (b / "musik").mkdir(parents=True)
+        p = klik(b / "musik" / "m.wav", 120, 0.25)
+        st = p.stat()
+        kunci = str(p.resolve()).replace("\\", "/")
+        # Entri cache versi lama (tanpa versi di sig): tempo kasar 123 BPM.
+        (b / "musik_analisis.json").write_text(_json.dumps({kunci: {
+            "sig": f"{st.st_size}:{int(st.st_mtime)}", "durasi": 20.0, "db": -20.0, "bpm": 123.0, "ketukan": [0.3, 0.79]}}))
+        lib = musik.library({}, b, True, set())
+        self.assertEqual(len(lib), 1)
+        self.assertAlmostEqual(lib[0]["bpm"], 120.0, delta=0.1)
+        cache = _json.loads((b / "musik_analisis.json").read_text())
+        self.assertTrue(cache[kunci]["sig"].endswith(f":v{musik.VERSI_ANALISIS}"))
+
+
 class BeatSpot(unittest.TestCase):
     """R16 Beat Spot tahap 1: pergantian orang tepat di ketukan sound."""
 

@@ -5,8 +5,8 @@ Sumber musik, urut prioritas:
   2. public/musik/* yang punya lisensi.txt di foldernya (aturan lama repo ini).
   3. HANYA kalau izinkan_musik_tanpa_lisensi: stem musik batch (konten/2-dipisah/<batch>/musik/).
      Varian yang memakainya ditandai bukan_iklan = true.
-Tempo & ketukan dihitung dari audio (spectral flux + autokorelasi), disimpan di cache
-konten/2-dipisah/<batch>/musik_analisis.json.
+Tempo & ketukan dihitung dari audio (spectral flux hop 128 + autokorelasi + pencarian periode/fase sub-frame,
+lihat tempo()), disimpan di cache konten/2-dipisah/<batch>/musik_analisis.json (dihitung ulang bila VERSI_ANALISIS naik).
 """
 
 import json
@@ -18,7 +18,12 @@ from pathlib import Path
 import numpy as np
 
 SR = 22050
-HOP = 512
+WIN = 2048
+HOP_PRESISI = 128  # 5,8 ms per frame onset
+SERANGAN = 0.075  # puncak flux ±75 ms sebelum serangan bunyi (kalibrasi klik)
+BPM_MIN, BPM_MAKS = 70, 170
+# Naik setiap cara baca tempo berubah: entri cache musik_analisis.json dengan versi lain dihitung ulang.
+VERSI_ANALISIS = 2
 TARGET_DB = -32.0  # rata-rata volume musik di bawah VO
 
 
@@ -28,30 +33,89 @@ def _decode(path: Path) -> np.ndarray:
     return np.frombuffer(raw, np.float32)
 
 
+def _flux(y: np.ndarray, hop: int) -> np.ndarray:
+    """Spectral flux (jendela 2048), dihitung per blok supaya musik panjang tidak makan ratusan MB."""
+    n = 1 + (len(y) - WIN) // hop if len(y) > WIN else 0
+    if n < 2:
+        return np.zeros(0, np.float32)
+    win = np.hanning(WIN).astype(np.float32)
+    fr = np.lib.stride_tricks.as_strided(y, shape=(n, WIN), strides=(y.strides[0] * hop, y.strides[0]))
+    out, sebelum = [], None
+    for a in range(0, n, 2048):
+        lg = np.log1p(np.abs(np.fft.rfft(fr[a:a + 2048] * win, axis=1))).astype(np.float32)
+        if sebelum is not None:
+            lg = np.vstack([sebelum, lg])
+        out.append(np.maximum(0, np.diff(lg, axis=0)).sum(axis=1))
+        sebelum = lg[-1:]
+    return np.concatenate(out)
+
+
+def tempo(y: np.ndarray) -> tuple[float | None, list[float]]:
+    """Tempo + ketukan presisi sub-frame dari audio mono SR (dipakai Batch Remix, Beat Spot, Ganti Outfit).
+
+    Dulu: lag autokorelasi bulat di hop 512 (23 ms) -> sound referensi 119,95 BPM terbaca 123 (WAV) / 117,5 (MP4)
+    dan potongan bergeser ±0,4 dtk di detik 16. Sekarang: onset hop 128, puncak autokorelasi diinterpolasi parabola,
+    periode dicari ulang ±1,5 % dan fase sub-frame supaya grid mengenai onset sebanyak mungkin, plus koreksi serangan
+    75 ms (dikalibrasi klik 100/120/140 BPM: fase <= 3 ms, BPM ±0,03).
+    Hasil (None, []) = tidak ada ketukan: audio terlalu pendek (< ±2,5 dtk) atau autokorelasi tanpa puncak di 70-170 BPM
+    (hening, nada datar). Audio tanpa irama yang jelas (ucapan, ambience) tetap mendapat tempo, sama seperti cara lama.
+    """
+    flux = _flux(y, HOP_PRESISI)
+    if len(flux) < 400:
+        return None, []
+    flux = (flux - flux.mean()) / (flux.std() + 1e-9)
+    fps = SR / HOP_PRESISI
+    f = np.fft.rfft(flux, 2 * len(flux))  # autokorelasi lewat FFT (np.correlate O(n^2) lambat untuk musik panjang)
+    ac = np.fft.irfft(f * np.conj(f))[:len(flux)]
+    lo, hi = int(fps * 60 / BPM_MAKS), int(fps * 60 / BPM_MIN)
+    i = lo + int(np.argmax(ac[lo:hi + 1]))
+    if i in (lo, hi):
+        # Maksimum di tepi rentang = puncak aslinya di luar 70-170 (mis. 69,8 untuk lagu 139,7 BPM) atau tanpa
+        # puncak sama sekali: pakai puncak lokal terkuat di dalam rentang; tidak ada = tanpa ketukan.
+        pk = [j for j in range(lo + 1, hi) if ac[j] > ac[j - 1] and ac[j] >= ac[j + 1]]
+        if not pk:
+            return None, []
+        i = max(pk, key=lambda j: ac[j])
+    a, b, c = ac[i - 1], ac[i], ac[i + 1]
+    lag = i + (0.5 * (a - c) / (a - 2 * b + c) if (a - 2 * b + c) != 0 else 0.0)
+    # Periode & fase: maksimalkan energi onset (dihaluskan sedikit) tepat di titik grid.
+    k = np.exp(-0.5 * (np.arange(-6, 7) / 2.0) ** 2)
+    hal = np.convolve(np.maximum(flux, 0), k / k.sum(), mode="same")
+    t = np.arange(len(hal))
+
+    def nilai(per, fase):
+        pos = np.arange(fase, len(hal) - 1, per)
+        return float(np.interp(pos, t, hal).sum()) / max(len(pos), 1)
+
+    terbaik = (-1.0, lag, 0.0)
+    for per in np.linspace(lag * 0.985, lag * 1.015, 61):
+        for fase in np.arange(0, per, 1.0):
+            v = nilai(per, fase)
+            if v > terbaik[0]:
+                terbaik = (v, per, fase)
+    _, per, fase = terbaik
+    for fase2 in np.arange(fase - 1, fase + 1, 0.1):  # fase sub-frame
+        if fase2 >= 0:
+            v = nilai(per, fase2)
+            if v > terbaik[0]:
+                terbaik = (v, per, fase2)
+    _, per, fase = terbaik
+    bpm = 60 * fps / per
+    # Puncak flux muncul ±75 ms sebelum serangan bunyi (jendela 2048 + penghalusan); dikalibrasi dengan
+    # klik 100/120/140 BPM di fase 0,10 / 0,25 / 0,37 dtk: sisa selisih <= 3 ms.
+    beats = [float((fase + j * per) / fps + SERANGAN) for j in range(int((len(flux) - fase) / per) + 1)]
+    return float(bpm), beats  # bisa sedikit di luar 70-170 (pencarian periode ±1,5 %)
+
+
 def analisis(path: Path) -> dict:
+    """{durasi, db, bpm, ketukan}: bpm 2 desimal, ketukan detik (3 desimal) dari awal file; bpm None = tanpa ketukan."""
     y = _decode(path)
     dur = len(y) / SR
-    rms = float(np.sqrt(np.mean(y ** 2)) + 1e-9)
+    rms = float(np.sqrt(np.mean(y ** 2)) + 1e-9) if len(y) else 1e-9
     mean_db = 20 * np.log10(rms)
-    n = 1 + (len(y) - 2048) // HOP if len(y) > 2048 else 0
-    if n < 50:
-        return {"durasi": round(dur, 2), "db": round(mean_db, 1), "bpm": None, "ketukan": []}
-    win = np.hanning(2048).astype(np.float32)
-    frames = np.lib.stride_tricks.as_strided(y, shape=(n, 2048), strides=(y.strides[0] * HOP, y.strides[0]))
-    spec = np.abs(np.fft.rfft(frames * win, axis=1))
-    flux = np.maximum(0, np.diff(np.log1p(spec), axis=0)).sum(axis=1)
-    flux = (flux - flux.mean()) / (flux.std() + 1e-9)
-    fps = SR / HOP
-    # Tempo: autokorelasi envelope, BPM 70-170.
-    ac = np.correlate(flux, flux, mode="full")[len(flux) - 1:]
-    lags = np.arange(len(ac))
-    lo, hi = int(fps * 60 / 170), int(fps * 60 / 70)
-    lag = lo + int(np.argmax(ac[lo:hi]))
-    bpm = 60 * fps / lag
-    # Fase ketukan: geser yang paling banyak mengenai onset.
-    best = max(range(lag), key=lambda ph: flux[ph::lag].sum())
-    beats = [round((best + k * lag) / fps, 3) for k in range(int((len(flux) - best) / lag) + 1)]
-    return {"durasi": round(dur, 2), "db": round(float(mean_db), 1), "bpm": round(float(bpm), 1), "ketukan": beats}
+    bpm, beats = tempo(y)
+    return {"durasi": round(dur, 2), "db": round(float(mean_db), 1), "bpm": round(bpm, 2) if bpm else None,
+            "ketukan": [round(b, 3) for b in beats]}
 
 
 def mood(bpm: float | None) -> str:
@@ -85,7 +149,8 @@ def library(brand_raw: dict, batch_dir: Path, izinkan_tanpa_lisensi: bool, vo_di
     for m in out:
         key = m["path"]
         st = Path(key).stat()
-        sig = f"{st.st_size}:{int(st.st_mtime)}"
+        # Versi analisis ikut tanda tangan: cache lama (tempo kasar hop 512) otomatis dihitung ulang.
+        sig = f"{st.st_size}:{int(st.st_mtime)}:v{VERSI_ANALISIS}"
         if cache.get(key, {}).get("sig") != sig:
             cache[key] = {"sig": sig, **analisis(Path(key))}
         m.update({k: v for k, v in cache[key].items() if k != "sig"})

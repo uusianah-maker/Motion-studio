@@ -511,58 +511,17 @@ def prompt_look(siapa: str, look: dict) -> tuple[str, list[str]]:
 # ------------------------------------------------------------------ ketukan
 
 def ketukan_sound(sound: Path) -> tuple[float, list[float]]:
-    """Tempo + ketukan presisi sub-frame. musik.analisis memakai lag bulat (hop 23 ms): 123 vs 117,5 BPM untuk sound
-    yang sama tergantung file, dan selisih itu menumpuk jadi ratusan ms di akhir video. Di sini: onset lebih rapat,
-    puncak autokorelasi diinterpolasi, lalu periode + fase dicari ulang supaya grid mengenai onset sebanyak mungkin."""
-    import numpy as np
-    sr, hop = musik_mod.SR, 128
+    """Tempo + ketukan presisi sub-frame lewat pembaca bersama musik.tempo (dulu algoritma ini tinggal di sini)."""
     try:
         y = musik_mod._decode(sound)
     except subprocess.CalledProcessError:
         raise Ditolak("sound template tidak bisa dibaca")
-    n = 1 + (len(y) - 2048) // hop if len(y) > 2048 else 0
-    if n < 400:
+    if len(y) < musik_mod.WIN + 400 * musik_mod.HOP_PRESISI:
         raise Ditolak("sound template terlalu pendek untuk dibaca ketukannya")
-    win = np.hanning(2048).astype(np.float32)
-    fr = np.lib.stride_tricks.as_strided(y, shape=(n, 2048), strides=(y.strides[0] * hop, y.strides[0]))
-    spec = np.abs(np.fft.rfft(fr * win, axis=1))
-    flux = np.maximum(0, np.diff(np.log1p(spec), axis=0)).sum(axis=1)
-    flux = (flux - flux.mean()) / (flux.std() + 1e-9)
-    fps = sr / hop
-    ac = np.correlate(flux, flux, mode="full")[len(flux) - 1:]
-    lo, hi = int(fps * 60 / 170), int(fps * 60 / 70)
-    i = lo + int(np.argmax(ac[lo:hi]))
-    a, b, c = ac[i - 1], ac[i], ac[i + 1]
-    lag = i + (0.5 * (a - c) / (a - 2 * b + c) if (a - 2 * b + c) != 0 else 0.0)
-    # Periode & fase: maksimalkan energi onset (dihaluskan sedikit) tepat di titik grid.
-    k = np.exp(-0.5 * (np.arange(-6, 7) / 2.0) ** 2)
-    hal = np.convolve(np.maximum(flux, 0), k / k.sum(), mode="same")
-    t = np.arange(len(hal))
-
-    def nilai(per, fase):
-        pos = np.arange(fase, len(hal) - 1, per)
-        return float(np.interp(pos, t, hal).sum()) / max(len(pos), 1)
-
-    terbaik = (-1.0, lag, 0.0)
-    for per in np.linspace(lag * 0.985, lag * 1.015, 61):
-        for fase in np.arange(0, per, 1.0):
-            v = nilai(per, fase)
-            if v > terbaik[0]:
-                terbaik = (v, per, fase)
-    _, per, fase = terbaik
-    for fase2 in np.arange(fase - 1, fase + 1, 0.1):  # fase sub-frame
-        if fase2 >= 0:
-            v = nilai(per, fase2)
-            if v > terbaik[0]:
-                terbaik = (v, per, fase2)
-    _, per, fase = terbaik
-    bpm = 60 * fps / per
-    # Puncak flux muncul ±75 ms sebelum serangan bunyi (jendela 2048 + penghalusan); dikalibrasi dengan
-    # klik 100/120/140 BPM di fase 0,10 / 0,25 / 0,37 dtk: sisa selisih <= 3 ms.
-    beats = [float((fase + j * per) / fps + 0.075) for j in range(int((len(flux) - fase) / per) + 1)]
-    if not (70 <= bpm <= 170) or len(beats) < 8:
+    bpm, beats = musik_mod.tempo(y)
+    if bpm is None or not (musik_mod.BPM_MIN <= bpm <= musik_mod.BPM_MAKS) or len(beats) < 8:
         raise Ditolak("ketukan sound template tidak terbaca (sound terlalu pendek atau tanpa ketukan)")
-    return float(bpm), beats
+    return bpm, beats
 
 
 def potongan(items: list[dict], ketukan: list[float]) -> tuple[list[dict], float]:
