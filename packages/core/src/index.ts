@@ -192,3 +192,4 @@ export { CETAKAN, CETAKAN_LABEL, type CetakanId, type Kalimat, type Usulan, kata
 export { DEPAN_FPS, DEPAN_MAX_MS, type DepanSource, depanSource } from './storage/depan.js';
 export { STABIL_LEVELS, STABIL_MAX_S, type StabilLevel, makeStabil, stabilArgs, stabilPath, stabilReady } from './storage/stabil.js';
 export { CHROMA_DEFAULT, CHROMA_LIMITS, CHROMA_PRESETS, type Chroma, chromaAlpha, chromaFilter, validateChroma } from './storage/chroma.js';
+export { readMediaBytes } from './storage/mediaBytes.js';

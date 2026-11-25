@@ -61,7 +61,7 @@ describe('beliapi.com AI gambar', () => {
     expect(await code(generateImageEdit(s, input, fakeBeliapi().fetchImpl, { sleep: noSleep }))).toMatch(/^key:API key beliapi salah/);
     await s.setKey(KEY);
     expect(await code(generateImageEdit(s, input, fakeBeliapi({ statuses: ['failed'], fail: 'safety filter blocked' }).fetchImpl, { sleep: noSleep }))).toMatch(/^ditolak:/);
-    expect(await code(generateImageEdit(s, input, fakeBeliapi({ statuses: ['failed'], fail: 'upstream timeout' }).fetchImpl, { sleep: noSleep }))).toMatch(/^lain:beliapi gagal membuat gambar/);
+    expect(await code(generateImageEdit(s, input, fakeBeliapi({ statuses: ['failed'], fail: 'upstream timeout' }).fetchImpl, { sleep: noSleep }))).toMatch(/^lain:beliapi gagal membuat hasil/);
     expect(await code(generateImageEdit(s, input, fakeBeliapi({ submitStatus: 429 }).fetchImpl, { sleep: noSleep }))).toMatch(/^quota:Antrean beliapi penuh/);
     expect(await code(generateImageEdit(s, { ...input, images: [{ name: 'besar.png', bytes: Buffer.alloc(6 * 1024 * 1024), mime: 'image/png' }] }, fakeBeliapi().fetchImpl, { sleep: noSleep }))).toMatch(/^config:.*5 MB/);
   });

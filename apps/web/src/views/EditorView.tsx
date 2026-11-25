@@ -1,6 +1,7 @@
 import { CopilotPanel } from './CopilotPanel';
 import { KeyframeDiamonds } from './KeyframeDiamonds';
 import { SfxPicker } from './SfxPicker';
+import { VideoAiDialog, jobLabel, useVideoAi } from './VideoAi';
 import { DepanPanel } from './DepanPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
@@ -24,7 +25,7 @@ import { VisualToolsPanel } from './VisualToolsPanel';
 import { voSubtitleOps } from '../../../../packages/core/dist/storage/voText.js';
 import type { VoIndex } from '../api';
 import { freeSlot } from './PresetPanel';
-import { LibraryPanel } from './LibraryPanel';
+import { LibraryPanel, freeOn } from './LibraryPanel';
 import { ProjectMenu } from './ProjectMenu';
 import { CutReviewDialog } from './CutReviewDialog';
 import { VariantsDialog } from './VariantsDialog';
@@ -288,6 +289,22 @@ export function EditorView({
   const [kfMode, setKfMode] = useState(false);
   /** 25 Nov: "＋ SFX" on the timeline toolbar. */
   const [sfxOpen, setSfxOpen] = useState(false);
+  /** 25 Nov: "＋ Video AI" (beliapi OMNI FLASH): a finished clip goes onto the B-roll track, muted. */
+  const [videoAiOpen, setVideoAiOpen] = useState(false);
+  const videoAi = useVideoAi(api, project?.project_id ?? null, async (j) => {
+    const p = projectRef.current;
+    if (!p || !j.hasil || !j.tempat) return;
+    const fresh = await api.media({ scope: 'all' }).catch(() => null);
+    if (fresh) setMedia(fresh);
+    const v = (fresh ?? []).flatMap((m) => m.versions).find((x) => x.version_id === j.hasil!.version_id);
+    const len = Math.max(500, Math.min(v?.probe?.duration_ms ?? 5000, j.tempat.max_ms ?? Infinity));
+    try {
+      await edit([{ op: 'add_clip', track_kind: 'broll', media: j.hasil, start_ms: freeOn(p, 'broll', j.tempat.start_ms, len), duration_ms: len, volume: 0 }]);
+      setNotice(`Video AI selesai dan dipasang di B-roll: "${j.prompt.slice(0, 50)}" (bisa digeser / dihapus, Undo tersedia).`);
+    } catch {
+      setNotice(`Video AI selesai dan ada di Media ("${j.prompt.slice(0, 50)}"), tapi belum bisa dipasang otomatis. Tambahkan dari Media.`);
+    }
+  });
   const kfAble = !!sel && ['video', 'broll', 'text', 'subtitle'].includes(sel.kind); // overlay: keyframes via the panel (it can already be dragged in the preview)
   const saveKeyframeAt = (clipId: string, v: { x: number; y: number; scale: number; opacity: number; rot: number }) => {
     const c = allClips.find((x) => x.clip_id === clipId);
@@ -689,6 +706,17 @@ export function EditorView({
         />
       )}
       {penutupOpen && project && <PenutupDialog api={api} kit={brand?.kit ?? null} onPick={(o) => void addPenutup(o)} onClose={() => setPenutupOpen(false)} onKitSaved={() => setBrandReload((n) => n + 1)} />}
+      {videoAiOpen && project && (
+        <VideoAiDialog
+          media={media.filter((m) => m.scope?.kind !== 'project' || m.scope.project_id === project.project_id)}
+          aset={brand?.library?.aset ?? brand?.kit.aset ?? []}
+          ratio={project.timeline.canvas?.ratio ?? '9:16'}
+          playhead={playhead}
+          jobs={videoAi.jobs}
+          start={videoAi.start}
+          onClose={() => setVideoAiOpen(false)}
+        />
+      )}
       {sfxOpen && project && (
         <SfxPicker
           api={api}
@@ -963,6 +991,7 @@ export function EditorView({
               aset={brand?.library?.aset ?? brand?.kit.aset ?? []}
               selectedClip={sel}
               edit={(ops) => edit(ops)}
+              videoAi={videoAi.start}
             />
           )}
         </div>
@@ -984,6 +1013,9 @@ export function EditorView({
           </button>
           <button className="smallbtn" aria-label="Tambah SFX di playhead" disabled={locked || !project} onClick={() => setSfxOpen(true)} title="Tambah sound effect di playhead: dari Aset brand (cari tag, dengar dulu) atau upload file sendiri">
             ＋ SFX
+          </button>
+          <button className="smallbtn" aria-label="Buat Video AI" disabled={locked || !project} onClick={() => setVideoAiOpen(true)} title={videoAi.active ? `Video AI: ${videoAi.jobs.filter((j) => j.state === 'antre' || j.state === 'membuat').map(jobLabel).join(', ')}` : 'Buat klip video baru dari prompt (OMNI FLASH 1.2 lewat beliapi.com), masuk ke B-roll di playhead'}>
+            {videoAi.active ? '⏳ Video AI' : '＋ Video AI'}
           </button>
           <button className="smallbtn" disabled={locked || !project} onClick={() => setPenutupOpen(true)} title="Tambah video penutup (end card) sesudah klip video terakhir">
             ＋ Penutup

@@ -25,6 +25,7 @@ import { createCopilot } from './copilot.js';
 import { STT_TMP_PREFIX, transcribeRoutes } from './transcribe.js';
 import { cutRoutes } from './cuts.js';
 import { createEngine } from './engine.js';
+import { createVideoAi } from './ai/videoAi.js';
 import { createOutfit } from './outfit.js';
 import { reviewRoutes } from './review.js';
 import { parseRoleLists, roleResolver, teamRoleResolver } from './roles.js';
@@ -134,6 +135,9 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   // §29 Ganti Outfit: the app makes the AI pictures between the engine's siapkan and rakit stages.
   let outfitSettled: (s: EngineStatus) => void = () => undefined;
   const engine = createEngine(ws, { copilot, config: engineCfg, riwayat, proxies, onSettled: (s) => outfitSettled(s), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
+  // 25 Nov: Video AI (beliapi OMNI FLASH) with the AI gambar key.
+  const videoAi = createVideoAi(ws, { imageAi, tmpRoot: renderTmp, onError: (e) => process.stderr.write(`[server] video AI: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}
+`) });
   const outfit = createOutfit(ws, { engine, imageAi, stateDir, devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1', onError: (e) => process.stderr.write(`[server] ganti outfit: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
   outfitSettled = outfit.onSettled;
   void engine.sweepOrphans().catch((e: unknown) => process.stderr.write(`[server] mesin (job yatim): ${String(e)}\n`));
@@ -143,7 +147,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs, proxies), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...imageAiRoutes(imageAi, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...backupRoutes(ws), ...engine.routes, ...outfit.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs, proxies), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...imageAiRoutes(imageAi, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...backupRoutes(ws), ...engine.routes, ...outfit.routes, ...videoAi.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
     roleOf: team ? teamRoleResolver(team.roleOf) : roleResolver(roleLists),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });

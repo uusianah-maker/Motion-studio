@@ -584,3 +584,8 @@ kbd { font-size: 10px; border: 1px solid #ffffff44; border-radius: 4px; padding:
 .cetakanRow select { grid-column: 2 / 4; font-size: 12px; }
 .cetakanRow .cetakanText { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cetakanRow .cetakanWhy { grid-column: 2 / 4; font-size: 11px; }
+/* 25 Nov: Video AI dialog */
+.videoAiPics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; max-height: 160px; overflow: auto; }
+.videoAiJobs { margin-top: 10px; display: flex; flex-direction: column; gap: 3px; }
+.videoAiJob.gagal { color: #ff8a80; }
+.videoAiJob.siap { color: #8ee6a0; }

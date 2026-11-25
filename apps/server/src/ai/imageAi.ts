@@ -305,7 +305,7 @@ export async function generateImageEdit(store: ImageAiStore, input: ImageEditInp
     const msg = typeof body?.error?.message === 'string' ? body.error.message.slice(0, 200) : `HTTP ${r.status}`;
     if (r.status === 401 || r.status === 403) throw new ImageGenError(`API key ditolak penyedia (${msg})`, 'key');
     if (r.status === 429) throw new ImageGenError(`Kuota / batas kecepatan penyedia tercapai (${msg})`, 'quota');
-    if (r.status === 400 && /safety|moderation|policy/i.test(msg)) throw new ImageGenError(`Gambar ditolak aturan penyedia (${msg})`, 'ditolak');
+    if (r.status === 400 && /safety|moderation|policy/i.test(msg)) throw new ImageGenError(`Ditolak aturan penyedia (${msg})`, 'ditolak');
     throw new ImageGenError(`Penyedia AI gambar gagal: ${msg}`, 'lain');
   }
   const b64 = body?.data?.[0]?.b64_json;
@@ -324,27 +324,37 @@ export function ratioOf(size: string): '16:9' | '9:16' | '1:1' {
 const BELIAPI_MAX_IMAGE = 5 * 1024 * 1024;
 const BELIAPI_MAX_WAIT_MS = 15 * 60_000;
 
+/** One beliapi task: what to send + how long to wait. */
+export interface BeliapiJob {
+  body: Record<string, unknown>;
+  /** e.g. "Model omni-1.2" for messages. */
+  what: string;
+  maxWaitMs: number;
+  signal?: AbortSignal;
+  sleep?: (ms: number) => Promise<void>;
+  /** Called with each status the task reports (queued, processing, …). */
+  onStatus?: (status: string) => void;
+}
+
 /**
- * beliapi.com (docs 25 Nov): POST /v1/generations {model, prompt, ratio, images[≤4 data URI, ≤5 MB]}
- * → 202 {id}; GET /v1/tasks/{id} every 5 s (queued → ready → submitting → processing → completed |
- * failed; 429 = wait 15 s); GET output_url (a path on the same host) → the picture. An
- * Idempotency-Key makes a retried submit never start a second (paid / queued) task.
+ * beliapi.com (docs 25 Nov): POST /v1/generations → 202 {id}; GET /v1/tasks/{id} every 5 s (queued →
+ * ready → submitting → processing → completed | failed; 429 = wait 15 s); GET output_url (a path on
+ * the same host) → the file. An Idempotency-Key makes a retried submit never start a second task.
+ * Shared by pictures (Nano Banana) and videos (OMNI FLASH).
  */
-async function beliapiEdit(key: string, base: string, model: string, input: ImageEditInput, fetchImpl: typeof fetch, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<{ bytes: Buffer; model: string }> {
+export async function beliapiTask(key: string, base: string, job: BeliapiJob, fetchImpl: typeof fetch = fetch): Promise<Buffer> {
+  const sleep = job.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const auth = { authorization: `Bearer ${key}` };
-  const images = input.images.slice(0, 4);
-  for (const im of images) if (im.bytes.length > BELIAPI_MAX_IMAGE) throw new ImageGenError(`Gambar referensi "${im.name}" lebih dari 5 MB (batas beliapi)`, 'config');
-  const prompt = input.prompt.slice(0, 4400);
   const fail = (status: number, msg: string): never => {
     if (status === 401) throw new ImageGenError(`API key beliapi salah atau sudah dicabut (${msg})`, 'key');
-    if (status === 403) throw new ImageGenError(`Model ${model} tidak aktif untuk akun / API key beliapi ini (${msg})`, 'key');
+    if (status === 403) throw new ImageGenError(`${job.what} tidak aktif untuk akun / API key beliapi ini (${msg})`, 'key');
     if (status === 429) throw new ImageGenError(`Antrean beliapi penuh atau batas request/menit tercapai (${msg})`, 'quota');
     if (status === 413 || status === 422) throw new ImageGenError(`beliapi menolak isi permintaan (${msg})`, 'lain');
     throw new ImageGenError(`beliapi gagal: ${msg}`, 'lain');
   };
   const call = async (url: string, init: RequestInit, timeout: number) => {
     try {
-      return await fetchImpl(url, { ...init, signal: input.signal ?? AbortSignal.timeout(timeout) });
+      return await fetchImpl(url, { ...init, signal: job.signal ?? AbortSignal.timeout(timeout) });
     } catch (e) {
       throw new ImageGenError(`Tidak bisa menghubungi beliapi.com (${e instanceof Error ? e.name : 'error'})`, 'jaringan');
     }
@@ -355,20 +365,21 @@ async function beliapiEdit(key: string, base: string, model: string, input: Imag
     return m.slice(0, 200);
   };
   const idem = randomBytes(16).toString('hex');
-  const body = JSON.stringify({ model, prompt, ratio: ratioOf(input.size), ...(images.length ? { images: images.map((im) => `data:${im.mime};base64,${im.bytes.toString('base64')}`) } : {}) });
+  const body = JSON.stringify(job.body);
   let sub: Response | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
-    sub = await call(`${base}/v1/generations`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json', 'idempotency-key': idem }, body }, 60_000);
+    sub = await call(`${base}/v1/generations`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json', 'idempotency-key': idem }, body }, 120_000);
     if (sub.status !== 429) break;
     await sleep(15_000 * (attempt + 1));
   }
   if (!sub!.ok) fail(sub!.status, await msgOf(sub!));
   const id = ((await sub!.json().catch(() => null)) as { id?: unknown } | null)?.id;
   if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(id)) throw new ImageGenError('beliapi tidak mengirim ID task', 'lain');
+  job.onStatus?.('queued');
   const started = Date.now();
   let task: { status?: unknown; output_url?: unknown; error?: unknown } = {};
   for (;;) {
-    if (Date.now() - started > BELIAPI_MAX_WAIT_MS) throw new ImageGenError('beliapi belum selesai setelah 15 menit (task masih di antrean)', 'lain');
+    if (Date.now() - started > job.maxWaitMs) throw new ImageGenError(`beliapi belum selesai setelah ${Math.round(job.maxWaitMs / 60_000)} menit (task masih di antrean)`, 'lain');
     await sleep(5_000);
     const r = await call(`${base}/v1/tasks/${encodeURIComponent(id)}`, { headers: auth }, 30_000);
     if (r.status === 429) {
@@ -377,18 +388,28 @@ async function beliapiEdit(key: string, base: string, model: string, input: Imag
     }
     if (!r.ok) fail(r.status, await msgOf(r));
     task = ((await r.json().catch(() => null)) as typeof task | null) ?? {};
+    if (typeof task.status === 'string') job.onStatus?.(task.status);
     if (task.status === 'completed' || task.status === 'failed') break;
   }
   if (task.status === 'failed') {
     const why = typeof task.error === 'string' ? task.error : typeof (task.error as { message?: unknown })?.message === 'string' ? (task.error as { message: string }).message : 'tanpa alasan';
-    throw new ImageGenError(/safety|moderation|policy|nsfw|blocked/i.test(why) ? `Gambar ditolak aturan penyedia (${why.slice(0, 160)})` : `beliapi gagal membuat gambar (${why.slice(0, 160)})`, /safety|moderation|policy|nsfw|blocked/i.test(why) ? 'ditolak' : 'lain');
+    const refused = /safety|moderation|policy|nsfw|blocked/i.test(why);
+    throw new ImageGenError(refused ? `Ditolak aturan penyedia (${why.slice(0, 160)})` : `beliapi gagal membuat hasil (${why.slice(0, 160)})`, refused ? 'ditolak' : 'lain');
   }
   // The output is a path on beliapi itself; never send the key to another host.
   const out = typeof task.output_url === 'string' ? task.output_url : `/v1/tasks/${id}/output`;
   if (!out.startsWith('/v1/') && !out.startsWith(`${base}/v1/`)) throw new ImageGenError('Alamat hasil beliapi tidak dikenal', 'lain');
-  const r = await call(out.startsWith('/') ? `${base}${out}` : out, { headers: auth }, 120_000);
+  const r = await call(out.startsWith('/') ? `${base}${out}` : out, { headers: auth }, 300_000);
   if (!r.ok) fail(r.status, await msgOf(r));
   const bytes = Buffer.from(await r.arrayBuffer());
   if (bytes.length < 100) throw new ImageGenError('beliapi mengirim hasil kosong', 'lain');
+  return bytes;
+}
+
+async function beliapiEdit(key: string, base: string, model: string, input: ImageEditInput, fetchImpl: typeof fetch, sleep?: (ms: number) => Promise<void>): Promise<{ bytes: Buffer; model: string }> {
+  const images = input.images.slice(0, 4);
+  for (const im of images) if (im.bytes.length > BELIAPI_MAX_IMAGE) throw new ImageGenError(`Gambar referensi "${im.name}" lebih dari 5 MB (batas beliapi)`, 'config');
+  const body = { model, prompt: input.prompt.slice(0, 4400), ratio: ratioOf(input.size), ...(images.length ? { images: images.map((im) => `data:${im.mime};base64,${im.bytes.toString('base64')}`) } : {}) };
+  const bytes = await beliapiTask(key, base, { body, what: `Model ${model}`, maxWaitMs: BELIAPI_MAX_WAIT_MS, ...(input.signal ? { signal: input.signal } : {}), ...(sleep ? { sleep } : {}) }, fetchImpl);
   return { bytes, model };
 }

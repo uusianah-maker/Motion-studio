@@ -24,7 +24,10 @@ export function CopilotPanel({
   aset = [],
   selectedClip = null,
   edit,
+  videoAi,
 }: {
+  /** 25 Nov: start a Video AI job (B-roll AI from a sentence). */
+  videoAi?: (b: Parameters<Api['videoAiStart']>[1]) => Promise<void>;
   media?: readonly Media[];
   aset?: readonly BrandAsset[];
   selectedClip?: Clip | null;
@@ -153,7 +156,7 @@ export function CopilotPanel({
           {mode === 'local' ? 'Lokal · tanpa AI' : mode === 'auto' ? 'Otomatis · AI jika perlu' : 'AI'}
         </span>
       </div>
-      {edit && <CetakanPanel api={api} project={project} media={media} aset={aset} selectedClip={selectedClip} playheadMs={playheadMs} busy={busy} edit={edit} />}
+      {edit && <CetakanPanel api={api} project={project} media={media} aset={aset} selectedClip={selectedClip} playheadMs={playheadMs} busy={busy} edit={edit} {...(videoAi ? { videoAi } : {})} />}
       <textarea
         aria-label="Perintah Copilot"
         placeholder={'Contoh: hook "Diskon 50%" 2 detik; subtitle "Cek keranjang" detik 2-5'}

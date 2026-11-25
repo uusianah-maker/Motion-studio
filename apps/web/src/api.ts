@@ -234,6 +234,22 @@ export interface DepanStatus {
   pesan?: string;
 }
 
+/** 25 Nov: Video AI (beliapi OMNI FLASH 1.2). */
+export interface VideoAiJob {
+  job_id: string;
+  project_id: string;
+  prompt: string;
+  mode: 't2v' | 'sfv' | 'i2v';
+  ratio: '9:16' | '16:9';
+  tempat: { start_ms: number; max_ms: number | null; asal: 'toolbar' | 'cetakan' } | null;
+  state: 'antre' | 'membuat' | 'siap' | 'gagal';
+  status: string | null;
+  hasil: { media_id: string; version_id: string } | null;
+  alasan: string | null;
+  created_at: number;
+  finished_at: number | null;
+}
+
 export interface Clip extends ClipExtras {
   /** Malam 15 Nov: position / scale / opacity keyframes. */
   keyframes?: Keyframe[];
@@ -1260,6 +1276,9 @@ export function createApi(token: string | null, base = '') {
     ttsResult: (id: string, jobId: string) => call<{ tts: TtsView }>('GET', `/api/projects/${encodeURIComponent(id)}/engine/jobs/${encodeURIComponent(jobId)}/tts`).then((r) => r.tts),
     /** R35 Visual Tools (contract §18.10). */
     engineVisual: (id: string, ref: { media_id: string; version_id: string }, visual: Record<string, unknown>) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'visual', ref, visual } }).then((r) => r.job),
+    videoAiStart: (id: string, body: { prompt: string; mode?: VideoAiJob['mode']; ratio?: VideoAiJob['ratio']; media?: { media_id: string; version_id: string }[]; tempat?: VideoAiJob['tempat'] }) =>
+      call<{ job: VideoAiJob }>('POST', `/api/projects/${encodeURIComponent(id)}/video-ai`, { json: body }).then((r) => r.job),
+    videoAiJobs: (id: string) => call<{ jobs: VideoAiJob[] }>('GET', `/api/projects/${encodeURIComponent(id)}/video-ai`).then((r) => r.jobs),
     /** 25 Nov "Cetakan per kalimat": AI re-picks templates + highlight words (null = AI not usable, see alasan). */
     copilotCetakanAi: (id: string, body: { kalimat: string[]; usulan: string[]; connection_id?: string }) =>
       call<{ ai: { pilihan: string[]; sorot: string[]; provider: { connection_id: string; provider: string; model: string }; cost_usd: number } | null; alasan?: string }>('POST', `/api/projects/${encodeURIComponent(id)}/copilot/cetakan-ai`, { json: body }),

@@ -42,7 +42,7 @@ function sfxBy(aset: readonly BrandAsset[], media: readonly Media[], want: RegEx
  * then apply the ticked ones as ordinary clips in ONE edit (one Undo). Quick chips: B-roll at 5 s,
  * highlight important words, zoom + whoosh.
  */
-export function CetakanPanel({ api, project, media, aset, selectedClip, playheadMs, busy, edit }: { api: Api; project: Project; media: readonly Media[]; aset: readonly BrandAsset[]; selectedClip: Clip | null; playheadMs: number; busy: boolean; edit: (ops: EditOp[]) => Promise<void> }) {
+export function CetakanPanel({ api, project, media, aset, selectedClip, playheadMs, busy, edit, videoAi }: { api: Api; project: Project; media: readonly Media[]; aset: readonly BrandAsset[]; selectedClip: Clip | null; playheadMs: number; busy: boolean; edit: (ops: EditOp[]) => Promise<void>; videoAi?: (b: Parameters<Api['videoAiStart']>[1]) => Promise<void> }) {
   const [cakupan, setCakupan] = useState<'semua' | 'klip'>('semua');
   const [model, setModel] = useState<string>('lokal');
   const [conns, setConns] = useState<AiConnection[]>([]);
@@ -194,7 +194,27 @@ export function CetakanPanel({ api, project, media, aset, selectedClip, playhead
                     </option>
                   ))}
                 </select>
-                <span className="muted small cetakanWhy">{r.u.alasan}</span>
+                <span className="muted small cetakanWhy">
+                  {r.u.alasan}
+                  {r.u.cetakan === 'broll' && videoAi && (
+                    <button
+                      className="linkBtn small"
+                      disabled={busy || working}
+                      title="Buat klip B-roll baru dari kalimat ini dengan Video AI (OMNI FLASH 1.2). Otomatis dipasang di waktu kalimat saat selesai."
+                      onClick={() =>
+                        void videoAi({ prompt: `${r.k.teks.replace(/[.!?]+$/, '')}. Video produk fashion untuk iklan, realistis, gerak kamera halus.`, ratio: project.timeline.canvas?.ratio === '16:9' ? '16:9' : '9:16', tempat: { start_ms: r.k.start_ms, max_ms: Math.max(1000, r.k.end_ms - r.k.start_ms), asal: 'cetakan' } }).then(
+                          () => {
+                            setRows(rows.map((x, j) => (j === i ? { ...x, on: false } : x)));
+                            setNote(`B-roll AI untuk kalimat ${i + 1} sedang dibuat (bergiliran). Otomatis dipasang di ${formatDuration(r.k.start_ms)} saat selesai.`);
+                          },
+                          (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+                        )
+                      }
+                    >
+                      {' '}✨ Buat B-roll AI
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
           </div>
