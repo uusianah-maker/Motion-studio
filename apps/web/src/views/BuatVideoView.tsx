@@ -3,7 +3,7 @@
  * and WHAT to prepare; opening a card shows that feature's page inside "Buat video" (tab bar on top),
  * and every draft ends with "Buka di Edit".
  */
-export type BuatFitur = 'generate' | 'batch' | 'beatspot' | 'transfer' | 'suara';
+export type BuatFitur = 'generate' | 'batch' | 'beatspot' | 'outfit' | 'transfer' | 'suara';
 
 export const FITUR: { id: BuatFitur; nama: string; sym: string; kapan: string; bahan: string[]; hasil: string }[] = [
   {
@@ -29,6 +29,14 @@ export const FITUR: { id: BuatFitur; nama: string; sym: string; kapan: string; b
     kapan: 'Video awareness: orang-orang memakai produk (mis. di mall) dipotong tepat di ketukan sound.',
     bahan: ['Beberapa footage orang memakai produk', 'Sound tim (opsional; tanpa sound pakai BPM)', 'Logo + end card di Brand Kit'],
     hasil: 'Potongan di ketukan → Edit → render → Hasil.',
+  },
+  {
+    id: 'outfit',
+    nama: 'Ganti Outfit',
+    sym: '👗',
+    kapan: 'Footage model sendiri jalan → tepat di ketukan berganti ke gambar AI orang yang sama memakai 1 look katalog (atasan + bawahan).',
+    bahan: ['1–5 footage model / kreator sendiri yang jalan', 'Sound template (contoh video / audio)', 'Katalog Produk: foto per warna (atasan & bawahan)', 'API key AI gambar (owner, menu AI)'],
+    hasil: 'Cek sebelum/sesudah → Edit → render → Hasil.',
   },
   {
     id: 'transfer',

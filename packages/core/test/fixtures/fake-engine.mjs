@@ -168,6 +168,69 @@ if (mode === 'transfer') {
   say('selesai', 100, `siap · ${adegan.length} adegan`);
   process.exit(0);
 }
+if (mode === 'outfit') {
+  // §29 Ganti Outfit: siapkan (frames + prompts) → the app makes the pictures → rakit (QC + ops).
+  const o = job.outfit ?? {};
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const od = path.join(out, 'outfit');
+  fs.mkdirSync(od, { recursive: true });
+  if (o.model_sendiri !== true) {
+    fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'ditolak', alasan: 'model sendiri wajib' }));
+    process.exit(2);
+  }
+  const footage = job.sumber.filter((s) => s.kunci !== o.sound);
+  if (o.tahap === 'siapkan') {
+    const kat = JSON.parse(fs.readFileSync(path.join(jobDir, job.katalog), 'utf8'));
+    const item = (jenis) => kat.produk.filter((p) => p.jenis === jenis).flatMap((p) => p.warna.map((w) => ({ id: `${p.id}/${w.id}`, produk: p.id, nama_produk: p.nama, jenis, warna: w.nama, path: w.path })));
+    const atas = item('atasan');
+    const bawah = item('bawahan');
+    const items = footage.map((s, i) => {
+      const fid = s.kunci.slice(8);
+      const pick = (list, k) => (o.look?.[fid]?.[k] !== undefined ? list.find((x) => x.id === o.look[fid][k]) ?? null : list[i % Math.max(list.length, 1)] ?? null);
+      const look = { atasan: pick(atas, 'atasan'), bawahan: pick(bawah, 'bawahan'), dipilih: o.look?.[fid] ? 'tim' : 'otomatis' };
+      fs.copyFileSync(s.path, path.join(od, `${fid}_jalan.mp4`));
+      fs.writeFileSync(path.join(od, `${fid}_frame.png`), PNG);
+      fs.writeFileSync(path.join(od, `${fid}_api.png`), PNG);
+      const acuan = [look.atasan?.path, look.bawahan?.path].filter(Boolean);
+      return { footage: fid, nama: path.basename(s.path), jalan: { ketukan: 4, mulai: 0, orang: 1, kotak: { x: 0.4, y: 0.3, w: 0.2, h: 0.45 } }, target: o.target?.[fid] ?? 'utama', look, prompt: `EDIT image 1. Change ONLY the clothes: ${look.atasan?.warna ?? '-'} + ${look.bawahan?.warna ?? '-'}`, api: { gambar: `outfit/${fid}_api.png`, ukuran: '1024x1536', pad_kiri: 100, lebar_pad: 1280 }, acuan_katalog: acuan, klip: `outfit/${fid}_jalan.mp4`, frame: `outfit/${fid}_frame.png`, hasil: `outfit/${fid}_hasil.png` };
+    });
+    const potongan = items.flatMap((it, i) => [{ footage: it.footage, jenis: 'jalan', start_ms: i * 4000, duration_ms: 2000 }, { footage: it.footage, jenis: 'diam', start_ms: i * 4000 + 2000, duration_ms: 2000 }]).concat([{ footage: null, jenis: 'end', start_ms: items.length * 4000, duration_ms: 2000 }]);
+    fs.writeFileSync(path.join(out, 'outfit.json'), JSON.stringify({ schema: 'beatspot-outfit/1', tahap: 'siapkan', status: 'menunggu_gambar', job_id: job.job_id, bpm: 120, sound: o.sound, sound_mulai_detik: 0.5, durasi: items.length * 4 + 2, teks_atas: o.teks_atas ?? null, potongan, items, peringatan: [] }));
+    fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap' }));
+    say('selesai', 100, `${items.length} footage`);
+    process.exit(0);
+  }
+  const s = JSON.parse(fs.readFileSync(path.join(o.siapkan, 'out', 'outfit.json'), 'utf8'));
+  const aset = [];
+  const ops = [{ op: 'set_canvas', ratio: '9:16' }];
+  const items = [];
+  for (const it of s.items) {
+    const h = path.join(o.siapkan, 'out', it.hasil);
+    if (!fs.existsSync(h)) {
+      fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'ditolak', alasan: `gambar AI untuk ${it.nama} belum ada` }));
+      process.exit(2);
+    }
+    fs.copyFileSync(path.join(o.siapkan, 'out', it.klip), path.join(od, `${it.footage}_jalan.mp4`));
+    // A picture that differs per run (import de-duplicates identical files).
+    fs.writeFileSync(path.join(od, `${it.footage}_diam.png`), Buffer.concat([fs.readFileSync(h), Buffer.from(job.job_id)]));
+    // Like the real engine: the still becomes a video clip (the renderer takes pictures on the overlay track only).
+    fs.copyFileSync(path.join(o.siapkan, 'out', it.klip), path.join(od, `${it.footage}_diam.mp4`));
+    aset.push({ kunci: `$outfit:${it.footage}_jalan`, path: `out/outfit/${it.footage}_jalan.mp4` }, { kunci: `$outfit:${it.footage}_diam`, path: `out/outfit/${it.footage}_diam.mp4` });
+    items.push({ ...it, qc: { lulus: true, cek: [{ cek: 'latar_tetap', lulus: true, ket: 'korelasi 1.00' }] } });
+  }
+  fs.writeFileSync(path.join(od, 'end_card.png'), Buffer.concat([PNG, Buffer.from(`end-${job.job_id}`)]));
+  fs.copyFileSync(path.join(o.siapkan, 'out', s.items[0].klip), path.join(od, 'end_card.mp4'));
+  aset.push({ kunci: '$outfit:end_card', path: 'out/outfit/end_card.mp4' });
+  for (const p of s.potongan) ops.push({ op: 'add_clip', track_kind: 'video', media: p.jenis === 'end' ? '$outfit:end_card' : `$outfit:${p.footage}_${p.jenis === 'jalan' ? 'jalan' : 'diam'}`, start_ms: p.start_ms, duration_ms: p.duration_ms, in_ms: 0, ...(p.jenis === 'jalan' ? { volume: 0 } : {}) });
+  const total = s.potongan.at(-1).start_ms + s.potongan.at(-1).duration_ms;
+  // Like the real engine: the music clip never runs past the sound file (test sound: 8 s).
+  ops.push({ op: 'add_clip', track_kind: 'music', media: s.sound, start_ms: 0, duration_ms: Math.min(total, 8000 - 500 - 34), in_ms: 500, volume: 1 });
+  fs.writeFileSync(path.join(out, 'ops.json'), JSON.stringify({ schema: 'ms-ops/1', mode: 'u3', aset_lokal: aset, ops }));
+  fs.writeFileSync(path.join(out, 'outfit.json'), JSON.stringify({ ...s, tahap: 'rakit', status: 'siap', items, qc_lulus: true }));
+  fs.writeFileSync(path.join(out, 'rencana.json'), JSON.stringify({ schema: 'engine-rencana/1', status: 'siap', durasi: { akhir: total / 1000 }, peringatan: [], ragu: [], menunggu_u3: [] }));
+  say('selesai', 100, 'rakit');
+  process.exit(0);
+}
 if (mode === 'beatspot') {
   // Beat Spot tahap 1 (contract §16): cuts on the beat, the team's order / exclusions / people kept.
   const bs = job.beatspot ?? {};

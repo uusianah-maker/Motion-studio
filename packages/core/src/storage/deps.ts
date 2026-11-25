@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { brandFiles, brandReferences, listBrands } from './brand.js';
+import { katalogFiles, katalogReferences } from './katalog.js';
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { audit } from './audit.js';
@@ -171,7 +172,7 @@ export async function releaseOrphanLeases(ws: Workspace, opts: { selfPid?: numbe
 export type Holder =
   | { kind: 'project'; project_id: string; status: 'active' | 'archived'; source: 'timeline' | 'snapshot' | 'undo'; detail: string }
   | { kind: 'lease'; lease_id: string; job: JobKind; status: LeaseStatus }
-  | { kind: 'brand'; brand_id: string; slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro' | 'aset' };
+  | { kind: 'brand'; brand_id: string; slot: 'font' | 'font_caption' | 'logo' | 'logo_light' | 'outro' | 'aset' | 'katalog' };
 
 export interface DependencyIndex {
   schema_version: 1;
@@ -198,6 +199,11 @@ async function inputsFingerprint(ws: Workspace, projectIds: string[]): Promise<s
   h.update(await fsp.readFile(metaPath(ws, META_FILES.brand)).catch((e: NodeJS.ErrnoException) => (e.code === 'ENOENT' ? Buffer.from('none') : Promise.reject(e))));
   for (const f of await brandFiles(ws)) {
     h.update(`brand:${path.basename(f)}\n`);
+    h.update(await fsp.readFile(f));
+  }
+  // §29: foto Katalog Produk dirujuk seperti aset Brand Kit.
+  for (const f of await katalogFiles(ws)) {
+    h.update(`katalog:${path.basename(f)}\n`);
     h.update(await fsp.readFile(f));
   }
   return h.digest('hex');
@@ -255,6 +261,14 @@ export async function buildIndex(ws: Workspace): Promise<IndexResult> {
     }
   } catch (e) {
     errors.push(`Brand Kit: ${isStorageError(e) ? e.message : String(e)}`);
+  }
+  try {
+    for (const k of await katalogReferences(ws)) {
+      checkRef(k.ref, `Katalog Produk (${k.detail})`);
+      add(k.ref.version_id, { kind: 'brand', brand_id: k.brand_id, slot: 'katalog' });
+    }
+  } catch (e) {
+    errors.push(`Katalog Produk: ${isStorageError(e) ? e.message : String(e)}`);
   }
   for (const l of leases.leases) {
     for (const r of l.media) {

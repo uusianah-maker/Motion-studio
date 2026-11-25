@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, createApp } from './app.js';
 import { type GoogleAuth, createGoogleAuth, parseAllowlist } from './auth.js';
-import { type CycleResult, RENDER_TMP_PREFIX, type RecoveryReport, engineConfigFromEnv, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
+import { type CycleResult, type EngineStatus, RENDER_TMP_PREFIX, type RecoveryReport, engineConfigFromEnv, openWorkspace, recoverOnStartup, releaseOrphanLeases } from './core.js';
 import { openSpendGate } from './ai/budget.js';
 import { createAiPlanner } from './ai/planner.js';
 import { createRouter } from './ai/router.js';
@@ -25,6 +25,7 @@ import { createCopilot } from './copilot.js';
 import { STT_TMP_PREFIX, transcribeRoutes } from './transcribe.js';
 import { cutRoutes } from './cuts.js';
 import { createEngine } from './engine.js';
+import { createOutfit } from './outfit.js';
 import { reviewRoutes } from './review.js';
 import { parseRoleLists, roleResolver, teamRoleResolver } from './roles.js';
 import { type TeamStore, envMembers, openTeamStore, teamRoutes } from './team.js';
@@ -130,7 +131,11 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
   }
   // R14/R25b: one background proxy maker shared by uploads and the engine (one FFmpeg at a time).
   const proxies = createProxyQueue({ onError: (e) => process.stderr.write(`[server] pratinjau ringan: ${e instanceof Error ? e.message : String(e)}\n`) });
-  const engine = createEngine(ws, { copilot, config: engineCfg, riwayat, proxies, onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
+  // §29 Ganti Outfit: the app makes the AI pictures between the engine's siapkan and rakit stages.
+  let outfitSettled: (s: EngineStatus) => void = () => undefined;
+  const engine = createEngine(ws, { copilot, config: engineCfg, riwayat, proxies, onSettled: (s) => outfitSettled(s), onError: (e) => process.stderr.write(`[server] mesin: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
+  const outfit = createOutfit(ws, { engine, imageAi, stateDir, devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1', onError: (e) => process.stderr.write(`[server] ganti outfit: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`) });
+  outfitSettled = outfit.onSettled;
   void engine.sweepOrphans().catch((e: unknown) => process.stderr.write(`[server] mesin (job yatim): ${String(e)}\n`));
   const app = createApp({
     ws,
@@ -138,7 +143,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     ...(publicUrl && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(publicUrl) ? { publicOrigin: publicUrl } : {}),
     ...(existsSync(path.join(webDir, 'index.html')) ? { staticDir: webDir } : {}),
     ...(devOrigin ? { allowedOrigins: [devOrigin] } : {}),
-    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs, proxies), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...imageAiRoutes(imageAi, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...backupRoutes(ws), ...engine.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
+    routes: [...apiRoutes({ tmpDir: uploadTmp }, createStreamSigner(), jobs, proxies), ...copilot.routes, ...aiRoutes(ws, aiStore, ledger, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...imageAiRoutes(imageAi, fetch, { devEndpoints: env.MOTION_AI_DEV_ENDPOINTS === '1' }), ...transcribeRoutes(ws, { router: aiRouter, copilot, tmpRoot: renderTmp }), ...cutRoutes(ws, { copilot }), ...reviewRoutes(ws), ...backupRoutes(ws), ...engine.routes, ...outfit.routes, ...(team ? teamRoutes(ws, team, { onRemoved: (email) => auth?.revokeEmail(email) }) : [])],
     roleOf: team ? teamRoleResolver(team.roleOf) : roleResolver(roleLists),
     onError: (e) => process.stderr.write(`[server] ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`),
   });
@@ -162,6 +167,7 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     bound = await app.listen(port);
   } catch (e) {
     scheduler?.stop();
+    await outfit.stop();
     await engine.stopAll();
     await jobs.stopAll();
     throw e;
@@ -192,7 +198,8 @@ export async function start(env: NodeJS.ProcessEnv = process.env, out: (s: strin
     stateDir,
     async stop() {
       scheduler?.stop();
-      await engine.stopAll();
+      await outfit.stop();
+    await engine.stopAll();
       await jobs.stopAll();
       await app.close();
     },

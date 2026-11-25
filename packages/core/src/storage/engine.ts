@@ -13,6 +13,7 @@
  * Exit codes: 0 done · 2 refused (reason in rencana.json) · 1 technical failure (may retry).
  * While the engine runs, a lease pins the source versions so Auto Trash never moves them.
  */
+import { katalogUntukMesin } from './katalog.js';
 import { execFile, spawn } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -83,7 +84,7 @@ export function engineConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Engin
   };
 }
 
-export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual' | 'suara_profil';
+export type EngineMode = 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'outfit' | 'tts' | 'visual' | 'suara_profil';
 export type EngineState = 'menunggu' | 'berjalan' | 'siap' | 'ditolak' | 'gagal';
 
 export interface EngineStatus {
@@ -117,7 +118,7 @@ export interface EngineBrief {
 
 export interface EngineJobInput {
   project_id: string;
-  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual' | 'suara_profil';
+  mode: 'generate' | 'batch' | 'pisah' | 'transfer' | 'beatspot' | 'outfit' | 'tts' | 'visual' | 'suara_profil';
   /** `$sumber` (one video) or `$sumber:<id>` (several). */
   sources: { kunci: string; ref: MediaRef }[];
   preset: string;
@@ -140,6 +141,8 @@ export interface EngineJobInput {
   audio_pilihan?: AudioPilihan;
   /** Beat Spot (contract §16): written to job.json as the `beatspot` object. */
   beatspot?: BeatspotSettings;
+  /** §29 Beat Spot Ganti Outfit: written to job.json as `outfit` (+ `katalog.json` for tahap siapkan). */
+  outfit?: OutfitSettings;
   /** R34 Suara dari Teks (contract §21): written to job.json as the `tts` object. */
   tts?: TtsSettings;
   /** R35 Visual Tools (contract §18.10): `{alat, …}`; job.json gets `masuk` = the source path. */
@@ -326,6 +329,7 @@ export function validateEngineJob(x: unknown): EngineJobInput {
   if (o.mode === 'pisah') return validatePisahJob(o);
   if (o.mode === 'transfer') return validateTransferJob(o);
   if (o.mode === 'beatspot') return validateBeatspotJob(o);
+  if (o.mode === 'outfit') return validateOutfitJob(o);
   if (o.mode === 'tts') return validateTtsJob(o);
   if (o.mode === 'visual') return validateVisualJob(o);
   if (o.mode === 'suara_profil') return validateSuaraProfilJob(o);
@@ -536,6 +540,81 @@ function validateBeatspotJob(o: Record<string, unknown>): EngineJobInput {
   };
 }
 
+/** §29 Beat Spot "Ganti Outfit": settings of one stage (siapkan → app makes the AI pictures → rakit). */
+export interface OutfitSettings {
+  tahap: 'siapkan' | 'rakit';
+  /** `$sumber:<id>` of the template sound (beats are read from it). */
+  sound: string;
+  /** K6: AI outfit change only for the brand's own model / creator. Always true here. */
+  model_sendiri: true;
+  teks_atas: string | null;
+  judul_akhir: string | null;
+  sub_akhir: string | null;
+  /** The team's look per footage: `"<produk>/<warna>"` per jenis; absent = automatic. */
+  look: Record<string, { atasan?: string | null; bawahan?: string | null }>;
+  /** Whose clothes change: the main person only, or everyone walking together (default: automatic). */
+  target: Record<string, 'utama' | 'semua'>;
+  seed: number;
+  /** Tahap rakit: the siapkan job of the same project whose pictures are assembled. */
+  siapkan_job?: string;
+}
+export const OUTFIT_MAKS_FOOTAGE = 5;
+const KATALOG_KEY = /^[a-z0-9][a-z0-9_-]{0,39}\/[a-z0-9][a-z0-9_-]{0,39}$/;
+
+export function validateOutfitSettings(x: unknown, keys: string[]): OutfitSettings {
+  const o = (x ?? {}) as Record<string, unknown>;
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) bad('outfit harus objek');
+  const extra = Object.keys(o).filter((k) => !['tahap', 'sound', 'model_sendiri', 'teks_atas', 'judul_akhir', 'sub_akhir', 'look', 'target', 'seed', 'siapkan_job'].includes(k));
+  if (extra.length) bad(`outfit: field tidak dikenal ${extra.join(', ')}`);
+  const tahap = o.tahap === undefined ? 'siapkan' : o.tahap === 'siapkan' || o.tahap === 'rakit' ? o.tahap : bad('outfit.tahap harus siapkan | rakit');
+  if (typeof o.sound !== 'string' || !keys.includes(o.sound)) bad('Sound template wajib dipilih');
+  if (o.model_sendiri !== true) bad('AI ganti pakaian hanya untuk footage model/kreator sendiri: centang "model sendiri"');
+  const opt = (v: unknown, what: string, max: number) => (v === undefined || v === null || v === '' ? null : str(v, what, max) || null);
+  const fids = new Set(keys.filter((k) => k !== o.sound).map((k) => k.slice(8)));
+  function per<T>(v: unknown, what: string, one: (x: unknown, fid: string) => T): Record<string, T> {
+    if (v === undefined) return {};
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) bad(`outfit.${what} harus objek per footage`);
+    const out: Record<string, T> = {};
+    for (const [fid, val] of Object.entries(v as Record<string, unknown>)) {
+      if (!fids.has(fid)) bad(`outfit.${what}: footage ${fid} tidak ada`);
+      out[fid] = one(val, fid);
+    }
+    return out;
+  }
+  const look = per(o.look, 'look', (v, fid) => {
+    const lv = (v ?? {}) as Record<string, unknown>;
+    if (typeof v !== 'object' || v === null || Object.keys(lv).some((k) => k !== 'atasan' && k !== 'bawahan')) bad(`outfit.look.${fid} harus { atasan, bawahan }`);
+    const one = (k: 'atasan' | 'bawahan') =>
+      lv[k] === undefined ? {} : lv[k] === null ? { [k]: null } : typeof lv[k] === 'string' && KATALOG_KEY.test(lv[k] as string) ? { [k]: lv[k] as string } : bad(`outfit.look.${fid}.${k} harus "<produk>/<warna>" atau null`);
+    const r = { ...one('atasan'), ...one('bawahan') } as { atasan?: string | null; bawahan?: string | null };
+    if (r.atasan === null && r.bawahan === null) bad(`outfit.look.${fid}: pilih atasan atau bawahan`);
+    return r;
+  });
+  const target = per(o.target, 'target', (v, fid) => (v === 'utama' || v === 'semua' ? v : bad(`outfit.target.${fid} harus utama | semua`)));
+  const seed = o.seed === undefined ? 1 : Number.isInteger(o.seed) && (o.seed as number) >= 0 && (o.seed as number) < 2 ** 31 ? (o.seed as number) : bad('outfit.seed harus bilangan bulat ≥ 0');
+  const siapkan_job = tahap === 'rakit' ? (isJobId(o.siapkan_job) ? (o.siapkan_job as string) : bad('outfit.siapkan_job wajib untuk tahap rakit')) : undefined;
+  return { tahap, sound: o.sound as string, model_sendiri: true, teks_atas: opt(o.teks_atas, 'teks_atas', 120), judul_akhir: opt(o.judul_akhir, 'judul_akhir', 60), sub_akhir: opt(o.sub_akhir, 'sub_akhir', 90), look, target, seed, ...(siapkan_job ? { siapkan_job } : {}) };
+}
+
+/** `engine outfit` (contract §29): 1–5 footage of the brand's own model + the template sound. */
+function validateOutfitJob(o: Record<string, unknown>): EngineJobInput {
+  const extra = Object.keys(o).filter((k) => !['project_id', 'mode', 'sources', 'outfit'].includes(k));
+  if (extra.length) bad(`field tidak dikenal: ${extra.join(', ')}`);
+  if (!isSafeId(o.project_id)) bad('project_id tidak valid');
+  if (!Array.isArray(o.sources) || o.sources.length < 2 || o.sources.length > OUTFIT_MAKS_FOOTAGE + 1) bad(`Ganti Outfit butuh 1–${OUTFIT_MAKS_FOOTAGE} footage + 1 sound template`);
+  const sources = (o.sources as unknown[]).map((s, i) => {
+    const so = (s ?? {}) as Record<string, unknown>;
+    const r = (so.ref ?? {}) as Record<string, unknown>;
+    if (typeof so.kunci !== 'string' || !PISAH_SRC.test(so.kunci)) bad(`sources[${i}].kunci harus $sumber:<id>`);
+    if (!isSafeId(r.media_id) || !isSafeId(r.version_id)) bad(`sources[${i}].ref tidak valid`);
+    return { kunci: so.kunci as string, ref: { media_id: r.media_id as string, version_id: r.version_id as string } };
+  });
+  if (new Set(sources.map((s) => s.kunci.toLowerCase())).size !== sources.length) bad('id sumber harus unik');
+  if (new Set(sources.map((s) => s.ref.version_id)).size !== sources.length) bad('file yang sama dipilih dua kali');
+  const outfit = validateOutfitSettings(o.outfit ?? {}, sources.map((s) => s.kunci));
+  return { project_id: o.project_id as string, mode: 'outfit', sources, preset: 'beatspot', brief: { produk: '', varian: '', harga: '', placement: 'tiktok', catatan: '' }, ai: false, outfit };
+}
+
 // ------------------------------------------------------------------ job folder
 
 export const engineRel = (projectId: string, jobId?: string) => `${projectRel(projectId)}/${ENGINE_DIR}${jobId ? `/${jobId}` : ''}`;
@@ -719,6 +798,9 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
     } else for (const s of input.sources) sumber.push({ kunci: s.kunci, path: (await localPath(ws, s.ref)).replace(/\\/g, '/') });
     // R37 §22.1: Generate also lists the VO file in `sumber` (the engine validates the index against it).
     if (input.vo && voFiles && input.mode === 'generate') sumber.push({ kunci: `$vo:${input.vo.aset}`, path: (await localPath(ws, voFiles.ref)).replace(/\\/g, '/') });
+    // §29 tahap rakit: the siapkan job (same project, finished) whose pictures are assembled.
+    const outfitSiapkan = input.outfit?.tahap === 'rakit' ? await outfitSiapkanDir(ws, input.project_id, input.outfit.siapkan_job!) : null;
+    if (input.outfit?.tahap === 'siapkan') await writeJsonAtomic(path.join(jdir, 'katalog.json'), await katalogUntukMesin(ws, kit.brand_id, (r) => localPath(ws, r)));
     const brandExport = await exportBrandKit(ws, kit.brand_id, { paths: true });
     await addLearnedKamus(ws, kit, brandExport);
     const penutupRefs: Record<string, MediaRef> = {};
@@ -743,6 +825,12 @@ export async function prepareEngineJob(ws: Workspace, input: EngineJobInput, opt
       ...(input.suara_profil ? { suara_profil: input.suara_profil } : {}),
       ...(input.visual ? { visual: await visualJob(ws, input, sumber[0]?.path) } : {}),
       ...(input.vo ? { vo: { media: `$vo:${input.vo.aset}`, index: 'vo_index.json', suara_footage: input.vo.suara_footage, subtitle: input.vo.subtitle } } : {}),
+      ...(input.outfit
+        ? {
+            ...(input.outfit.tahap === 'siapkan' ? { katalog: 'katalog.json' } : {}),
+            outfit: { ...Object.fromEntries(Object.entries(input.outfit).filter(([k]) => k !== 'siapkan_job')), ...(outfitSiapkan ? { siapkan: outfitSiapkan.replace(/\\/g, '/') } : {}) },
+          }
+        : {}),
       ...(input.beatspot ? { beatspot: Object.fromEntries(Object.entries(input.beatspot).filter(([k, v]) => !((k === 'ketukan_per_potong' && v === 'auto') || (k === 'bpm' && v === null)))) } : {}),
     };
     await writeJsonAtomic(path.join(jdir, 'job.json'), job);
@@ -930,7 +1018,8 @@ export async function runEngineJob(
   // The log tail can hold local paths (D:\...): never shown to the browser as is.
   const tail = scrubPaths(log.trim().split('\n').slice(-3).join(' · ')).slice(0, 300);
   if (code === 0) {
-    const need = mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : mode === 'tts' ? 'tts.json' : mode === 'suara_profil' ? 'suara_profil.json' : alat ? VISUAL_RESULT[alat] : 'ops.json';
+    const outfitTahap = mode === 'outfit' ? ((await readJson<{ outfit?: { tahap?: string } }>(path.join(jdir, 'job.json')))?.outfit?.tahap ?? 'siapkan') : null;
+    const need = outfitTahap ? (outfitTahap === 'siapkan' ? 'outfit.json' : 'ops.json') : mode === 'batch' ? 'batch.json' : mode === 'pisah' ? 'pisah.json' : mode === 'transfer' ? 'transfer.json' : mode === 'tts' ? 'tts.json' : mode === 'suara_profil' ? 'suara_profil.json' : alat ? VISUAL_RESULT[alat] : 'ops.json';
     const okFiles = await fsp.stat(path.join(jdir, 'out', need)).catch(() => null);
     s = okFiles
       ? { ...s, state: 'siap', tahap: 'selesai', persen: 100, ...(rencana?.status === 'perlu_keputusan' ? { pesan: 'Perlu keputusan tim (lihat kartu rencana)' } : {}) }
@@ -1029,6 +1118,24 @@ async function assertJobOutPath(jdir: string, p: string): Promise<string> {
   return real;
 }
 
+/** §29: a Ganti Outfit file of THIS job (`out/outfit/*.mp4|png`, no symlink out of it). */
+async function assertJobOutfitPath(jdir: string, p: string): Promise<string> {
+  const out = await fsp.realpath(path.join(jdir, 'out', 'outfit')).catch(() => null);
+  const real = await fsp.realpath(path.resolve(jdir, p)).catch(() => null);
+  if (!out || !real || !isInside(out, real) || !/\.(mp4|png)$/i.test(real)) throw new StorageError('PRECONDITION', 'File Ganti Outfit harus di folder out/outfit job ini', { path: path.basename(p) });
+  return real;
+}
+
+/** §29: folder of a finished Ganti Outfit siapkan job of the same project. */
+export async function outfitSiapkanDir(ws: Workspace, projectId: string, jobId: string): Promise<string> {
+  const s = await readEngineStatus(ws, projectId, jobId);
+  if (s.mode !== 'outfit' || s.state !== 'siap') bad('Job siapkan Ganti Outfit belum selesai');
+  const dir = jobAbs(ws, projectId, jobId);
+  const doc = await readJson<{ schema?: string; tahap?: string }>(path.join(dir, 'out', 'outfit.json'));
+  if (doc?.schema !== 'beatspot-outfit/1' || doc.tahap !== 'siapkan') bad('Job itu bukan tahap siapkan Ganti Outfit');
+  return dir;
+}
+
 /** A file inside the workspace (job out/) is imported through a temp copy, like Visual Tools results. */
 async function importJobFile(ws: Workspace, abs: string, scope: Parameters<typeof importMedia>[1]['scope'], display_name: string) {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'msc-gabung-'));
@@ -1086,8 +1193,10 @@ export async function loadEnginePlan(ws: Workspace, cfg: EngineConfig | null, pr
     if (refs[f.kunci]) continue;
     // §26: the joined footage is the one file the engine writes in the job's own out/ folder.
     const gab = f.kunci === KUNCI_GABUNGAN && !shared;
-    const abs = gab ? await assertJobOutPath(jdir, f.path) : await assertEnginePath(cfg, f.path);
-    const r = gab ? await importJobFile(ws, abs, scope, 'Footage gabungan.mp4') : await importMedia(ws, { sourcePath: abs, scope, display_name: `${f.kunci.slice(1).replace(/:/g, '-')}${path.extname(abs)}`, actor: 'user' });
+    // §29: Ganti Outfit clips / pictures / end card live in this job's out/outfit/.
+    const outf = /^\$outfit:[A-Za-z0-9_.-]{1,60}$/.test(f.kunci) && !shared;
+    const abs = gab ? await assertJobOutPath(jdir, f.path) : outf ? await assertJobOutfitPath(jdir, f.path) : await assertEnginePath(cfg, f.path);
+    const r = gab ? await importJobFile(ws, abs, scope, 'Footage gabungan.mp4') : outf ? await importJobFile(ws, abs, scope, `${f.kunci.slice(8)}${path.extname(abs)}`) : await importMedia(ws, { sourcePath: abs, scope, display_name: `${f.kunci.slice(1).replace(/:/g, '-')}${path.extname(abs)}`, actor: 'user' });
     refs[f.kunci] = { media_id: r.media.media_id, version_id: r.version.version_id };
     imported.push(f.kunci);
   }

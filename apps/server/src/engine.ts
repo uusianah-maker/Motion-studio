@@ -67,7 +67,7 @@ export function engineRoutes(ws: Workspace, opts: { copilot: Copilot; config: En
  * engine (and its Whisper / FFmpeg children) and waits for it, so no Python outlives the server
  * and a restarted server never finds a live job it would settle as an orphan (audit Jenius #2).
  */
-export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal; proxies?: ProxyQueue }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number> } {
+export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: EngineConfig | null; onError?: (e: unknown) => void; riwayat?: RiwayatSignal; proxies?: ProxyQueue; onSettled?: (s: EngineStatus) => void }): { routes: Route[]; stopAll: () => Promise<void>; sweepOrphans: () => Promise<number>; enqueue: (projectId: string, prepare: () => Promise<EngineStatus>) => Promise<EngineStatus>; isActive: (projectId: string, jobId: string) => boolean } {
   const queue: { project_id: string; job_id: string; mode: EngineMode }[] = [];
   let voices: { at: number; list: TtsOptions } | null = null;
   const active = new Map<string, AbortController>();
@@ -107,7 +107,8 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
     const ac = new AbortController();
     active.set(key(next.project_id, next.job_id), ac);
     current = runEngineJob(ws, opts.config, next.project_id, next.job_id, { mode: next.mode, signal: ac.signal })
-      .then(() => undefined)
+      // §29: Ganti Outfit continues in the app (pictures, then the rakit job) when a stage ends.
+      .then((s) => opts.onSettled?.(s))
       .catch((e: unknown) => opts.onError?.(e))
       .finally(() => {
         active.delete(key(next.project_id, next.job_id));
@@ -377,7 +378,7 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
         const out = await opts.copilot.propose({
           project_id: params.project_id!,
           source: 'engine',
-          prompt: `Draf ${s.mode === 'batch' ? 'Batch Remix' : s.mode === 'beatspot' ? 'Beat Spot' : 'Generate Otomatis'} ${job}${variant ? ` ${variant}` : ''}`,
+          prompt: `Draf ${s.mode === 'batch' ? 'Batch Remix' : s.mode === 'beatspot' ? 'Beat Spot' : s.mode === 'outfit' ? 'Beat Spot Ganti Outfit' : 'Generate Otomatis'} ${job}${variant ? ` ${variant}` : ''}`,
           ops: p.ops,
           rationale: `${hook}${dur}. Disusun mesin; render ditahan sampai disetujui.`,
           warnings,
@@ -491,5 +492,6 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
       },
     },
   ];
-  return { routes, stopAll, sweepOrphans };
+  const isActive = (p: string, j: string) => active.has(key(p, j)) || queue.some((q) => q.project_id === p && q.job_id === j);
+  return { routes, stopAll, sweepOrphans, enqueue, isActive };
 }

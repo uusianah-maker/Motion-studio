@@ -15,7 +15,7 @@ import { AudioPilihanSelect } from './PresetGaya';
  * ONE undo step → render + QC in the Editor. Nothing is rendered here, nothing applies by itself.
  */
 export const ENGINE_STATE: Record<EngineJob['state'], string> = { menunggu: 'Antre', berjalan: 'Berjalan', siap: 'Rencana siap', ditolak: 'Ditolak mesin', gagal: 'Gagal' };
-const TAHAP: Record<string, string> = { antre: 'Menunggu giliran', mulai: 'Memulai mesin', cek_input: 'Cek video', gabung: 'Menggabung footage', transkrip: 'Transkrip (Whisper)', rencana: 'Menyusun rencana', pisah: 'Memisah audio (Demucs)', shot_library: 'Menyusun Shot Library', adegan: 'Mencari adegan', gambar: 'Mengambil gambar adegan', ketukan: 'Membaca ketukan', shot: 'Memotong footage per orang', susun: 'Menyusun potongan', tulis: 'Menulis hasil', selesai: 'Selesai' };
+const TAHAP: Record<string, string> = { antre: 'Menunggu giliran', mulai: 'Memulai mesin', cek_input: 'Cek video', gabung: 'Menggabung footage', transkrip: 'Transkrip (Whisper)', rencana: 'Menyusun rencana', pisah: 'Memisah audio (Demucs)', shot_library: 'Menyusun Shot Library', adegan: 'Mencari adegan', gambar: 'Mengambil gambar adegan', ketukan: 'Membaca ketukan', shot: 'Memotong footage per orang', susun: 'Menyusun potongan', tulis: 'Menulis hasil', orang: 'Mencari orang & crop', klip: 'Membuat klip jalan', qc: 'Memeriksa gambar AI', end_card: 'Membuat end card', selesai: 'Selesai' };
 const sec = (n: number | undefined) => (typeof n === 'number' ? `${n.toFixed(1).replace('.', ',')} dtk` : '–');
 const today = () => new Date().toISOString().slice(0, 10);
 

@@ -392,6 +392,72 @@ export interface RenderOutputFile {
   mtime_ms: number;
 }
 
+/** §29 Katalog Produk per brand. */
+export interface KatalogWarna {
+  id: string;
+  nama: string;
+  ref: { media_id: string; version_id: string };
+}
+export interface KatalogProduk {
+  id: string;
+  nama: string;
+  jenis: 'atasan' | 'bawahan';
+  deskripsi: string;
+  warna: KatalogWarna[];
+}
+export interface Katalog {
+  brand_id: string;
+  revision: number;
+  produk: KatalogProduk[];
+}
+/** §29 Beat Spot Ganti Outfit settings (tahap siapkan is set by the server). */
+export interface OutfitSettingsInput {
+  sound: string;
+  model_sendiri: true;
+  teks_atas?: string | null;
+  judul_akhir?: string | null;
+  sub_akhir?: string | null;
+  look?: Record<string, { atasan?: string | null; bawahan?: string | null }>;
+  target?: Record<string, 'utama' | 'semua'>;
+  seed?: number;
+}
+export interface OutfitLook {
+  id: string;
+  produk: string;
+  nama_produk: string;
+  warna: string;
+}
+export interface OutfitItem {
+  footage: string;
+  nama: string;
+  orang: number;
+  target: 'utama' | 'semua';
+  jalan: { ketukan: number; mulai: number };
+  look: { atasan: OutfitLook | null; bawahan: OutfitLook | null; dipilih: 'tim' | 'otomatis' };
+  gambar: { status: 'menunggu' | 'membuat' | 'siap' | 'gagal'; ulang: number; ulang_sisa: number; alasan: string | null; dipakai_ulang: boolean };
+  qc: { lulus: boolean; cek: { cek: string; lulus: boolean; ket: string }[] } | null;
+}
+export interface OutfitView {
+  job_id: string;
+  siapkan: EngineJob;
+  rakit: EngineJob | null;
+  bpm: number | null;
+  durasi: number | null;
+  teks_atas: string | null;
+  peringatan: string[];
+  items: OutfitItem[];
+  tahap: 'menyiapkan' | 'membuat_gambar' | 'merakit' | 'siap' | 'ditolak' | 'gagal' | 'berhenti';
+  pengaturan: (OutfitSettingsInput & { look: Record<string, { atasan?: string | null; bawahan?: string | null }>; target: Record<string, 'utama' | 'semua'> }) | null;
+}
+export interface ImageAiUsage {
+  bulan: string;
+  gambar: number;
+  biaya: number;
+  batas: number | null;
+  mata_uang: 'IDR' | 'USD';
+  harga_per_gambar: number | null;
+}
+
 /** Halaman Hasil: satu file render beserta proyeknya. */
 /** R12a: AI gambar settings as the browser sees them (no key). */
 export interface ImageAiView {
@@ -399,6 +465,10 @@ export interface ImageAiView {
   endpoint: string | null;
   model: string | null;
   budget: { amount: number | null; currency: 'IDR' | 'USD' };
+  /** §29: estimated price of one picture (same currency as the budget). */
+  harga_per_gambar: number | null;
+  model_terdeteksi: string | null;
+  model_dipakai: string | null;
   key_saved: boolean;
   key_hint: string | null;
   last_test: { at: number; ok: boolean; message: string } | null;
@@ -690,7 +760,7 @@ export interface TtsView {
 export interface EngineJob {
   job_id: string;
   project_id: string;
-  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'tts' | 'visual' | 'suara_profil';
+  mode: 'generate' | 'batch' | 'ulang' | 'pisah' | 'transfer' | 'beatspot' | 'outfit' | 'tts' | 'visual' | 'suara_profil';
   state: EngineState;
   tahap: string;
   persen: number;
@@ -1076,10 +1146,33 @@ export function createApi(token: string | null, base = '') {
     teamRemove: (email: string) => call<{ removed: string; members: TeamMember[] }>('DELETE', '/api/team', { json: { email } }),
     // R12a: AI gambar (Motion Transfer stage 2) — owner only; the key is never returned.
     imageAi: () => call<{ gambar: ImageAiView }>('GET', '/api/ai/gambar').then((r) => r.gambar),
-    saveImageAi: (cfg: { provider: string | null; endpoint?: string | null; model?: string | null; budget?: { amount: number | null; currency: 'IDR' | 'USD' } }) =>
+    saveImageAi: (cfg: { provider: string | null; endpoint?: string | null; model?: string | null; budget?: { amount: number | null; currency: 'IDR' | 'USD' }; harga_per_gambar?: number | null }) =>
       call<{ gambar: ImageAiView }>('POST', '/api/ai/gambar', { json: cfg }).then((r) => r.gambar),
     setImageAiKey: (api_key: string | null) => call<{ gambar: ImageAiView }>('POST', '/api/ai/gambar/key', { json: { api_key } }).then((r) => r.gambar),
     testImageAi: () => call<{ gambar: ImageAiView }>('POST', '/api/ai/gambar/tes', { json: {} }).then((r) => r.gambar),
+    imageAiUsage: () => call<{ pakai: ImageAiUsage }>('GET', '/api/ai/gambar/pakai').then((r) => r.pakai),
+    // §29 Katalog Produk + Beat Spot Ganti Outfit
+    katalog: (brandId: string) => call<{ katalog: Katalog }>('GET', `/api/katalog/${encodeURIComponent(brandId)}`).then((r) => r.katalog),
+    saveKatalog: (brandId: string, produk: KatalogProduk[], expected_revision: number) =>
+      call<{ katalog: Katalog }>('POST', `/api/katalog/${encodeURIComponent(brandId)}`, { json: { produk, expected_revision } }).then((r) => r.katalog),
+    outfitStart: (id: string, sources: { kunci: string; ref: { media_id: string; version_id: string } }[], outfit: OutfitSettingsInput) =>
+      call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/outfit`, { json: { sources, outfit } }).then((r) => r.job),
+    outfit: (id: string, jobId: string) => call<{ outfit: OutfitView; ulang_maks: number }>('GET', `/api/projects/${encodeURIComponent(id)}/outfit/${encodeURIComponent(jobId)}`),
+    outfitUlang: (id: string, jobId: string, footage: string) => call<{ outfit: OutfitView }>('POST', `/api/projects/${encodeURIComponent(id)}/outfit/${encodeURIComponent(jobId)}/ulang`, { json: { footage } }).then((r) => r.outfit),
+    outfitUbah: (id: string, jobId: string, change: { look?: OutfitSettingsInput['look']; target?: OutfitSettingsInput['target']; teks_atas?: string | null; judul_akhir?: string | null; sub_akhir?: string | null }) =>
+      call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/outfit/${encodeURIComponent(jobId)}/ubah`, { json: change }).then((r) => r.job),
+    outfitBerhenti: (id: string, jobId: string) => call<{ outfit: OutfitView }>('POST', `/api/projects/${encodeURIComponent(id)}/outfit/${encodeURIComponent(jobId)}/berhenti`, { json: {} }).then((r) => r.outfit),
+    /** A Ganti Outfit picture as a Blob (frame | hasil | diam | end). */
+    outfitImage: async (id: string, jobId: string, footage: string, jenis: 'frame' | 'hasil' | 'diam' | 'end'): Promise<Blob> => {
+      let res: Response;
+      try {
+        res = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/outfit/${encodeURIComponent(jobId)}/gambar/${encodeURIComponent(footage)}/${jenis}`, { headers: authHeaders(), cache: 'no-store' }); // a picture made again keeps its URL
+      } catch {
+        throw new ApiError(0, 'NETWORK', 'Server tidak bisa dihubungi. Pastikan server masih jalan.');
+      }
+      if (!res.ok) throw new ApiError(res.status, 'NOT_FOUND', 'Gambar tidak bisa dimuat');
+      return res.blob();
+    },
     aiSettings: (patch: Partial<Omit<AiSettings, 'budget'>> & { budget?: Partial<AiSettings['budget']> }) => call<{ settings: AiSettings }>('POST', '/api/ai/settings', { json: patch }).then((r) => r.settings),
     aiUsage: () => call<{ usage: AiUsage }>('GET', '/api/ai/usage').then((r) => r.usage),
     aiLog: () => call<{ entries: AiLogEntry[] }>('GET', '/api/ai/log').then((r) => r.entries),

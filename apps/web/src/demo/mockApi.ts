@@ -616,7 +616,16 @@ export function createDemoApi(): Api {
       team.splice(i, 1);
       return { removed: email, members: clone(team) };
     },
-    imageAi: async () => ({ provider: null, endpoint: null, model: null, budget: { amount: null, currency: 'IDR' as const }, key_saved: false, key_hint: null, last_test: null, providers: [] }),
+    imageAi: async () => ({ provider: null, endpoint: null, model: null, budget: { amount: null, currency: 'IDR' as const }, harga_per_gambar: null, model_terdeteksi: null, model_dipakai: null, key_saved: false, key_hint: null, last_test: null, providers: [] }),
+    imageAiUsage: async () => ({ bulan: '2026-11', gambar: 0, biaya: 0, batas: null, mata_uang: 'IDR' as const, harga_per_gambar: null }),
+    katalog: async (brandId) => ({ brand_id: brandId, revision: 0, produk: [] }),
+    saveKatalog: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
+    outfitStart: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
+    outfit: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
+    outfitUlang: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
+    outfitUbah: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
+    outfitBerhenti: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
+    outfitImage: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
     saveImageAi: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
     setImageAiKey: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),
     testImageAi: async () => fail(409, 'DEMO', 'Tidak tersedia di demo browser'),

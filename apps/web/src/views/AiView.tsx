@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AiCatalogItem, AiConnection, AiLogEntry, AiSettings, AiUsage, Api, Capability, ImageAiView, ProviderId } from '../api';
+import type { AiCatalogItem, AiConnection, AiLogEntry, AiSettings, AiUsage, Api, Capability, ImageAiUsage, ImageAiView, ProviderId } from '../api';
 import { formatDate, parseDecimal } from '../lib';
 import { ErrorNotice } from '../ui';
 
@@ -430,6 +430,8 @@ function ImageAiSection({ api }: { api: Api }) {
   const [model, setModel] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<'IDR' | 'USD'>('IDR');
+  const [harga, setHarga] = useState('');
+  const [pakai, setPakai] = useState<ImageAiUsage | null>(null);
   const [key, setKey] = useState('');
   const [changingKey, setChangingKey] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -442,6 +444,8 @@ function ImageAiSection({ api }: { api: Api }) {
     setModel(g.model ?? '');
     setAmount(g.budget.amount === null ? '' : String(g.budget.amount));
     setCurrency(g.budget.currency);
+    setHarga(g.harga_per_gambar === null ? '' : String(g.harga_per_gambar));
+    void api.imageAiUsage().then(setPakai, () => undefined);
   };
   useEffect(() => {
     void api.imageAi().then(fill, setError);
@@ -464,10 +468,15 @@ function ImageAiSection({ api }: { api: Api }) {
   const p = v?.providers.find((x) => x.id === provider);
   const amountNum = parseDecimal(amount);
   const amountOk = amount.trim() === '' || (amountNum !== null && amountNum >= 0);
+  const hargaNum = parseDecimal(harga);
+  const hargaOk = harga.trim() === '' || (hargaNum !== null && hargaNum >= 0);
+  const uang = (n: number) => (currency === 'IDR' ? `Rp ${Math.round(n).toLocaleString('id-ID')}` : `USD ${n.toFixed(2)}`);
   return (
     <section className="card aiSection" aria-label="AI gambar">
-      <h3>AI gambar (Motion Transfer)</h3>
-      <p className="muted small">Untuk tahap 2 Motion Transfer (ganti produk di gambar). Belum dipakai sekarang; isi kalau akunnya sudah ada. API key disimpan terenkripsi di server dan tidak pernah ditampilkan lagi.</p>
+      <h3>AI gambar (Beat Spot Ganti Outfit)</h3>
+      <p className="muted small">
+        Dipakai Beat Spot <b>Ganti Outfit</b> untuk membuat gambar (1 gambar per footage, OpenAI gpt-image). Cukup tempel API key: penyedia dikenali dari key, model kosong = model gambar terbaru yang terbaca saat Tes koneksi. API key disimpan terenkripsi di server dan tidak pernah ditampilkan lagi.
+      </p>
       <ErrorNotice error={error} />
       {notice && (
         <div className="notice ok small" role="status">
@@ -478,7 +487,7 @@ function ImageAiSection({ api }: { api: Api }) {
         <label>
           Penyedia
           <select aria-label="Penyedia AI gambar" value={provider} disabled={busy} onChange={(e) => setProvider(e.target.value as typeof provider)}>
-            <option value="">— Belum dipilih —</option>
+            <option value="">— Otomatis dari API key —</option>
             {(v?.providers ?? []).map((x) => (
               <option key={x.id} value={x.id}>
                 {x.label}
@@ -494,7 +503,7 @@ function ImageAiSection({ api }: { api: Api }) {
         )}
         <label>
           Model (opsional)
-          <input aria-label="Model AI gambar" value={model} maxLength={100} placeholder={p?.model_hint || ''} onChange={(e) => setModel(e.target.value)} />
+          <input aria-label="Model AI gambar" value={model} maxLength={100} placeholder={v?.model_dipakai ? `otomatis: ${v.model_dipakai}` : p?.model_hint || 'otomatis'} onChange={(e) => setModel(e.target.value)} />
         </label>
         <label>
           Batas biaya per bulan (opsional)
@@ -506,13 +515,23 @@ function ImageAiSection({ api }: { api: Api }) {
             </select>
           </span>
         </label>
+        <label>
+          Perkiraan harga per gambar {amount.trim() ? '(wajib kalau ada batas)' : '(opsional)'}
+          <input aria-label="Perkiraan harga per gambar" inputMode="decimal" value={harga} placeholder={currency === 'IDR' ? 'mis. 3000' : 'mis. 0.2'} onChange={(e) => setHarga(e.target.value)} />
+        </label>
       </div>
+      {pakai && (
+        <p className="small muted" aria-label="Pemakaian AI gambar">
+          Bulan ini ({pakai.bulan}): {pakai.gambar} gambar{pakai.harga_per_gambar !== null ? ` · perkiraan ${uang(pakai.biaya)}` : ''}
+          {pakai.batas !== null ? ` dari batas ${uang(pakai.batas)}` : ' · tanpa batas'}. Cek tagihan asli di halaman billing penyedia.
+        </p>
+      )}
       <button
         className="btn primary"
-        disabled={busy || !amountOk}
+        disabled={busy || !amountOk || !hargaOk}
         onClick={() =>
           void run(
-            () => api.saveImageAi({ provider: provider || null, endpoint: p?.needs_endpoint ? endpoint.trim() || null : null, model: model.trim() || null, budget: { amount: amount.trim() ? amountNum : null, currency } }),
+            () => api.saveImageAi({ provider: provider || null, endpoint: p?.needs_endpoint ? endpoint.trim() || null : null, model: model.trim() || null, budget: { amount: amount.trim() ? amountNum : null, currency }, harga_per_gambar: harga.trim() ? hargaNum : null }),
             'Pengaturan AI gambar disimpan.',
           )
         }
@@ -556,7 +575,7 @@ function ImageAiSection({ api }: { api: Api }) {
             )}
           </>
         )}
-        <button className="btn small" disabled={busy || !v?.key_saved || !v.provider} onClick={() => void run(() => api.testImageAi(), 'Tes selesai.')} title="Hanya membaca daftar model (gratis), tidak membuat gambar">
+        <button className="btn small" disabled={busy || !v?.key_saved} onClick={() => void run(() => api.testImageAi(), 'Tes selesai.')} title="Hanya membaca daftar model (gratis), tidak membuat gambar">
           Tes koneksi
         </button>
         {v?.last_test && <span className={`badge ${v.last_test.ok ? 'ok' : 'bad'}`}>{v.last_test.message}</span>}

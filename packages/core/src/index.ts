@@ -78,6 +78,11 @@ export {
   validateEngineJob,
   type BeatspotSettings,
   validateBeatspotSettings,
+  type OutfitSettings,
+  validateOutfitSettings,
+  outfitSiapkanDir,
+  OUTFIT_MAKS_FOOTAGE,
+  engineJobDir,
   AUDIO_PILIHAN,
   type AudioPilihan,
 } from './storage/engine.js';
@@ -175,6 +180,8 @@ export {
 } from './storage/copilot.js';
 export { type Workspace, type WorkspaceOptions, createProject, initWorkspace, listProjectIds, openWorkspace, readProject } from './storage/workspace.js';
 export { MAX_TRANSFER_SCENES, type TransferScene, type TransferView, editTransfer, readTransferImage, readTransferView } from './storage/transfer.js';
+export { KATALOG_JENIS, KATALOG_LIMITS, type Katalog, type KatalogJenis, type KatalogProduk, type KatalogWarna, katalogId, readKatalog, saveKatalog, validateKatalogInput } from './storage/katalog.js';
+export { type GambarStatus, type OutfitAppState, type OutfitItem, type OutfitView, ULANG_MAKS, isOutfitSiapkan, outfitChangeInput, outfitFingerprint, outfitRakitInput, outfitRequest, readOutfitImage, readOutfitState, readOutfitView, readSiapkanDoc, updateOutfitState } from './storage/outfit.js';
 export { type BeatspotCandidate, type BeatspotCut, type BeatspotView, readBeatspotView, rerunBeatspot } from './storage/beatspot.js';
 export { type BackupLocation, listBackupLocations, registerBackupLocation, verifyBackupLocation } from './storage/backup.js';
 export { PRESET_JENIS, examplePresets } from './storage/brand.js';
