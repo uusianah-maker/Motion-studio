@@ -629,12 +629,16 @@ def siapkan(job_dir: Path, deteksi=deteksi_orang) -> int:
 # ------------------------------------------------------------------ QC & tahap rakit
 
 def kembalikan_ukuran(hasil: Path, keluar: Path, pad_kiri: int, lebar_pad: int) -> tuple[int, int]:
-    """Gambar API (2:3, berapa pun ukurannya) -> 1080x1920: skala ke tinggi 1920 lalu buang bingkai."""
+    """Gambar API -> 1080x1920. Hasil 2:3 (OpenAI: frame + bingkai) -> skala ke tinggi 1920 lalu buang bingkai.
+    Hasil 9:16 (beliapi / Nano Banana: penyedia sudah memotong bingkainya) -> cukup diubah ukurannya."""
     import cv2
     im = cv2.imread(str(hasil), cv2.IMREAD_COLOR)
     if im is None:
         raise Ditolak(f"{hasil.name}: bukan gambar")
     h0, w0 = im.shape[:2]
+    if abs(w0 / h0 - W / H) < 0.03:
+        cv2.imwrite(str(keluar), cv2.resize(im, (W, H), interpolation=cv2.INTER_LANCZOS4))
+        return w0, h0
     lebar = int(round(w0 * H / h0))
     im = cv2.resize(im, (lebar, H), interpolation=cv2.INTER_LANCZOS4)
     kiri = int(round(pad_kiri * lebar / lebar_pad))
@@ -643,6 +647,42 @@ def kembalikan_ukuran(hasil: Path, keluar: Path, pad_kiri: int, lebar_pad: int) 
         im = cv2.resize(im, (W, H), interpolation=cv2.INTER_LANCZOS4)
     cv2.imwrite(str(keluar), im)
     return w0, h0
+
+
+def selaraskan(frame: Path, hasil: Path, kotak: dict | None) -> dict:
+    """Model AI sering menggeser / memperbesar komposisi sedikit (beliapi: skala 0,97, geser 32 px), sehingga
+    sambungan jalan -> diam terlihat loncat. Cocokkan latar (di luar kotak orang) ke frame asli dengan ECC
+    (affine), lalu tulis ulang hasilnya di posisi frame. Gagal / tidak masuk akal -> gambar dibiarkan."""
+    import cv2
+    import numpy as np
+    a = cv2.imread(str(frame))
+    b = cv2.imread(str(hasil))
+    if a is None or b is None or a.shape != b.shape:
+        return {"diselaraskan": False}
+    s = 4
+    ga = cv2.cvtColor(cv2.resize(a, (W // s, H // s), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY).astype(np.float32)
+    gb = cv2.cvtColor(cv2.resize(b, (W // s, H // s), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY).astype(np.float32)
+    m = np.full(ga.shape, 255, np.uint8)
+    if kotak:
+        y0, y1 = int((kotak["y"] - 0.05) * H / s), int((kotak["y"] + kotak["h"] + 0.05) * H / s)
+        x0, x1 = int((kotak["x"] - 0.08) * W / s), int((kotak["x"] + kotak["w"] + 0.08) * W / s)
+        m[max(y0, 0):max(y1, 0), max(x0, 0):max(x1, 0)] = 0
+    w = np.eye(2, 3, dtype=np.float32)
+    try:
+        cc, w = cv2.findTransformECC(ga, gb, w, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 200, 1e-6), m, 5)
+    except cv2.error:
+        return {"diselaraskan": False}
+    skala = (float(w[0, 0]), float(w[1, 1]))
+    geser = (float(w[0, 2]) * s, float(w[1, 2]) * s)
+    if cc < 0.6 or not all(0.85 < k < 1.15 for k in skala) or max(abs(geser[0]), abs(geser[1])) > 200:
+        return {"diselaraskan": False, "ecc": round(float(cc), 3)}
+    if max(abs(skala[0] - 1), abs(skala[1] - 1)) < 0.003 and max(abs(geser[0]), abs(geser[1])) < 1.5:
+        return {"diselaraskan": False, "ecc": round(float(cc), 3), "ket": "sudah pas"}
+    w2 = w.copy()
+    w2[:, 2] *= s
+    out = cv2.warpAffine(b, w2, (W, H), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP, borderMode=cv2.BORDER_REPLICATE)
+    cv2.imwrite(str(hasil), out)
+    return {"diselaraskan": True, "ecc": round(float(cc), 3), "skala": [round(k, 3) for k in skala], "geser_px": [round(g, 1) for g in geser]}
 
 
 def qc_gambar(frame: Path, hasil: Path, kotak: dict | None, look: dict) -> dict:
@@ -804,8 +844,10 @@ def rakit(job_dir: Path) -> int:
         shutil.copy2(sout / it["frame"], od / f"{fid}_frame.png")
         akhir = od / f"{fid}_diam.png"
         asli = kembalikan_ukuran(mentah, akhir, it["api"]["pad_kiri"], it["api"]["lebar_pad"])
+        sel = selaraskan(od / f"{fid}_frame.png", akhir, it["jalan"]["kotak"])
         q = qc_gambar(od / f"{fid}_frame.png", akhir, it["jalan"]["kotak"], it["look"])
         q["ukuran_api"] = f"{asli[0]}x{asli[1]}"
+        q["selaras"] = sel
         qc_semua.append({"footage": fid, **q})
         items.append(it | {"qc": q, "diam": f"outfit/{fid}_diam.png"})
         n_diam = next(sg["frame"] for sg in s["potongan"] if sg["footage"] == fid and sg["jenis"] == "diam")

@@ -125,6 +125,26 @@ class GantiOutfit(unittest.TestCase):
         self.assertEqual(a.shape, b.shape)
         self.assertLess(np.abs(cv2.GaussianBlur(a, (0, 0), 3) - cv2.GaussianBlur(b, (0, 0), 3)).mean(), 6)  # tidak bergeser
 
+    def test_hasil_9_16_diselaraskan(self):
+        """beliapi mengembalikan 9:16 yang sedikit bergeser/membesar: tidak dipotong, lalu diselaraskan ke frame."""
+        import cv2
+        import numpy as np
+        d = self.tmp / "selaras"
+        d.mkdir()
+        f = d / "frame.png"
+        ff("-f", "lavfi", "-i", "testsrc2=size=1080x1920:rate=1", "-frames:v", "1", str(f))
+        a = cv2.imread(str(f))
+        M = np.float32([[1.03, 0, -25], [0, 1.03, -40]])  # zoom 3 % + geser
+        b = cv2.warpAffine(a, M, (1080, 1920), borderMode=cv2.BORDER_REPLICATE)
+        cv2.imwrite(str(d / "api_hasil.png"), cv2.resize(b, (1536, 2752)))
+        outfit.kembalikan_ukuran(d / "api_hasil.png", d / "diam.png", 100, 1280)
+        self.assertEqual(cv2.imread(str(d / "diam.png")).shape[:2], (1920, 1080))
+        sebelum = np.abs(cv2.imread(str(d / "diam.png")).astype(float) - a).mean()
+        sel = outfit.selaraskan(f, d / "diam.png", {"x": 0.4, "y": 0.4, "w": 0.2, "h": 0.3})
+        sesudah = np.abs(cv2.imread(str(d / "diam.png")).astype(float) - a).mean()
+        self.assertTrue(sel["diselaraskan"], sel)
+        self.assertLess(sesudah, sebelum / 3)
+
     def test_siapkan_lalu_rakit(self):
         import cv2
         import numpy as np
