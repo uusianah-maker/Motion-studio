@@ -262,7 +262,8 @@ class GerakHalus(unittest.TestCase):
         self.assertEqual([p[1] for p in zt], [1.0, ZT_SKALA, 1.0])
         self.assertLess(zt[0][0], 5000)
         self.assertGreater(zt[-1][0], 5000)
-        self.assertEqual(zt[-1][2], "ease")
+        self.assertEqual((zt[1][2], zt[-1][2]), ("in", "lembut"))  # 25 Nov: makin cepat ke potong, melambat sesudahnya
+        self.assertGreaterEqual(zt[-1][0] - zt[0][0], 1000)  # tidak lagi ±0,5 dtk
 
     def test_ops_lolos_validator_motion_studio(self):
         caps, t = [], 0

@@ -70,7 +70,7 @@ class Ops(unittest.TestCase):
         self.assertTrue(fx and all("effect" in o for o in fx))
         # Keluhan tim 24 Nov: zoom-through Generate = keyframe klip video (naik sebelum potong, turun sesudahnya, ease)
         kf = [k for o in self.per_track("video") for k in o.get("keyframes", [])]
-        self.assertTrue(any(k["scale"] >= 1.3 and k["ease"] == "ease" for k in kf))
+        self.assertTrue(any(k["scale"] >= 1.3 and k["ease"] == "in" for k in kf))
         self.assertIn("zoom_through", {e["jenis"] for e in self.rencana["efek"]})
         # yang tersisa hanya kekurangan data Brand Kit (aset penutup), bukan fitur Motion Studio
         self.assertTrue(all("penutup" in m for m in self.rencana["menunggu_u3"]))
