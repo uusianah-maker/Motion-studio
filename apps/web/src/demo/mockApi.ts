@@ -789,6 +789,7 @@ export function createDemoApi(): Api {
     engineJobs: async () => [],
     engineSuara: async () => ({ tersedia: false, suara: [] }),
     engineTts: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
+    engineUbahSuara: async () => fail(409, 'ENGINE_MISSING', 'Mesin tidak tersedia di demo browser'),
     ttsResult: async () => fail(404, 'NOT_FOUND', 'Job mesin tidak ditemukan'),
     suaraOwner: async () => ({ contoh: [], dihapus: [] }),
     suaraOwnerAdd: async () => fail(409, 'ENGINE_MISSING', 'Suara owner tidak tersedia di demo browser'),

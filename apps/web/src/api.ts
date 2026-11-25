@@ -641,6 +641,29 @@ export interface TtsVoice {
   gender: string;
   backend: string;
 }
+/** §28 readers: andika (Windows) | chatterbox | zonos; `gaya` = the reader understands speaking styles. */
+export type TtsModelId = 'andika' | 'chatterbox' | 'zonos';
+export interface TtsModelInfo {
+  id: TtsModelId;
+  nama: string;
+  siap: boolean;
+  gaya: boolean;
+}
+export interface TtsGayaInfo {
+  id: string;
+  label: string;
+  jeda_ms: number;
+}
+export interface TtsRequest {
+  teks?: string;
+  kalimat?: string[];
+  suara: string;
+  kecepatan: number;
+  jeda_ms: number;
+  model?: TtsModelId;
+  gaya?: string;
+  perkuat_warna?: boolean;
+}
 export type { VoIndex } from '../../../packages/core/dist/storage/voText.js';
 import type { VoIndex } from '../../../packages/core/dist/storage/voText.js';
 export interface VisualView {
@@ -657,6 +680,9 @@ export interface TtsView {
   kecepatan: number;
   jeda_ms: number;
   total_durasi: number;
+  model?: string;
+  gaya?: string | null;
+  kata_perkiraan?: boolean;
   gabungan: { media_id: string; version_id: string } | null;
   aset_id: string | null;
   kalimat: { no: number; teks: string; mulai: number; akhir: number; durasi: number; kata: { teks: string; mulai: number; akhir: number }[]; ref: { media_id: string; version_id: string } | null }[];
@@ -1103,8 +1129,11 @@ export function createApi(token: string | null, base = '') {
     // U6 engine runner
     engineInfo: () => call<{ installed: boolean; running: number; waiting: number }>('GET', '/api/engine'),
     /** R34 Suara dari Teks: the engine's voices, a tts job, its voice over, a VO's known text. */
-    engineSuara: () => call<{ tersedia: boolean; suara: TtsVoice[] }>('GET', '/api/engine/suara'),
-    engineTts: (id: string, tts: { teks?: string; kalimat?: string[]; suara: string; kecepatan: number; jeda_ms: number }) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'tts', tts } }).then((r) => r.job),
+    engineSuara: () => call<{ tersedia: boolean; suara: TtsVoice[]; model?: TtsModelInfo[]; gaya?: TtsGayaInfo[] }>('GET', '/api/engine/suara'),
+    engineTts: (id: string, tts: TtsRequest) => call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'tts', tts } }).then((r) => r.job),
+    /** §28 Ubah suara: an uploaded VO recording (any voice) → a trained voice profile. */
+    engineUbahSuara: (id: string, rekaman: { media_id: string; version_id: string }, tts: { suara: string; kecepatan: number }) =>
+      call<{ job: EngineJob }>('POST', `/api/projects/${encodeURIComponent(id)}/engine/jobs`, { json: { mode: 'tts', sources: [{ kunci: '$sumber', ref: rekaman }], tts: { ...tts, audio: '$sumber' } } }).then((r) => r.job),
     suaraOwner: () => call<{ suara_owner: SuaraOwnerList }>('GET', '/api/suara-owner').then((r) => r.suara_owner),
     suaraOwnerAdd: (contoh: { media_id: string; version_id: string }[]) => call<{ suara_owner: SuaraOwnerList }>('POST', '/api/suara-owner/contoh', { json: { contoh } }).then((r) => r.suara_owner),
     suaraOwnerRemove: (mediaId: string) => call<{ suara_owner: SuaraOwnerList }>('DELETE', `/api/suara-owner/contoh/${encodeURIComponent(mediaId)}`).then((r) => r.suara_owner),
