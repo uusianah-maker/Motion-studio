@@ -962,6 +962,37 @@ SHA256 yang sama tertulis di `SHA` dalam `pipeline/suara_mesin.py`.
   - Watermark OpenVoice (`wavmark`, mengunduh model) dan `openvoice.api` tidak dipakai; konverternya dipanggil langsung.
   - UI Gradio Applio, `pypresence`, pemeriksa versi, dan pengunduh prasyarat Applio tidak dipanggil.
 
+## 24. Profil suara per orang: `grace`, `julia`, `niar` (v0.4.7, 23 Nov 2026, Hanagaki; keputusan owner lewat venus) — DRAF
+Owner menyatakan ketiganya adik owner dan sudah setuju suaranya dikloning. Semua aturan §23 tetap berlaku, per profil.
+
+- **Profil yang diterima** `suara_profil.profil`: `owner` (bawaan bila kosong), `grace`, `julia`, `niar`. Selain itu ditolak dengan kode 2.
+- **Nama tetap**: `Suara owner`, `Suara Grace`, `Suara Julia`, `Suara Niar`. Field `nama` dari job diabaikan, supaya id suara tidak tertukar.
+- **Penyimpanan**: `<DATA>/konten/suara/<profil>/`, masing-masing punya `contoh/`, `model/`, dan `profil.json` sendiri.
+- **Tidak tercampur**: rekaman (sidik SHA-256) yang sudah dipakai satu profil ditolak dengan kode 2 bila dikirim ke profil lain. Pemeriksaan ini berjalan sebelum profil diubah.
+- **Daftar suara §21**: tiap profil yang siap muncul sebagai `<profil>:<nama>`, misalnya `grace:Suara Grace`, dengan `backend` = id profil. Yang belum siap tidak muncul.
+- **Backend latih** tetap menurut durasi bersih (§23.5): ≥ 5 menit Applio, 30 dtk – < 5 menit OpenVoice uji cepat.
+- **App**: `POST` job masih mengirim `profil: owner`. Pilihan profil di tab "Suara saya" menyusul di sisi app.
+
+## 25. Mode lanjut latihan Applio (v0.4.8, 23 Nov 2026, Hanagaki; diminta venus) — DRAF
+Tujuannya: latihan panjang bisa dibagi per malam tanpa mengulang dari nol.
+
+**Masukan tambahan** `suara_profil` (opsional):
+- `jeda_pukul`: `"HH:MM"` waktu lokal. Latihan berhenti di checkpoint terakhir yang masih sempat sebelum jam itu.
+- `mulai_baru`: `true` membuang progres lama secara sengaja. Bawaan `false`.
+
+**Keluaran**: status baru `dijeda` (kode 0) dengan `epoch` dan `total_epoch`. Model belum berubah (`versi_model` tetap). Menjalankan `latih: true` lagi melanjutkan.
+
+**Aturan**:
+- Checkpoint tiap 10 epoch. Baris epoch N dicetak sebelum checkpoint N ditulis, jadi cadangan dibuat saat epoch N+1 muncul.
+- Cadangan `_kerja/cadangan/eNNNN/{G,D}.pth`: disalin, dibaca ulang, epoch G dan D harus sama, SHA-256 dicatat di `_kerja/lanjut.json`. Dua cadangan terakhir disimpan.
+- Dilanjutkan hanya bila sidik contoh + batch + sample rate sama dan cadangan utuh.
+- Bila contoh atau setelan berubah saat ada progres: **gagal keras**, progres tidak dihapus. Progres hanya dibuang dengan `mulai_baru: true`.
+- **Adopsi progres lama** (sekali jalan): `suara_lanjut.py adopsi <kerja> <sha256.json> <epoch> <total> <batch> <sr> <contoh…>`. G/D harus cocok dengan SHA, epoch, dan dataset. Tidak menghapus apa pun.
+- `jeda_pukul` saat melanjutkan: bila checkpoint berikutnya diperkirakan tidak sempat, latihan tidak dimulai dan status tetap `dijeda`. Pada latihan baru, lama blok pertama belum diketahui, jadi jeda bisa terlambat sampai checkpoint pertama.
+- Status `dijeda` bertahan di job berikutnya (`latihan_jeda` di laporan). `openvoice_se.pth` baru diganti setelah latihan selesai.
+- Checkpoint rusak, catatan hilang, atau Applio tidak mulai dari epoch N+1 = **gagal keras** (kode 1). Folder kerja tidak dihapus.
+- Hanya proses Applio milik job itu yang dihentikan. Kunci AI dilepas setelah job berakhir.
+
 ## 26. Video Iklan dengan beberapa footage (v0.4.9, 24 Nov 2026; permintaan owner lewat venus) — DRAF
 
 Owner ingin satu video iklan bisa memakai beberapa footage sekaligus (mis. `Konten 1 (1)`, `Konten 2 (2)`, `Konten 3 (1)`). Mesin menggabungkannya sesuai urutan pilihan tim menjadi satu video, lalu menyusun draf seperti biasa. Nomor 24 dan 25 sudah dipakai draf suara di branch `hotfix/suara-*`, maka bagian ini memakai nomor 26.
@@ -1021,3 +1052,12 @@ Semua aditif. Job tanpa `brief.catatan` dan ops lama tetap valid.
 - Efek `zoom` di track `effects` hanya untuk lompatan skala di sambungan potongan (`mode: "cut"`).
 - Dorong pelan dan zoom-through ditulis sebagai `keyframes` klip video (§12.5): dorong pelan 1 → 1,05 naik 600–1200 ms `ease`, tahan, lalu kembali ke 1 (titik kembali selalu ada); zoom-through 1 → 1,35 dalam 250 ms sebelum titik potong lalu kembali ke 1 dalam 300 ms, `ease`. Titik di luar klip menjadi jangkar (gerak menyambung lintas potongan); maks 20 per klip. `rencana.efek` mencatatnya dengan jenis `zoom` / `zoom_through` + `keyframe: true`. SFX whoosh untuk zoom-through dibaca dari puncak keyframe.
 - Klip SFX mesin (Generate dan Batch, `sfx_rencana`) memakai `fade_in_ms: 4` dan `fade_out_ms: 15` (40 bila bunyinya terpotong SFX berikutnya), maks ⅓ panjang klip (§12.1).
+
+## 28. Suara dari Teks: pilih model, gaya bicara, ubah suara (v0.5.1, 25 Nov 2026, yuki; owner 24 Nov: "tim tinggal pilih", rilis 25 Nov kecuali Niar) — DRAF
+Alur di app: ketik teks **atau** upload rekaman VO → suara → kecepatan → gaya bicara → model pembaca. Tambahan aditif pada `job.tts` (§21):
+- `model`: `andika` (bawaan, perilaku §21/§23 tetap) | `chatterbox` | `zonos`. Model neural meniru ±12 dtk rekaman asli profil, jadi `suara` wajib profil (`owner`/`grace`/`julia`/`niar`); suara Windows ditolak kode 2. Maks 25 kalimat per job (batas waktu job server 30 menit).
+- `gaya`: `natural` | `jualan` | `ramah` | `cerita` | `tegas` | `heboh` → parameter model (`GAYA` di `tts.py`; Chatterbox: exaggeration/cfg_weight/temperature, ZONOS: speaking_rate/loudness). Andika tidak punya gaya.
+- `perkuat_warna` (bawaan `true`): hasil neural diubah lagi oleh model Applio profil.
+- `audio: "$sumber"` + `job.sumber[{kunci:"$sumber"}]`: **ubah suara** rekaman siapa pun ke profil (Applio). Intonasi & jeda ikut rekaman; model/gaya diabaikan; kecepatan berlaku; maks 10 menit; laporan `model: "ubah_suara"`, satu file tanpa kata.
+- Laporan `tts.json` tambahan: `model`, `gaya`, `perkuat_warna`, `kata_perkiraan: true` (cap waktu kata neural = perkiraan menurut panjang huruf di bagian bersuara). Daftar suara (`daftar_suara`) tambahan: `model[{id,nama,siap,gaya}]`, `gaya[{id,label,jeda_ms}]`.
+- Mesin: `pipeline/tts_neural.py` jalan di `<TOOLS>/chatterbox-venv` atau `<TOOLS>/zonos-venv`, bobot `<TOOLS>/models/tts-uji` (offline, SHA256 di folder bobot), di bawah kunci AI global, prioritas Idle, maks 4 thread. Chatterbox GPU, jatuh ke CPU bila memori GPU penuh; ZONOS CPU.

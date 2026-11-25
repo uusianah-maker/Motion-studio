@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -31,7 +32,8 @@ from jalur import DATA, TOOLS, venv_py  # noqa: E402  (R20: data di MOTION_ENGIN
 
 SUARA_PY = Path(os.environ.get("MOTION_SUARA_PY") or venv_py(TOOLS / "suara-venv"))
 
-PROFIL = ("owner",)  # satu profil; profil lain perlu keputusan owner
+# §24: owner + tiga adik owner (keputusan owner 23 Nov 2026). Profil lain tetap ditolak.
+PROFIL = {"owner": "Suara owner", "grace": "Suara Grace", "julia": "Suara Julia", "niar": "Suara Niar"}
 SR = 40000
 FRAME = 0.03
 SUNYI_MAKS = 0.6      # jeda > 0,6 dtk dipendekkan
@@ -141,6 +143,20 @@ def bersihkan(x: np.ndarray, a: dict) -> np.ndarray:
     return np.concatenate(out) if out else np.zeros(0, np.float32)
 
 
+def pemilik_lain(profil: str, sha: str) -> str | None:
+    """§24: profil lain yang sudah memakai rekaman ini (satu rekaman = satu orang, tidak boleh tercampur)."""
+    for lain in PROFIL:
+        if lain == profil:
+            continue
+        try:
+            d = json.loads((folder_profil(lain) / "profil.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if any(c.get("sha256") == sha for c in (d.get("contoh") or {}).values()):
+            return lain
+    return None
+
+
 def muat_profil(folder: Path, profil: str, nama: str) -> dict:
     p = folder / "profil.json"
     if p.exists():
@@ -187,8 +203,10 @@ def jalan_mesin(perintah: str, isi: dict, rentang: tuple[int, int] = (0, 100)) -
     return hasil
 
 
-def latih(folder: Path, data: dict, kalimat: list[str], out: Path) -> list[dict]:
-    """Latih profil (Applio bila >= 5 menit bersih, OpenVoice bila uji cepat), lalu buat contoh hasil."""
+def latih(folder: Path, data: dict, kalimat: list[str], out: Path, jeda_pukul: str | None = None,
+          mulai_baru: bool = False) -> list[dict] | None:
+    """Latih profil (Applio bila >= 5 menit bersih, OpenVoice bila uji cepat), lalu buat contoh hasil.
+    None = dijeda aman (§25); `data["latihan_jeda"]` berisi epoch-nya."""
     pakai = [folder / c["file"] for c in data["contoh"].values() if c["dipakai"]]
     pakai = list(dict.fromkeys(pakai))  # kunci berbeda, file sama
     total = sum(c["durasi_bersih"] for c in data["contoh"].values() if c["dipakai"])
@@ -197,7 +215,13 @@ def latih(folder: Path, data: dict, kalimat: list[str], out: Path) -> list[dict]
     progres("latih", 70, f"melatih profil suara ({backend})", perkiraan_dtk=perkiraan)
     model = folder / "model"
     info = jalan_mesin("latih", {"contoh": [str(p) for p in pakai], "model_dir": str(model), "backend": backend,
-                                 "epoch": int(os.environ.get("MOTION_SUARA_EPOCH") or 150)}, (70, 95))  # env hanya untuk uji asap
+                                 "epoch": int(os.environ.get("MOTION_SUARA_EPOCH") or 150),  # env hanya untuk uji asap
+                                 "jeda_pukul": jeda_pukul, "mulai_baru": mulai_baru}, (70, 95))
+    if info.get("dijeda"):
+        data["latihan_jeda"] = {"epoch": info["epoch"], "total_epoch": info["total_epoch"], "waktu": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        simpan_profil(folder, data)
+        return None
+    data.pop("latihan_jeda", None)
     data.update(versi_model=int(data.get("versi_model") or 0) + 1, backend=info.get("backend", backend),
                 dilatih_pada=time.strftime("%Y-%m-%dT%H:%M:%S"), perlu_latih_ulang=False,
                 suara_dasar=data.get("suara_dasar") or "Andika")
@@ -207,7 +231,7 @@ def latih(folder: Path, data: dict, kalimat: list[str], out: Path) -> list[dict]
     import tts
     (out / "contoh").mkdir(parents=True, exist_ok=True)
     item = [(k, out / "contoh" / f"{i:02d}.wav") for i, k in enumerate(kalimat, 1)]
-    tts.Owner().ucapkan([(tts.susun_ucapan(k, {})[0], p) for k, p in item], "Suara owner", 1.0, profil=data, rentang=(95, 99))
+    tts.BACKEND[data["profil"]].ucapkan([(tts.susun_ucapan(k, {})[0], p) for k, p in item], data["nama"], 1.0, profil=data, rentang=(95, 99))
     return [{"teks": k, "file": f"out/contoh/{p.name}"} for k, p in item]
 
 
@@ -218,10 +242,13 @@ def laporan(data: dict, status: str, alasan: str | None = None, contoh_hasil=Non
     return {"schema": "suara-profil/1", "status": status, "profil": data["profil"], "nama": data["nama"], "contoh": contoh,
             "durasi_bersih_total": total, "target_dtk": list(TARGET_DTK), "minimal_dtk": MINIMAL_DTK,
             "minimal_uji_dtk": MINIMAL_UJI_DTK, "backend": data.get("backend"), "dilatih_pada": data.get("dilatih_pada"),
-            "versi_model": data.get("versi_model", 0), "contoh_hasil": contoh_hasil or [], "alasan": alasan}
+            "versi_model": data.get("versi_model", 0), "latihan_jeda": data.get("latihan_jeda"),
+            "contoh_hasil": contoh_hasil or [], "alasan": alasan}
 
 
 def status_dari(data: dict) -> str:
+    if data.get("latihan_jeda"):
+        return "dijeda"
     if data.get("versi_model") and not data.get("perlu_latih_ulang"):
         return "siap"
     if data.get("versi_model") and data.get("perlu_latih_ulang"):
@@ -239,15 +266,25 @@ def jalankan(job_dir: Path) -> int:
         if not isinstance(cfg, dict):
             raise Ditolak("job.suara_profil harus objek")
         profil = str(cfg.get("profil") or "owner")
+        jeda_pukul = cfg.get("jeda_pukul")
+        if jeda_pukul is not None and not (isinstance(jeda_pukul, str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", jeda_pukul)):
+            raise Ditolak("jeda_pukul harus HH:MM")
+        mulai_baru = cfg.get("mulai_baru", False)
+        if not isinstance(mulai_baru, bool):
+            raise Ditolak("mulai_baru harus true/false")
         if profil not in PROFIL:
-            raise Ditolak(f"profil '{profil}' tidak diizinkan: hanya satu profil 'owner' (keputusan owner)")
-        nama = str(cfg.get("nama") or "Suara owner")[:60]
+            raise Ditolak(f"profil '{profil}' tidak diizinkan: hanya {', '.join(PROFIL)} (keputusan owner)")
+        nama = PROFIL[profil]  # nama tetap per profil, supaya id suara di daftar tidak tertukar
         sumber = {s["kunci"]: Path(s["path"]) for s in job.get("sumber", []) if s.get("kunci") and s.get("path")}
         tambah = [str(k) for k in (cfg.get("tambah_contoh") or [])]
         hapus = [str(k) for k in (cfg.get("hapus_contoh") or [])]
         hilang = [k for k in tambah if k not in sumber or not sumber[k].exists()]
         if hilang:
             raise Ditolak("contoh tidak ada di sumber: " + ", ".join(hilang[:5]))
+        for k in tambah:  # sebelum ada yang berubah di profil
+            lain = pemilik_lain(profil, sidik(sumber[k]))
+            if lain:
+                raise Ditolak(f"rekaman {k} sudah dipakai profil '{lain}': satu rekaman hanya untuk satu orang")
         folder = folder_profil(profil)
         data = muat_profil(folder, profil, nama)
         data["nama"] = nama
@@ -294,11 +331,17 @@ def jalankan(job_dir: Path) -> int:
             if not any(c["dipakai"] for c in data["contoh"].values()):
                 raise Ditolak("tidak ada contoh yang lolos mutu untuk dilatih")
             if total >= MINIMAL_UJI_DTK:
-                hasil = latih(folder, data, [str(k) for k in (cfg.get("contoh_kalimat") or KALIMAT_BAWAAN)][:3], out)
-                catatan = None if data.get("backend") == "applio" else (
-                    f"uji cepat OpenVoice ({total / 60:.1f} menit bersih); tambah contoh sampai minimal "
-                    f"{MINIMAL_DTK // 60} menit untuk hasil utama Applio")
-                lap = laporan(data, status_dari(data), catatan, contoh_hasil=hasil)
+                hasil = latih(folder, data, [str(k) for k in (cfg.get("contoh_kalimat") or KALIMAT_BAWAAN)][:3], out,
+                              jeda_pukul, mulai_baru)
+                if hasil is None:
+                    j = data["latihan_jeda"]
+                    lap = {**laporan(data, "dijeda", f"dijeda aman di epoch {j['epoch']}/{j['total_epoch']}; jalankan latih lagi untuk melanjutkan"),
+                           "epoch": j["epoch"], "total_epoch": j["total_epoch"]}
+                else:
+                    catatan = None if data.get("backend") == "applio" else (
+                        f"uji cepat OpenVoice ({total / 60:.1f} menit bersih); tambah contoh sampai minimal "
+                        f"{MINIMAL_DTK // 60} menit untuk hasil utama Applio")
+                    lap = laporan(data, status_dari(data), catatan, contoh_hasil=hasil)
             else:
                 lap = laporan(data, "kurang_contoh",
                               f"durasi bersih {total:.0f} dtk; minimal {MINIMAL_UJI_DTK} dtk untuk uji cepat dan "
