@@ -21,6 +21,18 @@ export function DepanPanel({ api, projectId, clip, locked, submit }: { api: Api;
   const len = clip.end_ms - clip.start_ms;
   const { job, log } = useEngineJob(api, task?.job_id ? projectId : null, task?.job_id ?? null);
   const saved = useRef<string | null>(null);
+  // Coming back to the clip while it is (or was) being made: pick the server's progress up again,
+  // so a finished mask is still saved on the clip (the panel was unmounted meanwhile).
+  useEffect(() => {
+    let live = true;
+    void api.depanStatus(projectId, clip.clip_id).then(
+      (t) => live && !clip.depan && Date.now() - t.at < 3_600_000 && setTask((cur) => cur ?? t),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, projectId, clip.clip_id]);
   // Step 1 (picture) progress from the server.
   useEffect(() => {
     if (!task || task.state === 'mesin' || task.state === 'gagal') return;
