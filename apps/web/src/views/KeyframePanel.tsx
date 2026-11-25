@@ -20,14 +20,17 @@ export function KeyframePanel({ clip, playhead, submit }: { clip: Clip; playhead
     if (kfs.some((k) => k.at_ms === at)) return;
     save([...kfs, { at_ms: at, ...keyframeAt(kfs, at), ease: 'ease' }]);
   };
-  const preset = (kind: 'kenburns' | 'fade' | 'masuk') => {
+  const preset = (kind: 'kenburns' | 'fade' | 'masuk' | 'zoomio') => {
     if (kind === 'kenburns') save([{ at_ms: 0, x: 0, y: 0, scale: 1, opacity: 1, ease: 'linear' }, { at_ms: len, x: 0, y: 0, scale: 1.15, opacity: 1, ease: 'ease' }]);
     else if (kind === 'fade') {
       const d = Math.min(500, Math.floor(len / 3));
       save([{ at_ms: 0, x: 0, y: 0, scale: 1, opacity: 0, ease: 'linear' }, { at_ms: d, x: 0, y: 0, scale: 1, opacity: 1, ease: 'ease' }, { at_ms: len - d, x: 0, y: 0, scale: 1, opacity: 1, ease: 'linear' }, { at_ms: len, x: 0, y: 0, scale: 1, opacity: 0, ease: 'ease' }]);
-    } else {
+    } else if (kind === 'masuk') {
       const d = Math.min(600, Math.floor(len / 2));
-      save([{ at_ms: 0, x: 0, y: 0.25, scale: 0.8, opacity: 0, ease: 'linear' }, { at_ms: d, x: 0, y: 0, scale: 1, opacity: 1, ease: 'ease' }]);
+      save([{ at_ms: 0, x: 0, y: 0.25, scale: 0.8, opacity: 0, ease: 'linear' }, { at_ms: d, x: 0, y: 0, scale: 1, opacity: 1, ease: 'lembut' }]);
+    } else if (kind === 'zoomio') {
+      const d = Math.min(900, Math.floor(len / 3));
+      save([{ at_ms: 0, x: 0, y: 0, scale: 1, opacity: 1, ease: 'linear' }, { at_ms: d, x: 0, y: 0, scale: 1.2, opacity: 1, ease: 'ease' }, { at_ms: len - d, x: 0, y: 0, scale: 1.2, opacity: 1, ease: 'linear' }, { at_ms: len, x: 0, y: 0, scale: 1, opacity: 1, ease: 'ease' }]);
     }
   };
   return (
@@ -37,11 +40,12 @@ export function KeyframePanel({ clip, playhead, submit }: { clip: Clip; playhead
         <button className="btn small" disabled={!inside || kfs.length >= MAX_KEYFRAMES} onClick={add} title={inside ? 'Tambah titik di posisi playhead (nilai ikut gerakan saat ini)' : 'Geser playhead ke dalam klip ini dulu'}>
           ＋ Keyframe di playhead
         </button>
-        <select aria-label="Gerak cepat" value="" onChange={(e) => e.target.value && preset(e.target.value as 'kenburns' | 'fade' | 'masuk')}>
+        <select aria-label="Gerak cepat" value="" onChange={(e) => e.target.value && preset(e.target.value as 'kenburns' | 'fade' | 'masuk' | 'zoomio')}>
           <option value="">Gerak cepat…</option>
           <option value="kenburns">Zoom pelan (Ken Burns)</option>
           <option value="fade">Muncul & hilang pelan</option>
           <option value="masuk">Masuk dari bawah</option>
+          <option value="zoomio">Zoom masuk lalu keluar (halus)</option>
         </select>
         {kfs.length > 0 && (
           <button className="btn small" onClick={() => save([])}>
@@ -101,6 +105,9 @@ function KfRow({ k, index, len, onChange, onDelete }: { k: Keyframe; index: numb
         Gerak
         <select aria-label={`Easing keyframe ${index + 1}`} value={k.ease} onChange={(e) => onChange({ ...k, ease: e.target.value as Keyframe['ease'] })}>
           <option value="ease">Halus</option>
+          <option value="lembut">Lembut (melambat di akhir)</option>
+          <option value="out">Berhenti pelan</option>
+          <option value="in">Mulai pelan</option>
           <option value="linear">Rata</option>
         </select>
       </label>

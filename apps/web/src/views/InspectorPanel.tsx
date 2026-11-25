@@ -13,6 +13,7 @@ import { BlendPanel } from './BlendPanel';
 import { OverlayPanel } from './OverlayPanel';
 import type { Overlay } from '../../../../packages/core/dist/storage/overlay.js';
 import { LOOKS } from '../../../../packages/core/dist/storage/clipLook.js';
+import { RAMP_MS } from '../../../../packages/core/dist/storage/effects.js';
 
 export type SelectedClip = Clip & { kind: Track['kind'] };
 const KIND_NAME: Record<Track['kind'], string> = { video: 'Video', broll: 'B-roll', text: 'Teks', subtitle: 'Subtitle', overlay: 'Overlay', audio: 'Audio', music: 'Musik', sfx: 'SFX', effects: 'Efek' };
@@ -281,7 +282,7 @@ export function InspectorPanel({
             <select aria-label="Jenis efek" value={clip.effect.type === 'zoom' ? `zoom-${clip.effect.mode}` : 'zoom_through'} onChange={(e) => {
               const v = e.target.value;
               const base = { scale: clip.effect!.scale, x: clip.effect!.x, y: clip.effect!.y };
-              submit([{ op: 'delete_clip', clip_id: clip.clip_id }, { op: 'add_clip', track_kind: 'effects', start_ms: clip.start_ms, duration_ms: clip.end_ms - clip.start_ms, effect: v === 'zoom_through' ? { type: 'zoom_through', ...base } : { type: 'zoom', mode: v === 'zoom-cut' ? 'cut' : 'smooth', ...base } }]);
+              submit([{ op: 'delete_clip', clip_id: clip.clip_id }, { op: 'add_clip', track_kind: 'effects', start_ms: clip.start_ms, duration_ms: clip.end_ms - clip.start_ms, effect: v === 'zoom_through' ? { type: 'zoom_through', ...base } : { type: 'zoom', mode: v === 'zoom-cut' ? 'cut' : 'smooth', ...base, ...(clip.effect!.type === 'zoom' && clip.effect!.ramp_ms ? { ramp_ms: clip.effect!.ramp_ms } : {}) } }]);
             }}>
               <option value="zoom-smooth">Zoom halus (punch-in)</option>
               <option value="zoom-cut">Zoom langsung (cut)</option>
@@ -292,6 +293,12 @@ export function InspectorPanel({
             Besar zoom {clip.effect.scale.toFixed(2)}×
             <input type="range" aria-label="Besar zoom" min={102} max={250} key={`${clip.clip_id}:${clip.effect.scale}`} defaultValue={Math.round(clip.effect.scale * 100)} onChange={(e) => setEffectDraft({ ...clip.effect!, scale: Number(e.target.value) / 100 })} onPointerUp={commitEffect} onKeyUp={commitEffect} onBlur={commitEffect} />
           </label>
+          {clip.effect.type === 'zoom' && clip.effect.mode === 'smooth' && (
+            <label title="Lama gerak zoom masuk dan keluar. Makin lama makin halus.">
+              Gerak masuk/keluar {((Math.min(clip.effect.ramp_ms ?? RAMP_MS, (clip.end_ms - clip.start_ms) / 2)) / 1000).toFixed(1).replace('.', ',')} dtk
+              <input type="range" aria-label="Lama gerak zoom" min={100} max={3000} step={50} key={`${clip.clip_id}:r${clip.effect.ramp_ms ?? ''}`} defaultValue={clip.effect.ramp_ms ?? RAMP_MS} onChange={(e) => setEffectDraft({ ...(clip.effect as Extract<NonNullable<Clip['effect']>, { type: 'zoom' }>), ramp_ms: Number(e.target.value) })} onPointerUp={commitEffect} onKeyUp={commitEffect} onBlur={commitEffect} />
+            </label>
+          )}
         </div>
       )}
       {clip.media && (clip.kind === 'video' || clip.kind === 'broll') && (

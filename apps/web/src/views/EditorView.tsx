@@ -933,12 +933,12 @@ export function EditorView({
           <button
             className="smallbtn"
             disabled={locked || !project}
-            title="Tambah zoom (punch-in) 1 detik di playhead"
+            title="Tambah zoom (punch-in) 1,5 detik di playhead"
             onClick={() => {
               const taken = tracks.find((x) => x.kind === 'effects')?.clips ?? [];
               let start = Math.round(playhead / 100) * 100;
-              for (const c of [...taken].sort((a, b) => a.start_ms - b.start_ms)) if (c.start_ms < start + 1000 && start < c.end_ms) start = c.end_ms;
-              void edit([{ op: 'add_clip', track_kind: 'effects', start_ms: start, duration_ms: 1000, effect: { type: 'zoom', scale: 1.2, mode: 'smooth', x: 0.5, y: 0.5 } }]);
+              for (const c of [...taken].sort((a, b) => a.start_ms - b.start_ms)) if (c.start_ms < start + 1500 && start < c.end_ms) start = c.end_ms;
+              void edit([{ op: 'add_clip', track_kind: 'effects', start_ms: start, duration_ms: 1500, effect: { type: 'zoom', scale: 1.2, mode: 'smooth', x: 0.5, y: 0.5 } }]);
             }}
           >
             ＋ Zoom

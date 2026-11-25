@@ -99,6 +99,12 @@ export function Preview({
   const end = contentEnd(tracks); // R26: whole-video overlays follow the video, as in the render
   const t = playhead;
   const visual = clipAt(clipsOf('broll'), t) ?? clipAt(clipsOf('video'), t);
+  // 25 Nov (keluhan "keyframe/zoom masih kasar" di preview): the clock below follows wall time while
+  // <video> plays natively, so the transform could drift up to the 0.3 s re-seek tolerance from the
+  // picture (then jump). The tick reads the playing clip through this ref and pulls the clock gently
+  // toward the video's own time, so motion stays glued to the frames.
+  const visualRef = useRef(visual);
+  visualRef.current = visual;
   const audio = clipAt(clipsOf('audio'), t);
   // Each SFX clip keeps one element (greedy by start time), so an overlap never restarts a sound.
   const sfxSlot = new Map<string, number>();
@@ -216,7 +222,16 @@ export function Preview({
     const tick = () => {
       const c = clock.current;
       if (!c) return;
-      const now = c.base + (performance.now() - c.wall);
+      let now = c.base + (performance.now() - c.wall);
+      const el = videoRef.current;
+      const vc = visualRef.current;
+      if (el && vc?.media && !el.paused && !el.seeking && el.readyState >= 2 && !vc.reverse && !vc.freeze && now >= vc.start_ms && now < vc.end_ms) {
+        const drift = ((el.currentTime - sourceSeconds(vc, now)) * 1000) / (vc.speed ?? 1);
+        if (Math.abs(drift) < 250) {
+          c.base += drift * 0.2;
+          now += drift * 0.2;
+        }
+      }
       if (now >= end) {
         setPlayhead(end);
         setPlaying(false);

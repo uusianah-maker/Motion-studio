@@ -249,7 +249,7 @@ export interface Clip extends ClipExtras {
 }
 export type Crop = { x: number; y: number; w: number; h: number };
 export type BlurRegion = Crop & { dari_ms: number; sampai_ms: number; radius: number };
-export type ClipEffect = { type: 'zoom'; scale: number; mode: 'cut' | 'smooth'; x: number; y: number } | { type: 'zoom_through'; scale: number; x: number; y: number };
+export type ClipEffect = { type: 'zoom'; scale: number; mode: 'cut' | 'smooth'; x: number; y: number; ramp_ms?: number } | { type: 'zoom_through'; scale: number; x: number; y: number };
 
 export type EditOp =
   | ({ op: 'add_clip'; track_kind: Track['kind']; media?: { media_id: string; version_id: string }; text?: string; style?: Partial<TextStyle>; start_ms: number; duration_ms: number; in_ms?: number; volume?: number; words?: { text: string; start_ms: number; end_ms: number }[]; effect?: ClipEffect; crop?: Crop; blur?: BlurRegion[]; keyframes?: Keyframe[]; overlay?: Overlay } & ClipExtras)

@@ -6,7 +6,9 @@
  *  - `x`, `y`: offset of the clip from its normal place, fractions of the canvas (−1..1).
  *  - `scale`: size multiplier around the clip's centre (0.1..4).
  *  - `opacity`: 0..1 (a picture fades to black; text fades out).
- *  - `ease`: curve from the PREVIOUS keyframe to this one: `linear` or `ease` (ease-in-out).
+ *  - `ease`: curve from the PREVIOUS keyframe to this one (see `KF_EASES`): `linear`, `ease`
+ *    (ease-in-out, cosine), `in` (mulai pelan), `out` (berhenti pelan), `lembut` (cepat lalu
+ *    melambat panjang). 25 Nov (keluhan owner "zoom in zoom out masih kasar"): in/out/lembut.
  * Before the first keyframe the first values hold; after the last, the last values hold.
  */
 import { StorageError } from './errors.js';
@@ -17,8 +19,10 @@ export interface Keyframe {
   y: number;
   scale: number;
   opacity: number;
-  ease: 'linear' | 'ease';
+  ease: KfEase;
 }
+export type KfEase = 'linear' | 'ease' | 'in' | 'out' | 'lembut';
+export const KF_EASES: readonly KfEase[] = ['linear', 'ease', 'in', 'out', 'lembut'];
 export interface KfValues {
   x: number;
   y: number;
@@ -50,7 +54,7 @@ export function validateKeyframes(raw: unknown, where = 'keyframes'): Keyframe[]
     };
     const at = o.at_ms;
     if (typeof at !== 'number' || !Number.isFinite(at) || Math.abs(at) > 24 * 3_600_000) bad(`${w}.at_ms harus angka ms (−24 jam … 24 jam)`);
-    const ease: Keyframe['ease'] = o.ease === undefined ? 'linear' : o.ease === 'linear' || o.ease === 'ease' ? o.ease : bad(`${w}.ease harus linear | ease`);
+    const ease: KfEase = o.ease === undefined ? 'linear' : KF_EASES.includes(o.ease as KfEase) ? (o.ease as KfEase) : bad(`${w}.ease harus ${KF_EASES.join(' | ')}`);
     return { at_ms: Math.round(at as number), x: num('x', 0), y: num('y', 0), scale: num('scale', 1), opacity: num('opacity', 1), ease };
   });
   out.sort((a, b) => a.at_ms - b.at_ms);
@@ -58,8 +62,37 @@ export function validateKeyframes(raw: unknown, where = 'keyframes'): Keyframe[]
   return out;
 }
 
-/** Eased progress 0..1 (ease = ease-in-out cosine; the render uses the same formula). */
-export const easeOf = (e: Keyframe['ease'], p: number) => (e === 'ease' ? 0.5 - 0.5 * Math.cos(Math.PI * p) : p);
+/** Eased progress 0..1. `easeExpr` is the SAME formula for FFmpeg (preview = render). */
+export function easeOf(e: KfEase, p: number): number {
+  switch (e) {
+    case 'ease':
+      return 0.5 - 0.5 * Math.cos(Math.PI * p);
+    case 'in':
+      return p * p * p;
+    case 'out':
+      return 1 - (1 - p) ** 3;
+    case 'lembut':
+      return 1 - (1 - p) ** 5;
+    default:
+      return p;
+  }
+}
+
+/** FFmpeg expression of `easeOf(e, p)`; `p` must already be clipped to 0..1. */
+export function easeExpr(e: KfEase, p: string): string {
+  switch (e) {
+    case 'ease':
+      return `(0.5-0.5*cos(PI*${p}))`;
+    case 'in':
+      return `pow(${p},3)`;
+    case 'out':
+      return `(1-pow(1-${p},3))`;
+    case 'lembut':
+      return `(1-pow(1-${p},5))`;
+    default:
+      return p;
+  }
+}
 
 /** Values at `ms` inside the clip. No keyframes = identity. */
 export function keyframeAt(kfs: readonly Keyframe[] | undefined, ms: number): KfValues {
@@ -79,7 +112,7 @@ export function keyframeAt(kfs: readonly Keyframe[] | undefined, ms: number): Kf
   return { x: last.x, y: last.y, scale: last.scale, opacity: last.opacity };
 }
 
-const kfAt = (kfs: readonly Keyframe[], ms: number, ease: Keyframe['ease']): Keyframe => ({ at_ms: ms, ...keyframeAt(kfs, ms), ease });
+const kfAt = (kfs: readonly Keyframe[], ms: number, ease: KfEase): Keyframe => ({ at_ms: ms, ...keyframeAt(kfs, ms), ease });
 
 const still = (ks: readonly Keyframe[]) => ks.every((k) => k.x === 0 && k.y === 0 && k.scale === 1 && k.opacity === 1);
 
@@ -131,7 +164,7 @@ export function kfExpr(kfs: readonly Keyframe[], prop: keyof KfValues, T: string
     const A = (a.at_ms / 1000).toFixed(4);
     const span = ((b.at_ms - a.at_ms) / 1000).toFixed(4);
     const p = `clip((${T}-${A})/${span},0,1)`;
-    const pe = b.ease === 'ease' ? `(0.5-0.5*cos(PI*${p}))` : p;
+    const pe = easeExpr(b.ease, p);
     const seg = a[prop] === b[prop] ? n4(a[prop]) : `(${n4(a[prop])}+${n4(b[prop] - a[prop])}*${pe})`;
     e = `if(lt(${T},${(b.at_ms / 1000).toFixed(4)}),${seg},${e})`;
   }

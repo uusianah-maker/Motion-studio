@@ -1,4 +1,5 @@
 /** R35 — the browser-safe part of Visual Tools (names, models, time estimate). */
+import { KF_EASES, type KfEase } from './keyframes.js';
 
 export const VISUAL_TOOLS = ['deteksi', 'reframe', 'lacak', 'hapus_latar', 'perjelas'] as const;
 export type VisualTool = (typeof VISUAL_TOOLS)[number];
@@ -28,7 +29,7 @@ export function reframeCanvas(ratio: string): [number, number] {
   return a <= b ? [1080, Math.round((1080 * b) / a / 2) * 2] : [Math.round((1080 * a) / b / 2) * 2, 1080];
 }
 
-type Kf = { at_ms: number; x: number; y: number; scale: number; opacity: number; ease: 'linear' | 'ease' };
+type Kf = { at_ms: number; x: number; y: number; scale: number; opacity: number; ease: KfEase };
 /**
  * The engine's `keyframe_app` (§18.2, times relative to the clip's in-point) → keyframes for a clip
  * of `lenMs`: a keyframe before 0 becomes the value at 0 (the last one before), those after the end
@@ -39,7 +40,7 @@ export function reframeKeyframes(raw: unknown, lenMs: number): Kf[] {
   const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
   const kfs: Kf[] = list
     .filter((k) => k && typeof k.at_ms === 'number')
-    .map((k) => ({ at_ms: Math.round(k.at_ms as number), x: num(k.x, -1, 1, 0), y: num(k.y, -1, 1, 0), scale: num(k.scale, 0.1, 4, 1), opacity: num(k.opacity, 0, 1, 1), ease: (k.ease === 'ease' ? 'ease' : 'linear') as Kf['ease'] }))
+    .map((k) => ({ at_ms: Math.round(k.at_ms as number), x: num(k.x, -1, 1, 0), y: num(k.y, -1, 1, 0), scale: num(k.scale, 0.1, 4, 1), opacity: num(k.opacity, 0, 1, 1), ease: (KF_EASES.includes(k.ease as KfEase) ? k.ease : 'linear') as Kf['ease'] }))
     .sort((a, b) => a.at_ms - b.at_ms);
   const before = kfs.filter((k) => k.at_ms < 0).at(-1);
   const inside = kfs.filter((k) => k.at_ms >= 0 && k.at_ms <= lenMs);
