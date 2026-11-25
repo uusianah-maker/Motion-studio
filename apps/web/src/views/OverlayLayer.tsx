@@ -2,6 +2,7 @@ import { chromaAlpha, chromaKeyUV } from '../../../../packages/core/dist/storage
 import { useEffect, useRef, useState } from 'react';
 import { overlayOrder, overlaySpan } from '../../../../packages/core/dist/storage/overlay.js';
 import type { Overlay } from '../../../../packages/core/dist/storage/overlay.js';
+import { keyframeAt } from '../../../../packages/core/dist/storage/keyframes.js';
 import type { Api, Clip, Media } from '../api';
 
 /**
@@ -88,15 +89,17 @@ function OverlayItem({ api, clip, spec, media, time, canvas, selected, onSelect,
   // Drag (selected only): nudge in canvas fractions, saved once on release.
   const [drag, setDrag] = useState<{ x0: number; y0: number; dx: number; dy: number } | null>(null);
   const dx = drag ? drag.dx : spec.dx;
+  // 25 Nov: overlay keyframes (same curve as the render; scale/rotation around the picture's centre).
+  const kf = keyframeAt(clip.keyframes, time - clip.start_ms);
   const dy = drag ? drag.dy : spec.dy;
   const short = Math.min(canvas.w, canvas.h);
   const m = (short * spec.margin) / 100;
   const style: React.CSSProperties = {
     width: `${spec.skala}%`,
-    opacity: spec.opasitas,
+    opacity: spec.opasitas * kf.opacity,
     ...(spec.pos === 'c' ? { left: '50%', top: '50%' } : {}),
     ...(spec.pos !== 'c' ? { [spec.pos.endsWith('l') ? 'left' : 'right']: `${m}px`, [spec.pos.startsWith('t') ? 'top' : 'bottom']: `${m}px` } : {}),
-    transform: `${spec.pos === 'c' ? 'translate(-50%, -50%) ' : ''}translate(${dx * canvas.w}px, ${dy * canvas.h}px)`,
+    transform: `${spec.pos === 'c' ? 'translate(-50%, -50%) ' : ''}translate(${(dx + kf.x) * canvas.w}px, ${(dy + kf.y) * canvas.h}px)${kf.rot ? ` rotate(${kf.rot}deg)` : ''}${kf.scale !== 1 ? ` scale(${kf.scale})` : ''}`,
     // R38b (ucok): blend mode = the render's ffmpeg blend.
     ...(spec.blend && spec.blend !== 'normal' ? { mixBlendMode: spec.blend } : {}),
   };

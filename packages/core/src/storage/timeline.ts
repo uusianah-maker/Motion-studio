@@ -8,7 +8,7 @@ import { type Keyframe, cutKeyframes, sliceKeyframes, validateKeyframes } from '
 import { needsAss } from './ass.js';
 import { type Chroma, validateChroma } from './chroma.js';
 import { OVERLAY_DEFAULT, type Overlay, contentEnd, patchOverlay, validateOverlay, validateOverlayPatch } from './overlay.js';
-import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateLook, validateLutRef, validateTransition } from './clipLook.js';
+import { type Adjust, type ClipExtras, type Denoise, EXTRA_FIELDS, type FitMode, type LookId, type Transition, copyExtras, isNeutral, readExtras, validateAdjust, validateColor, validateDenoise, validateDuck, validateFadeMs, validateFit, validateDepan, type Depan, validateLook, validateLutRef, validateTransition } from './clipLook.js';
 import { type Eq, validateEq } from './clipAudio.js';
 import { FREEZE_MS, MAX_REVERSE_MS, type Rotation, type StabilLevel, type VDenoise, validateStabil, sliceIn, sourceAt, sourceLength, validateBool, validateRotate, validateSpeed, validateVDenoise } from './clipMotion.js';
 import { CANVAS_RATIOS, type CanvasRatio, type Clip, clipRefs, MAX_TEXT_LEN, type MediaRef, type ProjectManifest, type Snapshot, type Track, type TrackKind } from './project.js';
@@ -60,6 +60,8 @@ export type EditOp =
   | { op: 'set_picture'; clip_id: string; fit?: FitMode | null; fit_color?: string | null; adjust?: Adjust | null; look?: LookId | 'none' | null; transition?: Transition | null; lut?: { media_id: string; version_id: string } | null }
   /** Malam 15 Nov: music ducking under speech; `level` = music gain while someone speaks. */
   | { op: 'set_ducking'; on: boolean; level?: number }
+  /** 25 Nov: "objek di depan teks" of a text/subtitle clip (null = off). */
+  | { op: 'set_depan'; clip_id: string; depan: Depan | null }
   /** Malam 15 Nov: keyframes of a video/b-roll/text/subtitle clip ([] = none). */
   | { op: 'set_keyframes'; clip_id: string; keyframes: Keyframe[] }
   /** R23a: direction / speed / reverse / picture noise of a video/b-roll clip. A new speed changes the
@@ -250,6 +252,9 @@ export function validateOps(x: unknown, max = MAX_EDIT_OPS): EditOp[] {
           ...opt('lut', validateLutRef),
         } as EditOp;
       }
+      case 'set_depan':
+        keys(['op', 'clip_id', 'depan']);
+        return { op: 'set_depan', clip_id: clipId(o.clip_id), depan: o.depan === null ? null : guard(() => validateDepan(o.depan, `ops[${i}].depan`)) };
       case 'set_keyframes':
         keys(['op', 'clip_id', 'keyframes']);
         return { op: 'set_keyframes', clip_id: clipId(o.clip_id), keyframes: validateKeyframes(o.keyframes, `ops[${i}].keyframes`) };
@@ -458,6 +463,8 @@ function assertConsistent(t: Timeline, sourceDuration?: SourceDuration): void {
       if (c.text !== undefined && !TEXT_TRACKS.includes(track.kind)) bad('Teks hanya di track teks/subtitle', { clip_id: c.clip_id });
       if (track.kind === 'overlay' && (!c.media || !c.overlay)) bad('Klip overlay wajib punya gambar/video dan pengaturan overlay', { clip_id: c.clip_id });
       if (c.overlay && track.kind !== 'overlay') bad('Pengaturan overlay hanya di track overlay', { clip_id: c.clip_id });
+      // 25 Nov: overlay keyframes move the picture itself; a blend mode works on a full-canvas layer.
+      if (c.keyframes && track.kind === 'overlay' && c.overlay?.blend && c.overlay.blend !== 'normal') bad('Keyframe overlay belum bisa digabung dengan mode campur (blend). Pilih mode Normal atau hapus keyframe.', { clip_id: c.clip_id });
       // Malam 15 Nov: text keyframes are drawn with drawtext; captions word-by-word / animated / highlighted go through libass.
       if (c.keyframes && TEXT_TRACKS.includes(track.kind) && needsAss(effectiveStyle(track.kind as 'text' | 'subtitle', c.style), c)) bad('Keyframe teks belum bisa digabung dengan kata per kata, animasi, atau sorot kata. Matikan itu dulu atau hapus keyframe.', { clip_id: c.clip_id });
       // R23a: reverse keeps every frame of the piece in memory, so its source span is capped.
@@ -520,7 +527,7 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         }
         Object.assign(clip, copyExtras(op));
         if (op.keyframes?.length) {
-          if (!((op.track_kind === 'video' || op.track_kind === 'broll') && op.media) && !TEXT_TRACKS.includes(op.track_kind)) bad('Keyframe hanya untuk klip video, b-roll, teks, subtitle');
+          if (!((op.track_kind === 'video' || op.track_kind === 'broll' || op.track_kind === 'overlay') && op.media) && !TEXT_TRACKS.includes(op.track_kind)) bad('Keyframe hanya untuk klip video, b-roll, overlay, teks, subtitle');
           clip.keyframes = op.keyframes.map((k) => ({ ...k }));
         }
         if (op.overlay && op.track_kind !== 'overlay') bad('Pengaturan overlay hanya di track overlay');
@@ -719,9 +726,16 @@ export function applyOps(timeline: Timeline, ops: EditOp[], newClipId: () => str
         else if (op.lut) clip.lut = { ...op.lut };
         break;
       }
+      case 'set_depan': {
+        const { track, clip } = locate(t, op.clip_id);
+        if (!TEXT_TRACKS.includes(track.kind)) bad('Objek di depan teks hanya untuk klip teks/subtitle', { clip_id: op.clip_id });
+        if (op.depan) clip.depan = { ...op.depan, masker: { ...op.depan.masker }, potongan: { ...op.depan.potongan } };
+        else delete clip.depan;
+        break;
+      }
       case 'set_keyframes': {
         const { track, clip } = locate(t, op.clip_id);
-        if (!((track.kind === 'video' || track.kind === 'broll') && clip.media) && !TEXT_TRACKS.includes(track.kind)) bad('Keyframe hanya untuk klip video, b-roll, teks, subtitle', { clip_id: op.clip_id });
+        if (!((track.kind === 'video' || track.kind === 'broll' || track.kind === 'overlay') && clip.media) && !TEXT_TRACKS.includes(track.kind)) bad('Keyframe hanya untuk klip video, b-roll, overlay, teks, subtitle', { clip_id: op.clip_id });
         if (op.keyframes.length) clip.keyframes = op.keyframes.map((k) => ({ ...k }));
         else delete clip.keyframes;
         break;

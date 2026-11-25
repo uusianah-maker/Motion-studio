@@ -108,7 +108,7 @@ export function TextOverlay({
   const style: CSSProperties = {
     left: `${(s.x + (kf?.x ?? 0)) * 100}%`,
     top: `${(s.y + (kf?.y ?? 0)) * 100}%`,
-    ...(kf && kf.scale !== 1 ? { transform: `translate(-50%, -50%) scale(${kf.scale})` } : {}),
+    ...(kf && (kf.scale !== 1 || kf.rot) ? { transform: `translate(-50%, -50%)${kf.rot ? ` rotate(${kf.rot}deg)` : ''} scale(${kf.scale})` } : {}),
     ...(kf && kf.opacity !== 1 ? { opacity: kf.opacity } : {}),
     fontSize: `${px}px`,
     lineHeight: 1.15,

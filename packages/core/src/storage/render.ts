@@ -3,7 +3,7 @@ import { framingFilters } from './framing.js';
 import { zoomExpr } from './effects.js';
 import { DEFAULT_DUCK, type LookId, denoiseFilter, duckFilter, edgeFadeFilter, effectiveLook, effectiveLut, fadeFilter, fitFilters, lookFilters, pullOutFilter, speechRanges, xfadeTransition } from './clipLook.js';
 export { speechRanges } from './clipLook.js';
-import { kfExpr, keyframeFilters } from './keyframes.js';
+import { cornerArgs, kfCorners, kfExpr, kfRotates, keyframeFilters } from './keyframes.js';
 import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
 import { stabilPath, stabilReady } from './stabil.js';
 import { chromaFilter } from './chroma.js';
@@ -224,7 +224,7 @@ export interface RenderBrand {
   lut?: { media_id: string; version_id: string } | null;
   luts?: ReadonlyMap<string, string>;
   /** R26: local file of each overlay media version; `still` = a picture (looped), else a video. */
-  overlays?: ReadonlyMap<string, { path: string; still: boolean }>;
+  overlays?: ReadonlyMap<string, { path: string; still: boolean; w?: number; h?: number }>;
 }
 
 /** Frames of the incoming transition's half (h) per visual segment; 0 = hard cut. Total xfade = 2h. */
@@ -504,7 +504,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const ky = kfs ? `+(${kfExpr(kfs, 'y', T)})*${H}` : '';
       const size = kfs && kfs.some((k) => k.scale !== 1) ? `'max(4,${fs}*(${kfExpr(kfs, 'scale', T)}))'` : `${fs}`;
       const alpha = kfs && kfs.some((k) => k.opacity !== 1) ? `:alpha='${kfExpr(kfs, 'opacity', T)}'` : '';
-      const moves = !!kfs && (['x', 'y', 'scale'] as const).some((p) => kfs.some((k) => k[p] !== kfs[0]![p]));
+      const moves = !!kfs && ((['x', 'y', 'scale'] as const).some((p) => kfs.some((k) => k[p] !== kfs[0]![p])) || kfRotates(kfs));
       if (moves) {
         // Keluhan tim "keyframe teks belum smooth": a per-frame `fontsize` jumps between whole font
         // sizes and drawtext x/y are whole pixels. Moving text is drawn ONCE at its normal size on a
@@ -516,17 +516,13 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
         const ax = Math.round(s.x * W) + P;
         const ay = Math.round(s.y * H) + P;
         const Tl = `((in-1)/${fps})`;
-        const Sx = kfExpr(kfs!, 'scale', Tl);
         const dx = `${ax}+(${kfExpr(kfs!, 'x', Tl)})*${W}`;
         const dy = `${ay}+(${kfExpr(kfs!, 'y', Tl)})*${H}`;
-        const l = `${dx}-(${Sx})*${ax}`;
-        const r = `${dx}+(${Sx})*${W + P - ax + P}`;
-        const tp = `${dy}-(${Sx})*${ay}`;
-        const b = `${dy}+(${Sx})*${H + P - ay + P}`;
+        const corners = cornerArgs(kfCorners(kfs!, Tl, dx, dy, [ax, W + P - ax + P, ay, H + P - ay + P]));
         const la = kfs!.some((k) => k.opacity !== 1) ? `:alpha='${kfExpr(kfs!, 'opacity', 't')}'` : '';
         const id = `tk${draws.length}`;
         graph.push(
-          `color=c=black@0:s=${W}x${H}:r=${fps}:d=${s6((to - from) / 1000)},format=yuva420p,drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}${la},pad=${W + 2 * P}:${H + 2 * P}:${P}:${P}:color=black@0,perspective=x0='${l}':y0='${tp}':x1='${r}':y1='${tp}':x2='${l}':y2='${b}':x3='${r}':y3='${b}':interpolation=cubic:sense=destination:eval=frame,crop=${W}:${H}:${P}:${P},setpts=PTS-STARTPTS+${s6(from / 1000)}/TB[${id}]`,
+          `color=c=black@0:s=${W}x${H}:r=${fps}:d=${s6((to - from) / 1000)},format=yuva420p,drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}${la},pad=${W + 2 * P}:${H + 2 * P}:${P}:${P}:color=black@0,perspective=${corners}:interpolation=cubic:sense=destination:eval=frame,crop=${W}:${H}:${P}:${P},setpts=PTS-STARTPTS+${s6(from / 1000)}/TB[${id}]`,
         );
         draws.push({ layer: id, enable: `gte(t,${s6(from / 1000)})*lt(t,${s6(to / 1000)})` });
         continue;
@@ -545,6 +541,35 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
   // R26: picture/video overlays over the text, back to front by layer (same box as the preview's
   // overlayBox: width % of W, height from the picture, preset corner + margin + nudge).
   const layers: { input: string; x: string; y: string; enable: string; blend?: string; opacity?: number }[] = [];
+  // 25 Nov (objek di depan teks): the picture under the text (before any text) masked by the
+  // engine's subject mask is laid back ON TOP of the text for the mask's span. A copy of [vcat] is
+  // split off before the text is drawn, so the subject keeps every frame (the mask may be 15 fps).
+  const depans = [...clipsOf(t, 'text'), ...clipsOf(t, 'subtitle')]
+    .filter((c) => c.depan && c.text?.trim())
+    .map((c) => {
+      const d = c.depan!;
+      const from = Math.max(d.dari_ms, c.start_ms);
+      const to = Math.min(d.dari_ms + d.durasi_ms, c.end_ms, total_ms);
+      return { c, d, from, to };
+    })
+    .filter((x) => x.to - x.from >= 40);
+  let textIn = 'vcat';
+  if (depans.length) {
+    textIn = 'vcatT';
+    graph.push(`[vcat]split=${depans.length + 1}[vcatT]${depans.map((_, i) => `[dp${i}]`).join('')}`);
+    depans.forEach(({ d, from, to }, i) => {
+      const src = brand.overlays?.get(d.masker.version_id);
+      if (!src) throw new StorageError('PRECONDITION', 'Masker "objek di depan teks" tidak tersedia untuk render', { version_id: d.masker.version_id });
+      const idx = inputCount++;
+      // the mask file starts at d.dari_ms on the timeline
+      args.push('-ss', s6((from - d.dari_ms) / 1000), '-t', s6((to - from) / 1000), '-i', src.path);
+      const soft = d.halus > 0 ? `,boxblur=${Math.max(1, Math.round((d.halus * Math.min(W, H)) / 1080))}:1` : '';
+      graph.push(`[dp${i}]trim=start=${s6(from / 1000)}:end=${s6(to / 1000)},setpts=PTS-STARTPTS,format=yuv420p[dpv${i}]`);
+      graph.push(`[${idx}:v:0]setpts=PTS-STARTPTS,fps=${fps},scale=${W}:${H}:flags=bicubic,format=gray${soft}[dpm${i}]`);
+      graph.push(`[dpv${i}][dpm${i}]alphamerge,setpts=PTS-STARTPTS+${s6(from / 1000)}/TB[dpo${i}]`);
+      layers.push({ input: `dpo${i}`, x: '0', y: '0', enable: `between(t,${s6(from / 1000)},${s6(to / 1000)})` });
+    });
+  }
   overlayOrder(clipsOf(t, 'overlay')).forEach((c, k) => {
     const o = c.overlay;
     const src = c.media ? brand.overlays?.get(c.media.version_id) : undefined;
@@ -577,6 +602,29 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       layers.push({ input: `ov${k}`, x, y, enable, blend: o.blend, opacity: o.opasitas });
       return;
     }
+    if (c.keyframes?.length && src.w && src.h) {
+      // 25 Nov (keyframe manual): a moving overlay. The picture is padded onto a transparent canvas
+      // with Q px to spare on every side (so it may leave the frame), moved/scaled/rotated around its
+      // own centre with the same sub-pixel `perspective` as video keyframes, then cropped back to W×H.
+      const kfs = c.keyframes;
+      const oh = Math.max(2, Math.round((ow * src.h) / src.w / 2) * 2);
+      const Q = Math.max(ow, oh) * 2;
+      const bx = Math.round(o.pos === 'c' ? (W - ow) / 2 : o.pos.endsWith('l') ? m : W - ow - m) + nx;
+      const by = Math.round(o.pos === 'c' ? (H - oh) / 2 : o.pos.startsWith('t') ? m : H - oh - m) + ny;
+      const px = Math.max(0, Math.min(W + 2 * Q - ow, Q + bx));
+      const py = Math.max(0, Math.min(H + 2 * Q - oh, Q + by));
+      const ax = px + ow / 2;
+      const ay = py + oh / 2;
+      // `in` counts frames from 1: a looped picture starts at t = 0, a video overlay at `from`.
+      const Tp = `((in-1)/${fps}+${s6(((src.still ? 0 : from) - c.start_ms) / 1000)})`;
+      const dxe = `${ax}+(${kfExpr(kfs, 'x', Tp)})*${W}`;
+      const dye = `${ay}+(${kfExpr(kfs, 'y', Tp)})*${H}`;
+      const corners = cornerArgs(kfCorners(kfs, Tp, dxe, dye, [ax, W + 2 * Q - ax, ay, H + 2 * Q - ay]));
+      const fadeKf = kfs.some((q) => q.opacity !== 1) ? `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*clip(${kfExpr(kfs, 'opacity', `(T-${s6(c.start_ms / 1000)})`)},0,1)'` : '';
+      graph.push(`[${idx}:v:0]${time}${key}scale=${ow}:${oh},format=rgba,colorchannelmixer=aa=${o.opasitas.toFixed(2)},setsar=1,pad=${W + 2 * Q}:${H + 2 * Q}:${px}:${py}:color=black@0,perspective=${corners}:interpolation=cubic:sense=destination:eval=frame,crop=${W}:${H}:${Q}:${Q}${fadeKf}[ov${k}]`);
+      layers.push({ input: `ov${k}`, x: '0', y: '0', enable });
+      return;
+    }
     graph.push(`[${idx}:v:0]${time}${key}scale=${ow}:-2,format=rgba,colorchannelmixer=aa=${o.opasitas.toFixed(2)},setsar=1[ov${k}]`);
     layers.push({ input: `ov${k}`, x, y, enable });
   });
@@ -591,7 +639,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
     layers.push({ input: 'logo', x: lg.corner.endsWith('l') ? `${m}` : `W-w-${m}`, y: lg.corner.startsWith('t') ? `${m}` : `H-h-${m}`, enable: '' });
   }
   if (layers.length) {
-    graph.push(...drawChain('vcat', 'vl0'));
+    graph.push(...drawChain(textIn, 'vl0'));
     layers.forEach((l, i) => {
       const last = i === layers.length - 1;
       const tail = last ? `,format=yuv420p,trim=end_frame=${total_frames}[vout]` : `[vl${i + 1}]`;
@@ -603,7 +651,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       }
       graph.push(`[vl${i}][${l.input}]overlay=x=${l.x}:y=${l.y}:eof_action=pass:format=auto${l.enable ? `:enable='${l.enable}'` : ''}${tail}`);
     });
-  } else graph.push(...drawChain('vcat', 'vout'));
+  } else graph.push(...drawChain(textIn, 'vout'));
 
   args.push(
     '-/filter_complex', 'graph.txt',
@@ -671,6 +719,12 @@ export interface RenderHooks {
   worker_pid?: number;
   /** Test seam: runs on the encoded temp file right before verification. */
   afterEncode?: (file: string) => Promise<void>;
+  /**
+   * 25 Nov (objek di depan teks): render only the PICTURE (video, b-roll, zoom effects — no text,
+   * overlays, logo or sound) of [from_ms, to_ms) and hand the file to `deliver` instead of saving
+   * an output. Used to make the source the engine's hapus_latar cuts the subject from.
+   */
+  pictureSpan?: { from_ms: number; to_ms: number; deliver: (file: string) => Promise<void> };
 }
 
 export const RENDER_TMP_PREFIX = 'motion-render-';
@@ -742,7 +796,8 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
     for (const r of [brandRefs.font, brandRefs.font_caption, brandRefs.logo?.ref, brandRefs.lut]) if (r && !leased.has(r.version_id)) throw new StorageError('CONFLICT', 'Brand Kit berubah saat render dimulai; ulangi render');
     const brandOnly = new Set([brandRefs.font?.version_id, brandRefs.font_caption?.version_id, brandRefs.logo?.ref.version_id].filter((x): x is string => !!x));
     const clipVersions = new Set(project.timeline.tracks.flatMap((tr) => (tr.kind === 'overlay' ? [] : tr.clips.flatMap((c) => (c.media ? [c.media.version_id] : [])))));
-    const overlayVersions = new Set(clipsOf(project.timeline, 'overlay').flatMap((c) => (c.media ? [c.media.version_id] : [])));
+    const span = hooks.pictureSpan ?? null;
+    const overlayVersions = new Set([...clipsOf(project.timeline, 'overlay').flatMap((c) => (c.media ? [c.media.version_id] : [])), ...(span ? [] : [...clipsOf(project.timeline, 'text'), ...clipsOf(project.timeline, 'subtitle')].flatMap((c) => (c.depan ? [c.depan.masker.version_id] : [])))]);
     // R38a: Aset fonts of texts and colour LUTs are leased with the clips but are not timeline media.
     const asetFontRefs = [...clipsOf(project.timeline, 'text'), ...clipsOf(project.timeline, 'subtitle')].flatMap((c) => (c.text?.trim() && fontRef(c.style?.font) ? [fontRef(c.style?.font)!] : []));
     const asetFontVersions = new Set(asetFontRefs.map((r) => r.version_id));
@@ -756,15 +811,17 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       const inputs = new Map<string, PlanInput>();
       const markers = new Set<string>();
       const local = new Map(versions.map((v, i) => [v.version_id, abs[i]!]));
-      const overlays = new Map<string, { path: string; still: boolean }>();
+      const overlays = new Map<string, { path: string; still: boolean; w?: number; h?: number }>();
       for (let i = 0; i < versions.length; i++) {
         const v = versions[i]!;
         if (overlayVersions.has(v.version_id)) {
           // R26: a picture has no video probe (null); a video overlay keeps its frames.
           const p = v.probe ?? (await probeFile(abs[i]!));
           const still = !p || !p.video_codec || p.duration_ms <= 100 || ['png', 'mjpeg', 'webp', 'bmp', 'gif'].includes(p.video_codec);
-          if (still && !(await probeImage(abs[i]!))) throw new StorageError('PRECONDITION', `Overlay "${v.original_name}" bukan gambar/video yang bisa dibaca`, { version_id: v.version_id });
-          overlays.set(v.version_id, { path: abs[i]!, still });
+          const img = still ? await probeImage(abs[i]!) : null;
+          if (still && !img) throw new StorageError('PRECONDITION', `Overlay "${v.original_name}" bukan gambar/video yang bisa dibaca`, { version_id: v.version_id });
+          const dim = img ?? (p?.width && p.height ? { width: p.width, height: p.height } : null);
+          overlays.set(v.version_id, { path: abs[i]!, still, ...(dim ? { w: dim.width, h: dim.height } : {}) });
           for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
           if (!clipVersions.has(v.version_id)) continue;
         }
@@ -820,7 +877,9 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
         await fsp.copyFile(file, path.join(jobDir, name));
         luts.set(vid, name);
       }
-      const plan = buildRenderPlan(project.timeline, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays, aset_fonts: asetFonts, lut: brandRefs.lut, luts });
+      const picture: Timeline = span ? { ...project.timeline, tracks: project.timeline.tracks.filter((tr) => tr.kind === 'video' || tr.kind === 'broll' || tr.kind === 'effects'), brand_logo: false } : project.timeline;
+      if (span) delete picture.loudness_lufs;
+      const plan = buildRenderPlan(picture, inputs, settings, font, regularFont, { font: brandFont ? `brand${fontExt}` : null, font_caption: capFont ? `caption${capExt}` : null, logo: span ? null : brandLogo, fonts, look: kit.filter_bawaan ?? null, overlays, aset_fonts: asetFonts, lut: brandRefs.lut, luts });
       await fsp.writeFile(path.join(jobDir, 'graph.txt'), plan.graph, 'utf8');
       for (const f of plan.files) await fsp.writeFile(path.join(jobDir, f.name), f.content, 'utf8');
       if (font) await fsp.copyFile(font, path.join(jobDir, `fontb${path.extname(font).toLowerCase()}`));
@@ -835,9 +894,19 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
         ...(hooks.signal ? { signal: hooks.signal } : {}),
         onTime: (ms) => hooks.onProgress?.(Math.min(0.999, Math.max(0, ms / plan.total_ms))),
       });
-      if (project.timeline.loudness_lufs !== undefined) await normalizeLoudness(jobDir, project.timeline.loudness_lufs, hooks.signal);
+      if (!span && project.timeline.loudness_lufs !== undefined) await normalizeLoudness(jobDir, project.timeline.loudness_lufs, hooks.signal);
+      if (span) {
+        // Only the span, picture only, a clean H.264 file for the engine.
+        const cut = path.join(jobDir, 'span.mp4');
+        await runFfmpeg(['-y', '-ss', s6(span.from_ms / 1000), '-t', s6((span.to_ms - span.from_ms) / 1000), '-i', 'out.mp4', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-pix_fmt', 'yuv420p', ...STRIP_METADATA_ARGS, cut], { cwd: jobDir, ...(hooks.signal ? { signal: hooks.signal } : {}) });
+        await span.deliver(cut);
+      }
       return { plan, markers: [...markers] };
     });
+    if (span) {
+      outcome = 'completed';
+      return { status: 'completed', preflight, output: { rel: '', name: '', size: 0, hash: '', duration_ms: span.to_ms - span.from_ms, width: result.plan.width, height: result.plan.height, metadata_clean: true, kept_tags: [] } };
+    }
 
     hooks.onPhase?.('verifying');
     if (hooks.signal?.aborted) throw new StorageError('CANCELLED', 'Render dibatalkan');

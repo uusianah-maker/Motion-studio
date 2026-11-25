@@ -43,6 +43,8 @@ import {
   setShotExclusions,
   settleOrphanJob,
   validateEngineJob,
+  DEPAN_FPS,
+  depanSource,
 } from './core.js';
 import { ApiError } from './errors.js';
 import { readJsonBody } from './http.js';
@@ -169,6 +171,10 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
     if (!isBatchName(b)) throw new ApiError(404, 'NOT_FOUND', 'Batch tidak ditemukan');
     return b;
   };
+  /** 25 Nov "Objek di depan teks": per project/clip progress of step 1 (picture) → engine job. */
+  type DepanTask = { clip_id: string; state: 'antre' | 'gambar' | 'mesin' | 'gagal'; at: number; job_id?: string; sumber?: { media_id: string; version_id: string }; dari_ms?: number; durasi_ms?: number; pesan?: string };
+  const depanTasks = new Map<string, DepanTask>();
+  let depanChain: Promise<void> = Promise.resolve();
   const needEngine = () => {
     if (!opts.config) throw new ApiError(409, 'ENGINE_MISSING', 'Mesin belum dipasang di server ini (set MOTION_ENGINE_ROOT ke folder repo mesin)');
     return opts.config;
@@ -231,6 +237,51 @@ export function createEngine(ws: Workspace, opts: { copilot: Copilot; config: En
       method: 'GET',
       path: '/api/projects/:project_id/engine/jobs/:job_id/visual',
       handle: async ({ params }) => ({ visual: await readVisualResult(ws, params.project_id!, jobParam(params.job_id)) }),
+    },
+    {
+      // 25 Nov "Objek di depan teks": render the picture under the text, then the engine's
+      // hapus_latar cuts the subject from it (background, one at a time, low priority). The editor
+      // polls GET …/depan/:clip_id, then the engine job, then saves `set_depan` (hybrid: a proposal).
+      method: 'POST',
+      path: '/api/projects/:project_id/depan',
+      handle: async ({ req, params, actor }) => {
+        needEngine();
+        if (actor !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hanya pengguna yang boleh menjalankan mesin');
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        onlyKeys(body, ['clip_id']);
+        const clipId = typeof body.clip_id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(body.clip_id) ? body.clip_id : null;
+        if (!clipId) throw new ApiError(400, 'EDIT_INVALID', 'clip_id tidak valid');
+        const pid = params.project_id!;
+        await readProject(ws, pid);
+        const key = `${pid}/${clipId}`;
+        const cur = depanTasks.get(key);
+        if (cur && (cur.state === 'gambar' || cur.state === 'antre')) return { depan: cur };
+        const task: DepanTask = { clip_id: clipId, state: 'antre', at: Date.now() };
+        depanTasks.set(key, task);
+        depanChain = depanChain.then(async () => {
+          task.state = 'gambar';
+          try {
+            const src = await depanSource(ws, { project_id: pid, clip_id: clipId, actor: 'user' });
+            const input = validateEngineJob({ project_id: pid, mode: 'visual', ref: src.sumber, visual: { alat: 'hapus_latar', kualitas: 'cepat', fps: DEPAN_FPS } });
+            const job = await enqueue(pid, () => prepareEngineJob(ws, input));
+            Object.assign(task, { state: 'mesin', job_id: job.job_id, sumber: src.sumber, dari_ms: src.dari_ms, durasi_ms: src.durasi_ms });
+          } catch (e) {
+            task.state = 'gagal';
+            task.pesan = e instanceof Error ? e.message.slice(0, 300) : 'gagal';
+            opts.onError?.(e);
+          }
+        });
+        return { depan: task };
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:project_id/depan/:clip_id',
+      handle: async ({ params }) => {
+        const t = depanTasks.get(`${params.project_id}/${params.clip_id}`);
+        if (!t) throw new ApiError(404, 'NOT_FOUND', 'Belum ada proses objek di depan teks untuk klip ini');
+        return { depan: t };
+      },
     },
     {
       // R34: the known text + sentence/word times of a VO media (subtitles without Whisper).
