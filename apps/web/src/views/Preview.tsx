@@ -83,6 +83,9 @@ export function Preview({
   const sfxRef = useRef<HTMLAudioElement>(null);
   /** Keluhan tim: two SFX can overlap (the render mixes them all) — a second element for the overlap. */
   const sfx2Ref = useRef<HTMLAudioElement>(null);
+  /** 25 Nov (＋ SFX di timeline): up to 4 overlapping sounds in the preview (the render mixes all). */
+  const sfx3Ref = useRef<HTMLAudioElement>(null);
+  const sfx4Ref = useRef<HTMLAudioElement>(null);
   const musicRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasPx, setCanvasPx] = useState({ w: 360, h: 640 });
@@ -116,7 +119,7 @@ export function Preview({
   // Each SFX clip keeps one element (greedy by start time), so an overlap never restarts a sound.
   const sfxSlot = new Map<string, number>();
   {
-    const ends = [-Infinity, -Infinity];
+    const ends = [-Infinity, -Infinity, -Infinity, -Infinity];
     for (const c of [...clipsOf('sfx')].sort((a, b) => a.start_ms - b.start_ms)) {
       const k = ends.findIndex((e) => e <= c.start_ms);
       if (k < 0) continue;
@@ -126,6 +129,8 @@ export function Preview({
   }
   const sfx = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 0), t);
   const sfx2 = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 1), t);
+  const sfx3 = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 2), t);
+  const sfx4 = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 3), t);
   const music = clipAt(clipsOf('music'), t);
   // U3c: zoom effect covering the playhead (same curve + anchor as the render's perspective window).
   const fx = clipsOf('effects').find((c) => c.effect && t >= c.start_ms && t < c.end_ms);
@@ -215,8 +220,10 @@ export function Preview({
     void sync(audioRef.current, audio, t, playing, 'audio');
     void sync(sfxRef.current, sfx, t, playing, 'audio');
     void sync(sfx2Ref.current, sfx2, t, playing, 'audio');
+    void sync(sfx3Ref.current, sfx3, t, playing, 'audio');
+    void sync(sfx4Ref.current, sfx4, t, playing, 'audio');
     void sync(musicRef.current, music, t, playing, 'audio');
-  }, [visual, audio, sfx, sfx2, music, t, playing, sync, retry]);
+  }, [visual, audio, sfx, sfx2, sfx3, sfx4, music, t, playing, sync, retry]);
 
   useEffect(() => {
     if (!playing) {
@@ -264,12 +271,12 @@ export function Preview({
   }, [playhead, playing]);
 
   useEffect(() => {
-    for (const el of [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, musicRef.current]) if (el) el.muted = muted;
+    for (const el of [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, sfx3Ref.current, sfx4Ref.current, musicRef.current]) if (el) el.muted = muted;
   }, [muted]);
   // Audit 14 Nov: a stream link expires after 10 min; seeking into an unbuffered part then fails
   // silently. On a media error the layer forgets its link, so the next sync fetches a fresh one.
   useEffect(() => {
-    const els = [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, musicRef.current].filter((e): e is HTMLMediaElement => !!e);
+    const els = [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, sfx3Ref.current, sfx4Ref.current, musicRef.current].filter((e): e is HTMLMediaElement => !!e);
     const onError = (e: Event) => {
       const el = e.currentTarget as HTMLMediaElement;
       const vid = el.dataset.vid;
@@ -295,6 +302,8 @@ export function Preview({
   const audioGain = gainOf(audio);
   const sfxGain = gainOf(sfx);
   const sfx2Gain = gainOf(sfx2);
+  const sfx3Gain = gainOf(sfx3);
+  const sfx4Gain = gainOf(sfx4);
   const musicGain = Math.round(gainOf(music) * (duck !== undefined ? duckGainAt(duckRanges, duck ?? DEFAULT_DUCK, t) : 1) * 1000) / 1000;
   useEffect(() => {
     if (musicRef.current) musicRef.current.volume = musicGain;
@@ -302,14 +311,18 @@ export function Preview({
     if (audioRef.current) audioRef.current.volume = audioGain;
     if (sfxRef.current) sfxRef.current.volume = sfxGain;
     if (sfx2Ref.current) sfx2Ref.current.volume = sfx2Gain;
-  }, [visualGain, audioGain, sfxGain, sfx2Gain, musicGain]);
+    if (sfx3Ref.current) sfx3Ref.current.volume = sfx3Gain;
+    if (sfx4Ref.current) sfx4Ref.current.volume = sfx4Gain;
+  }, [visualGain, audioGain, sfxGain, sfx2Gain, sfx3Gain, sfx4Gain, musicGain]);
   // R23b: EQ + "Perjelas suara" of each playing clip (Web Audio, same numbers as the render).
-  const fxKey = [visual, audio, sfx, sfx2, music].map((c) => (c ? `${c.clip_id}:${JSON.stringify(c.eq ?? null)}:${c.voice ? 1 : 0}` : '-')).join('|');
+  const fxKey = [visual, audio, sfx, sfx2, sfx3, sfx4, music].map((c) => (c ? `${c.clip_id}:${JSON.stringify(c.eq ?? null)}:${c.voice ? 1 : 0}` : '-')).join('|');
   useEffect(() => {
     applyAudioFx(videoRef.current, visual);
     applyAudioFx(audioRef.current, audio);
     applyAudioFx(sfxRef.current, sfx);
     applyAudioFx(sfx2Ref.current, sfx2);
+    applyAudioFx(sfx3Ref.current, sfx3);
+    applyAudioFx(sfx4Ref.current, sfx4);
     applyAudioFx(musicRef.current, music);
   }, [fxKey]);
 
@@ -476,6 +489,8 @@ export function Preview({
           <audio ref={audioRef} preload="auto" />
           <audio ref={sfxRef} preload="auto" data-layer="sfx" />
           <audio ref={sfx2Ref} preload="auto" data-layer="sfx2" />
+          <audio ref={sfx3Ref} preload="auto" data-layer="sfx3" />
+          <audio ref={sfx4Ref} preload="auto" data-layer="sfx4" />
           <audio ref={musicRef} preload="auto" data-layer="music" />
           {!visual && <div className="emptyFrame">{end === 0 ? 'Tambahkan media ke linimasa' : 'Tidak ada video di titik ini'}</div>}
           {(unsupported || problem) && <div className="emptyFrame warnFrame">{unsupported ?? problem}</div>}

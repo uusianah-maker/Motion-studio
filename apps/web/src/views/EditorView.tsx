@@ -1,5 +1,6 @@
 import { CopilotPanel } from './CopilotPanel';
 import { KeyframeDiamonds } from './KeyframeDiamonds';
+import { SfxPicker } from './SfxPicker';
 import { ReviewPanel } from './ReviewPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Role, type Track } from '../api';
@@ -284,6 +285,8 @@ export function EditorView({
   // 25 Nov (keyframe manual): "◆ Atur di layar" = handles on the preview; each drop saves a keyframe
   // at the playhead (an existing one within 40 ms is updated; the first one gets a still start at 0).
   const [kfMode, setKfMode] = useState(false);
+  /** 25 Nov: "＋ SFX" on the timeline toolbar. */
+  const [sfxOpen, setSfxOpen] = useState(false);
   const kfAble = !!sel && ['video', 'broll', 'text', 'subtitle'].includes(sel.kind); // overlay: keyframes via the panel (it can already be dragged in the preview)
   const saveKeyframeAt = (clipId: string, v: { x: number; y: number; scale: number; opacity: number; rot: number }) => {
     const c = allClips.find((x) => x.clip_id === clipId);
@@ -685,6 +688,20 @@ export function EditorView({
         />
       )}
       {penutupOpen && project && <PenutupDialog api={api} kit={brand?.kit ?? null} onPick={(o) => void addPenutup(o)} onClose={() => setPenutupOpen(false)} onKitSaved={() => setBrandReload((n) => n + 1)} />}
+      {sfxOpen && project && (
+        <SfxPicker
+          api={api}
+          project={project}
+          media={media}
+          sfx={(brand?.library?.aset ?? brand?.kit.aset ?? []).filter((a) => a.jenis === 'sfx')}
+          playhead={playhead}
+          onAdd={(ops) => {
+            setSfxOpen(false);
+            void edit(ops);
+          }}
+          onClose={() => setSfxOpen(false)}
+        />
+      )}
       {overlayOpen && project && <OverlayPicker api={api} kit={brand?.kit ?? null} onPick={addOverlay} onClose={() => setOverlayOpen(false)} onKitSaved={() => setBrandReload((n) => n + 1)} />}
       {cutClip && project && (
         <CutReviewDialog
@@ -952,8 +969,11 @@ export function EditorView({
           <button className="smallbtn" disabled={locked || !project} onClick={() => addText('subtitle')} title="Tambah subtitle di playhead">
             ＋ Subtitle
           </button>
-          <button className="smallbtn" disabled={locked || !project} onClick={() => setOverlayOpen(true)} title="Tambah logo / watermark / stiker / frame (gambar) di atas video">
-            ＋ Overlay
+          <button className="smallbtn" disabled={locked || !project} onClick={() => setOverlayOpen(true)} title="Tambah gambar di atas video: stiker, logo, watermark, frame — dari Aset brand atau upload baru">
+            ＋ Overlay gambar
+          </button>
+          <button className="smallbtn" aria-label="Tambah SFX di playhead" disabled={locked || !project} onClick={() => setSfxOpen(true)} title="Tambah sound effect di playhead: dari Aset brand (cari tag, dengar dulu) atau upload file sendiri">
+            ＋ SFX
           </button>
           <button className="smallbtn" disabled={locked || !project} onClick={() => setPenutupOpen(true)} title="Tambah video penutup (end card) sesudah klip video terakhir">
             ＋ Penutup
