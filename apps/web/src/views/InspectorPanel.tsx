@@ -346,7 +346,7 @@ export function InspectorPanel({
       {sound && <ClipLookPanel key={clip.clip_id} clip={clip} kind={clip.kind} submit={submit} duck={duck} brandLook={brand?.filter_bawaan ? LOOKS[brand.filter_bawaan].label : null} api={api} luts={luts} brandLut={brand?.lut_bawaan ? (luts.find((l) => l.ref.version_id === brand.lut_bawaan!.version_id)?.label ?? 'LUT brand') : null} />}
       {sound && <AudioFxPanel clip={clip} kind={clip.kind} submit={submit} />}
       {clip.media && (clip.kind === 'video' || clip.kind === 'broll') && <MotionPanel clip={clip} playhead={playhead} submit={submit} api={api} />}
-      {((clip.media && (clip.kind === 'video' || clip.kind === 'broll')) || isText) && <KeyframePanel clip={clip} playhead={playhead} submit={submit} />}
+      {((clip.media && (clip.kind === 'video' || clip.kind === 'broll' || (clip.kind === 'overlay' && (!clip.overlay?.blend || clip.overlay.blend === 'normal')))) || isText) && <KeyframePanel clip={clip} playhead={playhead} submit={submit} />}
       {sound && onCutReview && (
         <button className="btn small" onClick={onCutReview} title="Cari jeda & pergantian adegan, lalu pilih yang mau dipotong (FFmpeg, tanpa AI)">
           ✂ Deteksi jeda & adegan

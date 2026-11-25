@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { blurAt, placeOnCanvas } from '../../../../packages/core/dist/storage/framing.js';
 import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
-import { keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
+import { type KfValues, keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
+import { effectiveStyle } from '../../../../packages/core/dist/storage/textStyle.js';
+import { KeyframeHandles } from './KeyframeHandles';
 import { DEFAULT_DUCK, duckGainAt, effectiveLook, effectiveLut, fadeGainAt, lookCss, speechRanges, transitionCss } from '../../../../packages/core/dist/storage/clipLook.js';
 import { orientCss, sourceAt } from '../../../../packages/core/dist/storage/clipMotion.js';
 import { applyAudioFx, resumeAudioFx } from '../audioFx';
@@ -42,10 +44,15 @@ export function Preview({
   onBrandLogo,
   overlayDraft = null,
   onMoveOverlay,
+  kfMode = false,
+  onKeyframe,
 }: {
   api: Api;
   project: Project;
   media: Media[];
+  /** 25 Nov: "◆ Atur di layar" — handles that save a keyframe at the playhead for the selected clip. */
+  kfMode?: boolean;
+  onKeyframe?: (clipId: string, v: KfValues) => void;
   playhead: number;
   setPlayhead: (ms: number) => void;
   playing: boolean;
@@ -499,6 +506,15 @@ export function Preview({
             {...(onSelectClip ? { onSelect: onSelectClip } : {})}
             {...(onMoveOverlay && !busy ? { onMove: onMoveOverlay } : {})}
           />
+          {kfMode && onKeyframe && !busy && !playing && (() => {
+            if (visual && visual.clip_id === selectedClipId)
+              return <KeyframeHandles key={visual.clip_id} values={keyframeAt(visual.keyframes, t - visual.start_ms)} anchor={{ x: 0.5, y: 0.5 }} size={{ w: 1, h: 1 }} onCommit={(v) => onKeyframe(visual.clip_id, v)} />;
+            const tc = [...texts.map((c) => ['text', c] as const), ...subs.map((c) => ['subtitle', c] as const)].find(([, c]) => c.clip_id === selectedClipId);
+            if (!tc) return null;
+            const [kind, c] = tc;
+            const s = effectiveStyle(kind, c.style);
+            return <KeyframeHandles key={c.clip_id} values={keyframeAt(c.keyframes, t - c.start_ms)} anchor={{ x: s.x, y: s.y }} size={{ w: 0.5, h: 0.12 }} onCommit={(v) => onKeyframe(c.clip_id, v)} />;
+          })()}
           {project.timeline.brand_logo && brand?.kit.logo && brand.logoUrl && (
             <img
               className="brandLogo"

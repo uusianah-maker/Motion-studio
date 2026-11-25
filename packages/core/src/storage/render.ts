@@ -3,7 +3,7 @@ import { framingFilters } from './framing.js';
 import { zoomExpr } from './effects.js';
 import { DEFAULT_DUCK, type LookId, denoiseFilter, duckFilter, edgeFadeFilter, effectiveLook, effectiveLut, fadeFilter, fitFilters, lookFilters, pullOutFilter, speechRanges, xfadeTransition } from './clipLook.js';
 export { speechRanges } from './clipLook.js';
-import { kfExpr, keyframeFilters } from './keyframes.js';
+import { cornerArgs, kfCorners, kfExpr, kfRotates, keyframeFilters } from './keyframes.js';
 import { atempoChain, orientFilters, vdenoiseFilter } from './clipMotion.js';
 import { stabilPath, stabilReady } from './stabil.js';
 import { chromaFilter } from './chroma.js';
@@ -224,7 +224,7 @@ export interface RenderBrand {
   lut?: { media_id: string; version_id: string } | null;
   luts?: ReadonlyMap<string, string>;
   /** R26: local file of each overlay media version; `still` = a picture (looped), else a video. */
-  overlays?: ReadonlyMap<string, { path: string; still: boolean }>;
+  overlays?: ReadonlyMap<string, { path: string; still: boolean; w?: number; h?: number }>;
 }
 
 /** Frames of the incoming transition's half (h) per visual segment; 0 = hard cut. Total xfade = 2h. */
@@ -504,7 +504,7 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const ky = kfs ? `+(${kfExpr(kfs, 'y', T)})*${H}` : '';
       const size = kfs && kfs.some((k) => k.scale !== 1) ? `'max(4,${fs}*(${kfExpr(kfs, 'scale', T)}))'` : `${fs}`;
       const alpha = kfs && kfs.some((k) => k.opacity !== 1) ? `:alpha='${kfExpr(kfs, 'opacity', T)}'` : '';
-      const moves = !!kfs && (['x', 'y', 'scale'] as const).some((p) => kfs.some((k) => k[p] !== kfs[0]![p]));
+      const moves = !!kfs && ((['x', 'y', 'scale'] as const).some((p) => kfs.some((k) => k[p] !== kfs[0]![p])) || kfRotates(kfs));
       if (moves) {
         // Keluhan tim "keyframe teks belum smooth": a per-frame `fontsize` jumps between whole font
         // sizes and drawtext x/y are whole pixels. Moving text is drawn ONCE at its normal size on a
@@ -516,17 +516,13 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
         const ax = Math.round(s.x * W) + P;
         const ay = Math.round(s.y * H) + P;
         const Tl = `((in-1)/${fps})`;
-        const Sx = kfExpr(kfs!, 'scale', Tl);
         const dx = `${ax}+(${kfExpr(kfs!, 'x', Tl)})*${W}`;
         const dy = `${ay}+(${kfExpr(kfs!, 'y', Tl)})*${H}`;
-        const l = `${dx}-(${Sx})*${ax}`;
-        const r = `${dx}+(${Sx})*${W + P - ax + P}`;
-        const tp = `${dy}-(${Sx})*${ay}`;
-        const b = `${dy}+(${Sx})*${H + P - ay + P}`;
+        const corners = cornerArgs(kfCorners(kfs!, Tl, dx, dy, [ax, W + P - ax + P, ay, H + P - ay + P]));
         const la = kfs!.some((k) => k.opacity !== 1) ? `:alpha='${kfExpr(kfs!, 'opacity', 't')}'` : '';
         const id = `tk${draws.length}`;
         graph.push(
-          `color=c=black@0:s=${W}x${H}:r=${fps}:d=${s6((to - from) / 1000)},format=yuva420p,drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}${la},pad=${W + 2 * P}:${H + 2 * P}:${P}:${P}:color=black@0,perspective=x0='${l}':y0='${tp}':x1='${r}':y1='${tp}':x2='${l}':y2='${b}':x3='${r}':y3='${b}':interpolation=cubic:sense=destination:eval=frame,crop=${W}:${H}:${P}:${P},setpts=PTS-STARTPTS+${s6(from / 1000)}/TB[${id}]`,
+          `color=c=black@0:s=${W}x${H}:r=${fps}:d=${s6((to - from) / 1000)},format=yuva420p,drawtext=fontfile=${fontFile}:textfile=${name}:expansion=none:fontsize=${fs}:fontcolor=${hex(s.color)}:line_spacing=${Math.round(fs * 0.15)}:text_align=${s.align === 'left' ? 'L' : s.align === 'right' ? 'R' : 'C'}:x=${Math.round(s.x * W)}-text_w/2:y=${Math.round(s.y * H)}-text_h/2${look ? `:${look}` : ''}${la},pad=${W + 2 * P}:${H + 2 * P}:${P}:${P}:color=black@0,perspective=${corners}:interpolation=cubic:sense=destination:eval=frame,crop=${W}:${H}:${P}:${P},setpts=PTS-STARTPTS+${s6(from / 1000)}/TB[${id}]`,
         );
         draws.push({ layer: id, enable: `gte(t,${s6(from / 1000)})*lt(t,${s6(to / 1000)})` });
         continue;
@@ -575,6 +571,29 @@ export function buildRenderPlan(t: Timeline, inputs: ReadonlyMap<string, PlanInp
       const hold = src.still ? '' : `setpts=PTS-STARTPTS,fps=${fps},tpad=start_duration=${s6(from / 1000)}:color=${neutral},`;
       graph.push(`[${idx}:v:0]${hold}${key}scale=${ow}:-2,format=rgb24,pad=${W}:${H}:${px}:${py}:color=${neutral},setsar=1,format=gbrp[ov${k}]`);
       layers.push({ input: `ov${k}`, x, y, enable, blend: o.blend, opacity: o.opasitas });
+      return;
+    }
+    if (c.keyframes?.length && src.w && src.h) {
+      // 25 Nov (keyframe manual): a moving overlay. The picture is padded onto a transparent canvas
+      // with Q px to spare on every side (so it may leave the frame), moved/scaled/rotated around its
+      // own centre with the same sub-pixel `perspective` as video keyframes, then cropped back to W×H.
+      const kfs = c.keyframes;
+      const oh = Math.max(2, Math.round((ow * src.h) / src.w / 2) * 2);
+      const Q = Math.max(ow, oh) * 2;
+      const bx = Math.round(o.pos === 'c' ? (W - ow) / 2 : o.pos.endsWith('l') ? m : W - ow - m) + nx;
+      const by = Math.round(o.pos === 'c' ? (H - oh) / 2 : o.pos.startsWith('t') ? m : H - oh - m) + ny;
+      const px = Math.max(0, Math.min(W + 2 * Q - ow, Q + bx));
+      const py = Math.max(0, Math.min(H + 2 * Q - oh, Q + by));
+      const ax = px + ow / 2;
+      const ay = py + oh / 2;
+      // `in` counts frames from 1: a looped picture starts at t = 0, a video overlay at `from`.
+      const Tp = `((in-1)/${fps}+${s6(((src.still ? 0 : from) - c.start_ms) / 1000)})`;
+      const dxe = `${ax}+(${kfExpr(kfs, 'x', Tp)})*${W}`;
+      const dye = `${ay}+(${kfExpr(kfs, 'y', Tp)})*${H}`;
+      const corners = cornerArgs(kfCorners(kfs, Tp, dxe, dye, [ax, W + 2 * Q - ax, ay, H + 2 * Q - ay]));
+      const fadeKf = kfs.some((q) => q.opacity !== 1) ? `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*clip(${kfExpr(kfs, 'opacity', `(T-${s6(c.start_ms / 1000)})`)},0,1)'` : '';
+      graph.push(`[${idx}:v:0]${time}${key}scale=${ow}:${oh},format=rgba,colorchannelmixer=aa=${o.opasitas.toFixed(2)},setsar=1,pad=${W + 2 * Q}:${H + 2 * Q}:${px}:${py}:color=black@0,perspective=${corners}:interpolation=cubic:sense=destination:eval=frame,crop=${W}:${H}:${Q}:${Q}${fadeKf}[ov${k}]`);
+      layers.push({ input: `ov${k}`, x: '0', y: '0', enable });
       return;
     }
     graph.push(`[${idx}:v:0]${time}${key}scale=${ow}:-2,format=rgba,colorchannelmixer=aa=${o.opasitas.toFixed(2)},setsar=1[ov${k}]`);
@@ -756,15 +775,17 @@ export async function renderProject(ws: Workspace, input: { project_id: string; 
       const inputs = new Map<string, PlanInput>();
       const markers = new Set<string>();
       const local = new Map(versions.map((v, i) => [v.version_id, abs[i]!]));
-      const overlays = new Map<string, { path: string; still: boolean }>();
+      const overlays = new Map<string, { path: string; still: boolean; w?: number; h?: number }>();
       for (let i = 0; i < versions.length; i++) {
         const v = versions[i]!;
         if (overlayVersions.has(v.version_id)) {
           // R26: a picture has no video probe (null); a video overlay keeps its frames.
           const p = v.probe ?? (await probeFile(abs[i]!));
           const still = !p || !p.video_codec || p.duration_ms <= 100 || ['png', 'mjpeg', 'webp', 'bmp', 'gif'].includes(p.video_codec);
-          if (still && !(await probeImage(abs[i]!))) throw new StorageError('PRECONDITION', `Overlay "${v.original_name}" bukan gambar/video yang bisa dibaca`, { version_id: v.version_id });
-          overlays.set(v.version_id, { path: abs[i]!, still });
+          const img = still ? await probeImage(abs[i]!) : null;
+          if (still && !img) throw new StorageError('PRECONDITION', `Overlay "${v.original_name}" bukan gambar/video yang bisa dibaca`, { version_id: v.version_id });
+          const dim = img ?? (p?.width && p.height ? { width: p.width, height: p.height } : null);
+          overlays.set(v.version_id, { path: abs[i]!, still, ...(dim ? { w: dim.width, h: dim.height } : {}) });
           for (const m of await sourceMetadataMarkers(abs[i]!)) markers.add(m);
           if (!clipVersions.has(v.version_id)) continue;
         }

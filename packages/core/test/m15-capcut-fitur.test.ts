@@ -360,10 +360,10 @@ describe('keyframe posisi / skala / opacity (fitur 13)', () => {
     const k = validateKeyframes([{ at_ms: 1000, x: 0.5, scale: 2, opacity: 0, ease: 'ease' }, { at_ms: 0 }]);
     expect(k.map((x) => x.at_ms)).toEqual([0, 1000]);
     for (const bad of [[{ at_ms: 0 }, { at_ms: 0 }], [{ at_ms: 0, scale: 9 }], [{ at_ms: 0, ease: 'bounce' }], [{ at_ms: 'x' }], Array(21).fill(0).map((_, i) => ({ at_ms: i })), 'x']) expect(code(() => validateKeyframes(bad))).toBe('EDIT_INVALID');
-    expect(keyframeAt(k, -5)).toEqual({ x: 0, y: 0, scale: 1, opacity: 1 });
+    expect(keyframeAt(k, -5)).toEqual({ x: 0, y: 0, scale: 1, opacity: 1, rot: 0 });
     expect(keyframeAt(k, 500).scale).toBeCloseTo(1.5); // ease-in-out: halfway = half
     expect(keyframeAt(k, 250).scale).toBeCloseTo(1 + (0.5 - 0.5 * Math.cos(Math.PI * 0.25)));
-    expect(keyframeAt(k, 5000)).toEqual({ x: 0.5, y: 0, scale: 2, opacity: 0 });
+    expect(keyframeAt(k, 5000)).toEqual({ x: 0.5, y: 0, scale: 2, opacity: 0, rot: 0 });
     // Same numbers from the FFmpeg expression (evaluated here with JS semantics).
     const js = kfExpr(k, 'scale', 'T').replace(/if\(/g, 'iff(').replace(/lt\(/g, 'lt(').replace(/PI/g, 'Math.PI').replace(/cos\(/g, 'Math.cos(');
     const iff = (c: number, a: number, b: number) => (c ? a : b);

@@ -1,4 +1,5 @@
 import { CopilotPanel } from './CopilotPanel';
+import { KeyframeDiamonds } from './KeyframeDiamonds';
 import { ReviewPanel } from './ReviewPanel';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { type Api, ApiError, type Clip, type EditOp, type Media, type Project, type Role, type Track } from '../api';
@@ -280,6 +281,31 @@ export function EditorView({
   const lastEnd = Math.max(0, ...allClips.map((c) => c.end_ms));
   const duration = visibleDuration(lastEnd);
   const sel = allClips.find((c) => c.clip_id === selected) ?? null;
+  // 25 Nov (keyframe manual): "◆ Atur di layar" = handles on the preview; each drop saves a keyframe
+  // at the playhead (an existing one within 40 ms is updated; the first one gets a still start at 0).
+  const [kfMode, setKfMode] = useState(false);
+  const kfAble = !!sel && ['video', 'broll', 'text', 'subtitle'].includes(sel.kind); // overlay: keyframes via the panel (it can already be dragged in the preview)
+  const saveKeyframeAt = (clipId: string, v: { x: number; y: number; scale: number; opacity: number; rot: number }) => {
+    const c = allClips.find((x) => x.clip_id === clipId);
+    if (!c) return;
+    const at = Math.round(Math.max(0, Math.min(c.end_ms - c.start_ms, playhead - c.start_ms)));
+    const r3 = (n: number) => Math.round(n * 1000) / 1000;
+    const vals = { x: r3(v.x), y: r3(v.y), scale: r3(v.scale), opacity: r3(v.opacity), ...(Math.round(v.rot) ? { rot: Math.round(v.rot) } : {}) };
+    const kfs = [...(c.keyframes ?? [])];
+    const near = kfs.findIndex((k) => Math.abs(k.at_ms - at) <= 40);
+    if (near >= 0) {
+      const old = kfs[near]!;
+      kfs[near] = { at_ms: old.at_ms, ease: old.ease, ...vals };
+    } else {
+      if (!kfs.length && at > 50) kfs.push({ at_ms: 0, x: 0, y: 0, scale: 1, opacity: 1, ease: 'linear' });
+      kfs.push({ at_ms: at, ...vals, ease: 'ease' });
+    }
+    if (kfs.length > 20) {
+      setError(new Error('Maksimal 20 keyframe per klip. Hapus satu dulu di panel Keyframe.'));
+      return;
+    }
+    void edit([{ op: 'set_keyframes', clip_id: clipId, keyframes: kfs.sort((a, b) => a.at_ms - b.at_ms) }]);
+  };
   // R34: a selected VO (from "Suara dari Teks") knows its text → subtitles without Whisper.
   const [vo, setVo] = useState<{ version_id: string; index: VoIndex } | null>(null);
   const selVersion = sel?.media?.version_id ?? null;
@@ -750,6 +776,8 @@ export function EditorView({
             brand={brand}
             onBrandLogo={(on) => void edit([{ op: 'set_brand_logo', on }])}
             overlayDraft={overlayDraft}
+            kfMode={kfMode && kfAble}
+            onKeyframe={saveKeyframeAt}
             onMoveOverlay={(id, dx, dy) => void edit([{ op: 'set_overlay', clip_id: id, overlay: { dx, dy } }])}
             onMoveText={(id, x, y) => {
               setSelected(id);
@@ -943,6 +971,15 @@ export function EditorView({
           >
             ＋ Zoom
           </button>
+          <button
+            className={`smallbtn${kfMode && kfAble ? ' on' : ''}`}
+            disabled={locked || !project || !kfAble}
+            aria-pressed={kfMode && kfAble}
+            title={kfAble ? 'Atur gerak langsung di layar preview: seret = posisi, sudut = zoom, bulatan atas = putar. Tiap lepas = keyframe di playhead.' : 'Pilih klip video, b-roll, atau teks dulu'}
+            onClick={() => setKfMode((m) => !m)}
+          >
+            ◆ Atur di layar
+          </button>
           <button className="smallbtn" disabled={locked || !project?.history.undo} onClick={() => step('undo')} title={project?.history.undo_label ? `Undo: ${project.history.undo_label} (Ctrl+Z)` : 'Undo (Ctrl+Z)'}>
             ↶ Undo
           </button>
@@ -1122,6 +1159,9 @@ export function EditorView({
                         )}
                         <span className="handle start" aria-hidden="true" onPointerDown={(e) => beginDrag(e, c, 'trim-start')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={() => setDrag(null)} />
                         <span className="clipLabel">{ellipsize(clipName(c), 28)}</span>
+                        {!!c.keyframes?.length && !(drag?.clip.clip_id === c.clip_id && drag.mode !== 'move') && (
+                          <KeyframeDiamonds clip={c} msPerPx={msPerPx} locked={locked} onSeek={(ms) => (setPlaying(false), setPlayhead(ms), setSelected(c.clip_id))} submit={(ops) => void edit(ops)} />
+                        )}
                         {c.clip_id === selected && groupIds.length < 2 && !locked && ((live.end_ms - live.start_ms) / Math.max(1, duration)) * viewPx * zoom >= 64 && (
                           // only on clips wide enough: on a narrow clip it would cover the clip itself
                           // R33: the delete button sits ON the selected clip (owner could not find it).

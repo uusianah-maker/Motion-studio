@@ -7,6 +7,7 @@ function ff(expr: string, t: number): number {
   const js = expr
     .replace(/\bPI\b/g, 'Math.PI')
     .replace(/\bcos\(/g, 'Math.cos(')
+    .replace(/\bsin\(/g, 'Math.sin(')
     .replace(/\bpow\(/g, 'Math.pow(')
     .replace(/\bmin\(/g, 'Math.min(')
     .replace(/\bclip\(/g, '__clip(')
@@ -56,5 +57,22 @@ describe('25 Nov: gerak keyframe & zoom lebih halus (keluhan owner)', () => {
     // zoom_through no longer a linear push: slow start
     const zt = validateEffect({ type: 'zoom_through', scale: 1.4 });
     expect(zoomAt(zt, 100, 1000) - 1).toBeLessThan(0.4 * 0.1);
+  });
+});
+
+describe('25 Nov: keyframe rotasi (keyframe manual)', () => {
+  it('rot is optional, interpolated, and the render rotates around the anchor like CSS', async () => {
+    const { kfCorners, keyframeCss } = await import('../src/storage/keyframes.js');
+    const kfs = validateKeyframes([{ at_ms: 0 }, { at_ms: 1000, rot: 90, ease: 'linear' }]);
+    expect(kfs[0]).not.toHaveProperty('rot');
+    expect(keyframeAt(kfs, 500).rot).toBeCloseTo(45);
+    expect(keyframeCss(keyframeAt(kfs, 500)).transform).toContain('rotate(45.000deg)');
+    // 90° at t = 1: a 100×50 picture anchored at its centre (60, 35) → top-left corner goes to (85, -15).
+    const c = kfCorners(kfs, 't', '60', '35', [50, 50, 25, 25]);
+    expect(ff(c.x0, 1)).toBeCloseTo(85, 6);
+    expect(ff(c.y0, 1)).toBeCloseTo(-15, 6);
+    // without rotation the corners are the old plain expressions (no sin/cos)
+    expect(kfCorners(validateKeyframes([{ at_ms: 0 }, { at_ms: 900, scale: 2 }]), 't', '1', '1', [1, 1, 1, 1]).x0).not.toContain('cos');
+    expect(() => validateKeyframes([{ at_ms: 0, rot: 400 }])).toThrow(/rot/);
   });
 });

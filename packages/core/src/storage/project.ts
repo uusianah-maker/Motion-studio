@@ -326,7 +326,7 @@ function validateTracks(timeline: Obj, where: string): Track[] {
         }
       }
       if (co.keyframes !== undefined) {
-        if (!((kind === 'video' || kind === 'broll') && clip.media) && kind !== 'text' && kind !== 'subtitle') fail(`${cw}.keyframes`, 'keyframe hanya untuk klip video, b-roll, teks, subtitle');
+        if (!((kind === 'video' || kind === 'broll' || kind === 'overlay') && clip.media) && kind !== 'text' && kind !== 'subtitle') fail(`${cw}.keyframes`, 'keyframe hanya untuk klip video, b-roll, overlay, teks, subtitle');
         try {
           const k = validateKeyframes(co.keyframes, `${cw}.keyframes`);
           if (k.length) clip.keyframes = k;

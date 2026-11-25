@@ -62,14 +62,14 @@ export function KeyframePanel({ clip, playhead, submit }: { clip: Clip; playhead
 }
 
 function KfRow({ k, index, len, onChange, onDelete }: { k: Keyframe; index: number; len: number; onChange: (k: Keyframe) => void; onDelete: () => void }) {
-  const [v, setV] = useState({ at: (k.at_ms / 1000).toFixed(2), x: pct(k.x), y: pct(k.y), scale: pct(k.scale), opacity: pct(k.opacity) });
+  const [v, setV] = useState({ at: (k.at_ms / 1000).toFixed(2), x: pct(k.x), y: pct(k.y), scale: pct(k.scale), opacity: pct(k.opacity), rot: String(Math.round(k.rot ?? 0)) });
   /** What this row last sent: Enter then blur (clicking the ruler / Undo) before the saved keyframe
    *  came back used to send the same change twice — two undo steps (audit M15-K5). */
   const sent = useRef<string | null>(null);
   useEffect(() => {
     sent.current = null;
-    setV({ at: (k.at_ms / 1000).toFixed(2), x: pct(k.x), y: pct(k.y), scale: pct(k.scale), opacity: pct(k.opacity) });
-  }, [k.at_ms, k.x, k.y, k.scale, k.opacity]);
+    setV({ at: (k.at_ms / 1000).toFixed(2), x: pct(k.x), y: pct(k.y), scale: pct(k.scale), opacity: pct(k.opacity), rot: String(Math.round(k.rot ?? 0)) });
+  }, [k.at_ms, k.x, k.y, k.scale, k.opacity, k.rot]);
   const commit = () => {
     const num = (s: string, lo: number, hi: number, dflt: number) => {
       const n = parseDecimal(s);
@@ -83,6 +83,8 @@ function KfRow({ k, index, len, onChange, onDelete }: { k: Keyframe; index: numb
       opacity: num(v.opacity, 0, 100, k.opacity * 100) / 100,
       ease: k.ease,
     };
+    const rot = Math.round(num(v.rot, -360, 360, k.rot ?? 0));
+    if (rot) next.rot = rot;
     const json = JSON.stringify(next);
     if (json === JSON.stringify(k) || json === sent.current) return;
     sent.current = json;
@@ -101,6 +103,7 @@ function KfRow({ k, index, len, onChange, onDelete }: { k: Keyframe; index: numb
       {field('y', 'Y %', 'Geser atas (−) / bawah (+), persen tinggi canvas')}
       {field('scale', 'Skala %', '100 = ukuran normal')}
       {field('opacity', 'Opasitas %', '0 = tak terlihat, 100 = penuh')}
+      {field('rot', 'Putar °', 'Putar searah jarum jam (derajat, −360…360)')}
       <label title="Cara bergerak dari titik sebelumnya ke titik ini">
         Gerak
         <select aria-label={`Easing keyframe ${index + 1}`} value={k.ease} onChange={(e) => onChange({ ...k, ease: e.target.value as Keyframe['ease'] })}>
