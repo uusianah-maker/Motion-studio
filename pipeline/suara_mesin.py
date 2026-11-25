@@ -1,7 +1,8 @@
 """R31 §23 mesin "Suara owner" — DIJALANKAN DENGAN suara-venv (bukan .venv). Dipanggil oleh suara_profil.py & tts.py.
 
   suara_mesin.py latih <perintah.json>   {"contoh":[wav...], "model_dir":..., "backend":"applio|openvoice",
-                                           "epoch":150, "batch":4, "kerja_dir":...}
+                                           "epoch":150, "batch":4, "kerja_dir":...,
+                                           "jeda_pukul":"06:00", "mulai_baru":false}  (§25, Applio)
   suara_mesin.py ubah  <perintah.json>   {"model_dir":..., "masuk":[wav...], "keluar":[wav...]}
 
 Progres: JSON-lines di stdout. Kode: 0 selesai, 1 gagal teknis.
@@ -22,6 +23,9 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import suara_lanjut as lanjut  # noqa: E402
 
 sys.modules["edge_tts"] = None  # type: ignore[assignment]  # import edge_tts -> ImportError
 for _k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
@@ -116,23 +120,50 @@ def env_applio(logs: Path) -> dict:
             "PYTHONIOENCODING": "utf-8", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
 
 
-def jalan_applio(args: list, logs: Path, tahap: str, p0: int, p1: int, total_epoch: int = 0) -> None:
-    """Skrip Applio sebagai proses anak (Idle, cwd = folder Applio). Baris 'epoch=N' -> progres."""
+def hentikan_proses(proc: subprocess.Popen) -> None:
+    """Hanya pohon proses Applio milik job ini."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
+    else:
+        proc.kill()
+    proc.wait()
+
+
+def jalan_applio(args: list, logs: Path, tahap: str, p0: int, p1: int, total_epoch: int = 0, pada_epoch=None) -> bool:
+    """Skrip Applio sebagai proses anak (Idle, cwd = folder Applio). Baris 'epoch=N' -> progres.
+    `pada_epoch(N)` True = hentikan sekarang (§25); hasil True berarti dijeda."""
     cmd = [sys.executable, *map(str, args)]
     proc = subprocess.Popen(cmd, cwd=APPLIO, env=env_applio(logs), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, encoding="utf-8", errors="replace", creationflags=IDLE if os.name == "nt" else 0)
     ekor: list[str] = []
     terakhir = 0
+    catatan = open(logs / f"applio_{tahap}.log", "a", encoding="utf-8", errors="replace")  # bukti bila Applio crash
     for baris in proc.stdout:  # type: ignore[union-attr]
         baris = baris.rstrip()
         ekor = (ekor + [baris])[-30:]
+        if "| batch=" not in baris:
+            print(baris[:2000], file=catatan)
+            catatan.flush()
         m = re.search(r"\bepoch=(\d+)", baris)
         if m and total_epoch and int(m.group(1)) > terakhir:  # satu baris per epoch
             terakhir = e = min(int(m.group(1)), total_epoch)
             progres(tahap, p0 + int((p1 - p0) * e / total_epoch), f"epoch {e}/{total_epoch}")
+            if pada_epoch:
+                try:
+                    henti = pada_epoch(e)
+                except Exception:
+                    hentikan_proses(proc)
+                    catatan.close()
+                    raise
+                if henti:
+                    hentikan_proses(proc)
+                    catatan.close()
+                    return True
+    catatan.close()
     if proc.wait() != 0:
         raise RuntimeError(f"Applio {tahap} gagal: " + " | ".join(ekor[-6:])[-600:])
     progres(tahap, p1, "")
+    return False
 
 
 def ubah_ke_wav(masuk: Path, keluar: Path, sr: int) -> None:
@@ -236,38 +267,60 @@ def latih(cmd: dict) -> dict:
     cek_bobot()
     info: dict = {"backend": backend, "dibuat": time.strftime("%Y-%m-%dT%H:%M:%S")}
     dev = perangkat()
+    se_baru = model_dir / "openvoice_se.baru.pth"
     progres("latih", 2, "nada & warna suara (OpenVoice)")
     with tempfile.TemporaryDirectory() as d:
         ref = potong_ref(contoh, Path(d))
         if not ref:
             raise RuntimeError("contoh terlalu pendek untuk diambil warna suaranya")
         c = openvoice(dev)
-        c.extract_se([str(p) for p in ref], se_save_path=str(model_dir / "openvoice_se.pth"))
+        # §25: model aktif baru diganti setelah latihan selesai (bukan saat dijeda/gagal).
+        c.extract_se([str(p) for p in ref], se_save_path=str(se_baru))
         del c
     info["f0_hz"] = round(f0_median(contoh), 1)
     progres("latih", 8, f"nada tengah owner ±{info['f0_hz']:.0f} Hz")
     if backend == "applio":
         taut_applio()
         kerja = Path(cmd.get("kerja_dir") or model_dir / "_kerja")
-        if kerja.exists():
-            shutil.rmtree(kerja)
         data = kerja / "dataset"
-        data.mkdir(parents=True)
-        for i, f in enumerate(contoh):
-            shutil.copy2(f, data / f"{i:03d}.wav")
         logs = kerja / "logs"
         exp = logs / "owner"
-        exp.mkdir(parents=True)
         epoch = int(cmd.get("epoch") or 150)
         batch = int(cmd.get("batch") or 4)
+        jeda_pada = lanjut.waktu_jeda(cmd.get("jeda_pukul"))  # dihitung sebelum persiapan yang bisa melewati jam itu
+        sidik = lanjut.sidik_latih(contoh, batch, SR_LATIH)
+        # §25: progres sah dilanjutkan; progres meragukan = gagal keras (tidak dihapus diam-diam).
+        rencana = {"aksi": "baru"} if cmd.get("mulai_baru") else lanjut.putuskan(kerja, exp, sidik, epoch)
         tr = APPLIO / "rvc" / "train"
-        jalan_applio([tr / "preprocess" / "preprocess.py", exp, data, SR_LATIH, 2, "Automatic", False, 3.0, 0.3, "none"],
-                     logs, "latih_siapkan", 8, 12)
-        jalan_applio([tr / "extract" / "extract.py", exp, "rmvpe", 2, "0" if dev.startswith("cuda") else "-", SR_LATIH,
-                      "contentvec", "", 2], logs, "latih_fitur", 12, 20)
-        jalan_applio([tr / "train.py", "owner", 10, epoch, BOBOT / "f0G40k.pth", BOBOT / "f0D40k.pth",
-                      "0" if dev.startswith("cuda") else "-", batch, SR_LATIH, True, True, False, False, "HiFi-GAN", False],
-                     logs, "latih", 20, 92, total_epoch=epoch)
+        mulai_dari = 0
+        if rencana["aksi"] == "lanjut":
+            m_lanjut = lanjut.baca_manifest(kerja) or {}
+            if not lanjut.sempat_checkpoint(time.time(), jeda_pada, m_lanjut.get("dtk_blok") or lanjut.perkiraan_blok(exp)):
+                se_baru.unlink(missing_ok=True)
+                progres("latih", 20, "tidak sempat mencapai checkpoint berikutnya sebelum jam jeda; latihan tidak dimulai")
+                return {"backend": backend, "dijeda": True, "tidak_mulai": True, "epoch": rencana["epoch"], "total_epoch": epoch}
+            mulai_dari = lanjut.pulihkan(kerja, exp)
+            progres("latih", 20, f"melanjutkan dari epoch {mulai_dari}/{epoch}")
+        else:
+            if kerja.exists():
+                shutil.rmtree(kerja)
+            data.mkdir(parents=True)
+            for i, f in enumerate(contoh):
+                shutil.copy2(f, data / f"{i:03d}.wav")
+            exp.mkdir(parents=True)
+            jalan_applio([tr / "preprocess" / "preprocess.py", exp, data, SR_LATIH, 2, "Automatic", False, 3.0, 0.3, "none"],
+                         logs, "latih_siapkan", 8, 12)
+            jalan_applio([tr / "extract" / "extract.py", exp, "rmvpe", 2, "0" if dev.startswith("cuda") else "-", SR_LATIH,
+                          "contentvec", "", 2], logs, "latih_fitur", 12, 20)
+            lanjut.tulis_manifest(kerja, {"schema": "suara-lanjut/1", "sidik": sidik, "total_epoch": epoch, "batch": batch})
+        penjaga = lanjut.Penjaga(kerja, exp, epoch, mulai_dari, jeda_pada)
+        dijeda = jalan_applio([tr / "train.py", "owner", lanjut.SETIAP_EPOCH, epoch, BOBOT / "f0G40k.pth", BOBOT / "f0D40k.pth",
+                               "0" if dev.startswith("cuda") else "-", batch, SR_LATIH, True, True, False, False, "HiFi-GAN", False],
+                              logs, "latih", 20, 92, total_epoch=epoch, pada_epoch=penjaga)
+        if dijeda:
+            se_baru.unlink(missing_ok=True)
+            progres("latih", 92, f"dijeda aman di epoch {penjaga.epoch_aman}/{epoch}")
+            return {"backend": backend, "dijeda": True, "epoch": penjaga.epoch_aman, "total_epoch": epoch}
         jalan_applio([tr / "process" / "extract_index.py", exp, "Auto"], logs, "latih_index", 92, 96)
         bobot = sorted(exp.glob("owner_*e_*s.pth"), key=lambda p: p.stat().st_mtime)
         index = sorted(exp.glob("*.index"), key=lambda p: p.stat().st_mtime)
@@ -278,7 +331,9 @@ def latih(cmd: dict) -> dict:
         if index:
             shutil.copy2(index[-1], model_dir / "applio" / "owner.index")
         info.update(epoch=epoch, batch=batch, applio_bobot=bobot[-1].name, applio_index=bool(index))
-        shutil.rmtree(kerja, ignore_errors=True)  # checkpoint G/D besar; model akhir sudah disalin
+        if not os.environ.get("MOTION_SUARA_SIMPAN_KERJA"):  # simpan = latihan masih bisa diteruskan ke epoch lebih tinggi
+            shutil.rmtree(kerja, ignore_errors=True)  # checkpoint G/D besar; model akhir sudah disalin
+    os.replace(se_baru, model_dir / "openvoice_se.pth")
     (model_dir / "info.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
     progres("latih", 97, "model tersimpan")
     return info

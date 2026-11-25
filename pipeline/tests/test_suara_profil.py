@@ -84,6 +84,53 @@ class SuaraProfil(unittest.TestCase):
         self.assertEqual([x["kunci"] for x in lap["contoh"]], ["$media:a"])
         self.assertEqual(len(list((folder / "contoh").glob("*.wav"))), 1)
 
+    def test_profil_terpisah_tidak_tercampur(self):
+        a = tulis(self.tmp / "a.wav", ucapan(30, 2.0, seed=3))
+        b = tulis(self.tmp / "b.wav", ucapan(30, 2.0, seed=4))
+        kode, lap = self.jalan({"profil": "grace", "nama": "Nama Lain", "tambah_contoh": ["$media:a"]}, {"$media:a": a})
+        self.assertEqual((kode, lap["profil"], lap["nama"]), (0, "grace", "Suara Grace"), self.last.stderr[-500:])
+        kode, lap = self.jalan({"profil": "julia", "tambah_contoh": ["$media:b"]}, {"$media:b": b})
+        self.assertEqual((kode, lap["profil"], [x["kunci"] for x in lap["contoh"]]), (0, "julia", ["$media:b"]))
+        suara = self.data / "konten" / "suara"
+        self.assertEqual(sorted(p.name for p in suara.iterdir()), ["grace", "julia"])  # owner tidak disentuh
+        # rekaman Grace tidak boleh masuk profil lain, dan profil Niar tidak terbentuk isinya
+        kode, lap = self.jalan({"profil": "niar", "tambah_contoh": ["$media:a"]}, {"$media:a": a})
+        self.assertEqual(kode, 2)
+        self.assertIn("grace", lap["alasan"])
+        self.assertFalse((suara / "niar" / "profil.json").exists())
+
+    def test_daftar_suara_per_profil(self):
+        sys.path.insert(0, str(PIPE))
+        code = (
+            "import json,sys; sys.path.insert(0, sys.argv[1]); import tts; "
+            "print(json.dumps([s['id'] for k in ('owner','grace','julia','niar') for s in tts.BACKEND[k].daftar()]))"
+        )
+        folder = self.data / "konten" / "suara" / "julia"
+        folder.mkdir(parents=True)
+        (folder / "profil.json").write_text(json.dumps({"profil": "julia", "nama": "Suara Julia", "versi_model": 1, "contoh": {}}), encoding="utf-8")
+        niar = self.data / "konten" / "suara" / "niar"
+        niar.mkdir(parents=True)
+        (niar / "profil.json").write_text(json.dumps({"profil": "niar", "nama": "Suara Niar", "versi_model": 0, "contoh": {}}), encoding="utf-8")
+        r = subprocess.run([sys.executable, "-c", code, str(PIPE)], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           env={**os.environ, "MOTION_ENGINE_DATA": str(self.data)})
+        self.assertEqual(r.returncode, 0, r.stderr[-500:])
+        self.assertEqual(json.loads(r.stdout.strip().splitlines()[-1]), ["julia:Suara Julia"])  # hanya profil yang siap
+
+    def test_setelan_jeda_tidak_sah_ditolak(self):
+        for cfg in ({"jeda_pukul": "25:00"}, {"jeda_pukul": "6"}, {"mulai_baru": "ya"}):
+            kode, lap = self.jalan(cfg, {})
+            self.assertEqual((kode, lap["status"]), (2, "ditolak"), self.last.stderr[-300:])
+        kode, lap = self.jalan({"jeda_pukul": "06:00", "mulai_baru": False}, {})
+        self.assertEqual(kode, 0, self.last.stderr[-300:])
+
+    def test_status_dijeda_bertahan_di_job_berikutnya(self):
+        f = self.data / "konten" / "suara" / "owner"
+        f.mkdir(parents=True)
+        (f / "profil.json").write_text(json.dumps({"schema": "suara-profil-data/1", "profil": "owner", "nama": "Suara owner", "contoh": {},
+                                                   "versi_model": 0, "latihan_jeda": {"epoch": 120, "total_epoch": 150}}), encoding="utf-8")
+        kode, lap = self.jalan({}, {})
+        self.assertEqual((kode, lap["status"], lap["latihan_jeda"]["epoch"]), (0, "dijeda", 120), self.last.stderr[-300:])
+
     def test_ditolak(self):
         a = tulis(self.tmp / "a.wav", ucapan(5, 1.0))
         self.assertEqual(self.jalan({"profil": "talent"}, {})[0], 2)
