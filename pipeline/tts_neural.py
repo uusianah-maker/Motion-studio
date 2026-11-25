@@ -20,6 +20,9 @@ import soundfile as sf  # noqa: E402
 import torch  # noqa: E402
 
 
+GPU_MIN_KOSONG = int(3.3 * 2**30)  # bobot fp32 + aktivasi (uji 24 Nov: ±3,0 GB terpakai)
+
+
 def kabar(**k):
     print(json.dumps(k, ensure_ascii=False), flush=True)
 
@@ -35,7 +38,13 @@ def chatterbox(cfg: dict) -> None:
         if not (gab / f).exists():
             shutil.copy2(m / asal / f, gab / f)
     g = cfg.get("gaya") or {}
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    # GPU 4 GB (GTX 1650) juga dipakai desktop: bila memori kosong kurang, Windows memindah-mindah memori GPU dan
+    # Chatterbox macet (uji 25 Nov: 20 menit untuk 1 kalimat). Pakai GPU hanya bila cukup lega, selain itu CPU.
+    dev = "cpu"
+    if torch.cuda.is_available() and os.environ.get("MOTION_TTS_PERANGKAT", "").lower() != "cpu":
+        kosong, _ = torch.cuda.mem_get_info()
+        dev = "cuda" if kosong >= GPU_MIN_KOSONG else "cpu"
+        kabar(gpu_kosong_mb=round(kosong / 2**20), perangkat=dev)
     try:
         model = ChatterboxTTS.from_local(gab, dev)
     except torch.cuda.OutOfMemoryError:  # GPU dipakai latihan / job lain

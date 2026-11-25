@@ -184,8 +184,9 @@ def jalan_mesin(perintah: str, isi: dict, rentang: tuple[int, int] = (0, 100)) -
         f = Path(d) / "perintah.json"
         f.write_text(json.dumps(isi, ensure_ascii=False), encoding="utf-8")
         env = {**os.environ, "MOTION_TOOLS_DIR": str(TOOLS), "PYTHONIOENCODING": "utf-8"}
+        fe = open(Path(d) / "err.log", "w+", encoding="utf-8", errors="replace")  # bukan PIPE: pipa penuh = macet
         p = subprocess.Popen([str(SUARA_PY), str(Path(__file__).resolve().parent / "suara_mesin.py"), perintah, str(f)],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+                             stdout=subprocess.PIPE, stderr=fe, text=True, encoding="utf-8", errors="replace",
                              env=env, creationflags=IDLE if os.name == "nt" else 0)
         for baris in p.stdout:  # type: ignore[union-attr]
             try:
@@ -197,8 +198,11 @@ def jalan_mesin(perintah: str, isi: dict, rentang: tuple[int, int] = (0, 100)) -
             elif j.get("tahap") != "gagal":
                 j["persen"] = rentang[0] + round((rentang[1] - rentang[0]) * int(j.get("persen") or 0) / 100)
                 print(json.dumps(j, ensure_ascii=False), flush=True)
-        err = p.stderr.read()  # type: ignore[union-attr]
-        if p.wait() != 0:
+        kode = p.wait()
+        fe.seek(0)
+        err = fe.read()
+        fe.close()
+        if kode != 0:
             raise RuntimeError(f"mesin suara ({perintah}) gagal: {err.strip()[-400:]}")
     return hasil
 
