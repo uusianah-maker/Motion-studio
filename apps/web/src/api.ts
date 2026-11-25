@@ -474,7 +474,7 @@ export interface ImageAiUsage {
 /** Halaman Hasil: satu file render beserta proyeknya. */
 /** R12a: AI gambar settings as the browser sees them (no key). */
 export interface ImageAiView {
-  provider: 'openai' | 'gemini' | 'lainnya' | null;
+  provider: 'openai' | 'gemini' | 'beliapi' | 'lainnya' | null;
   endpoint: string | null;
   model: string | null;
   budget: { amount: number | null; currency: 'IDR' | 'USD' };
@@ -485,7 +485,7 @@ export interface ImageAiView {
   key_saved: boolean;
   key_hint: string | null;
   last_test: { at: number; ok: boolean; message: string } | null;
-  providers: { id: 'openai' | 'gemini' | 'lainnya'; label: string; model_hint: string; needs_endpoint: boolean }[];
+  providers: { id: 'openai' | 'gemini' | 'beliapi' | 'lainnya'; label: string; model_hint: string; needs_endpoint: boolean }[];
 }
 
 

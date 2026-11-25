@@ -17,10 +17,13 @@ import { type SecretBox, createSecretBox, loadSecretKey } from '../secrets.js';
  * gpt-image model it saw. Owner 25 Nov: "kenapa harus ada penyedia?" → the provider is recognised
  * from the key (`sk-` OpenAI, `AIza` Gemini) when none is chosen; an empty model = the detected one.
  */
-export type ImageProvider = 'openai' | 'gemini' | 'lainnya';
+export type ImageProvider = 'openai' | 'gemini' | 'beliapi' | 'lainnya';
 export const IMAGE_PROVIDERS: Record<ImageProvider, { label: string; base: string | null; model_hint: string }> = {
   openai: { label: 'OpenAI (gambar)', base: 'https://api.openai.com', model_hint: 'gpt-image-1' },
   gemini: { label: 'Google Gemini (gambar)', base: 'https://generativelanguage.googleapis.com', model_hint: 'gemini-2.5-flash-image' },
+  // 25 Nov (owner: key dari beliapi.com, "buatkan"): a reseller with its own async API — submit a task,
+  // poll its status, download the output (Nano Banana 2.1, up to 4 reference pictures).
+  beliapi: { label: 'beliapi.com (Nano Banana)', base: 'https://beliapi.com', model_hint: 'nano-banana-2.1' },
   lainnya: { label: 'Lainnya (URL endpoint)', base: null, model_hint: '' },
 };
 
@@ -158,7 +161,7 @@ export function imageAiRoutes(store: ImageAiStore, fetchImpl: typeof fetch = fet
         const body = await readJsonBody(req);
         onlyKeys(body, ['provider', 'endpoint', 'model', 'budget', 'harga_per_gambar']);
         const provider = body.provider === null || body.provider === '' ? null : typeof body.provider === 'string' && body.provider in IMAGE_PROVIDERS ? (body.provider as ImageProvider) : null;
-        if (body.provider && !provider) throw bad('Penyedia harus openai | gemini | lainnya');
+        if (body.provider && !provider) throw bad('Penyedia harus openai | gemini | beliapi | lainnya');
         let endpoint: string | null = null;
         if (body.endpoint !== undefined && body.endpoint !== null && body.endpoint !== '') {
           if (typeof body.endpoint !== 'string') throw bad('URL endpoint tidak valid');
@@ -223,7 +226,17 @@ export function imageAiRoutes(store: ImageAiStore, fetchImpl: typeof fetch = fet
           const r = await fetchImpl(url, { headers, signal: AbortSignal.timeout(15_000) });
           ok = r.ok;
           message = r.ok ? 'Koneksi berhasil (daftar model terbaca)' : r.status === 401 || r.status === 403 ? `API key ditolak (HTTP ${r.status})` : `Penyedia menjawab HTTP ${r.status}`;
-          if (r.ok && d.provider !== 'gemini') {
+          if (r.ok && d.provider === 'beliapi') {
+            // GET /v1/models = the models active on this account (free, nothing is made)
+            const list = (await r.json().catch(() => null)) as { data?: { id?: unknown }[]; models?: unknown[] } | null;
+            const ids = (list?.data ?? (Array.isArray(list?.models) ? (list!.models as { id?: unknown }[]) : []))
+              .map((m) => (typeof m === 'string' ? m : typeof m?.id === 'string' ? m.id : ''))
+              .filter(Boolean);
+            const img = ids.find((x) => /nano-banana|kein_image/.test(x)) ?? null;
+            terdeteksi = img;
+            message = img ? `Koneksi berhasil · model gambar: ${img}` : ids.length ? `Koneksi berhasil, tapi model gambar tidak aktif di akun ini (${ids.join(', ').slice(0, 80)})` : 'Koneksi berhasil';
+            ok = !ids.length || !!img;
+          } else if (r.ok && d.provider !== 'gemini') {
             const list = (await r.json().catch(() => null)) as { data?: { id?: unknown }[] } | null;
             terdeteksi = newestImageModel((list?.data ?? []).map((m) => (typeof m?.id === 'string' ? m.id : '')).filter(Boolean));
             if (terdeteksi) message = `Koneksi berhasil · model gambar: ${terdeteksi}`;
@@ -260,12 +273,13 @@ export class ImageGenError extends Error {
  * §29: edit one picture with the saved key (OpenAI `/v1/images/edits`, also "lainnya" endpoints that
  * speak the same API). The key never leaves this server process except to the provider host.
  */
-export async function generateImageEdit(store: ImageAiStore, input: ImageEditInput, fetchImpl: typeof fetch = fetch, opts: { devEndpoints?: boolean } = {}): Promise<{ bytes: Buffer; model: string }> {
+export async function generateImageEdit(store: ImageAiStore, input: ImageEditInput, fetchImpl: typeof fetch = fetch, opts: { devEndpoints?: boolean; sleep?: (ms: number) => Promise<void> } = {}): Promise<{ bytes: Buffer; model: string }> {
   const key = await store.keyOf();
   if (!key) throw new ImageGenError('API key AI gambar belum disimpan (menu AI → AI gambar)', 'config');
   const d = { ...store.raw() };
   if (!d.provider) d.provider = providerFromKey(key);
-  if (d.provider === 'gemini') throw new ImageGenError('Ganti Outfit saat ini memakai penyedia OpenAI (gpt-image); Gemini belum didukung', 'config');
+  if (d.provider === 'gemini') throw new ImageGenError('Ganti Outfit saat ini memakai penyedia OpenAI (gpt-image) atau beliapi.com; Gemini belum didukung', 'config');
+  if (d.provider === 'beliapi') return beliapiEdit(key, endpointOf(d, opts.devEndpoints === true), modelOf(d) ?? 'nano-banana-2.1', input, fetchImpl, opts.sleep);
   let base: string;
   try {
     base = endpointOf(d, opts.devEndpoints === true);
@@ -297,4 +311,84 @@ export async function generateImageEdit(store: ImageAiStore, input: ImageEditInp
   const b64 = body?.data?.[0]?.b64_json;
   if (typeof b64 !== 'string' || !b64) throw new ImageGenError('Penyedia tidak mengirim gambar', 'lain');
   return { bytes: Buffer.from(b64, 'base64'), model };
+}
+
+/** "1024x1536" → the closest ratio beliapi accepts (16:9, 9:16 or 1:1). */
+export function ratioOf(size: string): '16:9' | '9:16' | '1:1' {
+  const m = /^(\d+)x(\d+)$/.exec(size);
+  if (!m) return '9:16';
+  const r = Number(m[1]) / Number(m[2]);
+  return r > 1.15 ? '16:9' : r < 0.87 ? '9:16' : '1:1';
+}
+
+const BELIAPI_MAX_IMAGE = 5 * 1024 * 1024;
+const BELIAPI_MAX_WAIT_MS = 15 * 60_000;
+
+/**
+ * beliapi.com (docs 25 Nov): POST /v1/generations {model, prompt, ratio, images[≤4 data URI, ≤5 MB]}
+ * → 202 {id}; GET /v1/tasks/{id} every 5 s (queued → ready → submitting → processing → completed |
+ * failed; 429 = wait 15 s); GET output_url (a path on the same host) → the picture. An
+ * Idempotency-Key makes a retried submit never start a second (paid / queued) task.
+ */
+async function beliapiEdit(key: string, base: string, model: string, input: ImageEditInput, fetchImpl: typeof fetch, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<{ bytes: Buffer; model: string }> {
+  const auth = { authorization: `Bearer ${key}` };
+  const images = input.images.slice(0, 4);
+  for (const im of images) if (im.bytes.length > BELIAPI_MAX_IMAGE) throw new ImageGenError(`Gambar referensi "${im.name}" lebih dari 5 MB (batas beliapi)`, 'config');
+  const prompt = input.prompt.slice(0, 4400);
+  const fail = (status: number, msg: string): never => {
+    if (status === 401) throw new ImageGenError(`API key beliapi salah atau sudah dicabut (${msg})`, 'key');
+    if (status === 403) throw new ImageGenError(`Model ${model} tidak aktif untuk akun / API key beliapi ini (${msg})`, 'key');
+    if (status === 429) throw new ImageGenError(`Antrean beliapi penuh atau batas request/menit tercapai (${msg})`, 'quota');
+    if (status === 413 || status === 422) throw new ImageGenError(`beliapi menolak isi permintaan (${msg})`, 'lain');
+    throw new ImageGenError(`beliapi gagal: ${msg}`, 'lain');
+  };
+  const call = async (url: string, init: RequestInit, timeout: number) => {
+    try {
+      return await fetchImpl(url, { ...init, signal: input.signal ?? AbortSignal.timeout(timeout) });
+    } catch (e) {
+      throw new ImageGenError(`Tidak bisa menghubungi beliapi.com (${e instanceof Error ? e.name : 'error'})`, 'jaringan');
+    }
+  };
+  const msgOf = async (r: Response) => {
+    const j = (await r.json().catch(() => null)) as { detail?: unknown; error?: { message?: unknown } | unknown; message?: unknown } | null;
+    const m = typeof j?.detail === 'string' ? j.detail : typeof j?.message === 'string' ? j.message : typeof (j?.error as { message?: unknown })?.message === 'string' ? (j!.error as { message: string }).message : typeof j?.error === 'string' ? j.error : `HTTP ${r.status}`;
+    return m.slice(0, 200);
+  };
+  const idem = randomBytes(16).toString('hex');
+  const body = JSON.stringify({ model, prompt, ratio: ratioOf(input.size), ...(images.length ? { images: images.map((im) => `data:${im.mime};base64,${im.bytes.toString('base64')}`) } : {}) });
+  let sub: Response | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    sub = await call(`${base}/v1/generations`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json', 'idempotency-key': idem }, body }, 60_000);
+    if (sub.status !== 429) break;
+    await sleep(15_000 * (attempt + 1));
+  }
+  if (!sub!.ok) fail(sub!.status, await msgOf(sub!));
+  const id = ((await sub!.json().catch(() => null)) as { id?: unknown } | null)?.id;
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(id)) throw new ImageGenError('beliapi tidak mengirim ID task', 'lain');
+  const started = Date.now();
+  let task: { status?: unknown; output_url?: unknown; error?: unknown } = {};
+  for (;;) {
+    if (Date.now() - started > BELIAPI_MAX_WAIT_MS) throw new ImageGenError('beliapi belum selesai setelah 15 menit (task masih di antrean)', 'lain');
+    await sleep(5_000);
+    const r = await call(`${base}/v1/tasks/${encodeURIComponent(id)}`, { headers: auth }, 30_000);
+    if (r.status === 429) {
+      await sleep(15_000);
+      continue;
+    }
+    if (!r.ok) fail(r.status, await msgOf(r));
+    task = ((await r.json().catch(() => null)) as typeof task | null) ?? {};
+    if (task.status === 'completed' || task.status === 'failed') break;
+  }
+  if (task.status === 'failed') {
+    const why = typeof task.error === 'string' ? task.error : typeof (task.error as { message?: unknown })?.message === 'string' ? (task.error as { message: string }).message : 'tanpa alasan';
+    throw new ImageGenError(/safety|moderation|policy|nsfw|blocked/i.test(why) ? `Gambar ditolak aturan penyedia (${why.slice(0, 160)})` : `beliapi gagal membuat gambar (${why.slice(0, 160)})`, /safety|moderation|policy|nsfw|blocked/i.test(why) ? 'ditolak' : 'lain');
+  }
+  // The output is a path on beliapi itself; never send the key to another host.
+  const out = typeof task.output_url === 'string' ? task.output_url : `/v1/tasks/${id}/output`;
+  if (!out.startsWith('/v1/') && !out.startsWith(`${base}/v1/`)) throw new ImageGenError('Alamat hasil beliapi tidak dikenal', 'lain');
+  const r = await call(out.startsWith('/') ? `${base}${out}` : out, { headers: auth }, 120_000);
+  if (!r.ok) fail(r.status, await msgOf(r));
+  const bytes = Buffer.from(await r.arrayBuffer());
+  if (bytes.length < 100) throw new ImageGenError('beliapi mengirim hasil kosong', 'lain');
+  return { bytes, model };
 }

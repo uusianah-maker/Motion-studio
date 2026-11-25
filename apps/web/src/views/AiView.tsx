@@ -425,7 +425,7 @@ function AddConnection({ catalog, busy, onAdd }: { catalog: AiCatalogItem[]; bus
  */
 function ImageAiSection({ api }: { api: Api }) {
   const [v, setV] = useState<ImageAiView | null>(null);
-  const [provider, setProvider] = useState<'' | 'openai' | 'gemini' | 'lainnya'>('');
+  const [provider, setProvider] = useState<'' | 'openai' | 'gemini' | 'beliapi' | 'lainnya'>('');
   const [endpoint, setEndpoint] = useState('');
   const [model, setModel] = useState('');
   const [amount, setAmount] = useState('');
@@ -475,7 +475,7 @@ function ImageAiSection({ api }: { api: Api }) {
     <section className="card aiSection" aria-label="AI gambar">
       <h3>AI gambar (Beat Spot Ganti Outfit)</h3>
       <p className="muted small">
-        Dipakai Beat Spot <b>Ganti Outfit</b> untuk membuat gambar (1 gambar per footage, OpenAI gpt-image). Cukup tempel API key: penyedia dikenali dari key, model kosong = model gambar terbaru yang terbaca saat Tes koneksi. API key disimpan terenkripsi di server dan tidak pernah ditampilkan lagi.
+        Dipakai Beat Spot <b>Ganti Outfit</b> untuk membuat gambar (1 gambar per footage): OpenAI gpt-image, atau <b>beliapi.com</b> (Nano Banana, pilih penyedianya — key beliapi tidak bisa dikenali otomatis). Cukup tempel API key: penyedia dikenali dari key, model kosong = model gambar terbaru yang terbaca saat Tes koneksi. API key disimpan terenkripsi di server dan tidak pernah ditampilkan lagi.
       </p>
       <ErrorNotice error={error} />
       {notice && (
