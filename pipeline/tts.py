@@ -313,20 +313,24 @@ def ucapkan_neural(model: str, profil: str, gaya: str, item: list[tuple[str, Pat
     with beban.kunci_ai(f"tts_{model}"):
         beban.tunggu_ram()
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-        p = subprocess.Popen([str(py[model]), str(Path(__file__).resolve().parent / "tts_neural.py"), str(perintah)],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-                             env=env, creationflags=IDLE if os.name == "nt" else 0)
-        for baris in p.stdout:  # type: ignore[union-attr]
-            try:
-                j = json.loads(baris)
-            except ValueError:
-                continue
-            if "kalimat" in j:
-                progres("tts", 5 + round((akhir - 5) * j["kalimat"] / max(1, j["dari"])),
-                        f"{model}: kalimat {j['kalimat']}/{j['dari']} ({j.get('perangkat')})")
-        err = p.stderr.read()  # type: ignore[union-attr]
-        if p.wait() != 0:
-            raise RuntimeError(f"model {model} gagal: {err.strip()[-400:]}")
+        # stderr ke file, bukan PIPE: progres tqdm model memenuhi pipa yang tidak dibaca dan prosesnya macet (uji 25 Nov)
+        log_err = tmp / "neural_err.log"
+        with open(log_err, "w", encoding="utf-8") as fe:
+            p = subprocess.Popen([str(py[model]), str(Path(__file__).resolve().parent / "tts_neural.py"), str(perintah)],
+                                 stdout=subprocess.PIPE, stderr=fe, text=True, encoding="utf-8", errors="replace",
+                                 env=env, creationflags=IDLE if os.name == "nt" else 0)
+            for baris in p.stdout:  # type: ignore[union-attr]
+                try:
+                    j = json.loads(baris)
+                except ValueError:
+                    continue
+                if "kalimat" in j:
+                    progres("tts", 5 + round((akhir - 5) * j["kalimat"] / max(1, j["dari"])),
+                            f"{model}: kalimat {j['kalimat']}/{j['dari']} ({j.get('perangkat')})")
+            kode = p.wait()
+        if kode != 0:
+            err = [x for x in log_err.read_text(encoding="utf-8", errors="replace").splitlines() if "it/s]" not in x]
+            raise RuntimeError(f"model {model} gagal: {chr(10).join(err)[-400:]}")
     if perkuat:  # jalan_mesin mengambil kunci AI sendiri
         sp.jalan_mesin("ubah", {"model_dir": str(sp.folder_profil(profil) / "model"),
                                 "masuk": [str(x) for x in mentah], "keluar": [str(q) for _, q in item]}, (akhir, 58))
