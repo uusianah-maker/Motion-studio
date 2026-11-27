@@ -490,7 +490,7 @@ export interface ImageAiUsage {
 /** Halaman Hasil: satu file render beserta proyeknya. */
 /** R12a: AI gambar settings as the browser sees them (no key). */
 export interface ImageAiView {
-  provider: 'openai' | 'gemini' | 'beliapi' | 'lainnya' | null;
+  provider: 'openai' | 'gemini' | 'beliapi' | 'apimart' | 'lainnya' | null;
   endpoint: string | null;
   model: string | null;
   budget: { amount: number | null; currency: 'IDR' | 'USD' };
@@ -501,7 +501,7 @@ export interface ImageAiView {
   key_saved: boolean;
   key_hint: string | null;
   last_test: { at: number; ok: boolean; message: string } | null;
-  providers: { id: 'openai' | 'gemini' | 'beliapi' | 'lainnya'; label: string; model_hint: string; needs_endpoint: boolean }[];
+  providers: { id: 'openai' | 'gemini' | 'beliapi' | 'apimart' | 'lainnya'; label: string; model_hint: string; needs_endpoint: boolean }[];
 }
 
 
@@ -1174,6 +1174,9 @@ export function createApi(token: string | null, base = '') {
       call<{ connection: AiConnection }>('POST', '/api/ai/providers', { json: body }).then((r) => r.connection),
     aiUpdate: (id: string, patch: Partial<Pick<AiConnection, 'label' | 'model' | 'capabilities' | 'priority' | 'enabled' | 'prices'>>) =>
       call<{ connection: AiConnection }>('POST', `/api/ai/providers/${encodeURIComponent(id)}`, { json: patch }).then((r) => r.connection),
+    /** 27 Nov: paste one key — the server finds its provider, picks a model and tests it. */
+    aiTempel: (api_key: string) =>
+      call<{ ok: true; penyedia: string; model: string; gambar: { status: 'dipakai' | 'sudah_ada' | 'tidak_bisa'; model: string | null }; connection: AiConnection; mode: AiSettings['mode'] } | { ok: false; pesan: string }>('POST', '/api/ai/tempel', { json: { api_key } }),
     aiRotate: (id: string, api_key: string) => call<{ connection: AiConnection }>('POST', `/api/ai/providers/${encodeURIComponent(id)}/key`, { json: { api_key } }).then((r) => r.connection),
     aiTest: (id: string) => call<{ result: { ok: boolean; models: number | null; model_listed: boolean | null; error: { class: string; status: number | null; message: string } | null }; connection: AiConnection }>('POST', `/api/ai/providers/${encodeURIComponent(id)}/test`, { json: {} }),
     aiRemove: (id: string) => call<{ ok: true }>('DELETE', `/api/ai/providers/${encodeURIComponent(id)}`),

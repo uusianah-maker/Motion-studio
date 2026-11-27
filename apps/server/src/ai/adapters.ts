@@ -135,12 +135,20 @@ const headersFor = (t: CallTarget): Record<string, string> => {
   }
 };
 
+/** Model ids the key can use (free on every provider). */
+export async function listModels(t: Omit<CallTarget, 'model'>, signal: AbortSignal, fetchImpl: typeof fetch = fetch): Promise<string[]> {
+  const url = t.provider === 'gemini' ? join(t.base_url, '/v1beta/models?pageSize=1000') : join(t.base_url, '/v1/models');
+  const r = await send(url, { headers: headersFor({ ...t, model: '' }) }, signal, fetchImpl);
+  const body = (await r.json().catch(() => ({}))) as { data?: { id?: string }[]; models?: { name?: string }[] };
+  return (Array.isArray(body.data) ? body.data : [])
+    .map((m) => String(m?.id ?? ''))
+    .concat((Array.isArray(body.models) ? body.models : []).map((m) => String(m?.name ?? '').replace(/^models\//, '')))
+    .filter((id) => /^[A-Za-z0-9._:/-]{1,100}$/.test(id));
+}
+
 /** Connection test: list models (free on every provider). */
 export async function testConnection(t: CallTarget, signal: AbortSignal, fetchImpl: typeof fetch = fetch): Promise<{ models: number; model_listed: boolean | null }> {
-  const url = t.provider === 'gemini' ? join(t.base_url, '/v1beta/models?pageSize=1000') : join(t.base_url, '/v1/models');
-  const r = await send(url, { headers: headersFor(t) }, signal, fetchImpl);
-  const body = (await r.json().catch(() => ({}))) as { data?: { id?: string }[]; models?: { name?: string }[] };
-  const ids = (body.data ?? []).map((m) => String(m.id ?? '')).concat((body.models ?? []).map((m) => String(m.name ?? '').replace(/^models\//, '')));
+  const ids = await listModels(t, signal, fetchImpl);
   return { models: ids.length, model_listed: ids.length ? ids.includes(t.model) : null };
 }
 
@@ -185,30 +193,65 @@ export async function completeJson(t: CallTarget, req: JsonRequest, signal: Abor
     return { text: (c?.content?.parts ?? []).map((p) => p.text ?? '').join(''), usage, request_id: reqId(r.headers) };
   }
   // openai + openai_compatible
-  const r = await send(
-    join(t.base_url, '/v1/chat/completions'),
-    {
-      method: 'POST',
-      headers: h,
-      body: JSON.stringify({
-        model: t.model,
-        messages: [
-          { role: 'system', content: req.system },
-          { role: 'user', content: req.user },
-        ],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: req.max_output_tokens,
-      }),
-    },
-    signal,
-    fetchImpl,
-  );
-  const b = (await r.json()) as { choices?: { message?: { content?: string; refusal?: string | null }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
-  const ch = b.choices?.[0];
-  const usage = { input_tokens: b.usage?.prompt_tokens ?? 0, output_tokens: b.usage?.completion_tokens ?? 0, audio_seconds: 0 };
+  const body = (strict: boolean) =>
+    JSON.stringify({
+      model: t.model,
+      // apimart (27 Nov) streams unless told not to.
+      stream: false,
+      messages: [
+        { role: 'system', content: req.system },
+        { role: 'user', content: req.user },
+      ],
+      // Resellers (apimart …) route Claude/Gemini through this format: some refuse the OpenAI-only
+      // fields, so a 400 is retried once with the plain, widely supported ones (nothing was billed).
+      ...(strict ? { response_format: { type: 'json_object' }, max_completion_tokens: req.max_output_tokens } : { max_tokens: req.max_output_tokens }),
+    });
+  const url = join(t.base_url, '/v1/chat/completions');
+  const r = await send(url, { method: 'POST', headers: h, body: body(true) }, signal, fetchImpl).catch((e: unknown) => {
+    if (t.provider === 'openai_compatible' && e instanceof AiCallError && e.cls === 'bad_request') return send(url, { method: 'POST', headers: h, body: body(false) }, signal, fetchImpl);
+    throw e;
+  });
+  const raw = await r.text();
+  const b = (/event-stream/.test(r.headers.get('content-type') ?? '') || /^\s*(:|data:)/.test(raw) ? fromStream(raw) : parseOr(raw, () => {
+    throw new AiCallError('bad_output', 'Jawaban server bukan JSON', 200, null, reqId(r.headers), { maybeBilled: true });
+  })) as { choices?: { message?: { content?: unknown; refusal?: string | null }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number } };
+  const ch = Array.isArray(b?.choices) ? b.choices[0] : undefined;
+  const usage = { input_tokens: b.usage?.prompt_tokens ?? b.usage?.input_tokens ?? 0, output_tokens: b.usage?.completion_tokens ?? b.usage?.output_tokens ?? 0, audio_seconds: 0 };
   if (ch?.message?.refusal) throw new AiCallError('refused', 'Model menolak permintaan ini', 200, null, reqId(r.headers), { usage });
   if (ch?.finish_reason === 'length') throw new AiCallError('bad_output', 'Jawaban model terpotong (max tokens)', 200, null, reqId(r.headers), { usage });
-  return { text: ch?.message?.content ?? '', usage, request_id: reqId(r.headers) };
+  // Resellers serving Claude/Gemini through this format sometimes send content as a list of parts.
+  const c = ch?.message?.content;
+  const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (typeof p === 'string' ? p : typeof (p as { text?: unknown })?.text === 'string' ? (p as { text: string }).text : '')).join('') : '';
+  return { text, usage, request_id: reqId(r.headers) };
+}
+
+const parseOr = (raw: string, fail: () => never): unknown => {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return fail();
+  }
+};
+
+/** A streamed (SSE) chat answer folded back into one non-streamed reply. */
+function fromStream(raw: string): unknown {
+  let content = '';
+  let finish: string | undefined;
+  let usage: unknown;
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^data:\s*(.*)$/);
+    if (!m || m[1] === '[DONE]') continue;
+    try {
+      const c = JSON.parse(m[1]!) as { choices?: { delta?: { content?: string }; finish_reason?: string | null }[]; usage?: unknown };
+      const ch = c.choices?.[0];
+      if (typeof ch?.delta?.content === 'string') content += ch.delta.content;
+      if (ch?.finish_reason) finish = ch.finish_reason;
+      if (c.usage) usage = c.usage;
+    } catch {
+      /* keep-alive / partial line */
+    }
+  }
+  return { choices: [{ message: { content }, finish_reason: finish }], usage };
 }
 
 /** Speech-to-text with word timestamps (OpenAI audio API shape; also OpenAI-compatible servers). */

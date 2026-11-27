@@ -584,6 +584,7 @@ export function createDemoApi(): Api {
       Object.assign(c, patch);
       return clone(c);
     },
+    aiTempel: async () => ({ ok: false as const, pesan: 'Mode demo: kunci tidak dicek.' }),
     aiRotate: async (id, key) => {
       const c = connections.find((x) => x.connection_id === id) ?? fail(404, 'NOT_FOUND', 'Koneksi tidak ada');
       Object.assign(c, { key_hint: `…${key.slice(-4)}`, has_key: true, status: 'untested', last_error: null });

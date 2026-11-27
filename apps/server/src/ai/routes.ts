@@ -5,7 +5,12 @@ import { readJsonBody } from '../http.js';
 import { bad, onlyKeys } from '../routes.js';
 import type { SpendLedger } from './budget.js';
 import { AiCallError, type Capability, PROVIDERS, type ProviderId, testConnection } from './adapters.js';
-import { type AiSettings, type AiStore, type Prices, providerBase, publicConnection } from './store.js';
+import { type AiSettings, type AiStore, DEFAULT_SETTINGS, type Prices, providerBase, publicConnection } from './store.js';
+
+/** Caps set by "tempel kunci" (USD): enough for heavy daily use, still stops a runaway loop. */
+export const LONGGAR = { daily_usd: 20, monthly_usd: 300, per_request_usd: 3 };
+import { type TujuanId, deteksiKunci, hargaKira } from './tempel.js';
+import { type ImageAiStore, apimartImageModel, modelOf, newestImageModel } from './imageAi.js';
 
 /**
  * AI Provider Manager API (W12). Keys go in once (POST) and never come back out. Every change
@@ -106,7 +111,7 @@ export function parseSettings(body: Record<string, unknown>, cur: AiSettings): A
 }
 
 /** `devEndpoints`: allow loopback test endpoints for official providers (tests / MOTION_AI_DEV_ENDPOINTS=1 only). */
-export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fetchImpl: typeof fetch = fetch, opts: { devEndpoints?: boolean } = {}): Route[] {
+export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fetchImpl: typeof fetch = fetch, opts: { devEndpoints?: boolean; tempelBases?: Partial<Record<TujuanId, string>>; imageAi?: ImageAiStore } = {}): Route[] {
   const dev = opts.devEndpoints === true;
   const notFound = () => new ApiError(404, 'NOT_FOUND', 'Koneksi AI tidak ada');
   const view = () => ({
@@ -149,6 +154,55 @@ export function aiRoutes(ws: Workspace, store: AiStore, ledger?: SpendLedger, fe
         });
         await audit(ws, { op: 'ai.provider.add', actor, outcome: 'ok', connection_id: c.connection_id, provider, model, capabilities: c.capabilities });
         return { connection: publicConnection(c) };
+      },
+    },
+    {
+      // 27 Nov owner: "cukup masukin API-nya, otomatis test bisa atau tidaknya" — paste one key, the
+      // app finds its provider, picks a model, checks it with a tiny call and turns Copilot on.
+      method: 'POST',
+      path: '/api/ai/tempel',
+      handle: async ({ req, actor }) => {
+        const body = await readJsonBody(req, 8 * 1024);
+        onlyKeys(body, ['api_key']);
+        const key = apiKey(typeof body.api_key === 'string' ? body.api_key.trim() : body.api_key);
+        const hasil = await deteksiKunci(key, { fetchImpl, bases: opts.tempelBases });
+        if (!hasil.ok) {
+          await audit(ws, { op: 'ai.provider.tempel', actor, outcome: 'failed', reason: hasil.alasan, tried: hasil.dicoba });
+          return { ok: false, pesan: hasil.pesan };
+        }
+        const { tujuan, model } = hasil;
+        const sama = store.connections().find((c) => c.provider === tujuan.provider && (c.base_url ?? null) === (tujuan.base_url ?? null));
+        let c;
+        if (sama) {
+          await store.setKey(sama.connection_id, key);
+          c = await store.update(sama.connection_id, { model, enabled: true, status: 'ok', last_test_at: Date.now(), capabilities: sama.capabilities.includes('planner') ? sama.capabilities : [...sama.capabilities, 'planner'] });
+        } else {
+          c = await store.add({ provider: tujuan.provider, label: tujuan.label, model, capabilities: ['planner'], base_url: tujuan.base_url, priority: store.connections().length + 1, enabled: true, prices: hargaKira(model), api_key: key });
+          c = await store.update(c.connection_id, { status: 'ok', last_test_at: Date.now() });
+        }
+        // Owner: no limits to set up. The factory caps ($0.25 per request) block even one Opus plan
+        // (worst-case estimate), so a paste lifts caps still at the factory values to roomy ones.
+        const s = store.settings();
+        const b = s.budget;
+        const pabrik = b.daily_usd === DEFAULT_SETTINGS.budget.daily_usd && b.monthly_usd === DEFAULT_SETTINGS.budget.monthly_usd && b.per_request_usd === DEFAULT_SETTINGS.budget.per_request_usd;
+        await store.setSettings({ ...s, mode: s.mode === 'local' ? 'auto' : s.mode, budget: pabrik ? { ...LONGGAR } : b });
+        // Owner: one key for everything — the same key also makes pictures (Ganti Outfit) when it may
+        // and no picture key is saved yet (a working picture key, e.g. beliapi, is left alone).
+        let gambar: { status: 'dipakai' | 'sudah_ada' | 'tidak_bisa'; model: string | null } = { status: 'tidak_bisa', model: null };
+        const img = opts.imageAi;
+        if (img) {
+          const imgModel = hasil.id === 'apimart' ? apimartImageModel(hasil.ids) : hasil.id === 'openai' ? newestImageModel(hasil.ids) : null;
+          if (img.raw().sealed_key) gambar = { status: 'sudah_ada', model: modelOf(img.raw()) };
+          else if (imgModel && (hasil.id === 'apimart' || hasil.id === 'openai')) {
+            await img.setKey(key);
+            const r = img.raw();
+            await img.setConfig({ provider: hasil.id, endpoint: opts.tempelBases?.[hasil.id] ?? null, model: null, budget: r.budget, harga_per_gambar: r.harga_per_gambar });
+            await img.setTest({ at: Date.now(), ok: true, message: `Dari "Tempel API key" · model gambar: ${imgModel}` }, { model_terdeteksi: imgModel });
+            gambar = { status: 'dipakai', model: imgModel };
+          }
+        }
+        await audit(ws, { op: 'ai.provider.tempel', actor, outcome: 'ok', connection_id: c!.connection_id, provider: tujuan.provider, label: tujuan.label, model, gambar: gambar.status });
+        return { ok: true, penyedia: tujuan.label, model, gambar, connection: publicConnection(c!), mode: store.settings().mode };
       },
     },
     {

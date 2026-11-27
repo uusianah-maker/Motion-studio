@@ -17,13 +17,16 @@ import { type SecretBox, createSecretBox, loadSecretKey } from '../secrets.js';
  * gpt-image model it saw. Owner 25 Nov: "kenapa harus ada penyedia?" → the provider is recognised
  * from the key (`sk-` OpenAI, `AIza` Gemini) when none is chosen; an empty model = the detected one.
  */
-export type ImageProvider = 'openai' | 'gemini' | 'beliapi' | 'lainnya';
+export type ImageProvider = 'openai' | 'gemini' | 'beliapi' | 'apimart' | 'lainnya';
 export const IMAGE_PROVIDERS: Record<ImageProvider, { label: string; base: string | null; model_hint: string }> = {
   openai: { label: 'OpenAI (gambar)', base: 'https://api.openai.com', model_hint: 'gpt-image-1' },
   gemini: { label: 'Google Gemini (gambar)', base: 'https://generativelanguage.googleapis.com', model_hint: 'gemini-2.5-flash-image' },
   // 25 Nov (owner: key dari beliapi.com, "buatkan"): a reseller with its own async API — submit a task,
   // poll its status, download the output (Nano Banana 2.1, up to 4 reference pictures).
   beliapi: { label: 'beliapi.com (Nano Banana)', base: 'https://beliapi.com', model_hint: 'nano-banana-2.1' },
+  // 27 Nov (owner: one apimart key for everything): async like beliapi — POST /v1/images/generations
+  // → task_id, GET /v1/tasks/{id}, download result.images[0].url[0] (docs.apimart.ai).
+  apimart: { label: 'apimart.ai', base: 'https://api.apimart.ai', model_hint: 'gpt-image-2' },
   lainnya: { label: 'Lainnya (URL endpoint)', base: null, model_hint: '' },
 };
 
@@ -161,7 +164,7 @@ export function imageAiRoutes(store: ImageAiStore, fetchImpl: typeof fetch = fet
         const body = await readJsonBody(req);
         onlyKeys(body, ['provider', 'endpoint', 'model', 'budget', 'harga_per_gambar']);
         const provider = body.provider === null || body.provider === '' ? null : typeof body.provider === 'string' && body.provider in IMAGE_PROVIDERS ? (body.provider as ImageProvider) : null;
-        if (body.provider && !provider) throw bad('Penyedia harus openai | gemini | beliapi | lainnya');
+        if (body.provider && !provider) throw bad('Penyedia harus openai | gemini | beliapi | apimart | lainnya');
         let endpoint: string | null = null;
         if (body.endpoint !== undefined && body.endpoint !== null && body.endpoint !== '') {
           if (typeof body.endpoint !== 'string') throw bad('URL endpoint tidak valid');
@@ -236,6 +239,12 @@ export function imageAiRoutes(store: ImageAiStore, fetchImpl: typeof fetch = fet
             terdeteksi = img;
             message = img ? `Koneksi berhasil · model gambar: ${img}` : ids.length ? `Koneksi berhasil, tapi model gambar tidak aktif di akun ini (${ids.join(', ').slice(0, 80)})` : 'Koneksi berhasil';
             ok = !ids.length || !!img;
+          } else if (r.ok && d.provider === 'apimart') {
+            const list = (await r.json().catch(() => null)) as { data?: { id?: unknown }[] } | null;
+            const ids = (list?.data ?? []).map((m) => (typeof m?.id === 'string' ? m.id : '')).filter(Boolean);
+            terdeteksi = apimartImageModel(ids);
+            message = terdeteksi ? `Koneksi berhasil · model gambar: ${terdeteksi}` : `Kunci apimart benar, tapi belum diizinkan memakai model gambar (aktifkan gpt-image-2 / Nano Banana 2 untuk kunci ini di apimart.ai)`;
+            ok = !!terdeteksi;
           } else if (r.ok && d.provider !== 'gemini') {
             const list = (await r.json().catch(() => null)) as { data?: { id?: unknown }[] } | null;
             terdeteksi = newestImageModel((list?.data ?? []).map((m) => (typeof m?.id === 'string' ? m.id : '')).filter(Boolean));
@@ -280,6 +289,7 @@ export async function generateImageEdit(store: ImageAiStore, input: ImageEditInp
   if (!d.provider) d.provider = providerFromKey(key);
   if (d.provider === 'gemini') throw new ImageGenError('Ganti Outfit saat ini memakai penyedia OpenAI (gpt-image) atau beliapi.com; Gemini belum didukung', 'config');
   if (d.provider === 'beliapi') return beliapiEdit(key, endpointOf(d, opts.devEndpoints === true), modelOf(d) ?? 'nano-banana-2.1', input, fetchImpl, opts.sleep);
+  if (d.provider === 'apimart') return apimartEdit(key, endpointOf(d, opts.devEndpoints === true), modelOf(d) ?? 'gpt-image-2', input, fetchImpl, opts.sleep);
   let base: string;
   try {
     base = endpointOf(d, opts.devEndpoints === true);
@@ -404,6 +414,97 @@ export async function beliapiTask(key: string, base: string, job: BeliapiJob, fe
   const bytes = Buffer.from(await r.arrayBuffer());
   if (bytes.length < 100) throw new ImageGenError('beliapi mengirim hasil kosong', 'lain');
   return bytes;
+}
+
+/** Best picture-edit model a key may use at apimart (null = none allowed for this key). */
+export function apimartImageModel(ids: string[]): string | null {
+  const pref = [/^gpt-image-2$/, /^gemini-[\d.]+-flash-image-preview$/, /^nano-banana-2$/, /^gpt-image-2/, /flash-image|nano-banana/];
+  for (const re of pref) {
+    const hit = ids.find((id) => re.test(id));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** "1024x1536" → the nearest ratio apimart's edit models accept. */
+export function apimartSize(size: string): string {
+  const m = /^(\d+)x(\d+)$/.exec(size);
+  const r = m ? Number(m[1]) / Number(m[2]) : 9 / 16;
+  const all: [string, number][] = [['9:16', 9 / 16], ['2:3', 2 / 3], ['3:4', 3 / 4], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9]];
+  return all.reduce((a, b) => (Math.abs(b[1] - r) < Math.abs(a[1] - r) ? b : a))[0];
+}
+
+const APIMART_MAX_IMAGE = 10 * 1024 * 1024;
+const APIMART_MAX_WAIT_MS = 15 * 60_000;
+
+/**
+ * apimart.ai pictures (docs 27 Nov): POST /v1/images/generations {model, prompt, size, n, image_urls
+ * (data URIs)} → {data:[{task_id}]}; GET /v1/tasks/{id} → status pending|processing|completed|failed,
+ * result.images[0].url[0]. The result link is on apimart's own file host and is fetched without the key.
+ */
+export async function apimartEdit(key: string, base: string, model: string, input: ImageEditInput, fetchImpl: typeof fetch = fetch, sleepFn?: (ms: number) => Promise<void>): Promise<{ bytes: Buffer; model: string }> {
+  const sleep = sleepFn ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const auth = { authorization: `Bearer ${key}` };
+  const images = input.images.slice(0, 14);
+  for (const im of images) if (im.bytes.length > APIMART_MAX_IMAGE) throw new ImageGenError(`Gambar referensi "${im.name}" lebih dari 10 MB (batas apimart)`, 'config');
+  const call = async (url: string, init: RequestInit, timeout: number) => {
+    try {
+      return await fetchImpl(url, { ...init, redirect: 'error', signal: input.signal ?? AbortSignal.timeout(timeout) });
+    } catch (e) {
+      throw new ImageGenError(`Tidak bisa menghubungi apimart.ai (${e instanceof Error ? e.name : 'error'})`, 'jaringan');
+    }
+  };
+  const fail = async (r: Response): Promise<never> => {
+    const j = (await r.json().catch(() => null)) as { error?: { message?: unknown }; message?: unknown } | null;
+    const msg = (typeof j?.error?.message === 'string' ? j.error.message : typeof j?.message === 'string' ? j.message : `HTTP ${r.status}`).replaceAll(key, '…').slice(0, 200);
+    if (r.status === 401) throw new ImageGenError(`API key apimart ditolak (${msg})`, 'key');
+    if (r.status === 403) throw new ImageGenError(`Kunci apimart ini belum diizinkan memakai model ${model} (${msg})`, 'key');
+    if (r.status === 402 || /quota|balance|saldo|insufficient/i.test(msg)) throw new ImageGenError(`Saldo apimart habis (${msg})`, 'quota');
+    if (r.status === 429) throw new ImageGenError(`Batas kecepatan apimart tercapai (${msg})`, 'quota');
+    if (/safety|moderation|policy|sensitive/i.test(msg)) throw new ImageGenError(`Ditolak aturan penyedia (${msg})`, 'ditolak');
+    throw new ImageGenError(`apimart gagal: ${msg}`, 'lain');
+  };
+  const body = { model, prompt: input.prompt.slice(0, 8000), size: apimartSize(input.size), n: 1, ...(images.length ? { image_urls: images.map((im) => `data:${im.mime};base64,${im.bytes.toString('base64')}`) } : {}) };
+  const sub = await call(`${base}/v1/images/generations`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(body) }, 120_000);
+  if (!sub.ok) await fail(sub);
+  const sj = (await sub.json().catch(() => null)) as { data?: { task_id?: unknown }[] | { task_id?: unknown } } | null;
+  const id = Array.isArray(sj?.data) ? sj.data[0]?.task_id : (sj?.data as { task_id?: unknown } | undefined)?.task_id;
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(id)) throw new ImageGenError('apimart tidak mengirim ID task', 'lain');
+  const started = Date.now();
+  let task: { status?: unknown; result?: { images?: { url?: unknown }[] }; error?: { message?: unknown } | unknown } = {};
+  for (;;) {
+    if (Date.now() - started > APIMART_MAX_WAIT_MS) throw new ImageGenError('apimart belum selesai setelah 15 menit', 'lain');
+    await sleep(5_000);
+    const r = await call(`${base}/v1/tasks/${encodeURIComponent(id)}`, { headers: auth }, 30_000);
+    if (r.status === 429) {
+      await sleep(10_000);
+      continue;
+    }
+    if (!r.ok) await fail(r);
+    task = (((await r.json().catch(() => null)) as { data?: typeof task } | null)?.data ?? {}) as typeof task;
+    if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') break;
+  }
+  if (task.status !== 'completed') {
+    const why = typeof (task.error as { message?: unknown })?.message === 'string' ? (task.error as { message: string }).message : typeof task.error === 'string' ? task.error : 'tanpa alasan';
+    const refused = /safety|moderation|policy|nsfw|blocked|sensitive/i.test(why);
+    throw new ImageGenError(refused ? `Ditolak aturan penyedia (${why.slice(0, 160)})` : `apimart gagal membuat gambar (${why.slice(0, 160)})`, refused ? 'ditolak' : 'lain');
+  }
+  const u = task.result?.images?.[0]?.url;
+  const link = Array.isArray(u) ? u[0] : u;
+  if (typeof link !== 'string') throw new ImageGenError('apimart tidak mengirim alamat gambar', 'lain');
+  let host = '';
+  try {
+    host = new URL(link).host;
+  } catch {
+    /* checked below */
+  }
+  const ok = (link.startsWith('https://') && /(^|\.)apimart\.ai$/.test(host)) || link.startsWith(`${base}/`);
+  if (!ok) throw new ImageGenError('Alamat hasil apimart tidak dikenal', 'lain');
+  const r = await call(link, {}, 300_000);
+  if (!r.ok) throw new ImageGenError(`Gagal mengunduh hasil apimart (HTTP ${r.status})`, 'lain');
+  const bytes = Buffer.from(await r.arrayBuffer());
+  if (bytes.length < 100) throw new ImageGenError('apimart mengirim hasil kosong', 'lain');
+  return { bytes, model };
 }
 
 async function beliapiEdit(key: string, base: string, model: string, input: ImageEditInput, fetchImpl: typeof fetch, sleep?: (ms: number) => Promise<void>): Promise<{ bytes: Buffer; model: string }> {

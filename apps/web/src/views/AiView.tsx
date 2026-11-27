@@ -74,9 +74,7 @@ export function AiView({ api }: { api: Api }) {
   return (
     <div className="body aiPage">
       <h2>AI</h2>
-      <p className="muted">
-        Koneksi API resmi yang lo daftarkan sendiri. Key disimpan terenkripsi di server dan tidak pernah dikirim balik ke browser. Failover hanya ke provider <b>lain</b>, tidak pernah ke key lain dari provider yang sama.
-      </p>
+      <p className="muted">Satu kunci untuk semua fitur AI: Copilot di Edit dan gambar Ganti Outfit. Kunci disimpan terkunci di server dan tidak pernah ditampilkan lagi.</p>
       <ErrorNotice error={error} />
       {notice && (
         <div className="notice ok" role="status">
@@ -84,6 +82,13 @@ export function AiView({ api }: { api: Api }) {
         </div>
       )}
 
+      <TempelKunci api={api} conns={conns} onDone={() => load().catch(setError)} />
+
+      <details className="card aiSection" aria-label="Pengaturan lanjutan AI">
+      <summary>
+        <b>Pengaturan lanjutan</b> <span className="muted small">(tidak perlu diubah — AI gambar, mode, koneksi manual, batas biaya, log)</span>
+      </summary>
+      <ImageAiSection api={api} />
       {settings && (
         <section className="card aiSection" aria-label="Mode Copilot">
           <h3>Mode Copilot</h3>
@@ -161,7 +166,6 @@ export function AiView({ api }: { api: Api }) {
         <AddConnection catalog={catalog} busy={busy} onAdd={(body) => act(() => api.aiAdd(body), 'Koneksi ditambahkan. Klik "Tes koneksi" untuk mengecek key-nya.')} />
       </section>
 
-      <ImageAiSection api={api} />
       {settings && usage && <BudgetSection settings={settings} usage={usage} busy={busy} onSave={(b) => act(() => api.aiSettings({ budget: b }), 'Batas anggaran disimpan.')} />}
 
       <section className="card aiSection" aria-label="Log routing AI">
@@ -195,7 +199,61 @@ export function AiView({ api }: { api: Api }) {
           </table>
         )}
       </section>
+      </details>
     </div>
+  );
+}
+
+/**
+ * 27 Nov owner: "cukup masukin API-nya, otomatis test bisa atau tidaknya". One box: the server
+ * finds where the key belongs (OpenAI / Claude / Gemini / apimart), picks a model, tests it with a
+ * tiny call and turns Copilot on. Everything else lives under "Pengaturan lanjutan".
+ */
+function TempelKunci({ api, conns, onDone }: { api: Api; conns: AiConnection[]; onDone: () => void }) {
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [hasil, setHasil] = useState<{ ok: boolean; pesan: string } | null>(null);
+  const aktif = conns.filter((c) => c.enabled && c.has_key && c.capabilities.includes('planner'));
+  const sambung = async () => {
+    setBusy(true);
+    setHasil({ ok: true, pesan: 'Mengecek kunci… (bisa sampai 1 menit)' });
+    try {
+      const r = await api.aiTempel(key.trim());
+      if (r.ok) {
+        setKey('');
+        const g = r.gambar.status === 'dipakai' ? ` Gambar Ganti Outfit juga memakai kunci ini (${r.gambar.model}).` : r.gambar.status === 'sudah_ada' ? ' Gambar Ganti Outfit tetap memakai kunci gambar yang sudah tersimpan.' : ' Kunci ini belum boleh membuat gambar — Ganti Outfit tetap memakai kunci gambar lama (kalau ada).';
+        setHasil({ ok: true, pesan: `✓ Berhasil. Kunci dari ${r.penyedia}, model ${r.model}. Copilot sudah aktif.${g}` });
+        onDone();
+      } else setHasil({ ok: false, pesan: `✗ ${r.pesan}` });
+    } catch (e) {
+      setHasil({ ok: false, pesan: `✗ ${e instanceof Error ? e.message : 'Gagal mengecek kunci'}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="card aiSection" aria-label="Tempel API key AI">
+      <h3>API key AI</h3>
+      {aktif.length > 0 ? (
+        <p className="small">
+          <span className="badge ok">Tersambung</span> {aktif.map((c) => `${c.label} · ${c.model}`).join(', ')}
+        </p>
+      ) : (
+        <p className="muted small">Belum tersambung.</p>
+      )}
+      <p className="muted small">Cukup tempel API key (apimart.ai, OpenAI, Claude, atau Gemini), lalu klik Sambungkan. Aplikasi mengecek sendiri kunci itu dari mana, apakah bisa dipakai, dan memilih modelnya.</p>
+      <div className="row wrap" style={{ gap: 6 }}>
+        <input type="password" autoComplete="off" aria-label="Tempel API key" placeholder="Tempel API key di sini" value={key} onChange={(e) => setKey(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+        <button className="btn primary" disabled={busy || key.trim().length < 8} onClick={() => void sambung()}>
+          {busy ? 'Mengecek…' : 'Sambungkan'}
+        </button>
+      </div>
+      {hasil && (
+        <div className={`notice ${hasil.ok ? 'ok' : 'bad'}`} role="status">
+          {hasil.pesan}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -425,7 +483,7 @@ function AddConnection({ catalog, busy, onAdd }: { catalog: AiCatalogItem[]; bus
  */
 function ImageAiSection({ api }: { api: Api }) {
   const [v, setV] = useState<ImageAiView | null>(null);
-  const [provider, setProvider] = useState<'' | 'openai' | 'gemini' | 'beliapi' | 'lainnya'>('');
+  const [provider, setProvider] = useState<'' | 'openai' | 'gemini' | 'beliapi' | 'apimart' | 'lainnya'>('');
   const [endpoint, setEndpoint] = useState('');
   const [model, setModel] = useState('');
   const [amount, setAmount] = useState('');
