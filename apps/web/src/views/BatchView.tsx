@@ -35,7 +35,10 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const [tujuan, setTujuan] = useSessionState('batch.tujuan', 'konversi');
   const [hak, setHak] = useSessionState('batch.hak', false);
   const [akun, setAkun] = useSessionState('batch.akun', '');
-  const [voBatch, setVoBatch] = useSessionState('batch.vo', '');
+  // 27 Nov: kunci sendiri ('batch.voBatch'); dulu berbagi 'batch.vo' dengan VO dari Library sehingga
+  // setelah muat ulang isinya bisa tertukar. Nilai lama yang bukan teks dianggap kosong.
+  const [voBatchRaw, setVoBatch] = useSessionState<unknown>('batch.voBatch', '');
+  const voBatch = typeof voBatchRaw === 'string' ? voBatchRaw : '';
   const [musikUji, setMusikUji] = useSessionState('batch.musikUji', false);
   const [buang, setBuang] = useSessionState<string[]>('batch.buang', []);
   /** What was sent with the job on screen, shown on its card (sukma: was "Hak pakai" sent?). */
@@ -46,7 +49,8 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const [preset, setPreset] = useSessionState('batch.preset', '');
   const [audio, setAudio] = useSessionState<'' | 'vo' | 'musik' | 'keduanya'>('batch.audio', '');
   /** R37: VO dari Library (null = VO / suara dari footage seperti biasa). */
-  const [vo, setVo] = useSessionState<JobVo | null>('batch.vo', null);
+  const [voRaw, setVo] = useSessionState<unknown>('batch.voLib', null);
+  const vo = voRaw && typeof voRaw === 'object' ? (voRaw as JobVo) : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [current, setCurrent] = useSessionState<{ project_id: string; job_id: string } | null>('batch.job', null);
@@ -58,6 +62,10 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   const [draft, setDraft] = useState<Record<string, BatchRowStatus>>({});
   const [rendered, setRendered] = useState<{ jobs: RenderJob[]; skipped: { project_id: string; reason: string }[] } | null>(null);
   const [jobs, setJobs] = useState<EngineJob[]>([]);
+  /** Owner 27 Nov: riwayat "Batch sebelumnya" bisa disembunyikan (arsip) atau dihapus (ke Sampah), keduanya bisa dibatalkan. */
+  const [lihatTersembunyi, setLihatTersembunyi] = useState(false);
+  const [riwayatNote, setRiwayatNote] = useState<{ text: string; undo?: () => Promise<void> } | null>(null);
+  const [riwayatError, setRiwayatError] = useState<unknown>(null);
   const { job, log, error: jobError } = useEngineJob(api, current?.project_id ?? null, current?.job_id ?? null);
 
   useEffect(() => {
@@ -103,8 +111,10 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
   }, [brand]);
 
   // Earlier batches: the batch jobs of every non-variant Batch project (R22: other features' projects are skipped).
-  const masterIds = projects
-    .filter((p) => !p.error && !p.variant && p.status !== 'archived' && fiturOf(p) === 'batch')
+  const batchMasters = projects.filter((p) => !p.error && !p.variant && fiturOf(p) === 'batch');
+  const tersembunyi = new Set(batchMasters.filter((p) => p.status === 'archived').map((p) => p.project_id));
+  const masterIds = batchMasters
+    .filter((p) => (lihatTersembunyi ? tersembunyi.has(p.project_id) : !tersembunyi.has(p.project_id)))
     .slice(0, 40)
     .map((p) => p.project_id)
     .join(',');
@@ -214,6 +224,73 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
     }
   };
 
+  /** Owner 27 Nov "cara reset": kosongkan layar & isian kembali ke awal (brand dan batch gambar tetap). */
+  const mulaiBaru = () => {
+    setCurrent(null);
+    setSent(null);
+    setTable(null);
+    setSaved({});
+    setDraft({});
+    setSaveNote(null);
+    setSaveError(null);
+    setRendered(null);
+    setError(null);
+    setJumlah(10);
+    setTujuan('konversi');
+    setHak(false);
+    setAkun('');
+    setVoBatch('');
+    setMusikUji(false);
+    setBuang([]);
+    setAudio('');
+    setVo(null);
+    unstarted.current = null;
+  };
+  const ubahRiwayat = async (projectId: string, aksi: 'sembunyi' | 'tampil' | 'hapus') => {
+    const nama = projects.find((p) => p.project_id === projectId)?.name ?? projectId;
+    if (aksi === 'hapus' && !window.confirm(`Hapus "${nama}"?
+
+Proyek batch ini (dan semua job di dalamnya) pindah ke Sampah — masih bisa dikembalikan. Video yang sudah dirender tidak ikut terhapus.`)) return;
+    setBusy(true);
+    setRiwayatError(null);
+    setRiwayatNote(null);
+    try {
+      const full = await api.project(projectId);
+      if (aksi === 'hapus') {
+        await api.deleteProject(projectId, full.revision);
+        setRiwayatNote({ text: `"${nama}" dipindah ke Sampah.`, undo: async () => void (await api.restoreProject(projectId)) });
+      } else {
+        await api.updateProject(projectId, full.revision, { status: aksi === 'sembunyi' ? 'archived' : 'active' });
+        setRiwayatNote(
+          aksi === 'sembunyi'
+            ? { text: `"${nama}" disembunyikan.`, undo: async () => { const f = await api.project(projectId); await api.updateProject(projectId, f.revision, { status: 'active' }); } }
+            : { text: `"${nama}" ditampilkan lagi.` },
+        );
+      }
+      if (current?.project_id === projectId && aksi !== 'tampil') mulaiBaru();
+      onProjectsChanged();
+    } catch (e) {
+      setRiwayatError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const batalkan = async () => {
+    const u = riwayatNote?.undo;
+    if (!u) return;
+    setBusy(true);
+    setRiwayatError(null);
+    try {
+      await u();
+      setRiwayatNote({ text: 'Dibatalkan — batch kembali ke daftar.' });
+      onProjectsChanged();
+    } catch (e) {
+      setRiwayatError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const changed = table ? table.varian.filter((v) => draft[v.id] !== (saved[v.id]?.status ?? 'usul')) : [];
   const save = async () => {
     if (!current || !changed.length) return;
@@ -280,7 +357,13 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
           }}
         />
         <section className="card" aria-label="Susun batch">
-          <h2>1 · Susun batch</h2>
+          <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+            <h2 style={{ margin: 0 }}>1 · Susun batch</h2>
+            <div className="spacer" style={{ flex: 1 }} />
+            <button className="btn small" disabled={busy} title="Kosongkan hasil di layar dan kembalikan isian ke awal (brand & batch gambar tetap). Batch lama tetap ada di daftar Batch sebelumnya." onClick={mulaiBaru}>
+              ↺ Mulai dari awal
+            </button>
+          </div>
           <div className="inspGrid">
             <label>
               Brand
@@ -533,9 +616,29 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
           </section>
         )}
 
-        {jobs.length > 0 && (
+        {(jobs.length > 0 || tersembunyi.size > 0 || lihatTersembunyi || !!riwayatNote || !!riwayatError) && (
           <section className="card" aria-label="Batch sebelumnya">
-            <h2>Batch sebelumnya</h2>
+            <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+              <h2 style={{ margin: 0 }}>{lihatTersembunyi ? 'Batch yang disembunyikan' : 'Batch sebelumnya'}</h2>
+              <div className="spacer" style={{ flex: 1 }} />
+              {(tersembunyi.size > 0 || lihatTersembunyi) && (
+                <button className="linkBtn small" onClick={() => setLihatTersembunyi((x) => !x)}>
+                  {lihatTersembunyi ? '← kembali ke daftar biasa' : `lihat yang disembunyikan (${tersembunyi.size})`}
+                </button>
+              )}
+            </div>
+            {riwayatNote && (
+              <div className="notice small ok" role="status" aria-label="Hasil ubah riwayat">
+                {riwayatNote.text}{' '}
+                {riwayatNote.undo && (
+                  <button className="linkBtn small" disabled={busy} onClick={() => void batalkan()}>
+                    Batalkan
+                  </button>
+                )}
+              </div>
+            )}
+            {!!riwayatError && <ErrorNotice error={riwayatError} />}
+            {!jobs.length && <div className="muted small">{lihatTersembunyi ? 'Tidak ada batch yang disembunyikan.' : tersembunyi.size ? 'Semua batch lama sedang disembunyikan.' : 'Belum ada batch.'}</div>}
             <table className="list">
               <tbody>
                 {jobs.map((j) => (
@@ -544,14 +647,35 @@ export function BatchView({ api, role = 'owner', projects, onOpenProject, onProj
                     <td>{projects.find((p) => p.project_id === j.project_id)?.name ?? j.project_id}</td>
                     <td>{ENGINE_STATE[j.state]}</td>
                     <td>
-                      <button className="btn small" onClick={() => setCurrent({ project_id: j.project_id, job_id: j.job_id })}>
-                        Buka
-                      </button>
+                      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                        <button className="btn small" onClick={() => setCurrent({ project_id: j.project_id, job_id: j.job_id })}>
+                          Buka
+                        </button>
+                        {role !== 'reviewer' &&
+                          (lihatTersembunyi ? (
+                            <button className="btn small" disabled={busy} aria-label="Tampilkan lagi" onClick={() => void ubahRiwayat(j.project_id, 'tampil')}>
+                              Tampilkan lagi
+                            </button>
+                          ) : (
+                            <button className="btn small" disabled={busy} aria-label="Sembunyikan" title="Sembunyikan dari daftar ini (bisa ditampilkan lagi)" onClick={() => void ubahRiwayat(j.project_id, 'sembunyi')}>
+                              Sembunyikan
+                            </button>
+                          ))}
+                        {role !== 'reviewer' && (
+                          <button className="btn small" disabled={busy} aria-label="Hapus" title="Pindah ke Sampah (bisa dikembalikan)" onClick={() => void ubahRiwayat(j.project_id, 'hapus')}>
+                            🗑 Hapus
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <div className="muted small" style={{ marginTop: 6 }}>
+              Satu baris = satu kali Susun. Sembunyikan / Hapus berlaku untuk proyek batch-nya (semua baris dengan nama yang sama). Catatan mesin
+              tentang konten yang sudah dipakai brand ini tidak ikut terhapus, supaya video baru tetap tidak mengulang konten lama.
+            </div>
           </section>
         )}
       </div>
