@@ -31,11 +31,20 @@ def _add_cuda_dlls() -> None:
 _add_cuda_dlls()
 from faster_whisper import WhisperModel  # noqa: E402
 
+from karangan import bersihkan  # noqa: E402
+
 # Prompt awal mendorong Whisper ikut menulis kata pengisi (eee/emm) dan kalimat
 # yang diulang, supaya auto-cut bisa membuangnya. Tanpa ini Whisper cenderung
 # "merapikan" ucapan dan menyembunyikan jeda di dalam durasi kata.
 INITIAL_PROMPT = "Eee, jadi... emm, ini tuh, eh bentar, ulang. Jadi ini tuh bagus banget."
 
+# Keluhan owner 27 Nov (typo subtitle Batch Remix makin banyak): di stem VOKAL hasil pisah (musik dibuang,
+# banyak jeda kosong) prompt "ulang" + hotwords membuat Whisper mengarang: "5. 5. 5. 5. 4 Visi", "aku baru
+# aja" x10, "Terima kasih telah menonton", sampai membacakan daftar kosakata di bagian lagu. Uji 7 footage
+# asli 2026-11-27_footage: VAD + tanpa prompt "ulang" + kosakata hanya di prompt (tanpa hotwords) menghapus
+# semua karangan itu dan memperbaiki "rekomensi" -> "rekomendasi", "katingannya" -> "cuttingannya".
+GAYA_VO = dict(vad_filter=True, vad_parameters=dict(min_silence_duration_ms=500, speech_pad_ms=300),
+               hallucination_silence_threshold=1.5)
 
 def load_audio(path: str) -> np.ndarray:
     """Decode ke 16 kHz mono float32 lewat ffmpeg (PyAV versi baru tidak cocok
@@ -96,6 +105,9 @@ def main() -> None:
     ap.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
     ap.add_argument("--produk", help="produk dari brief job (petunjuk Whisper, prioritas sesudah nama brand)")
     ap.add_argument("--varian", help="varian dari brief job, dipisah koma")
+    ap.add_argument("--gaya", choices=["bicara", "vo"], default="bicara",
+                    help="bicara = rekaman talking head (kata pengisi & ulang ucap ikut ditulis untuk auto-cut); "
+                         "vo = stem vokal hasil pisah Batch Remix (VAD, tanpa prompt ulang, tanpa hotwords)")
     args = ap.parse_args()
 
     t0 = time.perf_counter()
@@ -107,18 +119,22 @@ def main() -> None:
         from brandkit import muat
 
         vocab = petunjuk(muat(args.brandkit), {"produk": args.produk, "varian": args.varian}, hitung_token(model))
-    prompt = INITIAL_PROMPT + (" " + ", ".join(vocab) + "." if vocab else "")
+    if args.gaya == "vo":
+        # Waktu kata tetap relatif ke awal file: faster-whisper memetakan balik potongan VAD.
+        opsi = dict(initial_prompt=", ".join(vocab) + "." if vocab else None, hotwords=None, **GAYA_VO)
+    else:
+        opsi = dict(initial_prompt=INITIAL_PROMPT + (" " + ", ".join(vocab) + "." if vocab else ""),
+                    hotwords=", ".join(vocab) or None,
+                    vad_filter=False)  # jeda harus tetap terlihat di timestamp
 
     t1 = time.perf_counter()
     segments, info = model.transcribe(
         load_audio(args.source),
         language=args.language,
         word_timestamps=True,
-        initial_prompt=prompt,
-        hotwords=", ".join(vocab) or None,
         condition_on_previous_text=False,
-        vad_filter=False,  # jeda harus tetap terlihat di timestamp
         beam_size=5,
+        **opsi,
     )
     words = []
     for seg in segments:
@@ -132,6 +148,8 @@ def main() -> None:
                 }
             )
     t_tr = time.perf_counter() - t1
+    # Ulang ucap asli (talking head) dibiarkan sampai 3x untuk auto-cut; stem VO maks 2x.
+    dibuang = bersihkan(words, 2 if args.gaya == "vo" else 3)
 
     out = {
         "source": args.source.replace("\\", "/"),
@@ -141,6 +159,8 @@ def main() -> None:
         "device": device,
         "modelLoadSec": round(t_load, 1),
         "transcribeSec": round(t_tr, 1),
+        "gaya": args.gaya,
+        **({"dibuang_karangan": dibuang} if dibuang else {}),
         "words": words,
     }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)

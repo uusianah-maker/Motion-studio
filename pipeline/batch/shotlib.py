@@ -369,7 +369,7 @@ def ensure_transcript(batch_dir: Path, name: str) -> Path:
         vokal = batch_dir / "vokal" / f"{name}.wav"
         print(f"  transkrip {name} ...", file=sys.stderr)
         subprocess.run([str(MAIN_PY), str(ROOT / "pipeline" / "transcribe.py"), str(vokal), str(out),
-                        "--brandkit", str(BRANDKIT)],
+                        "--brandkit", str(BRANDKIT), "--gaya", "vo"],
                        check=True, stdout=subprocess.DEVNULL, cwd=DATA)
     return out
 
