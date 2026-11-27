@@ -16,6 +16,7 @@ from pathlib import Path
 
 import brand_lain
 from common import alasan_buang, apply_kamus, cek_ucapan, kalimat, merge_split_words, norm
+from karangan import bersihkan
 
 JEDA = 0.12  # detik jeda antar kalimat di timeline hasil
 MAKS_JUDUL = 6
@@ -31,6 +32,10 @@ def kandidat(batch_dir: Path, lib: dict, brand: dict, produk_kata: list[str], de
             tolak.append({"id": fid, "alasan": "tidak ada vokal/transkrip"})
             continue
         tr = json.loads(tpath.read_text(encoding="utf-8"))
+        # Keluhan owner 27 Nov: transkrip lama (sebelum gaya "vo") bisa berisi karangan Whisper
+        # ("aku baru aja" x10, "Terima kasih telah menonton"); dibersihkan juga di sini sebagai penjaga.
+        if tr.get("gaya") != "vo":
+            bersihkan(tr["words"], 2)
         cek = cek_ucapan(tr)
         if cek["status"] != "ok":
             tolak.append({"id": fid, "alasan": cek["alasan"]})
