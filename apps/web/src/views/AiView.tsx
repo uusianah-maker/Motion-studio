@@ -234,10 +234,21 @@ function TempelKunci({ api, conns, onDone }: { api: Api; conns: AiConnection[]; 
   return (
     <section className="card aiSection" aria-label="Tempel API key AI">
       <h3>API key AI</h3>
+      {/* 27 Nov: "Tersambung" only when the last test worked — a saved key alone proves nothing. */}
       {aktif.length > 0 ? (
-        <p className="small">
-          <span className="badge ok">Tersambung</span> {aktif.map((c) => `${c.label} · ${c.model}`).join(', ')}
-        </p>
+        aktif.map((c) => (
+          <p className="small" key={c.connection_id}>
+            {c.status === 'ok' ? (
+              <span className="badge ok">Tersambung</span>
+            ) : c.status === 'untested' ? (
+              <span className="badge">Belum dites</span>
+            ) : (
+              <span className="badge bad">{c.status === 'needs_admin' ? 'Gagal: kunci ditolak' : 'Gagal terakhir'}</span>
+            )}{' '}
+            {c.label} · {c.model}
+            {c.status !== 'ok' && c.status !== 'untested' && <span className="muted"> — tempel ulang kunci yang benar di bawah</span>}
+          </p>
+        ))
       ) : (
         <p className="muted small">Belum tersambung.</p>
       )}
