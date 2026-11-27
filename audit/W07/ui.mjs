@@ -57,7 +57,7 @@ try {
     return false;
   };
   const videoState = () => page.evaluate(() => {
-    const v = document.querySelector('.canvas video');
+    const v = document.querySelector('.canvas video[aria-label="Video pratinjau"]');
     return { t: v.currentTime, paused: v.paused, ready: v.readyState, src: !!v.getAttribute('src') };
   });
   const rulerAt = async (ms) => {
@@ -85,10 +85,10 @@ try {
 
   // Real playback.
   await page.getByRole('button', { name: 'Putar' }).click();
-  await waitUntil(() => document.querySelector('.canvas video').currentTime > 1, null, 8000);
+  await waitUntil(() => document.querySelector('.canvas video[aria-label="Video pratinjau"]').currentTime > 1, null, 8000);
   const playing = await videoState();
   const shown = await page.locator('.player .time').innerText();
-  check('PV-03 Putar: video jalan + jam timeline maju', !playing.paused && playing.t > 1 && !shown.startsWith('00:00'), `${JSON.stringify(playing)} time=${shown}`);
+  check('PV-03 Putar: video jalan + jam timeline maju', !playing.paused && playing.t > 1 && !shown.startsWith('00:00:00'), `${JSON.stringify(playing)} time=${shown}`);
   await page.getByRole('button', { name: 'Jeda', exact: true }).click();
   await page.waitForTimeout(200);
   check('PV-04 Jeda: video berhenti', (await videoState()).paused);
@@ -100,7 +100,7 @@ try {
   await page.keyboard.press('s');
   await saved();
   await rulerAt(5500);
-  await waitUntil(() => Math.abs(document.querySelector('.canvas video').currentTime - 5.5) < 0.15, null, 5000);
+  await waitUntil(() => Math.abs(document.querySelector('.canvas video[aria-label="Video pratinjau"]').currentTime - 5.5) < 0.15, null, 5000);
   const seek = await videoState();
   check('PV-05 Seek setelah split: waktu sumber tepat (in_ms + offset)', Math.abs(seek.t - 5.5) < 0.15, `t=${seek.t.toFixed(3)}`);
 
@@ -148,7 +148,7 @@ try {
   // Space toggles playback.
   await page.locator('body').click({ position: { x: 5, y: 890 } });
   await page.keyboard.press('Space');
-  await waitUntil(() => !document.querySelector('.canvas video').paused, null, 5000);
+  await waitUntil(() => !document.querySelector('.canvas video[aria-label="Video pratinjau"]').paused, null, 5000);
   check('PV-13 Spasi = putar', !(await videoState()).paused);
   await page.keyboard.press('Space');
   await page.waitForTimeout(200);

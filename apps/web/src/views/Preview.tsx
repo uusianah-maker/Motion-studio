@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { blurAt, placeOnCanvas } from '../../../../packages/core/dist/storage/framing.js';
 import { zoomAt } from '../../../../packages/core/dist/storage/effects.js';
 import { type KfValues, keyframeAt, keyframeCss } from '../../../../packages/core/dist/storage/keyframes.js';
@@ -20,6 +20,13 @@ import { type Overlay, contentEnd } from '../../../../packages/core/dist/storage
 import { CANVAS_RATIOS, type CanvasRatio, aspectCss, clipAt, safeInsets, sourceSeconds } from '../lib';
 
 type Layer = 'visual' | 'audio';
+
+/** Pool of <video> elements for the picture (on screen + the next sources ready). */
+const POOL = 3;
+/** The source an element plays for a clip (a stabilised clip plays its stabilised copy). */
+const poolKeyOf = (c: Clip | null): string | null => (c?.media ? (c.stabil ? `${c.media.version_id}@${c.stabil}` : c.media.version_id) : null);
+/** The first clip of a layer that starts at or after `ms`. */
+const nextOf = (clips: Clip[], ms: number): Clip | null => clips.filter((c) => c.media && c.start_ms >= ms).sort((a, b) => a.start_ms - b.start_ms)[0] ?? null;
 
 /**
  * Timeline preview (W07). The timeline clock drives everything: video/b-roll (b-roll on top),
@@ -106,7 +113,17 @@ export function Preview({
   speedRef.current = speed;
   const loopRef = useRef<{ mode: typeof loop; from: number; to: number }>({ mode: 'off', from: 0, to: 0 });
   const [problem, setProblem] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  /**
+   * Keluhan owner 27 Nov ("timeline banyak blank, suara/gambar hilang, render lancar"): one <video>
+   * had to load a new file at every cut between sources (a Batch variant cuts between ~6 files).
+   * Now a small pool: the playing clip's element is shown, the NEXT clip's source is already loaded
+   * and seeked in a hidden element, so a cut is a swap. `videoRef` = the element on screen.
+   */
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const poolEls = useRef<(HTMLVideoElement | null)[]>(Array<HTMLVideoElement | null>(POOL).fill(null));
+  const poolKey = useRef<(string | null)[]>(Array<string | null>(POOL).fill(null));
+  const poolAt = useRef<number[]>(Array<number>(POOL).fill(0));
+  const activeSlot = useRef(0);
   const audioRef = useRef<HTMLAudioElement>(null);
   /** U3: sound effects play on their own element, over music/voice. */
   const sfxRef = useRef<HTMLAudioElement>(null);
@@ -148,6 +165,47 @@ export function Preview({
   // toward the video's own time, so motion stays glued to the frames.
   const visualRef = useRef(visual);
   visualRef.current = visual;
+  // The visual clip that comes after this one (b-roll over video, as in `visual`), or the first one
+  // starting within 3 s of a gap: its source is made ready in a hidden pool element.
+  const visualAt = (ms: number) => clipAt(clipsOf('broll'), ms) ?? clipAt(clipsOf('video'), ms);
+  const nextFrom = visual ? visual.end_ms : t;
+  const nextVisual =
+    visualAt(nextFrom) ??
+    [...clipsOf('broll'), ...clipsOf('video')].filter((c) => c.media && c.start_ms >= nextFrom && c.start_ms - nextFrom < 3000).sort((a, b) => a.start_ms - b.start_ms)[0] ??
+    null;
+  const curKey = poolKeyOf(visual);
+  const nextKey = poolKeyOf(nextVisual);
+  const pickSlot = (key: string): number => {
+    const have = poolKey.current.indexOf(key);
+    if (have >= 0) return have;
+    let best = -1;
+    for (let i = 0; i < POOL; i++) {
+      const k = poolKey.current[i];
+      if (k !== null && k !== undefined && (k === curKey || k === nextKey)) continue;
+      if (best < 0 || poolAt.current[i]! < poolAt.current[best]!) best = i;
+    }
+    if (best < 0) best = (activeSlot.current + 1) % POOL;
+    poolKey.current[best] = key;
+    return best;
+  };
+  if (curKey) {
+    activeSlot.current = pickSlot(curKey);
+    poolAt.current[activeSlot.current] = performance.now();
+  }
+  const active = activeSlot.current;
+  const nextSlot = nextKey && nextKey !== curKey ? pickSlot(nextKey) : -1;
+  // Before any passive effect (sync, clock): the element on screen is the active slot; the others
+  // stay paused and silent.
+  useLayoutEffect(() => {
+    videoRef.current = poolEls.current[active] ?? null;
+    poolEls.current.forEach((el, i) => {
+      if (!el) return;
+      if (i !== active) {
+        if (!el.paused) el.pause();
+        el.muted = true;
+      } else el.muted = muted;
+    });
+  });
   const audio = clipAt(clipsOf('audio'), t);
   // Each SFX clip keeps one element (greedy by start time), so an overlap never restarts a sound.
   const sfxSlot = new Map<string, number>();
@@ -160,6 +218,7 @@ export function Preview({
       ends[k] = c.end_ms;
     }
   }
+  const sfxIn = (k: number) => clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === k);
   const sfx = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 0), t);
   const sfx2 = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 1), t);
   const sfx3 = clipAt(clipsOf('sfx').filter((c) => sfxSlot.get(c.clip_id) === 2), t);
@@ -198,8 +257,14 @@ export function Preview({
 
   /** Bring one media element in line with the timeline at time `at`. */
   const sync = useCallback(
-    async (el: HTMLMediaElement | null, clip: Clip | null, at: number, isPlaying: boolean, layer: Layer) => {
+    async (el: HTMLMediaElement | null, clip: Clip | null, at: number, isPlaying: boolean, layer: Layer, upcoming: Clip | null = null): Promise<void> => {
       if (!el) return;
+      // 27 Nov: nothing on this layer now, but a clip starts soon (an SFX, the next voice line):
+      // load and seek it already, paused, so it sounds on time instead of loading late.
+      if (!clip?.media && upcoming?.media && upcoming.start_ms >= at && upcoming.start_ms - at < 8000) {
+        if (!el.paused) el.pause();
+        return sync(el, upcoming, upcoming.start_ms, false, layer);
+      }
       if (!clip?.media) {
         if (!el.paused) el.pause();
         if (el.dataset.vid) {
@@ -250,13 +315,19 @@ export function Preview({
   // Paused: seek every layer exactly to the playhead. Playing: the clock loop below drives sync.
   useEffect(() => {
     void sync(videoRef.current, visual, t, playing, 'visual');
-    void sync(audioRef.current, audio, t, playing, 'audio');
-    void sync(sfxRef.current, sfx, t, playing, 'audio');
-    void sync(sfx2Ref.current, sfx2, t, playing, 'audio');
-    void sync(sfx3Ref.current, sfx3, t, playing, 'audio');
-    void sync(sfx4Ref.current, sfx4, t, playing, 'audio');
-    void sync(musicRef.current, music, t, playing, 'audio');
-  }, [visual, audio, sfx, sfx2, sfx3, sfx4, music, t, playing, sync, retry]);
+    void sync(audioRef.current, audio, t, playing, 'audio', nextOf(clipsOf('audio'), t));
+    void sync(sfxRef.current, sfx, t, playing, 'audio', nextOf(sfxIn(0), t));
+    void sync(sfx2Ref.current, sfx2, t, playing, 'audio', nextOf(sfxIn(1), t));
+    void sync(sfx3Ref.current, sfx3, t, playing, 'audio', nextOf(sfxIn(2), t));
+    void sync(sfx4Ref.current, sfx4, t, playing, 'audio', nextOf(sfxIn(3), t));
+    void sync(musicRef.current, music, t, playing, 'audio', nextOf(clipsOf('music'), t));
+  }, [visual, audio, sfx, sfx2, sfx3, sfx4, music, t, playing, sync, retry, active]);
+  // The next visual clip's source waits loaded and seeked in its hidden element.
+  const nextVisualId = nextVisual?.clip_id;
+  useEffect(() => {
+    if (nextSlot < 0 || nextSlot === active || !nextVisual) return;
+    void sync(poolEls.current[nextSlot] ?? null, nextVisual, Math.max(nextVisual.start_ms, nextFrom), false, 'visual');
+  }, [nextVisualId, nextSlot, active, retry]);
 
   useEffect(() => {
     if (!playing) {
@@ -320,7 +391,7 @@ export function Preview({
   // Audit 14 Nov: a stream link expires after 10 min; seeking into an unbuffered part then fails
   // silently. On a media error the layer forgets its link, so the next sync fetches a fresh one.
   useEffect(() => {
-    const els = [videoRef.current, audioRef.current, sfxRef.current, sfx2Ref.current, sfx3Ref.current, sfx4Ref.current, musicRef.current].filter((e): e is HTMLMediaElement => !!e);
+    const els = [...poolEls.current, audioRef.current, sfxRef.current, sfx2Ref.current, sfx3Ref.current, sfx4Ref.current, musicRef.current].filter((e): e is HTMLMediaElement => !!e);
     const onError = (e: Event) => {
       const el = e.currentTarget as HTMLMediaElement;
       const vid = el.dataset.vid;
@@ -358,7 +429,7 @@ export function Preview({
     if (sfx2Ref.current) sfx2Ref.current.volume = v(sfx2Gain);
     if (sfx3Ref.current) sfx3Ref.current.volume = v(sfx3Gain);
     if (sfx4Ref.current) sfx4Ref.current.volume = v(sfx4Gain);
-  }, [visualGain, audioGain, sfxGain, sfx2Gain, sfx3Gain, sfx4Gain, musicGain, volume]);
+  }, [visualGain, audioGain, sfxGain, sfx2Gain, sfx3Gain, sfx4Gain, musicGain, volume, active]);
   // R23b: EQ + "Perjelas suara" of each playing clip (Web Audio, same numbers as the render).
   const fxKey = [visual, audio, sfx, sfx2, sfx3, sfx4, music].map((c) => (c ? `${c.clip_id}:${JSON.stringify(c.eq ?? null)}:${c.voice ? 1 : 0}` : '-')).join('|');
   useEffect(() => {
@@ -454,7 +525,8 @@ export function Preview({
     if (!wasUnsupported.current) return;
     wasUnsupported.current = false;
     urls.current.clear();
-    if (videoRef.current) videoRef.current.dataset.vid = '';
+    for (const el of poolEls.current) if (el) el.dataset.vid = '';
+    poolKey.current.fill(null);
     setRetry((r) => r + 1);
   }, [unsupported]);
   const [st, sr, sb, sl] = safeInsets(ratio);
@@ -493,8 +565,13 @@ export function Preview({
             </svg>
           )}
           {fit === 'blur' && visual?.media && <canvas ref={bgRef} className="fitBlurBg" aria-hidden="true" style={{ ...(css?.filter ? { filter: `blur(12px) ${css.filter}` } : {}), ...(kf.transform ? { transform: `${kf.transform} scale(1.08)` } : {}), ...(kf.opacity !== undefined ? { opacity: kf.opacity } : {}) }} />}
-          <video
-            ref={videoRef}
+          {Array.from({ length: POOL }, (_, i) =>
+            i === active ? (
+            <video
+              key={i}
+              ref={(el) => {
+                poolEls.current[i] = el;
+              }}
             playsInline
             preload="auto"
             aria-label="Video pratinjau"
@@ -518,6 +595,21 @@ export function Preview({
             data-orient={orient.transform || undefined}
             data-rate={visual?.speed ?? undefined}
           />
+            ) : (
+              <video
+                key={i}
+                ref={(el) => {
+                  poolEls.current[i] = el;
+                }}
+                playsInline
+                preload="auto"
+                aria-hidden="true"
+                aria-label="Video berikutnya (disiapkan)"
+                className="off"
+                data-siap={poolKey.current[i] ?? undefined}
+              />
+            ),
+          )}
           {css && css.warmth !== 0 && visual?.media && <div className="lookWash" aria-hidden="true" data-warmth={css.warmth.toFixed(2)} style={{ background: css.warmth > 0 ? '#ff9a3c' : '#3c8cff', opacity: Math.abs(css.warmth) * 0.28 }} />}
           {css && css.vignette > 0 && visual?.media && <div className="lookVignette" aria-hidden="true" style={{ background: `radial-gradient(ellipse at center, transparent ${Math.round(70 - css.vignette * 50)}%, rgba(0,0,0,${(css.vignette * 0.9).toFixed(2)}) 100%)` }} />}
           {!ringan && css && css.grain > 0 && visual?.media && <div className="lookGrain" aria-hidden="true" data-grain={css.grain} style={{ opacity: Math.min(0.35, css.grain / 40) }} />}

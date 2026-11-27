@@ -1,0 +1,27 @@
+[
+  {
+    "id": "P27-01 Diputar melewati 11 pergantian sumber: layar tidak kosong (≤ 3% cicipan)",
+    "ok": false,
+    "detail": "113/574 kosong (19.7%)"
+  },
+  {
+    "id": "P27-02 Gambar sesuai sumber potongan (≤ 10% cicipan; selisih jam ±ms)",
+    "ok": true,
+    "detail": "0/574 beda (0.0%)"
+  },
+  {
+    "id": "P27-03 SFX pendek berbunyi (ada cicipan SFX sedang diputar)",
+    "ok": true,
+    "detail": "161 cicipan"
+  },
+  {
+    "id": "P27-04 Hanya satu video bernama \"Video pratinjau\" (sisanya cadangan tersembunyi)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "P27-99 0 error JS",
+    "ok": true,
+    "detail": ""
+  }
+]
